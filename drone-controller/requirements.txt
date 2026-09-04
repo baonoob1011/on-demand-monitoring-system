@@ -1,0 +1,4 @@
+mavsdk
+httpx
+python-dotenv
+watchdog

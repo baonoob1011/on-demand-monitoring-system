@@ -1,0 +1,49 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ondemand-app
+    restart: unless-stopped
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    environment:
+      SPRING_APPLICATION_NAME: ${SPRING_APPLICATION_NAME:-ondemandmonitoring}
+      SERVER_PORT: 8080
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-ondemand}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-ondemand}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-ondemand123}
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:-org.postgresql.Driver}
+      JPA_DDL_AUTO: ${JPA_DDL_AUTO:-update}
+      JPA_OPEN_IN_VIEW: ${JPA_OPEN_IN_VIEW:-false}
+      JPA_HIBERNATE_DIALECT: ${JPA_HIBERNATE_DIALECT:-org.hibernate.dialect.PostgreSQLDialect}
+      JPA_FORMAT_SQL: ${JPA_FORMAT_SQL:-true}
+      JPA_SHOW_SQL: ${JPA_SHOW_SQL:-false}
+      MYBATIS_MAPPER_LOCATIONS: ${MYBATIS_MAPPER_LOCATIONS:-classpath*:mappers/**/*.xml}
+      MYBATIS_TYPE_ALIASES_PACKAGE: ${MYBATIS_TYPE_ALIASES_PACKAGE:-com.ondemandmonitoring}
+      MYBATIS_MAP_UNDERSCORE_TO_CAMEL_CASE: ${MYBATIS_MAP_UNDERSCORE_TO_CAMEL_CASE:-true}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: ondemand-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ondemand}
+      POSTGRES_USER: ${POSTGRES_USER:-ondemand}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ondemand123}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ondemand} -d ${POSTGRES_DB:-ondemand}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  postgres-data:

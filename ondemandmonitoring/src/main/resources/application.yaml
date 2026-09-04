@@ -1,3 +1,38 @@
 spring:
   application:
-    name: ondemandmonitoring
+    name: ${SPRING_APPLICATION_NAME}
+  config:
+    import: optional:file:.env[.properties],optional:file:ondemandmonitoring/.env[.properties]
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME}
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO}
+    open-in-view: ${JPA_OPEN_IN_VIEW}
+    properties:
+      hibernate:
+        dialect: ${JPA_HIBERNATE_DIALECT}
+        format_sql: ${JPA_FORMAT_SQL}
+    show-sql: ${JPA_SHOW_SQL}
+  servlet:
+    multipart:
+      max-file-size: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE}
+      max-request-size: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE}
+
+mybatis:
+  mapper-locations: ${MYBATIS_MAPPER_LOCATIONS}
+  type-aliases-package: ${MYBATIS_TYPE_ALIASES_PACKAGE}
+  configuration:
+    map-underscore-to-camel-case: ${MYBATIS_MAP_UNDERSCORE_TO_CAMEL_CASE}
+
+server:
+  port: ${SERVER_PORT}
+
+aws:
+  region: ${AWS_REGION}
+  s3:
+    bucket: ${AWS_S3_BUCKET}
+    prefix: ${AWS_S3_PREFIX}
