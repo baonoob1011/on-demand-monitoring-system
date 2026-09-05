@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.repositories.repository;
+package com.ondemandmonitoring.repositories;
 
 import com.ondemandmonitoring.entities.DeviceImage;
 import org.springframework.data.jpa.repository.JpaRepository;

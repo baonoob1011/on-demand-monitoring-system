@@ -4,7 +4,7 @@ import com.ondemandmonitoring.configuration.properties.AwsS3Properties;
 import com.ondemandmonitoring.entities.DeviceImage;
 import com.ondemandmonitoring.exception.ApiException;
 import com.ondemandmonitoring.exception.ErrorCode;
-import com.ondemandmonitoring.repositories.repository.DeviceImageRepository;
+import com.ondemandmonitoring.repositories.DeviceImageRepository;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.Set;

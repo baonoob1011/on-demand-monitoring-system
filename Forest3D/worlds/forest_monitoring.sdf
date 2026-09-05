@@ -1,0 +1,2398 @@
+<?xml version='1.0' encoding='utf-8'?>
+<sdf version="1.9">
+  <world name="forest_monitoring">
+    <physics type="ode">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>250</real_time_update_rate>
+    </physics>
+    <gravity>0 0 -9.8</gravity>
+    <magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>
+    <atmosphere type="adiabatic" />
+    <scene>
+      <grid>false</grid>
+      <ambient>0.55 0.58 0.52 1</ambient>
+      <background>0.68 0.80 0.95 1</background>
+      <shadows>true</shadows>
+      <sky>
+        <time>10.5</time>
+        <clouds />
+      </sky>
+    </scene>
+    <gui>
+      <camera name="user_camera">
+        <pose>-18 -18 12 0 0.55 0.78</pose>
+      </camera>
+    </gui>
+    <light name="sunUTC" type="directional">
+      <pose>0 0 500 0 0 0</pose>
+      <cast_shadows>true</cast_shadows>
+      <intensity>1.0</intensity>
+      <direction>-0.4 0.4 -0.82</direction>
+      <diffuse>0.95 0.92 0.86 1</diffuse>
+      <specular>0.25 0.22 0.18 1</specular>
+      <attenuation>
+        <range>2000</range>
+        <linear>0</linear>
+        <constant>1</constant>
+        <quadratic>0</quadratic>
+      </attenuation>
+    </light>
+    <model name="grassland_base">
+      <static>true</static>
+      <pose>0 0 -0.05 0 0 0</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <box>
+              <size>420 420 0.10</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <box>
+              <size>420 420 0.10</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.20 0.32 0.14 1</ambient>
+            <diffuse>0.24 0.40 0.18 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="dirt_trail_area">
+      <static>true</static>
+      <pose>30 50 -0.02 0 0 0.3</pose>
+      <link name="link">
+        <visual name="v">
+          <geometry>
+            <box>
+              <size>20 12 0.06</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.32 0.22 0.10 1</ambient>
+            <diffuse>0.42 0.30 0.14 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="drone_landing_pad">
+      <static>true</static>
+      <pose>0 0 0.035 0 0 0</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <cylinder>
+              <radius>7.000</radius>
+              <length>0.070</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <cylinder>
+              <radius>7.000</radius>
+              <length>0.070</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.05 0.05 0.05 1</ambient>
+            <diffuse>0.08 0.08 0.08 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="landing_pad_ring">
+      <static>true</static>
+      <pose>0 0 0.08 0 0 0</pose>
+      <link name="link">
+        <visual name="v">
+          <geometry>
+            <cylinder>
+              <radius>5.000</radius>
+              <length>0.020</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.92 0.92 0.84 1</ambient>
+            <diffuse>0.97 0.97 0.87 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pad_h_bar">
+      <static>true</static>
+      <pose>0 0 0.11 0 0 0</pose>
+      <link name="link">
+        <visual name="v">
+          <geometry>
+            <box>
+              <size>1.0 6.5 0.025</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.10 0.28 0.55 1</ambient>
+            <diffuse>0.12 0.35 0.70 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pad_v_bar">
+      <static>true</static>
+      <pose>0 0 0.11 0 0 1.5708</pose>
+      <link name="link">
+        <visual name="v">
+          <geometry>
+            <box>
+              <size>1.0 6.5 0.025</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.10 0.28 0.55 1</ambient>
+            <diffuse>0.12 0.35 0.70 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="base_pole_0">
+      <static>true</static>
+      <pose>6.3 6.4 0.75 0 0 0</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <cylinder>
+              <radius>0.080</radius>
+              <length>1.500</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <cylinder>
+              <radius>0.080</radius>
+              <length>1.500</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1</ambient>
+            <diffuse>0.65 0.65 0.65 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="base_pole_1">
+      <static>true</static>
+      <pose>-6.4 6.3 0.75 0 0 0</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <cylinder>
+              <radius>0.080</radius>
+              <length>1.500</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <cylinder>
+              <radius>0.080</radius>
+              <length>1.500</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1</ambient>
+            <diffuse>0.65 0.65 0.65 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="base_pole_2">
+      <static>true</static>
+      <pose>-6.3 -6.4 0.75 0 0 0</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <cylinder>
+              <radius>0.080</radius>
+              <length>1.500</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <cylinder>
+              <radius>0.080</radius>
+              <length>1.500</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1</ambient>
+            <diffuse>0.65 0.65 0.65 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="base_pole_3">
+      <static>true</static>
+      <pose>6.4 -6.3 0.75 0 0 0</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <cylinder>
+              <radius>0.080</radius>
+              <length>1.500</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <cylinder>
+              <radius>0.080</radius>
+              <length>1.500</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1</ambient>
+            <diffuse>0.65 0.65 0.65 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="control_cabin">
+      <static>true</static>
+      <pose>-15 -12 1.6 0 0 0.25</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <box>
+              <size>6 4 3.2</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <box>
+              <size>6 4 3.2</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.70 0.68 0.62 1</ambient>
+            <diffuse>0.85 0.82 0.74 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="cabin_roof">
+      <static>true</static>
+      <pose>-15 -12 3.4 0 0 0.25</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <box>
+              <size>7 5 0.5</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <box>
+              <size>7 5 0.5</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.22 0.18 0.14 1</ambient>
+            <diffuse>0.30 0.24 0.18 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="trail_s0">
+      <static>true</static>
+      <pose>0 22 0.01 0 0 0.08</pose>
+      <link name="link">
+        <visual name="v">
+          <geometry>
+            <box>
+              <size>5.5 38 0.03</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.34 0.24 0.12 1</ambient>
+            <diffuse>0.44 0.31 0.16 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="trail_s1">
+      <static>true</static>
+      <pose>18 58 0.015 0 0 -0.3</pose>
+      <link name="link">
+        <visual name="v">
+          <geometry>
+            <box>
+              <size>5.0 44 0.03</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.34 0.24 0.12 1</ambient>
+            <diffuse>0.44 0.31 0.16 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="trail_s2">
+      <static>true</static>
+      <pose>55 110 0.018 0 0 0.22</pose>
+      <link name="link">
+        <visual name="v">
+          <geometry>
+            <box>
+              <size>4.5 48 0.03</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.34 0.24 0.12 1</ambient>
+            <diffuse>0.44 0.31 0.16 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="target_platform">
+      <static>true</static>
+      <pose>115 155 0.1 0 0 0</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <box>
+              <size>12 12 0.20</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <box>
+              <size>12 12 0.20</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.50 0.48 0.44 1</ambient>
+            <diffuse>0.62 0.58 0.52 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="tleg_-2.5_-2.5">
+      <static>true</static>
+      <pose>112.5 152.5 5.0 0 0 0</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <cylinder>
+              <radius>0.180</radius>
+              <length>10.000</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <cylinder>
+              <radius>0.180</radius>
+              <length>10.000</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.40 0.40 0.38 1</ambient>
+            <diffuse>0.55 0.55 0.50 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="tleg_2.5_-2.5">
+      <static>true</static>
+      <pose>117.5 152.5 5.0 0 0 0</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <cylinder>
+              <radius>0.180</radius>
+              <length>10.000</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <cylinder>
+              <radius>0.180</radius>
+              <length>10.000</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.40 0.40 0.38 1</ambient>
+            <diffuse>0.55 0.55 0.50 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="tleg_-2.5_2.5">
+      <static>true</static>
+      <pose>112.5 157.5 5.0 0 0 0</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <cylinder>
+              <radius>0.180</radius>
+              <length>10.000</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <cylinder>
+              <radius>0.180</radius>
+              <length>10.000</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.40 0.40 0.38 1</ambient>
+            <diffuse>0.55 0.55 0.50 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="tleg_2.5_2.5">
+      <static>true</static>
+      <pose>117.5 157.5 5.0 0 0 0</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <cylinder>
+              <radius>0.180</radius>
+              <length>10.000</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <cylinder>
+              <radius>0.180</radius>
+              <length>10.000</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.40 0.40 0.38 1</ambient>
+            <diffuse>0.55 0.55 0.50 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="obs_deck">
+      <static>true</static>
+      <pose>115 155 10.3 0 0 0</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <box>
+              <size>7 7 0.40</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <box>
+              <size>7 7 0.40</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.45 0.43 0.38 1</ambient>
+            <diffuse>0.58 0.55 0.48 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="obs_cabin">
+      <static>true</static>
+      <pose>115 155 12.2 0 0 0</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <box>
+              <size>5 4.5 3.2</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <box>
+              <size>5 4.5 3.2</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.35 0.42 0.40 1</ambient>
+            <diffuse>0.48 0.56 0.52 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="comm_mast">
+      <static>true</static>
+      <pose>119 152 10.0 0 0 0</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <cylinder>
+              <radius>0.100</radius>
+              <length>20.000</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <cylinder>
+              <radius>0.100</radius>
+              <length>20.000</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.40 0.40 0.40 1</ambient>
+            <diffuse>0.58 0.58 0.55 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="beacon">
+      <static>true</static>
+      <pose>119 152 20.2 0 0 0</pose>
+      <link name="link">
+        <visual name="v">
+          <geometry>
+            <sphere>
+              <radius>0.400</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0.85 0.06 0.04 1</ambient>
+            <diffuse>1.0 0.10 0.06 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="burnt_ground">
+      <static>true</static>
+      <pose>130 55 0.01 0 0 -0.22</pose>
+      <link name="link">
+        <visual name="v">
+          <geometry>
+            <box>
+              <size>30 20 0.04</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.09 0.08 0.06 1</ambient>
+            <diffuse>0.14 0.12 0.09 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="damaged_vehicle">
+      <static>true</static>
+      <pose>132 53 0.8 1.4 0 -0.4</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <box>
+              <size>4.0 1.8 1.6</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <box>
+              <size>4.0 1.8 1.6</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.25 0.22 0.20 1</ambient>
+            <diffuse>0.35 0.30 0.27 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="barrier_0">
+      <static>true</static>
+      <pose>125 62 0.5 0 0 0.1</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <box>
+              <size>0.5 1.8 1.0</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <box>
+              <size>0.5 1.8 1.0</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.85 0.55 0.05 1</ambient>
+            <diffuse>1.0 0.65 0.06 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="barrier_1">
+      <static>true</static>
+      <pose>128 62 0.5 0 0 0.1</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <box>
+              <size>0.5 1.8 1.0</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <box>
+              <size>0.5 1.8 1.0</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.85 0.55 0.05 1</ambient>
+            <diffuse>1.0 0.65 0.06 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="barrier_2">
+      <static>true</static>
+      <pose>131 62 0.5 0 0 0.1</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <box>
+              <size>0.5 1.8 1.0</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <box>
+              <size>0.5 1.8 1.0</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.85 0.55 0.05 1</ambient>
+            <diffuse>1.0 0.65 0.06 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="boulder_0">
+      <static>true</static>
+      <pose>-45 75 1.4 0 0 0</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <sphere>
+              <radius>2.000</radius>
+            </sphere>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <sphere>
+              <radius>2.000</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0.22 0.21 0.19 1</ambient>
+            <diffuse>0.35 0.33 0.29 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="boulder_1">
+      <static>true</static>
+      <pose>55 95 1.3 0 0 0</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <sphere>
+              <radius>1.800</radius>
+            </sphere>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <sphere>
+              <radius>1.800</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0.22 0.21 0.19 1</ambient>
+            <diffuse>0.35 0.33 0.29 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="boulder_2">
+      <static>true</static>
+      <pose>95 -55 1.5 0 0 0</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <sphere>
+              <radius>2.200</radius>
+            </sphere>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <sphere>
+              <radius>2.200</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0.22 0.21 0.19 1</ambient>
+            <diffuse>0.35 0.33 0.29 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="log_0">
+      <static>true</static>
+      <pose>44 107 0.4 0 1.5708 1.1</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <cylinder>
+              <radius>0.350</radius>
+              <length>7.000</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <cylinder>
+              <radius>0.350</radius>
+              <length>7.000</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.32 0.18 0.08 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="log_1">
+      <static>true</static>
+      <pose>-38 85 0.4 0 1.5708 -0.4</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry>
+            <cylinder>
+              <radius>0.350</radius>
+              <length>7.000</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="v">
+          <geometry>
+            <cylinder>
+              <radius>0.350</radius>
+              <length>7.000</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.32 0.18 0.08 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_000">
+      <static>true</static>
+      <pose>-100.0 67.8 0 0 0 5.64</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.314</radius>
+              <length>5.614</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.81 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.314</radius>
+              <length>5.614</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.81 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>2.245</radius>
+              <length>10.105</length>
+            </cone>
+          </geometry>
+          <pose>0 0 9.86 0 0 0</pose>
+          <material>
+            <ambient>0.08 0.36 0.05 1</ambient>
+            <diffuse>0.12 0.41 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_001">
+      <static>true</static>
+      <pose>-76.6 104.3 0 0 0 3.54</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.340</radius>
+              <length>6.073</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 3.04 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.340</radius>
+              <length>6.073</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 3.04 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>2.429</radius>
+              <length>10.932</length>
+            </cone>
+          </geometry>
+          <pose>0 0 10.66 0 0 0</pose>
+          <material>
+            <ambient>0.07 0.24 0.05 1</ambient>
+            <diffuse>0.11 0.29 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_002">
+      <static>true</static>
+      <pose>-62.5 68.4 0 0 0 6.22</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.311</radius>
+              <length>5.547</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.77 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.311</radius>
+              <length>5.547</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.77 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>2.219</radius>
+              <length>9.984</length>
+            </cone>
+          </geometry>
+          <pose>0 0 9.74 0 0 0</pose>
+          <material>
+            <ambient>0.14 0.38 0.05 1</ambient>
+            <diffuse>0.18 0.43 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_003">
+      <static>true</static>
+      <pose>-48.9 65.7 0 0 0 3.93</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.236</radius>
+              <length>4.219</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.11 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.236</radius>
+              <length>4.219</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.11 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>1.688</radius>
+              <length>7.595</length>
+            </cone>
+          </geometry>
+          <pose>0 0 7.41 0 0 0</pose>
+          <material>
+            <ambient>0.15 0.35 0.05 1</ambient>
+            <diffuse>0.19 0.40 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_004">
+      <static>true</static>
+      <pose>-55.4 104.2 0 0 0 2.44</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.295</radius>
+              <length>5.273</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.64 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.295</radius>
+              <length>5.273</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.64 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>2.109</radius>
+              <length>9.491</length>
+            </cone>
+          </geometry>
+          <pose>0 0 9.26 0 0 0</pose>
+          <material>
+            <ambient>0.15 0.27 0.05 1</ambient>
+            <diffuse>0.19 0.32 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_005">
+      <static>true</static>
+      <pose>-70.0 112.0 0 0 0 3.23</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.258</radius>
+              <length>4.609</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.30 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.258</radius>
+              <length>4.609</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.30 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>1.844</radius>
+              <length>8.296</length>
+            </cone>
+          </geometry>
+          <pose>0 0 8.09 0 0 0</pose>
+          <material>
+            <ambient>0.08 0.28 0.05 1</ambient>
+            <diffuse>0.12 0.33 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="oak_006">
+      <static>true</static>
+      <pose>-31.9 115.9 0 0 0 4.61</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.333</radius>
+              <length>5.944</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.97 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.333</radius>
+              <length>5.944</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.97 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <sphere>
+              <radius>3.566</radius>
+            </sphere>
+          </geometry>
+          <pose>0 0 8.69 0 0 0</pose>
+          <material>
+            <ambient>0.11 0.25 0.05 1</ambient>
+            <diffuse>0.15 0.30 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_007">
+      <static>true</static>
+      <pose>-29.7 157.1 0 0 0 5.14</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.313</radius>
+              <length>5.584</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.79 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.313</radius>
+              <length>5.584</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.79 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>2.233</radius>
+              <length>10.050</length>
+            </cone>
+          </geometry>
+          <pose>0 0 9.80 0 0 0</pose>
+          <material>
+            <ambient>0.18 0.28 0.05 1</ambient>
+            <diffuse>0.22 0.33 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="oak_008">
+      <static>true</static>
+      <pose>-36.5 169.5 0 0 0 5.22</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.350</radius>
+              <length>6.245</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 3.12 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.350</radius>
+              <length>6.245</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 3.12 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <sphere>
+              <radius>3.747</radius>
+            </sphere>
+          </geometry>
+          <pose>0 0 9.13 0 0 0</pose>
+          <material>
+            <ambient>0.11 0.24 0.05 1</ambient>
+            <diffuse>0.15 0.29 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_009">
+      <static>true</static>
+      <pose>-18.6 131.7 0 0 0 0.58</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.323</radius>
+              <length>5.776</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.89 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.323</radius>
+              <length>5.776</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.89 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>2.310</radius>
+              <length>10.396</length>
+            </cone>
+          </geometry>
+          <pose>0 0 10.14 0 0 0</pose>
+          <material>
+            <ambient>0.14 0.31 0.05 1</ambient>
+            <diffuse>0.18 0.36 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_010">
+      <static>true</static>
+      <pose>-67.4 123.7 0 0 0 5.90</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.307</radius>
+              <length>5.486</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.74 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.307</radius>
+              <length>5.486</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.74 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>2.195</radius>
+              <length>9.876</length>
+            </cone>
+          </geometry>
+          <pose>0 0 9.63 0 0 0</pose>
+          <material>
+            <ambient>0.18 0.34 0.05 1</ambient>
+            <diffuse>0.22 0.39 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_011">
+      <static>true</static>
+      <pose>-79.7 153.3 0 0 0 0.70</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.329</radius>
+              <length>5.878</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.94 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.329</radius>
+              <length>5.878</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.94 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>2.351</radius>
+              <length>10.580</length>
+            </cone>
+          </geometry>
+          <pose>0 0 10.32 0 0 0</pose>
+          <material>
+            <ambient>0.16 0.25 0.05 1</ambient>
+            <diffuse>0.20 0.30 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_012">
+      <static>true</static>
+      <pose>62.1 124.5 0 0 0 4.05</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.345</radius>
+              <length>6.153</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 3.08 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.345</radius>
+              <length>6.153</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 3.08 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>2.461</radius>
+              <length>11.075</length>
+            </cone>
+          </geometry>
+          <pose>0 0 10.80 0 0 0</pose>
+          <material>
+            <ambient>0.16 0.29 0.05 1</ambient>
+            <diffuse>0.20 0.34 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="oak_013">
+      <static>true</static>
+      <pose>39.0 138.1 0 0 0 1.78</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.341</radius>
+              <length>6.095</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 3.05 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.341</radius>
+              <length>6.095</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 3.05 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <sphere>
+              <radius>3.657</radius>
+            </sphere>
+          </geometry>
+          <pose>0 0 8.91 0 0 0</pose>
+          <material>
+            <ambient>0.14 0.37 0.05 1</ambient>
+            <diffuse>0.18 0.42 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_014">
+      <static>true</static>
+      <pose>80.5 132.9 0 0 0 1.48</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.258</radius>
+              <length>4.607</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.30 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.258</radius>
+              <length>4.607</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.30 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>1.843</radius>
+              <length>8.293</length>
+            </cone>
+          </geometry>
+          <pose>0 0 8.09 0 0 0</pose>
+          <material>
+            <ambient>0.18 0.28 0.05 1</ambient>
+            <diffuse>0.22 0.33 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_015">
+      <static>true</static>
+      <pose>27.4 135.2 0 0 0 0.60</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.227</radius>
+              <length>4.056</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.03 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.227</radius>
+              <length>4.056</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.03 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>1.622</radius>
+              <length>7.300</length>
+            </cone>
+          </geometry>
+          <pose>0 0 7.12 0 0 0</pose>
+          <material>
+            <ambient>0.09 0.40 0.05 1</ambient>
+            <diffuse>0.13 0.45 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_016">
+      <static>true</static>
+      <pose>65.7 144.5 0 0 0 5.78</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.290</radius>
+              <length>5.180</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.59 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.290</radius>
+              <length>5.180</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.59 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>2.072</radius>
+              <length>9.324</length>
+            </cone>
+          </geometry>
+          <pose>0 0 9.10 0 0 0</pose>
+          <material>
+            <ambient>0.14 0.24 0.05 1</ambient>
+            <diffuse>0.18 0.29 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_017">
+      <static>true</static>
+      <pose>79.6 160.3 0 0 0 4.20</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.228</radius>
+              <length>4.068</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.03 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.228</radius>
+              <length>4.068</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.03 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>1.627</radius>
+              <length>7.322</length>
+            </cone>
+          </geometry>
+          <pose>0 0 7.14 0 0 0</pose>
+          <material>
+            <ambient>0.17 0.31 0.05 1</ambient>
+            <diffuse>0.21 0.36 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_018">
+      <static>true</static>
+      <pose>75.4 -62.8 0 0 0 3.55</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.339</radius>
+              <length>6.045</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 3.02 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.339</radius>
+              <length>6.045</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 3.02 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>2.418</radius>
+              <length>10.882</length>
+            </cone>
+          </geometry>
+          <pose>0 0 10.62 0 0 0</pose>
+          <material>
+            <ambient>0.16 0.26 0.05 1</ambient>
+            <diffuse>0.20 0.31 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_019">
+      <static>true</static>
+      <pose>63.0 -51.5 0 0 0 4.63</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.242</radius>
+              <length>4.329</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.16 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.242</radius>
+              <length>4.329</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.16 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>1.731</radius>
+              <length>7.791</length>
+            </cone>
+          </geometry>
+          <pose>0 0 7.60 0 0 0</pose>
+          <material>
+            <ambient>0.12 0.31 0.05 1</ambient>
+            <diffuse>0.16 0.36 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_020">
+      <static>true</static>
+      <pose>51.6 -73.2 0 0 0 0.97</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.253</radius>
+              <length>4.522</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.26 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.253</radius>
+              <length>4.522</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.26 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>1.809</radius>
+              <length>8.139</length>
+            </cone>
+          </geometry>
+          <pose>0 0 7.94 0 0 0</pose>
+          <material>
+            <ambient>0.11 0.27 0.05 1</ambient>
+            <diffuse>0.15 0.32 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="oak_021">
+      <static>true</static>
+      <pose>64.2 -70.2 0 0 0 3.07</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.296</radius>
+              <length>5.286</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.64 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.296</radius>
+              <length>5.286</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.64 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <sphere>
+              <radius>3.172</radius>
+            </sphere>
+          </geometry>
+          <pose>0 0 7.73 0 0 0</pose>
+          <material>
+            <ambient>0.08 0.35 0.05 1</ambient>
+            <diffuse>0.12 0.40 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="oak_022">
+      <static>true</static>
+      <pose>119.8 -61.1 0 0 0 3.04</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.264</radius>
+              <length>4.709</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.35 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.264</radius>
+              <length>4.709</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.35 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <sphere>
+              <radius>2.825</radius>
+            </sphere>
+          </geometry>
+          <pose>0 0 6.88 0 0 0</pose>
+          <material>
+            <ambient>0.08 0.40 0.05 1</ambient>
+            <diffuse>0.12 0.45 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="oak_023">
+      <static>true</static>
+      <pose>69.5 -100.0 0 0 0 3.56</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.227</radius>
+              <length>4.048</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.02 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.227</radius>
+              <length>4.048</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.02 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <sphere>
+              <radius>2.429</radius>
+            </sphere>
+          </geometry>
+          <pose>0 0 5.92 0 0 0</pose>
+          <material>
+            <ambient>0.12 0.33 0.05 1</ambient>
+            <diffuse>0.16 0.38 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_024">
+      <static>true</static>
+      <pose>-107.3 -77.6 0 0 0 4.77</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.242</radius>
+              <length>4.317</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.16 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.242</radius>
+              <length>4.317</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.16 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>1.727</radius>
+              <length>7.770</length>
+            </cone>
+          </geometry>
+          <pose>0 0 7.58 0 0 0</pose>
+          <material>
+            <ambient>0.11 0.34 0.05 1</ambient>
+            <diffuse>0.15 0.39 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="oak_025">
+      <static>true</static>
+      <pose>-87.6 -68.2 0 0 0 2.25</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.287</radius>
+              <length>5.132</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.57 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.287</radius>
+              <length>5.132</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.57 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <sphere>
+              <radius>3.079</radius>
+            </sphere>
+          </geometry>
+          <pose>0 0 7.50 0 0 0</pose>
+          <material>
+            <ambient>0.14 0.31 0.05 1</ambient>
+            <diffuse>0.18 0.36 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_026">
+      <static>true</static>
+      <pose>-115.2 -64.7 0 0 0 2.23</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.240</radius>
+              <length>4.283</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.14 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.240</radius>
+              <length>4.283</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.14 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>1.713</radius>
+              <length>7.709</length>
+            </cone>
+          </geometry>
+          <pose>0 0 7.52 0 0 0</pose>
+          <material>
+            <ambient>0.08 0.30 0.05 1</ambient>
+            <diffuse>0.12 0.35 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_027">
+      <static>true</static>
+      <pose>-105.5 -35.7 0 0 0 2.27</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.320</radius>
+              <length>5.712</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.86 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.320</radius>
+              <length>5.712</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.86 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>2.285</radius>
+              <length>10.281</length>
+            </cone>
+          </geometry>
+          <pose>0 0 10.03 0 0 0</pose>
+          <material>
+            <ambient>0.12 0.36 0.05 1</ambient>
+            <diffuse>0.16 0.41 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="oak_028">
+      <static>true</static>
+      <pose>-77.2 -73.0 0 0 0 3.61</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.347</radius>
+              <length>6.199</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 3.10 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.347</radius>
+              <length>6.199</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 3.10 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <sphere>
+              <radius>3.720</radius>
+            </sphere>
+          </geometry>
+          <pose>0 0 9.06 0 0 0</pose>
+          <material>
+            <ambient>0.14 0.28 0.05 1</ambient>
+            <diffuse>0.18 0.33 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="oak_029">
+      <static>true</static>
+      <pose>-112.2 -51.8 0 0 0 2.75</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.318</radius>
+              <length>5.679</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.84 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.318</radius>
+              <length>5.679</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.84 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <sphere>
+              <radius>3.408</radius>
+            </sphere>
+          </geometry>
+          <pose>0 0 8.30 0 0 0</pose>
+          <material>
+            <ambient>0.12 0.28 0.05 1</ambient>
+            <diffuse>0.16 0.33 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_030">
+      <static>true</static>
+      <pose>160.8 -17.0 0 0 0 2.25</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.308</radius>
+              <length>5.497</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.75 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.308</radius>
+              <length>5.497</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.75 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>2.199</radius>
+              <length>9.894</length>
+            </cone>
+          </geometry>
+          <pose>0 0 9.65 0 0 0</pose>
+          <material>
+            <ambient>0.08 0.36 0.05 1</ambient>
+            <diffuse>0.12 0.41 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_031">
+      <static>true</static>
+      <pose>149.9 -6.6 0 0 0 1.06</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.319</radius>
+              <length>5.688</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.84 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.319</radius>
+              <length>5.688</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.84 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>2.275</radius>
+              <length>10.238</length>
+            </cone>
+          </geometry>
+          <pose>0 0 9.99 0 0 0</pose>
+          <material>
+            <ambient>0.10 0.25 0.05 1</ambient>
+            <diffuse>0.14 0.30 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="oak_032">
+      <static>true</static>
+      <pose>157.6 0.7 0 0 0 1.14</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.307</radius>
+              <length>5.488</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.74 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.307</radius>
+              <length>5.488</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.74 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <sphere>
+              <radius>3.293</radius>
+            </sphere>
+          </geometry>
+          <pose>0 0 8.02 0 0 0</pose>
+          <material>
+            <ambient>0.11 0.35 0.05 1</ambient>
+            <diffuse>0.15 0.40 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="oak_033">
+      <static>true</static>
+      <pose>124.8 -30.4 0 0 0 3.56</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.316</radius>
+              <length>5.641</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.82 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.316</radius>
+              <length>5.641</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.82 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <sphere>
+              <radius>3.384</radius>
+            </sphere>
+          </geometry>
+          <pose>0 0 8.25 0 0 0</pose>
+          <material>
+            <ambient>0.12 0.33 0.05 1</ambient>
+            <diffuse>0.16 0.38 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_034">
+      <static>true</static>
+      <pose>152.2 -33.2 0 0 0 4.37</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.226</radius>
+              <length>4.042</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.02 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.226</radius>
+              <length>4.042</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.02 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>1.617</radius>
+              <length>7.276</length>
+            </cone>
+          </geometry>
+          <pose>0 0 7.10 0 0 0</pose>
+          <material>
+            <ambient>0.10 0.26 0.05 1</ambient>
+            <diffuse>0.14 0.31 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="pine_035">
+      <static>true</static>
+      <pose>118.0 -9.1 0 0 0 0.86</pose>
+      <link name="link">
+        <collision name="ct">
+          <geometry>
+            <cylinder>
+              <radius>0.256</radius>
+              <length>4.571</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.29 0 0 0</pose>
+        </collision>
+        <visual name="vt">
+          <geometry>
+            <cylinder>
+              <radius>0.256</radius>
+              <length>4.571</length>
+            </cylinder>
+          </geometry>
+          <pose>0 0 2.29 0 0 0</pose>
+          <material>
+            <ambient>0.20 0.12 0.05 1</ambient>
+            <diffuse>0.30 0.18 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+        <visual name="vc">
+          <geometry>
+            <cone>
+              <radius>1.829</radius>
+              <length>8.229</length>
+            </cone>
+          </geometry>
+          <pose>0 0 8.03 0 0 0</pose>
+          <material>
+            <ambient>0.12 0.40 0.05 1</ambient>
+            <diffuse>0.16 0.45 0.07 1</diffuse>
+            <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>47.397971057728974</latitude_deg>
+      <longitude_deg>8.546163739800146</longitude_deg>
+      <elevation>0</elevation>
+    </spherical_coordinates>
+  </world>
+</sdf>
