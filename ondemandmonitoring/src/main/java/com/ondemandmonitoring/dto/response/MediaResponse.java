@@ -10,37 +10,29 @@ import lombok.experimental.FieldDefaults;
 @Getter
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class DeviceImageResponse {
+public class MediaResponse {
 
     String id;
-    String deviceCode;
     String missionId;
+    String droneId;
     String type;
-    String storageProvider;
-    String originalFileName;
+    String url;
+    Long expiresIn;
     String contentType;
     Long fileSize;
-    String s3Bucket;
-    String s3Key;
-    String s3Url;
     Instant capturedAt;
-    Instant createdAt;
 
-    public static DeviceImageResponse from(DeviceImage image) {
-        return DeviceImageResponse.builder()
+    public static MediaResponse from(DeviceImage image, String presignedUrl, long expiresInSeconds) {
+        return MediaResponse.builder()
                 .id(image.getId())
-                .deviceCode(image.getDeviceCode())
                 .missionId(image.getMissionId())
+                .droneId(image.getDeviceCode())
                 .type(image.getType())
-                .storageProvider(image.getStorageProvider())
-                .originalFileName(image.getOriginalFileName())
+                .url(presignedUrl)
+                .expiresIn(expiresInSeconds)
                 .contentType(image.getContentType())
                 .fileSize(image.getFileSize())
-                .s3Bucket(image.getS3Bucket())
-                .s3Key(image.getS3Key())
-                .s3Url(image.getS3Url())
                 .capturedAt(image.getCapturedAt())
-                .createdAt(image.getCreatedAt())
                 .build();
     }
 }
