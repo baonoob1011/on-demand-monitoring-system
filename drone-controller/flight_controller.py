@@ -214,6 +214,11 @@ async def safe_arm(drone: System) -> bool:
             if attempt < 2:
                 print("[HINT] Retrying in 2s...")
                 await asyncio.sleep(2)
+        except grpc.aio.AioRpcError as exc:
+            print_mavsdk_unavailable("arm", exc)
+            if attempt < 2:
+                print("[HINT] Retrying arm in 2s...")
+                await asyncio.sleep(2)
     print("[ERR] Could not arm after 3 attempts.")
     print("[ERR] Ensure PX4 terminal shows: 'Ready for takeoff!'")
     print("[ERR] Check: sensors OK, no safety switch active.")

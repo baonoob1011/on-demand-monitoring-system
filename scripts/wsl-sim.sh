@@ -13,13 +13,6 @@ export GZ_SIM_RESOURCE_PATH="${FOREST3D_PATH}:$PX4_ROOT/Tools/simulation/gz/mode
 export GZ_SIM_SYSTEM_PLUGIN_PATH="${PX4_GZ_PLUGIN_PATH}:${GZ_SIM_SYSTEM_PLUGIN_PATH:-}"
 export LD_LIBRARY_PATH="${PX4_GZ_PLUGIN_PATH}:${LD_LIBRARY_PATH:-}"
 
-pkill -u "$USER" -f '[m]avsdk_server' 2>/dev/null || true
-pkill -u "$USER" -f '[m]ake px4_sitl'  2>/dev/null || true
-pkill -u "$USER" -f '[b]in/px4'        2>/dev/null || true
-pkill -u "$USER" -f '[g]z sim'         2>/dev/null || true
-pkill -u "$USER" -f '[g]z gui'         2>/dev/null || true
-sleep 3
-
 # Sync latest Forest3D world to PX4
 cp "$FOREST3D_PATH/worlds/forest_monitoring.sdf" "$PX4_GZ_WORLD_PATH"
 
@@ -30,4 +23,4 @@ echo ' The Gazebo window PX4 opens WILL have the drone'
 echo '================================================'
 
 cd "$PX4_ROOT"
-PX4_GZ_WORLD=forest_monitoring PX4_GZ_MODEL_POSE="0,0,1.0,0,0,0" make px4_sitl gz_x500_mono_cam_down
+PX4_GZ_WORLD=forest_monitoring PX4_GZ_MODEL_POSE="0,1.4,0.3,0,0,0" make px4_sitl gz_x500_mono_cam_down
