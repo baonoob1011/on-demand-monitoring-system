@@ -1,0 +1,85 @@
+{
+  "targets": [
+    {
+      "id": "CONSTRUCTION_TARGET",
+      "zoneId": "CONSTRUCTION_SITE",
+      "x": 30,
+      "y": -140,
+      "z": 5,
+      "recommendedAltitude": 32,
+      "description": "Unfinished building frame and material yard"
+    },
+    {
+      "id": "AGRICULTURE_TARGET",
+      "zoneId": "AGRICULTURAL_FIELD",
+      "x": -120,
+      "y": 20,
+      "z": 3,
+      "recommendedAltitude": 35,
+      "description": "Field blocks with visible dry crop patch"
+    },
+    {
+      "id": "WAREHOUSE_TARGET",
+      "zoneId": "INDUSTRIAL_WAREHOUSE",
+      "x": 115,
+      "y": -115,
+      "z": 8,
+      "recommendedAltitude": 38,
+      "description": "Warehouse roof, storage tanks and container yard"
+    },
+    {
+      "id": "POWER_TARGET",
+      "zoneId": "ELECTRICAL_INFRASTRUCTURE",
+      "x": 150,
+      "y": -30,
+      "z": 12,
+      "recommendedAltitude": 45,
+      "description": "Electrical tower, utility poles and solar panel group"
+    },
+    {
+      "id": "FIRE_TARGET",
+      "zoneId": "EMERGENCY_FIRE_AREA",
+      "x": 130,
+      "y": 55,
+      "z": 6,
+      "recommendedAltitude": 35,
+      "description": "Burnt ground, dead trees, smoke marker and debris"
+    },
+    {
+      "id": "LANDSLIDE_TARGET",
+      "zoneId": "LANDSLIDE_FLOOD_AREA",
+      "x": -125,
+      "y": -115,
+      "z": 4,
+      "recommendedAltitude": 34,
+      "description": "Blocked road, exposed dirt, rocks and flooded low patch"
+    },
+    {
+      "id": "TRAFFIC_TARGET",
+      "zoneId": "ROAD_TRAFFIC_AREA",
+      "x": 25,
+      "y": -55,
+      "z": 3,
+      "recommendedAltitude": 30,
+      "description": "Curved road with stopped vehicles and barrier"
+    },
+    {
+      "id": "FOREST_TARGET",
+      "zoneId": "FOREST_MONITORING_AREA",
+      "x": -80,
+      "y": 125,
+      "z": 8,
+      "recommendedAltitude": 42,
+      "description": "Dense forest, clearing, hill and damaged vegetation"
+    },
+    {
+      "id": "REMOTE_TARGET",
+      "zoneId": "REMOTE_MONITORING_TARGET",
+      "x": 115,
+      "y": 155,
+      "z": 15,
+      "recommendedAltitude": 50,
+      "description": "Observation tower and communication mast"
+    }
+  ]
+}

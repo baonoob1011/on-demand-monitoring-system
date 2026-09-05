@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import math
 import os
 from dataclasses import dataclass, field
@@ -12,6 +13,9 @@ from mavsdk import System
 load_dotenv()
 
 PX4_SYSTEM_ADDRESS = os.getenv("PX4_SYSTEM_ADDRESS", "udp://:14540")
+MAVSDK_TELEMETRY_GRPC_PORT = int(os.getenv("MAVSDK_TELEMETRY_GRPC_PORT", "50051"))
+MAVSDK_TELEMETRY_SYSID = int(os.getenv("MAVSDK_TELEMETRY_SYSID", "245"))
+MAVSDK_TELEMETRY_COMPID = int(os.getenv("MAVSDK_TELEMETRY_COMPID", "190"))
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8080").rstrip("/")
 DEVICE_CODE = os.getenv("DEVICE_CODE", "DRONE-01")
 TELEMETRY_INTERVAL_SECONDS = float(os.getenv("TELEMETRY_INTERVAL_SECONDS", "2"))
@@ -51,6 +55,17 @@ class TelemetryState:
 
 
 state = TelemetryState()
+
+
+class MavsdkAckNoiseFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        return "Received ack for not-existing command: 512" not in message
+
+
+def configure_mavsdk_logging() -> None:
+    logging.basicConfig(level=logging.WARNING, format="%(message)s")
+    logging.getLogger("mavsdk_server").addFilter(MavsdkAckNoiseFilter())
 
 
 def clean_enum_name(value: Any) -> str:
@@ -161,9 +176,14 @@ async def main() -> None:
     print("========================================")
     print(f"Device: {DEVICE_CODE}")
     print(f"PX4: {PX4_SYSTEM_ADDRESS}")
+    print(f"MAVSDK gRPC: localhost:{MAVSDK_TELEMETRY_GRPC_PORT}")
     print(f"Backend: {BACKEND_BASE_URL}\n")
 
-    drone = System()
+    drone = System(
+        port=MAVSDK_TELEMETRY_GRPC_PORT,
+        sysid=MAVSDK_TELEMETRY_SYSID,
+        compid=MAVSDK_TELEMETRY_COMPID,
+    )
     await connect_px4(drone)
 
     await asyncio.gather(
@@ -177,6 +197,7 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    configure_mavsdk_logging()
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

@@ -1,0 +1,104 @@
+{
+  "zones": [
+    {
+      "id": "DRONE_BASE",
+      "name": "UAV Base / Home",
+      "type": "HOME",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "radius": 28,
+      "purpose": "Takeoff, landing, return-to-launch, operations staging"
+    },
+    {
+      "id": "CONSTRUCTION_SITE",
+      "name": "Construction Site",
+      "type": "CONSTRUCTION",
+      "x": 30,
+      "y": -140,
+      "z": 0,
+      "radius": 38,
+      "purpose": "Construction progress and restricted area inspection"
+    },
+    {
+      "id": "AGRICULTURAL_FIELD",
+      "name": "Agricultural Field",
+      "type": "AGRICULTURE",
+      "x": -120,
+      "y": 20,
+      "z": 0,
+      "radius": 42,
+      "purpose": "Crop health survey and dry-area detection"
+    },
+    {
+      "id": "INDUSTRIAL_WAREHOUSE",
+      "name": "Industrial Warehouse",
+      "type": "INDUSTRIAL",
+      "x": 115,
+      "y": -115,
+      "z": 0,
+      "radius": 36,
+      "purpose": "Warehouse, tank, roof and yard monitoring"
+    },
+    {
+      "id": "ELECTRICAL_INFRASTRUCTURE",
+      "name": "Electrical Infrastructure",
+      "type": "INFRASTRUCTURE",
+      "x": 150,
+      "y": -30,
+      "z": 0,
+      "radius": 32,
+      "purpose": "Utility pole, solar panel and tower inspection"
+    },
+    {
+      "id": "EMERGENCY_FIRE_AREA",
+      "name": "Emergency Fire Area",
+      "type": "HAZARD",
+      "x": 130,
+      "y": 55,
+      "z": 0,
+      "radius": 26,
+      "purpose": "Fire, smoke and damage assessment"
+    },
+    {
+      "id": "LANDSLIDE_FLOOD_AREA",
+      "name": "Landslide / Flood Area",
+      "type": "ENVIRONMENTAL_HAZARD",
+      "x": -125,
+      "y": -115,
+      "z": 0,
+      "radius": 36,
+      "purpose": "Landslide, blocked trail and flood inspection"
+    },
+    {
+      "id": "ROAD_TRAFFIC_AREA",
+      "name": "Road / Traffic Area",
+      "type": "TRAFFIC",
+      "x": 25,
+      "y": -55,
+      "z": 0,
+      "radius": 40,
+      "purpose": "Road condition and incident monitoring"
+    },
+    {
+      "id": "FOREST_MONITORING_AREA",
+      "name": "Forest Monitoring Area",
+      "type": "FOREST",
+      "x": -80,
+      "y": 125,
+      "z": 0,
+      "radius": 58,
+      "purpose": "Forest survey, vegetation monitoring and search-area inspection"
+    },
+    {
+      "id": "REMOTE_MONITORING_TARGET",
+      "name": "Remote Monitoring Target",
+      "type": "REMOTE_TARGET",
+      "x": 115,
+      "y": 155,
+      "z": 0,
+      "radius": 28,
+      "purpose": "Longer-distance waypoint target and orbit inspection"
+    }
+  ]
+}

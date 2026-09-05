@@ -1,0 +1,68 @@
+{
+  "missions": [
+    {
+      "id": "MISSION_01",
+      "name": "Construction Inspection",
+      "missionType": "CONSTRUCTION_PROGRESS_INSPECTION",
+      "targetZone": "CONSTRUCTION_SITE",
+      "targetPoint": "CONSTRUCTION_TARGET",
+      "recommendedAltitude": 32
+    },
+    {
+      "id": "MISSION_02",
+      "name": "Agriculture Inspection",
+      "missionType": "CROP_HEALTH_INSPECTION",
+      "targetZone": "AGRICULTURAL_FIELD",
+      "targetPoint": "AGRICULTURE_TARGET",
+      "recommendedAltitude": 35
+    },
+    {
+      "id": "MISSION_03",
+      "name": "Industrial Inspection",
+      "missionType": "INDUSTRIAL_ASSET_INSPECTION",
+      "targetZone": "INDUSTRIAL_WAREHOUSE",
+      "targetPoint": "WAREHOUSE_TARGET",
+      "recommendedAltitude": 38
+    },
+    {
+      "id": "MISSION_04",
+      "name": "Infrastructure Inspection",
+      "missionType": "POWERLINE_INSPECTION",
+      "targetZone": "ELECTRICAL_INFRASTRUCTURE",
+      "targetPoint": "POWER_TARGET",
+      "recommendedAltitude": 45
+    },
+    {
+      "id": "MISSION_05",
+      "name": "Emergency Fire Inspection",
+      "missionType": "FIRE_INSPECTION",
+      "targetZone": "EMERGENCY_FIRE_AREA",
+      "targetPoint": "FIRE_TARGET",
+      "recommendedAltitude": 35
+    },
+    {
+      "id": "MISSION_06",
+      "name": "Landslide Inspection",
+      "missionType": "LANDSLIDE_INSPECTION",
+      "targetZone": "LANDSLIDE_FLOOD_AREA",
+      "targetPoint": "LANDSLIDE_TARGET",
+      "recommendedAltitude": 34
+    },
+    {
+      "id": "MISSION_07",
+      "name": "Traffic Monitoring",
+      "missionType": "TRAFFIC_MONITORING",
+      "targetZone": "ROAD_TRAFFIC_AREA",
+      "targetPoint": "TRAFFIC_TARGET",
+      "recommendedAltitude": 30
+    },
+    {
+      "id": "MISSION_08",
+      "name": "Forest Monitoring",
+      "missionType": "FOREST_SURVEY",
+      "targetZone": "FOREST_MONITORING_AREA",
+      "targetPoint": "FOREST_TARGET",
+      "recommendedAltitude": 42
+    }
+  ]
+}

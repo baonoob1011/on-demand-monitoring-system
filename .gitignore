@@ -9,3 +9,4 @@ drone-controller/.env
 drone-controller/.venv/
 drone-controller/__pycache__/
 drone-controller/*.pyc
+Python/.venv/
