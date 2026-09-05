@@ -48,13 +48,12 @@ start-drone-stack.ps1
 `wsl-sim.sh` should use PX4 to launch Gazebo and spawn the camera drone:
 
 ```bash
-PX4_GZ_WORLD=forest_monitoring PX4_GZ_MODEL_POSE="0,0,1.0,0,0,0" make px4_sitl gz_x500_mono_cam_down
+PX4_GZ_WORLD=forest_monitoring PX4_GZ_MODEL_POSE="0,1.4,0.3,0,0,0" make px4_sitl gz_x500_mono_cam_down
 ```
 
 Notes:
 
 - `gz_x500_mono_cam_down` gives the drone its downward camera.
-- Keep `PX4_GZ_MODEL_POSE="0,0,1.0,0,0,0"` so the old view starts on the landing pad and the downward camera sees the H mark.
 - `x500_mono_cam_down_0` is the expected spawned Gazebo model name.
 - Pressing `p` in the Flight Control tab captures from the drone camera sensor topic, not from the Gazebo window or desktop screen.
 - The camera topic should be:
