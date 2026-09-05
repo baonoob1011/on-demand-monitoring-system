@@ -19,6 +19,15 @@ public class DeviceImage extends BaseEntity {
     @Column(name = "device_code", nullable = false, length = 100)
     String deviceCode;
 
+    @Column(name = "mission_id", nullable = false, length = 100)
+    String missionId;
+
+    @Column(name = "media_type", nullable = false, length = 50)
+    String type;
+
+    @Column(name = "storage_provider", nullable = false, length = 50)
+    String storageProvider;
+
     @Column(name = "original_file_name", nullable = false)
     String originalFileName;
 
@@ -36,4 +45,7 @@ public class DeviceImage extends BaseEntity {
 
     @Column(name = "s3_url", nullable = false, length = 1000)
     String s3Url;
+
+    @Column(name = "captured_at", nullable = false)
+    java.time.Instant capturedAt;
 }

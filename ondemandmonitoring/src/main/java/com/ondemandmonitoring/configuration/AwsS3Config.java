@@ -13,6 +13,7 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 @Configuration
 @EnableConfigurationProperties(AwsS3Properties.class)
@@ -29,6 +30,19 @@ public class AwsS3Config {
                 .region(Region.of(region))
                 .credentialsProvider(credentialsProvider(environment))
                 .httpClientBuilder(ApacheHttpClient.builder())
+                .build();
+    }
+
+    @Bean
+    public S3Presigner s3Presigner(Environment environment) {
+        String region = environment.getProperty("aws.region");
+        if (!StringUtils.hasText(region)) {
+            throw new IllegalStateException("AWS region is not configured. Set AWS_REGION to the S3 bucket region.");
+        }
+
+        return S3Presigner.builder()
+                .region(Region.of(region))
+                .credentialsProvider(credentialsProvider(environment))
                 .build();
     }
 

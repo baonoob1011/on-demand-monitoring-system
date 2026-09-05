@@ -81,6 +81,32 @@ def include_model(world: ET.Element, name: str, pose: str, uri: str) -> None:
     sub(inc, "pose", pose)
     sub(inc, "uri", uri)
 
+def visual_tree(world: ET.Element, name: str, pose: str, height: float, canopy_radius: float) -> None:
+    _, link = link_model(world, name, pose)
+
+    trunk = sub(link, "visual", name="trunk")
+    sub(trunk, "pose", f"0 0 {height / 2:.2f} 0 0 0")
+    trunk_geom = sub(trunk, "geometry")
+    trunk_cyl = sub(trunk_geom, "cylinder")
+    sub(trunk_cyl, "radius", f"{max(0.18, canopy_radius * 0.12):.2f}")
+    sub(trunk_cyl, "length", f"{height:.2f}")
+    material(trunk, "0.18 0.11 0.06 1", "0.24 0.15 0.08 1", "0.9")
+
+    for idx, (dx, dy, dz, scale) in enumerate(
+        (
+            (0.0, 0.0, height * 0.88, 1.00),
+            (canopy_radius * 0.42, canopy_radius * 0.12, height * 0.78, 0.82),
+            (-canopy_radius * 0.38, canopy_radius * 0.08, height * 0.76, 0.78),
+            (canopy_radius * 0.04, -canopy_radius * 0.42, height * 0.74, 0.76),
+        )
+    ):
+        canopy = sub(link, "visual", name=f"canopy_{idx}")
+        sub(canopy, "pose", f"{dx:.2f} {dy:.2f} {dz:.2f} 0 0 0")
+        canopy_geom = sub(canopy, "geometry")
+        canopy_sphere = sub(canopy_geom, "sphere")
+        sub(canopy_sphere, "radius", f"{canopy_radius * scale:.2f}")
+        material(canopy, "0.03 0.16 0.05 1", "0.05 0.28 0.08 1", "1.0")
+
 def simple_vehicle(world: ET.Element, name: str, pose: str, body_color: str = "0.12 0.18 0.24 1") -> None:
     model, link = link_model(world, name, pose)
     body_col = sub(link, "collision", name="body_collision")
@@ -152,12 +178,15 @@ def hazard_cone(world: ET.Element, name: str, pose: str) -> None:
 def add_base(world: ET.Element) -> None:
     cylinder(world, "drone_landing_pad", "0 0 0.035 0 0 0", 6.0, 0.07, "0.05 0.05 0.05 1", "0.08 0.08 0.08 1")
     cylinder(world, "landing_pad_inner_ring", "0 0 0.085 0 0 0", 4.0, 0.025, "0.9 0.9 0.82 1", "0.95 0.95 0.84 1", False)
+    box(world, "landing_pad_h_mark_v", "0 0 0.11 0 0 0", "0.7 4.6 0.025", "0.04 0.04 0.04 1", "0.04 0.04 0.04 1", False, roughness="0.8")
+    box(world, "landing_pad_h_mark_l", "-1.25 0 0.115 0 0 0", "0.7 2.6 0.025", "0.04 0.04 0.04 1", "0.04 0.04 0.04 1", False, roughness="0.8")
+    box(world, "landing_pad_h_mark_r", "1.25 0 0.115 0 0 0", "0.7 2.6 0.025", "0.04 0.04 0.04 1", "0.04 0.04 0.04 1", False, roughness="0.8")
     box(world, "control_cabin", "-12 -12 1.6 0 0 0.25", "6 4 3.2", "0.8 0.8 0.8 1", "0.9 0.9 0.9 1", roughness="0.2")
     simple_vehicle(world, "base_suv", "-18 -10 0.05 0 0 0.8", "0.10 0.16 0.22 1")
 
 def add_trail(world: ET.Element) -> None:
     segments = [
-        ("trail_base", 0, 18, 0.01, 6.0, 36, 0.08),
+        ("trail_base", 0, 27, 0.01, 6.0, 30, 0.08),
         ("trail_curve_1", 12, 45, 0.012, 5.2, 42, -0.34),
         ("trail_curve_2", 34, 78, 0.015, 4.8, 46, 0.18),
         ("trail_clearing_link", 59, 108, 0.018, 4.5, 45, -0.42),
@@ -204,8 +233,9 @@ def add_vegetation(world: ET.Element) -> None:
                 if valid(x, y) and all(math.hypot(x - px, y - py) > 9 for px, py in placed):
                     placed.append((x, y))
                     yaw = RNG.uniform(0, math.tau)
-                    tree_type = "Pine Tree" if RNG.random() < 0.6 else "Oak tree"
-                    include_model(world, f"tree_{idx}", f"{x:.2f} {y:.2f} 0 0 0 {yaw:.2f}", f"https://fuel.gazebosim.org/1.0/OpenRobotics/models/{tree_type}")
+                    height = RNG.uniform(7.0, 13.0)
+                    canopy_radius = RNG.uniform(2.4, 4.2)
+                    visual_tree(world, f"tree_{idx}", f"{x:.2f} {y:.2f} 0 0 0 {yaw:.2f}", height, canopy_radius)
                     idx += 1
                     break
     
@@ -233,15 +263,6 @@ def main() -> None:
     sub(sky, "clouds")
     sub(sky, "time", "11.0")
 
-
-    for filename, name in [
-        ("gz-sim-physics-system", "gz::sim::systems::Physics"),
-        ("gz-sim-user-commands-system", "gz::sim::systems::UserCommands"),
-        ("gz-sim-scene-broadcaster-system", "gz::sim::systems::SceneBroadcaster"),
-        ("gz-sim-sensors-system", "gz::sim::systems::Sensors"),
-    ]:
-        sub(world, "plugin", filename=filename, name=name)
-
     light = sub(world, "light", name="sunUTC", type="directional")
     sub(light, "pose", "0 0 500 0 -0.5 -0.5")
     sub(light, "cast_shadows", "true")
@@ -258,12 +279,6 @@ def main() -> None:
     add_emergency_area(world)
     add_vegetation(world)
 
-
-    # x500 drone model (PX4 gz_bridge connects to this)
-    drone_inc = ET.SubElement(world, "include")
-    ET.SubElement(drone_inc, "name").text = "x500_0"
-    ET.SubElement(drone_inc, "uri").text = "model://x500"
-    ET.SubElement(drone_inc, "pose").text = "0 0 0.3 0 0 0"
     coords = sub(world, "spherical_coordinates")
     sub(coords, "surface_model", "EARTH_WGS84")
     sub(coords, "world_frame_orientation", "ENU")
