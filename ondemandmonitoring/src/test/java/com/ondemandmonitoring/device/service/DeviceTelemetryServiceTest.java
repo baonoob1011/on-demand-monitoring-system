@@ -5,8 +5,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.ondemandmonitoring.device.controller.request.TelemetryRequest;
-import com.ondemandmonitoring.device.domain.telemetry.DeviceTelemetry;
+import com.ondemandmonitoring.device.dto.request.TelemetryRequest;
+import com.ondemandmonitoring.device.domain.DeviceTelemetry;
 import com.ondemandmonitoring.device.repository.DeviceTelemetryRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

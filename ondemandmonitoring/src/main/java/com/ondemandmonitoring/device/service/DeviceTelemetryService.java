@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.device.service;
 
-import com.ondemandmonitoring.device.controller.request.TelemetryRequest;
-import com.ondemandmonitoring.device.domain.telemetry.DeviceTelemetry;
+import com.ondemandmonitoring.device.dto.request.TelemetryRequest;
+import com.ondemandmonitoring.device.domain.DeviceTelemetry;
 import com.ondemandmonitoring.device.repository.DeviceTelemetryRepository;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;

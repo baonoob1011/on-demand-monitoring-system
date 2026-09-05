@@ -2,7 +2,7 @@ package com.ondemandmonitoring.device.service;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.device.domain.media.DeviceImage;
+import com.ondemandmonitoring.device.domain.DeviceImage;
 import com.ondemandmonitoring.device.infrastructure.s3.AwsS3Properties;
 import com.ondemandmonitoring.device.repository.DeviceImageRepository;
 import java.io.IOException;

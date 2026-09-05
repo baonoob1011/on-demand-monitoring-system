@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.device.controller.request;
+package com.ondemandmonitoring.device.dto.request;
 
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;

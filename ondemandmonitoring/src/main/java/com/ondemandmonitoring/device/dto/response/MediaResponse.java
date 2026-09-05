@@ -1,6 +1,6 @@
-package com.ondemandmonitoring.device.controller.response;
+package com.ondemandmonitoring.device.dto.response;
 
-import com.ondemandmonitoring.device.domain.media.DeviceImage;
+import com.ondemandmonitoring.device.domain.DeviceImage;
 import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.Builder;
