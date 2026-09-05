@@ -23,4 +23,4 @@ echo ' The Gazebo window PX4 opens WILL have the drone'
 echo '================================================'
 
 cd "$PX4_ROOT"
-PX4_GZ_WORLD=forest_monitoring PX4_GZ_MODEL_POSE="0,1.4,0.3,0,0,0" make px4_sitl gz_x500_mono_cam_down
+PX4_GZ_WORLD=forest_monitoring PX4_GZ_MODEL_POSE="0,0,1.0,0,0,0" make px4_sitl gz_x500_mono_cam_down
