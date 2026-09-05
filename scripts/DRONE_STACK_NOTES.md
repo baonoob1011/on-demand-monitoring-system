@@ -56,6 +56,7 @@ Notes:
 - `gz_x500_mono_cam_down` gives the drone its downward camera.
 - Keep `PX4_GZ_MODEL_POSE="0,0,1.0,0,0,0"` so the old view starts on the landing pad and the downward camera sees the H mark.
 - `x500_mono_cam_down_0` is the expected spawned Gazebo model name.
+- Pressing `p` in the Flight Control tab captures from the drone camera sensor topic, not from the Gazebo window or desktop screen.
 - The camera topic should be:
 
 ```text

@@ -86,7 +86,7 @@ class CameraGateway:
 
         self.node = Node()
         self.node.subscribe(GzImage, CAMERA_TOPIC, self._on_frame)
-        print(f"[CAMERA] Listening: {CAMERA_TOPIC}")
+        print(f"[CAMERA] Listening to drone sensor: {CAMERA_TOPIC}")
 
     def _on_frame(self, msg: GzImage, *_args) -> None:
         with self.lock:
@@ -118,7 +118,7 @@ class CameraGateway:
         return output.getvalue()
 
     async def capture_and_upload(self) -> None:
-        print("[CAMERA] Capture requested")
+        print("[CAMERA] Drone camera capture requested")
         jpeg = await asyncio.to_thread(self._latest_jpeg)
         if jpeg is None:
             print("[CAMERA] No camera frame available")
