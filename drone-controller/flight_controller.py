@@ -37,9 +37,9 @@ MAVSDK_CONTROL_GRPC_PORT = int(os.getenv("MAVSDK_CONTROL_GRPC_PORT", "50052"))
 MAVSDK_CONTROL_SYSID = int(os.getenv("MAVSDK_CONTROL_SYSID", "245"))
 MAVSDK_CONTROL_COMPID = int(os.getenv("MAVSDK_CONTROL_COMPID", "191"))
 
-MOVE_SPEED_M_S = float(os.getenv("CONTROL_MOVE_SPEED_M_S", "5.0"))
-VERTICAL_SPEED_M_S = float(os.getenv("CONTROL_VERTICAL_SPEED_M_S", "3.0"))
-YAW_DEG = float(os.getenv("CONTROL_YAW_DEG", "45.0"))
+MOVE_SPEED_M_S = float(os.getenv("CONTROL_MOVE_SPEED_M_S", "8.0"))
+VERTICAL_SPEED_M_S = float(os.getenv("CONTROL_VERTICAL_SPEED_M_S", "4.0"))
+YAW_DEG = float(os.getenv("CONTROL_YAW_DEG", "70.0"))
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8080").rstrip("/")
 DEVICE_CODE = os.getenv("DEVICE_CODE", "DRONE-01")
 DRONE_ID = os.getenv("DRONE_ID", DEVICE_CODE)
@@ -147,7 +147,20 @@ class CameraGateway:
             return
 
         if 200 <= response.status_code < 300:
-            print("[CAMERA] Image uploaded successfully")
+            try:
+                payload = response.json()
+            except ValueError:
+                print("[CAMERA] Image uploaded successfully")
+                return
+
+            image = payload.get("data") or {}
+            storage_provider = image.get("storageProvider", "UNKNOWN")
+            print(f"[CAMERA] Image uploaded successfully ({storage_provider})")
+            if storage_provider == "S3":
+                print(f"[CAMERA] S3 bucket: {image.get('s3Bucket')}")
+                print(f"[CAMERA] S3 key: {image.get('s3Key')}")
+            elif storage_provider == "LOCAL":
+                print(f"[CAMERA] Local file: {image.get('s3Url')}")
             return
 
         print(f"[CAMERA] Upload failed - HTTP {response.status_code}")

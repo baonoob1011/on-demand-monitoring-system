@@ -16,6 +16,9 @@ import java.time.Instant;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class DeviceImage extends BaseEntity {
 
+    @Column(name = "device_code", nullable = false, length = 50)
+    String deviceCode;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "device_id", nullable = false)
     Device device;
