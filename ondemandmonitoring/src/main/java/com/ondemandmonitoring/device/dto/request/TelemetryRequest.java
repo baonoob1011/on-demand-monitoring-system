@@ -26,6 +26,10 @@ public class TelemetryRequest {
     @NotNull
     Double altitude;
 
+    Double absoluteAltitude;
+
+    Double relativeAltitude;
+
     @DecimalMin(value = "0.0")
     @DecimalMax(value = "100.0")
     Double batteryPercent;
@@ -33,8 +37,58 @@ public class TelemetryRequest {
     @DecimalMin(value = "0.0")
     Double speed;
 
+    String gpsFixType;
+
+    Integer gpsSatelliteCount;
+
+    Boolean gyrometerOk;
+
+    Boolean accelerometerOk;
+
+    Boolean magnetometerOk;
+
+    Boolean localPositionOk;
+
+    Boolean globalPositionOk;
+
+    Boolean homePositionOk;
+
+    Boolean armable;
+
+    Double headingDegree;
+
+    Double velocityNorth;
+
+    Double velocityEast;
+
+    Double velocityDown;
+
+    Double groundSpeed;
+
     String flightMode;
 
     @NotNull
     Boolean armed;
+
+    Double homeLatitude;
+
+    Double homeLongitude;
+
+    Double homeAbsoluteAltitude;
+
+    Double homeRelativeAltitude;
+
+    Double rollDegree;
+
+    Double pitchDegree;
+
+    Double yawDegree;
+
+    Boolean connected;
+
+    Boolean inAir;
+
+    Boolean geofenceConfigured;
+
+    Boolean geofencePassed;
 }
