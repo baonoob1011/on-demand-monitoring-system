@@ -5,9 +5,9 @@ echo '========================================'
 echo ' Cleaning previous drone simulation...'
 echo '========================================'
 
-pkill -9 -f px4 || true
-pkill -9 -f gz || true
-pkill -9 -f ruby || true
+pkill -9 -f '[p]x4' || true
+pkill -9 -f '[g]z' || true
+pkill -9 -f '[r]uby' || true
 pkill -9 -u "$USER" -f '[m]avsdk_server' 2>/dev/null || true
 
 sleep 2
