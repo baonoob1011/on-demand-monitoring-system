@@ -1,0 +1,203 @@
+{
+  "source_blend": "C:\\Users\\ACER\\codex-skills\\uav-monitoring-mega-world.blend",
+  "format": "GLB",
+  "world_bounds": {
+    "min": [
+      -1000.0,
+      -1000.0,
+      -1.9534578323364258
+    ],
+    "max": [
+      1000.0,
+      1000.0,
+      247.18460083007812
+    ]
+  },
+  "objects_total": 3465,
+  "mesh_objects_total": 3437,
+  "triangles_estimated": 180988,
+  "materials": 22,
+  "models": [
+    {
+      "name": "mega_terrain",
+      "collections": [
+        "TERRAIN"
+      ],
+      "objects": 1,
+      "mesh": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\mega_terrain\\meshes\\mega_terrain.glb",
+      "size_bytes": 1493616,
+      "collision": true
+    },
+    {
+      "name": "forest_visual",
+      "collections": [
+        "TREES",
+        "UNDERGROWTH"
+      ],
+      "objects": 2942,
+      "mesh": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\forest_visual\\meshes\\forest_visual.glb",
+      "size_bytes": 1417156,
+      "collision": false
+    },
+    {
+      "name": "rocks",
+      "collections": [
+        "ROCKS"
+      ],
+      "objects": 260,
+      "mesh": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\rocks\\meshes\\rocks.glb",
+      "size_bytes": 704768,
+      "collision": false
+    },
+    {
+      "name": "roads",
+      "collections": [
+        "ROADS"
+      ],
+      "objects": 3,
+      "mesh": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\roads\\meshes\\roads.glb",
+      "size_bytes": 46292,
+      "collision": false
+    },
+    {
+      "name": "bridges",
+      "collections": [
+        "BRIDGES"
+      ],
+      "objects": 3,
+      "mesh": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\bridges\\meshes\\bridges.glb",
+      "size_bytes": 5308,
+      "collision": true
+    },
+    {
+      "name": "water",
+      "collections": [
+        "WATER"
+      ],
+      "objects": 8,
+      "mesh": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\water\\meshes\\water.glb",
+      "size_bytes": 64472,
+      "collision": false
+    },
+    {
+      "name": "landing_pad",
+      "collections": [
+        "LANDING_PADS"
+      ],
+      "objects": 8,
+      "mesh": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\landing_pad\\meshes\\landing_pad.glb",
+      "size_bytes": 83232,
+      "collision": true
+    },
+    {
+      "name": "construction_site",
+      "collections": [
+        "CONSTRUCTION_SITE"
+      ],
+      "objects": 25,
+      "mesh": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\construction_site\\meshes\\construction_site.glb",
+      "size_bytes": 39492,
+      "collision": true
+    },
+    {
+      "name": "agriculture",
+      "collections": [
+        "AGRICULTURE"
+      ],
+      "objects": 13,
+      "mesh": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\agriculture\\meshes\\agriculture.glb",
+      "size_bytes": 20096,
+      "collision": false
+    },
+    {
+      "name": "industrial",
+      "collections": [
+        "INDUSTRIAL"
+      ],
+      "objects": 8,
+      "mesh": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\industrial\\meshes\\industrial.glb",
+      "size_bytes": 54664,
+      "collision": true
+    },
+    {
+      "name": "logistics",
+      "collections": [
+        "LOGISTICS"
+      ],
+      "objects": 49,
+      "mesh": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\logistics\\meshes\\logistics.glb",
+      "size_bytes": 70864,
+      "collision": true
+    },
+    {
+      "name": "residential",
+      "collections": [
+        "RESIDENTIAL"
+      ],
+      "objects": 34,
+      "mesh": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\residential\\meshes\\residential.glb",
+      "size_bytes": 50512,
+      "collision": true
+    },
+    {
+      "name": "security_zone",
+      "collections": [
+        "SECURITY"
+      ],
+      "objects": 2,
+      "mesh": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\security_zone\\meshes\\security_zone.glb",
+      "size_bytes": 3664,
+      "collision": false
+    },
+    {
+      "name": "power_infrastructure",
+      "collections": [
+        "POWER_INFRASTRUCTURE"
+      ],
+      "objects": 18,
+      "mesh": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\power_infrastructure\\meshes\\power_infrastructure.glb",
+      "size_bytes": 26572,
+      "collision": true
+    },
+    {
+      "name": "communication_towers",
+      "collections": [
+        "COMMUNICATION_TOWERS"
+      ],
+      "objects": 4,
+      "mesh": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\communication_towers\\meshes\\communication_towers.glb",
+      "size_bytes": 6480,
+      "collision": true
+    },
+    {
+      "name": "watchtower",
+      "collections": [
+        "WATCHTOWER"
+      ],
+      "objects": 2,
+      "mesh": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\watchtower\\meshes\\watchtower.glb",
+      "size_bytes": 3648,
+      "collision": true
+    },
+    {
+      "name": "quarry",
+      "collections": [
+        "QUARRY"
+      ],
+      "objects": 15,
+      "mesh": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\quarry\\meshes\\quarry.glb",
+      "size_bytes": 89844,
+      "collision": true
+    },
+    {
+      "name": "event_area",
+      "collections": [
+        "EVENT_AREA"
+      ],
+      "objects": 42,
+      "mesh": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\event_area\\meshes\\event_area.glb",
+      "size_bytes": 126728,
+      "collision": false
+    }
+  ]
+}
