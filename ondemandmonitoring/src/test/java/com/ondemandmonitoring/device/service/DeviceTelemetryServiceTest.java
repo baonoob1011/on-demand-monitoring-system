@@ -5,9 +5,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.ondemandmonitoring.device.controller.request.TelemetryRequest;
-import com.ondemandmonitoring.device.domain.telemetry.DeviceTelemetry;
+import com.ondemandmonitoring.device.dto.request.TelemetryRequest;
+import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.device.domain.DeviceTelemetry;
+import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.device.repository.DeviceTelemetryRepository;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -20,6 +23,9 @@ class DeviceTelemetryServiceTest {
 
     @Mock
     private DeviceTelemetryRepository repository;
+
+    @Mock
+    private DeviceRepository deviceRepository;
 
     @InjectMocks
     private DeviceTelemetryService service;
@@ -35,7 +41,11 @@ class DeviceTelemetryServiceTest {
         request.setFlightMode("AUTO");
         request.setArmed(true);
 
+        Device device = new Device();
+        device.setDeviceCode("DRONE-01");
         DeviceTelemetry persisted = new DeviceTelemetry();
+        when(deviceRepository.findByDeviceCode("DRONE-01")).thenReturn(Optional.of(device));
+        when(repository.findByDeviceCode("DRONE-01")).thenReturn(Optional.empty());
         when(repository.save(any(DeviceTelemetry.class))).thenReturn(persisted);
 
         DeviceTelemetry result = service.save("DRONE-01", request);
@@ -45,6 +55,7 @@ class DeviceTelemetryServiceTest {
         verify(repository).save(captor.capture());
         DeviceTelemetry captured = captor.getValue();
         assertThat(captured.getDeviceCode()).isEqualTo("DRONE-01");
+        assertThat(captured.getDevice()).isSameAs(device);
         assertThat(captured.getLatitude()).isEqualTo(10.1);
         assertThat(captured.getLongitude()).isEqualTo(106.2);
         assertThat(captured.getAltitude()).isEqualTo(30.0);

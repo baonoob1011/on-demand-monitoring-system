@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime, timezone
 from io import BytesIO
 import logging
+import math
 import os
 import sys
 import termios
@@ -37,9 +38,9 @@ MAVSDK_CONTROL_GRPC_PORT = int(os.getenv("MAVSDK_CONTROL_GRPC_PORT", "50052"))
 MAVSDK_CONTROL_SYSID = int(os.getenv("MAVSDK_CONTROL_SYSID", "245"))
 MAVSDK_CONTROL_COMPID = int(os.getenv("MAVSDK_CONTROL_COMPID", "191"))
 
-MOVE_SPEED_M_S = float(os.getenv("CONTROL_MOVE_SPEED_M_S", "5.0"))
-VERTICAL_SPEED_M_S = float(os.getenv("CONTROL_VERTICAL_SPEED_M_S", "3.0"))
-YAW_DEG = float(os.getenv("CONTROL_YAW_DEG", "45.0"))
+MOVE_SPEED_M_S = float(os.getenv("CONTROL_MOVE_SPEED_M_S", "50.0"))
+VERTICAL_SPEED_M_S = float(os.getenv("CONTROL_VERTICAL_SPEED_M_S", "15.0"))
+YAW_STEP_DEG = float(os.getenv("CONTROL_YAW_STEP_DEG", "90.0"))
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8080").rstrip("/")
 DEVICE_CODE = os.getenv("DEVICE_CODE", "DRONE-01")
 DRONE_ID = os.getenv("DRONE_ID", DEVICE_CODE)
@@ -86,7 +87,7 @@ class CameraGateway:
 
         self.node = Node()
         self.node.subscribe(GzImage, CAMERA_TOPIC, self._on_frame)
-        print(f"[CAMERA] Listening: {CAMERA_TOPIC}")
+        print(f"[CAMERA] Listening to drone sensor: {CAMERA_TOPIC}")
 
     def _on_frame(self, msg: GzImage, *_args) -> None:
         with self.lock:
@@ -118,7 +119,7 @@ class CameraGateway:
         return output.getvalue()
 
     async def capture_and_upload(self) -> None:
-        print("[CAMERA] Capture requested")
+        print("[CAMERA] Drone camera capture requested")
         jpeg = await asyncio.to_thread(self._latest_jpeg)
         if jpeg is None:
             print("[CAMERA] No camera frame available")
@@ -147,7 +148,20 @@ class CameraGateway:
             return
 
         if 200 <= response.status_code < 300:
-            print("[CAMERA] Image uploaded successfully")
+            try:
+                payload = response.json()
+            except ValueError:
+                print("[CAMERA] Image uploaded successfully")
+                return
+
+            image = payload.get("data") or {}
+            storage_provider = image.get("storageProvider", "UNKNOWN")
+            print(f"[CAMERA] Image uploaded successfully ({storage_provider})")
+            if storage_provider == "S3":
+                print(f"[CAMERA] S3 bucket: {image.get('s3Bucket')}")
+                print(f"[CAMERA] S3 key: {image.get('s3Key')}")
+            elif storage_provider == "LOCAL":
+                print(f"[CAMERA] Local file: {image.get('s3Url')}")
             return
 
         print(f"[CAMERA] Upload failed - HTTP {response.status_code}")
@@ -201,8 +215,29 @@ async def ensure_offboard_started(drone: System) -> None:
             raise
 
 
+async def check_readiness(drone: System) -> bool:
+    try:
+        async with asyncio.timeout(4.0):
+            async for state in drone.core.connection_state():
+                if state.is_connected:
+                    return True
+                await asyncio.sleep(0.1)
+    except asyncio.TimeoutError:
+        print("[WARN] MAVSDK is reachable but PX4 is disconnected.")
+        print("[ERR] Readiness check timed out. mavsdk_server may be unresponsive.")
+        return False
+    except grpc.aio.AioRpcError as exc:
+        print(f"[ERR] mavsdk_server dead or unreachable. gRPC error: {exc.code().name}")
+        return False
+    return False
+
+
 async def safe_arm(drone: System) -> bool:
     """Arm with retry and clear error reporting."""
+    if not await check_readiness(drone):
+        print("[ERR] Readiness check failed. Aborting arm.")
+        return False
+
     for attempt in range(3):
         try:
             print(f"[CMD] Arming... (attempt {attempt+1}/3)")
@@ -226,8 +261,18 @@ async def safe_arm(drone: System) -> bool:
 
 
 async def set_motion(drone: System, north: float, east: float, down: float, yaw_deg: float = 0.0) -> None:
+    if not await check_readiness(drone):
+        print("[ERR] Readiness check failed. Aborting movement.")
+        return
     await ensure_offboard_started(drone)
     await drone.offboard.set_velocity_ned(VelocityNedYaw(north, east, down, yaw_deg))
+
+
+def body_velocity(forward: float, right: float, yaw_deg: float) -> tuple[float, float]:
+    yaw_rad = math.radians(yaw_deg)
+    north = forward * math.cos(yaw_rad) - right * math.sin(yaw_rad)
+    east = forward * math.sin(yaw_rad) + right * math.cos(yaw_rad)
+    return north, east
 
 
 async def main() -> None:
@@ -245,6 +290,7 @@ async def main() -> None:
     print()
 
     drone = System(
+        mavsdk_server_address="localhost",
         port=MAVSDK_CONTROL_GRPC_PORT,
         sysid=MAVSDK_CONTROL_SYSID,
         compid=MAVSDK_CONTROL_COMPID,
@@ -252,8 +298,14 @@ async def main() -> None:
     camera = CameraGateway()
     camera.start()
     await connect_px4(drone)
-
+    current_yaw_deg = 0.0
+    current_forward_m_s = 0.0
+    current_right_m_s = 0.0
+    current_north_m_s = 0.0
+    current_east_m_s = 0.0
+    current_down_m_s = 0.0
     while True:
+
         key = await asyncio.to_thread(read_key)
 
         if key == "t":
@@ -271,73 +323,127 @@ async def main() -> None:
                     print_mavsdk_unavailable("takeoff", exc)
         elif key == "w":
             print("[CMD] forward")
+            current_forward_m_s = MOVE_SPEED_M_S
+            current_right_m_s = 0.0
+            current_north_m_s, current_east_m_s = body_velocity(
+                current_forward_m_s, current_right_m_s, current_yaw_deg
+            )
+            current_down_m_s = 0.0
             try:
-                await set_motion(drone, MOVE_SPEED_M_S, 0.0, 0.0)
+                await set_motion(drone, current_north_m_s, current_east_m_s, current_down_m_s, current_yaw_deg)
             except OffboardError as exc:
                 print_command_denied("forward", exc)
             except grpc.aio.AioRpcError as exc:
                 print_mavsdk_unavailable("forward", exc)
         elif key == "s":
             print("[CMD] backward")
+            current_forward_m_s = -MOVE_SPEED_M_S
+            current_right_m_s = 0.0
+            current_north_m_s, current_east_m_s = body_velocity(
+                current_forward_m_s, current_right_m_s, current_yaw_deg
+            )
+            current_down_m_s = 0.0
             try:
-                await set_motion(drone, -MOVE_SPEED_M_S, 0.0, 0.0)
+                await set_motion(drone, current_north_m_s, current_east_m_s, current_down_m_s, current_yaw_deg)
             except OffboardError as exc:
                 print_command_denied("backward", exc)
             except grpc.aio.AioRpcError as exc:
                 print_mavsdk_unavailable("backward", exc)
         elif key == "a":
             print("[CMD] left")
+            current_forward_m_s = 0.0
+            current_right_m_s = -MOVE_SPEED_M_S
+            current_north_m_s, current_east_m_s = body_velocity(
+                current_forward_m_s, current_right_m_s, current_yaw_deg
+            )
+            current_down_m_s = 0.0
             try:
-                await set_motion(drone, 0.0, -MOVE_SPEED_M_S, 0.0)
+                await set_motion(drone, current_north_m_s, current_east_m_s, current_down_m_s, current_yaw_deg)
             except OffboardError as exc:
                 print_command_denied("left", exc)
             except grpc.aio.AioRpcError as exc:
                 print_mavsdk_unavailable("left", exc)
         elif key == "d":
             print("[CMD] right")
+            current_forward_m_s = 0.0
+            current_right_m_s = MOVE_SPEED_M_S
+            current_north_m_s, current_east_m_s = body_velocity(
+                current_forward_m_s, current_right_m_s, current_yaw_deg
+            )
+            current_down_m_s = 0.0
             try:
-                await set_motion(drone, 0.0, MOVE_SPEED_M_S, 0.0)
+                await set_motion(drone, current_north_m_s, current_east_m_s, current_down_m_s, current_yaw_deg)
             except OffboardError as exc:
                 print_command_denied("right", exc)
             except grpc.aio.AioRpcError as exc:
                 print_mavsdk_unavailable("right", exc)
         elif key == "f":
             print("[CMD] up")
+            current_down_m_s = -VERTICAL_SPEED_M_S
             try:
-                await set_motion(drone, 0.0, 0.0, -VERTICAL_SPEED_M_S)
+                await set_motion(drone, current_north_m_s, current_east_m_s, current_down_m_s, current_yaw_deg)
             except OffboardError as exc:
                 print_command_denied("up", exc)
             except grpc.aio.AioRpcError as exc:
                 print_mavsdk_unavailable("up", exc)
         elif key == "v":
             print("[CMD] down")
+            current_down_m_s = VERTICAL_SPEED_M_S
             try:
-                await set_motion(drone, 0.0, 0.0, VERTICAL_SPEED_M_S)
+                await set_motion(drone, current_north_m_s, current_east_m_s, current_down_m_s, current_yaw_deg)
             except OffboardError as exc:
                 print_command_denied("down", exc)
             except grpc.aio.AioRpcError as exc:
                 print_mavsdk_unavailable("down", exc)
         elif key == "q":
-            print("[CMD] yaw left")
+            current_yaw_deg = (current_yaw_deg - YAW_STEP_DEG) % 360.0
+            print(f"[CMD] yaw left -> {current_yaw_deg:.0f} deg")
+            current_north_m_s, current_east_m_s = body_velocity(
+                current_forward_m_s, current_right_m_s, current_yaw_deg
+            )
+
             try:
-                await set_motion(drone, 0.0, 0.0, 0.0, -YAW_DEG)
+                await set_motion(
+                    drone,
+                    current_north_m_s,
+                    current_east_m_s,
+                    current_down_m_s,
+                    current_yaw_deg
+                )
             except OffboardError as exc:
                 print_command_denied("yaw left", exc)
             except grpc.aio.AioRpcError as exc:
                 print_mavsdk_unavailable("yaw left", exc)
+
         elif key == "e":
-            print("[CMD] yaw right")
+            current_yaw_deg = (current_yaw_deg + YAW_STEP_DEG) % 360.0
+            print(f"[CMD] yaw right -> {current_yaw_deg:.0f} deg")
+            current_north_m_s, current_east_m_s = body_velocity(
+                current_forward_m_s, current_right_m_s, current_yaw_deg
+            )
+
             try:
-                await set_motion(drone, 0.0, 0.0, 0.0, YAW_DEG)
+                await set_motion(
+                    drone,
+                    current_north_m_s,
+                    current_east_m_s,
+                    current_down_m_s,
+                    current_yaw_deg
+                )
             except OffboardError as exc:
                 print_command_denied("yaw right", exc)
             except grpc.aio.AioRpcError as exc:
                 print_mavsdk_unavailable("yaw right", exc)
         elif key in ("k", "h"):
             print("[CMD] stop / hover")
+            current_forward_m_s = 0.0
+            current_right_m_s = 0.0
+            current_north_m_s = 0.0
+            current_east_m_s = 0.0
+            current_down_m_s = 0.0
             try:
                 await ensure_offboard_started(drone)
-                await drone.offboard.set_velocity_ned(VelocityNedYaw(0.0, 0.0, 0.0, 0.0))
+                await drone.offboard.set_velocity_ned(VelocityNedYaw(0.0, 0.0, 0.0, current_yaw_deg))
             except OffboardError as exc:
                 print_command_denied("stop/hover", exc)
             except grpc.aio.AioRpcError as exc:

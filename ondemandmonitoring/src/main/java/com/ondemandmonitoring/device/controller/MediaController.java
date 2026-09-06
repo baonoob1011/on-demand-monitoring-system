@@ -1,9 +1,9 @@
 package com.ondemandmonitoring.device.controller;
 
 import com.ondemandmonitoring.common.api.ApiResponse;
-import com.ondemandmonitoring.device.controller.response.DeviceImageResponse;
-import com.ondemandmonitoring.device.controller.response.MediaResponse;
-import com.ondemandmonitoring.device.domain.media.DeviceImage;
+import com.ondemandmonitoring.device.dto.response.DeviceImageResponse;
+import com.ondemandmonitoring.device.dto.response.MediaResponse;
+import com.ondemandmonitoring.device.domain.DeviceImage;
 import com.ondemandmonitoring.device.service.DeviceImageService;
 import java.time.Instant;
 import lombok.AccessLevel;

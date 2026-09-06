@@ -2,12 +2,20 @@ package com.ondemandmonitoring.device.service;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.device.domain.media.DeviceImage;
+import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.device.domain.DeviceImage;
+import com.ondemandmonitoring.device.enums.DeviceStatus;
+import com.ondemandmonitoring.device.enums.DeviceType;
 import com.ondemandmonitoring.device.infrastructure.s3.AwsS3Properties;
+import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.device.repository.DeviceImageRepository;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.Set;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -15,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import lombok.experimental.FieldDefaults;
 import org.springframework.http.HttpStatus;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -35,11 +44,15 @@ public class DeviceImageService {
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of("image/png", "image/jpeg");
     private static final String MEDIA_TYPE_IMAGE = "IMAGE";
     private static final String STORAGE_PROVIDER_S3 = "S3";
+    private static final String STORAGE_PROVIDER_LOCAL = "LOCAL";
     private static final long PRESIGNED_URL_EXPIRES_SECONDS = 900;
+    private static final Path LOCAL_IMAGE_DIR = Path.of("uploads", "drone-images");
 
     S3Client s3Client;
     S3Presigner s3Presigner;
     AwsS3Properties awsS3Properties;
+    Environment environment;
+    DeviceRepository deviceRepository;
     DeviceImageRepository deviceImageRepository;
 
     @Transactional
@@ -52,14 +65,21 @@ public class DeviceImageService {
         validate(file);
         validateRequired("missionId", missionId);
         validateRequired("droneId", droneId);
-
-        String bucket = awsS3Properties.getBucket();
-        if (bucket == null || bucket.isBlank()) {
-            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "AWS S3 bucket is not configured");
-        }
+        Device device = getOrCreateDrone(droneId);
 
         String originalFileName = safeFileName(file.getOriginalFilename());
         String contentType = file.getContentType();
+
+        if (!useS3Storage()) {
+            return saveLocal(device, missionId, droneId, capturedAt, file, originalFileName, contentType);
+        }
+
+        String bucket = awsS3Properties.getBucket();
+        if (bucket == null || bucket.isBlank()) {
+            log.warn("AWS S3 bucket is not configured; storing image locally");
+            return saveLocal(device, missionId, droneId, capturedAt, file, originalFileName, contentType);
+        }
+
         String key = buildS3Key(missionId, droneId);
 
         try {
@@ -76,12 +96,13 @@ public class DeviceImageService {
         } catch (RuntimeException exception) {
             log.error("Cannot upload image to S3. bucket={}, key={}", bucket, key, exception);
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Cannot upload image to S3: " + exception.getMessage());
+                    "Cannot upload image to S3: " + rootMessage(exception));
         }
 
         try {
             DeviceImage image = new DeviceImage();
             image.setDeviceCode(droneId);
+            image.setDevice(device);
             image.setMissionId(missionId);
             image.setType(MEDIA_TYPE_IMAGE);
             image.setStorageProvider(STORAGE_PROVIDER_S3);
@@ -174,5 +195,82 @@ public class DeviceImageService {
         } catch (RuntimeException cleanupException) {
             log.warn("Failed to cleanup S3 object after DB error. bucket={}, key={}", bucket, key, cleanupException);
         }
+    }
+
+    private DeviceImage saveLocal(
+            Device device,
+            String missionId,
+            String droneId,
+            Instant capturedAt,
+            MultipartFile file,
+            String originalFileName,
+            String contentType) {
+        String timestamp = Instant.now().toString().replaceAll("[^0-9A-Za-z]", "");
+        String fileName = timestamp + "-" + UUID.randomUUID() + ".jpg";
+        Path relativePath = LOCAL_IMAGE_DIR
+                .resolve(safePathSegment(missionId))
+                .resolve(safePathSegment(droneId))
+                .resolve(fileName);
+
+        try {
+            Files.createDirectories(relativePath.getParent());
+            try (InputStream inputStream = file.getInputStream()) {
+                Files.copy(inputStream, relativePath);
+            }
+        } catch (IOException exception) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Cannot store image locally after S3 upload failed");
+        }
+
+        DeviceImage image = new DeviceImage();
+        image.setDeviceCode(droneId);
+        image.setDevice(device);
+        image.setMissionId(missionId);
+        image.setType(MEDIA_TYPE_IMAGE);
+        image.setStorageProvider(STORAGE_PROVIDER_LOCAL);
+        image.setOriginalFileName(originalFileName);
+        image.setContentType(contentType);
+        image.setFileSize(file.getSize());
+        image.setS3Bucket(STORAGE_PROVIDER_LOCAL);
+        image.setS3Key(relativePath.toString().replace('\\', '/'));
+        image.setS3Url(relativePath.toAbsolutePath().toString());
+        image.setCapturedAt(capturedAt == null ? Instant.now() : capturedAt);
+
+        return deviceImageRepository.save(image);
+    }
+
+    private boolean useS3Storage() {
+        String storage = environment.getProperty("DRONE_IMAGE_STORAGE", "local");
+        return STORAGE_PROVIDER_S3.equalsIgnoreCase(storage);
+    }
+
+    private String rootMessage(Throwable throwable) {
+        Throwable root = throwable;
+        while (root.getCause() != null) {
+            root = root.getCause();
+        }
+
+        String message = root.getMessage();
+        if (message == null || message.isBlank()) {
+            message = throwable.getMessage();
+        }
+        if (message == null || message.isBlank()) {
+            return root.getClass().getSimpleName();
+        }
+
+        return message;
+    }
+
+    private Device getOrCreateDrone(String deviceCode) {
+        return deviceRepository.findByDeviceCode(deviceCode)
+                .orElseGet(() -> {
+                    Device device = new Device();
+                    device.setDeviceCode(deviceCode);
+                    device.setDeviceName("PX4 SITL Drone");
+                    device.setDeviceType(DeviceType.DRONE);
+                    device.setStatus(DeviceStatus.AVAILABLE);
+                    device.setLastSeenAt(LocalDateTime.now());
+                    return deviceRepository.save(device);
+                });
     }
 }

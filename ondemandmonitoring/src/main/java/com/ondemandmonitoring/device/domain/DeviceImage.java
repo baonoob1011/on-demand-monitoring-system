@@ -1,13 +1,13 @@
-package com.ondemandmonitoring.device.domain.media;
+package com.ondemandmonitoring.device.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.FieldDefaults;
+
+import java.time.Instant;
 
 @Getter
 @Setter
@@ -16,8 +16,12 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class DeviceImage extends BaseEntity {
 
-    @Column(name = "device_code", nullable = false, length = 100)
+    @Column(name = "device_code", nullable = false, length = 50)
     String deviceCode;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "device_id", nullable = false)
+    Device device;
 
     @Column(name = "mission_id", nullable = false, length = 100)
     String missionId;
@@ -47,5 +51,5 @@ public class DeviceImage extends BaseEntity {
     String s3Url;
 
     @Column(name = "captured_at", nullable = false)
-    java.time.Instant capturedAt;
+    Instant capturedAt;
 }

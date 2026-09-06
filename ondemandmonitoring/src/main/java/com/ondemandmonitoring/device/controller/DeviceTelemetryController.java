@@ -1,8 +1,8 @@
 package com.ondemandmonitoring.device.controller;
 
 import com.ondemandmonitoring.common.api.ApiResponse;
-import com.ondemandmonitoring.device.controller.request.TelemetryRequest;
-import com.ondemandmonitoring.device.domain.telemetry.DeviceTelemetry;
+import com.ondemandmonitoring.device.dto.request.TelemetryRequest;
+import com.ondemandmonitoring.device.domain.DeviceTelemetry;
 import com.ondemandmonitoring.device.service.DeviceTelemetryService;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;

@@ -1,8 +1,8 @@
 package com.ondemandmonitoring.device.controller;
 
 import com.ondemandmonitoring.common.api.ApiResponse;
-import com.ondemandmonitoring.device.controller.response.DeviceImageResponse;
-import com.ondemandmonitoring.device.domain.media.DeviceImage;
+import com.ondemandmonitoring.device.dto.response.DeviceImageResponse;
+import com.ondemandmonitoring.device.domain.DeviceImage;
 import com.ondemandmonitoring.device.service.DeviceImageService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
