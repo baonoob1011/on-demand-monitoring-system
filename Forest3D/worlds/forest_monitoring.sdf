@@ -122,16 +122,5 @@
       <elevation>0</elevation>
     </spherical_coordinates>
 
-    <!-- Initial main viewport camera pose: 8m behind drone spawn, 5m up, pitched down ~23deg -->
-    <!-- After ~30s, wsl-sim.sh overrides with gz service /gui/camera/follow (offset -8,0,4) -->
-    <gui fullscreen="false">
-      <camera name="user_camera">
-        <pose>-8 0 6 0 0.4 0</pose>
-        <clip>
-          <near>0.1</near>
-          <far>25000</far>
-        </clip>
-      </camera>
-    </gui>
   </world>
 </sdf>
