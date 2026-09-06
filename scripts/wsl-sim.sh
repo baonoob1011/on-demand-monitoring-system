@@ -72,21 +72,44 @@ echo '========================================'
         exit 0
     fi
 
+    for _ in $(seq 1 30); do
+        if gz topic -e -t /world/forest_monitoring/scene/info -n 1 2>/dev/null | grep -q "$drone_model"; then
+            break
+        fi
+        sleep 1
+    done
+
     echo "[SIM] Setting main Gazebo camera follow: $drone_model"
+    follow_ready=0
     for _ in $(seq 1 20); do
         if ! gz service -l 2>/dev/null | grep -qx '/gui/follow'; then
             sleep 1
             continue
         fi
+        follow_ready=1
 
         gz service -s /gui/follow \
-            --reqtype gz.msgs.CameraTrack \
+            --reqtype gz.msgs.StringMsg \
             --reptype gz.msgs.Boolean \
             --timeout 3000 \
-            --req "track_mode: 3 follow_target { name: \"$drone_model\" type: 2 } follow_offset { x: -8 y: 0 z: 4 } follow_pgain: 0.12" \
-            >/dev/null 2>&1 && break
+            --req "data: \"$drone_model\"" \
+            >/dev/null 2>&1 || true
+
+        gz service -s /gui/follow/offset \
+            --reqtype gz.msgs.Vector3d \
+            --reptype gz.msgs.Boolean \
+            --timeout 3000 \
+            --req "x: -8 y: 0 z: 4" \
+            >/dev/null 2>&1 && {
+                echo "[SIM] Main Gazebo camera is following: $drone_model"
+                break
+            }
         sleep 1
     done
+
+    if [ "$follow_ready" -eq 0 ]; then
+        echo "[SIM] Camera follow skipped: /gui/follow service not ready"
+    fi
 ) &
 
 cd "$PX4_ROOT"
