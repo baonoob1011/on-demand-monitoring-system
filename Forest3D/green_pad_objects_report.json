@@ -1,0 +1,274 @@
+[
+  {
+    "name": "ROAD_MainSpine",
+    "location": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "center": [
+      -0.766,
+      -21.317,
+      23.649
+    ],
+    "size": [
+      49.719,
+      627.431,
+      56.387
+    ],
+    "min": [
+      -25.625,
+      -335.033,
+      -4.545
+    ],
+    "max": [
+      24.094,
+      292.398,
+      51.842
+    ],
+    "collections": [
+      "ROAD_MAIN"
+    ],
+    "materials": [
+      "MAT_Asphalt"
+    ]
+  },
+  {
+    "name": "ROAD_MainSpine_Shoulder_R",
+    "location": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "center": [
+      3.783,
+      -21.719,
+      23.569
+    ],
+    "size": [
+      42.418,
+      626.641,
+      56.387
+    ],
+    "min": [
+      -17.426,
+      -335.04,
+      -4.625
+    ],
+    "max": [
+      24.992,
+      291.602,
+      51.762
+    ],
+    "collections": [
+      "ROAD_SHOULDERS"
+    ],
+    "materials": [
+      "MAT_Road_Shoulder"
+    ]
+  },
+  {
+    "name": "ROAD_MainSpine_Shoulder_L",
+    "location": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "center": [
+      -5.309,
+      -21.241,
+      23.569
+    ],
+    "size": [
+      42.431,
+      627.453,
+      56.387
+    ],
+    "min": [
+      -26.525,
+      -334.967,
+      -4.625
+    ],
+    "max": [
+      15.906,
+      292.486,
+      51.762
+    ],
+    "collections": [
+      "ROAD_SHOULDERS"
+    ],
+    "materials": [
+      "MAT_Road_Shoulder"
+    ]
+  },
+  {
+    "name": "V4_ShrubPatch_185",
+    "location": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "center": [
+      -43.803,
+      12.006,
+      1.293
+    ],
+    "size": [
+      8.979,
+      3.946,
+      0.306
+    ],
+    "min": [
+      -48.293,
+      10.033,
+      1.139
+    ],
+    "max": [
+      -39.314,
+      13.979,
+      1.446
+    ],
+    "collections": [
+      "ENV_SHRUBS"
+    ],
+    "materials": [
+      "MAT_Grass_DeepForest"
+    ]
+  },
+  {
+    "name": "POLISH_River_Shrub_3_-1",
+    "location": [
+      -27.873,
+      49.973,
+      1.183
+    ],
+    "center": [
+      -27.873,
+      49.973,
+      1.183
+    ],
+    "size": [
+      7.487,
+      7.487,
+      4.5
+    ],
+    "min": [
+      -31.617,
+      46.23,
+      -1.067
+    ],
+    "max": [
+      -24.13,
+      53.716,
+      3.433
+    ],
+    "collections": [
+      "ENV_SHRUBS"
+    ],
+    "materials": [
+      "MAT_Grass_DeepForest"
+    ]
+  },
+  {
+    "name": "V4_ExtraTree_110",
+    "location": [
+      -59.585,
+      28.78,
+      8.694
+    ],
+    "center": [
+      -59.585,
+      28.78,
+      8.694
+    ],
+    "size": [
+      10.517,
+      10.55,
+      11.686
+    ],
+    "min": [
+      -64.844,
+      23.505,
+      2.851
+    ],
+    "max": [
+      -54.327,
+      34.055,
+      14.538
+    ],
+    "collections": [
+      "ENV_VEGETATION"
+    ],
+    "materials": [
+      "MAT_Grass_Rich"
+    ]
+  },
+  {
+    "name": "V4_ShrubPatch_165",
+    "location": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "center": [
+      -60.073,
+      -75.933,
+      -0.444
+    ],
+    "size": [
+      8.177,
+      6.733,
+      1.069
+    ],
+    "min": [
+      -64.161,
+      -79.3,
+      -0.978
+    ],
+    "max": [
+      -55.984,
+      -72.567,
+      0.091
+    ],
+    "collections": [
+      "ENV_SHRUBS"
+    ],
+    "materials": [
+      "MAT_Grass_DeepForest"
+    ]
+  },
+  {
+    "name": "V4_ShrubPatch_5",
+    "location": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "center": [
+      70.064,
+      79.195,
+      -0.515
+    ],
+    "size": [
+      8.629,
+      8.633,
+      1.566
+    ],
+    "min": [
+      65.749,
+      74.878,
+      -1.298
+    ],
+    "max": [
+      74.378,
+      83.512,
+      0.267
+    ],
+    "collections": [
+      "ENV_SHRUBS"
+    ],
+    "materials": [
+      "MAT_Grass_DeepForest"
+    ]
+  }
+]

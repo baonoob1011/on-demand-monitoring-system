@@ -102,7 +102,6 @@ echo '========================================'
         echo "[SIM] Camera follow skipped: /gui/follow service not ready"
     fi
 ) &
-
 cd "$PX4_ROOT"
 PX4_GZ_WORLD="$WORLD_NAME" \
 PX4_GZ_MODEL_POSE="$PX4_SPAWN_POSE" \
