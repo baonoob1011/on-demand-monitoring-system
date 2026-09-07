@@ -21,18 +21,5 @@ public class MediaResponse {
     String contentType;
     Long fileSize;
     Instant capturedAt;
-
-    public static MediaResponse from(DeviceImage image, String presignedUrl, long expiresInSeconds) {
-        return MediaResponse.builder()
-                .id(image.getId())
-                .missionId(image.getMissionId())
-                .droneId(image.getDeviceCode())
-                .type(image.getType())
-                .url(presignedUrl)
-                .expiresIn(expiresInSeconds)
-                .contentType(image.getContentType())
-                .fileSize(image.getFileSize())
-                .capturedAt(image.getCapturedAt())
-                .build();
-    }
 }
+

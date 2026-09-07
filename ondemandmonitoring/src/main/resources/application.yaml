@@ -36,3 +36,13 @@ aws:
   s3:
     bucket: ${AWS_S3_BUCKET}
     prefix: ${AWS_S3_PREFIX}
+
+
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+    tagsSorter: alpha

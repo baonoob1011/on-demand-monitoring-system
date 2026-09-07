@@ -24,6 +24,11 @@ public class PreflightCheck extends BaseEntity {
     @JoinColumn(name = "device_id", nullable = false)
     Device device;
 
+    /** Mission this pre-flight check was performed for. Nullable for legacy stand-alone checks. */
+    @Column(name = "mission_id", length = 100)
+    String missionId;
+
+
     @Column(name = "battery_percent")
     Double batteryPercent;
 
@@ -119,6 +124,42 @@ public class PreflightCheck extends BaseEntity {
 
     @Column(name = "geofence_passed")
     Boolean geofencePassed;
+
+    // ===== Extended checklist (per activity diagram) =====
+
+    /** Checklist item 3: Camera & Gimbal status reported by payload module. */
+    @Column(name = "camera_ok")
+    Boolean cameraOk;
+
+    /** Checklist item 3: Gimbal operational. */
+    @Column(name = "gimbal_ok")
+    Boolean gimbalOk;
+
+    /** Checklist item 4: Available storage on drone (MB). */
+    @Column(name = "storage_available_mb")
+    Long storageAvailableMb;
+
+    /** Checklist item 4: Computed from storageAvailableMb >= minimum threshold. */
+    @Column(name = "storage_ok")
+    Boolean storageOk;
+
+    /**
+     * Checklist item 6: Weather conditions fetched from external API (e.g. OpenWeatherMap).
+     * True if wind speed, visibility, and precipitation are within safe limits.
+     */
+    @Column(name = "weather_ok")
+    Boolean weatherOk;
+
+    @Column(name = "weather_notes", length = 500)
+    String weatherNotes;
+
+    /**
+     * Fault classification used to route post-failure workflow:
+     * "HARDWARE" → set drone to MAINTENANCE + schedule repair.
+     * "BATTERY"  → send to IDLE_CHARGING station.
+     */
+    @Column(name = "fault_type", length = 30)
+    String faultType;
 
     @Column(name = "overall_passed", nullable = false)
     Boolean overallPassed;

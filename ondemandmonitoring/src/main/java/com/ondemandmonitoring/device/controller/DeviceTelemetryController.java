@@ -4,6 +4,8 @@ import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.device.dto.request.TelemetryRequest;
 import com.ondemandmonitoring.device.domain.DeviceTelemetry;
 import com.ondemandmonitoring.device.service.DeviceTelemetryService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "Device Telemetry", description = "APIs for receiving live telemetry data sent by PX4 / MAVSDK drone sensors")
 @RestController
 @RequestMapping("/api/devices/{deviceCode}/telemetry")
 @RequiredArgsConstructor
@@ -23,7 +26,8 @@ import org.springframework.web.bind.annotation.RestController;
 public class DeviceTelemetryController {
 
     DeviceTelemetryService deviceTelemetryService;
-
+    
+    @Operation(summary = "Receive drone telemetry", description = "Persists live telemetry snapshot (battery, GPS fix, sensors, altitude, speed) sent from drone")
     @PostMapping
     public ResponseEntity<ApiResponse<DeviceTelemetry>> create(
             @PathVariable String deviceCode,
