@@ -31,7 +31,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
  *
  * Base path: /api/missions
  */
-@Tag(name = "Mission Operations (Flow 3)", description = "APIs for Drone Operator mission lifecycle, GCS pairing, preflight checks, and flight execution")
+@Tag(name = "Mission Operations", description = "APIs for Drone Operator mission lifecycle, GCS pairing, preflight checks, and flight execution")
 @RestController
 @RequestMapping("/api/missions")
 @RequiredArgsConstructor
@@ -215,7 +215,6 @@ public class MissionController {
     @PatchMapping("/{id}/postflight-status")
     public ResponseEntity<ApiResponse<MissionResponse>> updatePostFlightStatus(
             @PathVariable String id,
-            @RequestParam String deviceCode,
             @Valid @RequestBody PostFlightStatusRequest request) {
         Mission mission = missionService.updatePostFlightStatus(id, request.getNewDeviceStatus(), request.getNotes());
         return ResponseEntity.ok(ApiResponse.ok("Cập nhật trạng thái drone sau bay thành công", missionMapper.toResponse(mission)));
