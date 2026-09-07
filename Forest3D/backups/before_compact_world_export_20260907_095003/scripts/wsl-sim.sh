@@ -7,27 +7,36 @@ PROJECT_PATH="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-syste
 PX4_ROOT="$HOME/PX4-Autopilot"
 PX4_BUILD="$PX4_ROOT/build/px4_sitl_default"
 PX4_GZ_PLUGIN_PATH="$PX4_BUILD/src/modules/simulation/gz_plugins"
+PX4_GZ_WORLD_PATH="$PX4_ROOT/Tools/simulation/gz/worlds/forest_monitoring.sdf"
 FOREST3D_GZ_GUI_CONFIG="$FOREST3D_PATH/gui/forest_monitoring_gui.config"
-SIM_WORLD="${1:-${SIM_WORLD:-legacy}}"
 
-case "$SIM_WORLD" in
-    compact)
-        WORLD_NAME="forest_monitoring_compact"
-        FOREST3D_WORLD_FILE="$FOREST3D_PATH/worlds/forest_monitoring_compact.sdf"
-        PX4_GZ_WORLD_PATH="$PX4_ROOT/Tools/simulation/gz/worlds/forest_monitoring_compact.sdf"
-        PX4_SPAWN_POSE="0,-280,15.0,0,0,0"
-        ;;
-    legacy)
-        WORLD_NAME="forest_monitoring"
-        FOREST3D_WORLD_FILE="$FOREST3D_PATH/worlds/forest_monitoring.sdf"
-        PX4_GZ_WORLD_PATH="$PX4_ROOT/Tools/simulation/gz/worlds/forest_monitoring.sdf"
-        PX4_SPAWN_POSE="0,0,0.3,0,0,0"
-        ;;
-    *)
-        echo "Usage: $0 [legacy|compact]"
-        exit 2
-        ;;
-esac
+cleanup() {
+    status=$?
+    trap - EXIT INT TERM
+
+    echo
+    echo '========================================'
+    echo ' Stopping PX4/Gazebo child processes...'
+    echo '========================================'
+
+    pkill -9 -f '[p]x4' 2>/dev/null || true
+    pkill -9 -f '[g]z' 2>/dev/null || true
+    pkill -9 -f '[r]uby' 2>/dev/null || true
+
+    exit "$status"
+}
+
+trap cleanup EXIT INT TERM
+
+echo '========================================'
+echo ' Cleaning previous drone simulation...'
+echo '========================================'
+
+pkill -9 -f '[p]x4' 2>/dev/null || true
+pkill -9 -f '[g]z' 2>/dev/null || true
+pkill -9 -f '[r]uby' 2>/dev/null || true
+
+sleep 2
 
 source "$PX4_BUILD/rootfs/gz_env.sh"
 export PATH="$PROJECT_PATH/scripts/wsl-bin:$PATH"
@@ -36,14 +45,14 @@ export GZ_SIM_RESOURCE_PATH="${FOREST3D_PATH}:${FOREST3D_PATH}/models:$PX4_ROOT/
 export GZ_SIM_SYSTEM_PLUGIN_PATH="${PX4_GZ_PLUGIN_PATH}:${GZ_SIM_SYSTEM_PLUGIN_PATH:-}"
 export LD_LIBRARY_PATH="${PX4_GZ_PLUGIN_PATH}:${LD_LIBRARY_PATH:-}"
 
-# Sync selected Forest3D world to PX4.
-cp "$FOREST3D_WORLD_FILE" "$PX4_GZ_WORLD_PATH"
+# Sync latest Forest3D world to PX4.
+cp "$FOREST3D_PATH/worlds/forest_monitoring.sdf" "$PX4_GZ_WORLD_PATH"
 
 echo '========================================'
 echo ' Starting PX4 + Gazebo + Drone'
-echo " World : $WORLD_NAME"
+echo ' World : forest_monitoring'
 echo ' Drone : x500_mono_cam_down'
-echo " Pose  : $PX4_SPAWN_POSE"
+echo ' Pose  : 0,0,0.3,0,0,0'
 echo " GUI   : $FOREST3D_GZ_GUI_CONFIG"
 echo '========================================'
 
@@ -64,7 +73,7 @@ echo '========================================'
     fi
 
     for _ in $(seq 1 30); do
-        if gz topic -e -t "/world/${WORLD_NAME}/scene/info" -n 1 2>/dev/null | grep -q "$drone_model"; then
+        if gz topic -e -t /world/forest_monitoring/scene/info -n 1 2>/dev/null | grep -q "$drone_model"; then
             break
         fi
         sleep 1
@@ -104,6 +113,6 @@ echo '========================================'
 ) &
 
 cd "$PX4_ROOT"
-PX4_GZ_WORLD="$WORLD_NAME" \
-PX4_GZ_MODEL_POSE="$PX4_SPAWN_POSE" \
+PX4_GZ_WORLD=forest_monitoring \
+PX4_GZ_MODEL_POSE="0,0,0.3,0,0,0" \
 make px4_sitl gz_x500_mono_cam_down

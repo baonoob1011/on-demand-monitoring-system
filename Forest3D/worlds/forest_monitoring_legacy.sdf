@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<sdf version="1.9">
+  <world name="forest_monitoring">
+    <physics type="ode">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>250</real_time_update_rate>
+    </physics>
+
+    <gravity>0 0 -9.8</gravity>
+    <magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>
+    <atmosphere type="adiabatic" />
+
+    <scene>
+      <grid>false</grid>
+      <ambient>0.6 0.6 0.6 1</ambient>
+      <background>0.7 0.8 0.95 1</background>
+      <shadows>false</shadows>
+      <sky>
+        <clouds />
+        <time>11.0</time>
+      </sky>
+    </scene>
+
+    <light name="sunUTC" type="directional">
+      <pose>0 0 500 0 -0.5 -0.5</pose>
+      <cast_shadows>true</cast_shadows>
+      <intensity>1.2</intensity>
+      <direction>-0.5 0.5 -0.8</direction>
+      <diffuse>0.95 0.93 0.88 1</diffuse>
+      <specular>0.3 0.3 0.25 1</specular>
+    </light>
+
+    <include>
+      <name>mega_terrain</name>
+      <uri>model://mega_terrain</uri>
+    </include>
+    <include>
+      <name>forest_visual</name>
+      <uri>model://forest_visual</uri>
+    </include>
+    <include>
+      <name>rocks</name>
+      <uri>model://rocks</uri>
+    </include>
+    <include>
+      <name>roads</name>
+      <uri>model://roads</uri>
+    </include>
+    <include>
+      <name>bridges</name>
+      <uri>model://bridges</uri>
+    </include>
+    <include>
+      <name>water</name>
+      <uri>model://water</uri>
+    </include>
+    <include>
+      <name>landing_pad</name>
+      <uri>model://landing_pad</uri>
+    </include>
+    <include>
+      <name>construction_site</name>
+      <uri>model://construction_site</uri>
+    </include>
+    <include>
+      <name>construction_highrise</name>
+      <uri>model://construction_highrise</uri>
+      <pose>70 35 0 0 0 0.35</pose>
+    </include>
+    <include>
+      <name>nearby_highrise_construction</name>
+      <uri>model://nearby_highrise_construction</uri>
+      <pose>35 -45 0 0 0 -0.2</pose>
+    </include>
+    <include>
+      <name>agriculture</name>
+      <uri>model://agriculture</uri>
+    </include>
+    <include>
+      <name>industrial</name>
+      <uri>model://industrial</uri>
+    </include>
+    <include>
+      <name>logistics</name>
+      <uri>model://logistics</uri>
+    </include>
+    <include>
+      <name>residential</name>
+      <uri>model://residential</uri>
+    </include>
+    <include>
+      <name>security_zone</name>
+      <uri>model://security_zone</uri>
+    </include>
+    <include>
+      <name>power_infrastructure</name>
+      <uri>model://power_infrastructure</uri>
+    </include>
+    <include>
+      <name>communication_towers</name>
+      <uri>model://communication_towers</uri>
+    </include>
+    <include>
+      <name>watchtower</name>
+      <uri>model://watchtower</uri>
+    </include>
+    <include>
+      <name>quarry</name>
+      <uri>model://quarry</uri>
+    </include>
+    <include>
+      <name>event_area</name>
+      <uri>model://event_area</uri>
+    </include>
+
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>47.397971057728974</latitude_deg>
+      <longitude_deg>8.546163739800146</longitude_deg>
+      <elevation>0</elevation>
+    </spherical_coordinates>
+
+  </world>
+</sdf>

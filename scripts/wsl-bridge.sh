@@ -13,7 +13,13 @@ if ! command -v ros2 >/dev/null 2>&1; then
   exec bash
 fi
 
-CAMERA_TOPIC="${GAZEBO_CAMERA_TOPIC:-/world/forest_monitoring/model/x500_mono_cam_down_0/link/camera_link/sensor/camera/image}"
+SIM_WORLD="${SIM_WORLD:-legacy}"
+if [ "$SIM_WORLD" = "compact" ]; then
+  WORLD_NAME="forest_monitoring_compact"
+else
+  WORLD_NAME="${GZ_WORLD_NAME:-forest_monitoring}"
+fi
+CAMERA_TOPIC="${GAZEBO_CAMERA_TOPIC:-/world/${WORLD_NAME}/model/x500_mono_cam_down_0/link/camera_link/sensor/camera/image}"
 
 ros2 run ros_gz_bridge parameter_bridge \
   "${CAMERA_TOPIC}@sensor_msgs/msg/Image@gz.msgs.Image"

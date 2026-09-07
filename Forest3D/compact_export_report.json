@@ -1,0 +1,62 @@
+{
+  "source": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\uav-monitoring-compact-world-v6-roads-export-source_20260907_095003.blend",
+  "format": "GLB",
+  "sdf_version": "1.9",
+  "bounds": {
+    "min": [
+      -424.24,
+      -415.0,
+      -31.0
+    ],
+    "max": [
+      419.216,
+      446.32,
+      162.0
+    ],
+    "size": [
+      843.456,
+      861.32,
+      193.0
+    ]
+  },
+  "home_blender": [
+    0.0,
+    -280.0,
+    8.65
+  ],
+  "home_gazebo": [
+    0.0,
+    -280.0,
+    8.65
+  ],
+  "px4_spawn": [
+    0.0,
+    -280.0,
+    8.65,
+    0,
+    0,
+    0
+  ],
+  "counts": {
+    "compact_terrain": 271,
+    "compact_water": 198,
+    "compact_roads": 242,
+    "compact_bridges": 10,
+    "compact_home": 64,
+    "compact_highrise": 94,
+    "compact_zones": 247,
+    "compact_forest": 877,
+    "compact_environment_props": 334
+  },
+  "exports": {
+    "compact_terrain": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\compact_terrain\\meshes\\compact_terrain.glb",
+    "compact_water": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\compact_water\\meshes\\compact_water.glb",
+    "compact_roads": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\compact_roads\\meshes\\compact_roads.glb",
+    "compact_bridges": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\compact_bridges\\meshes\\compact_bridges.glb",
+    "compact_home": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\compact_home\\meshes\\compact_home.glb",
+    "compact_highrise": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\compact_highrise\\meshes\\compact_highrise.glb",
+    "compact_zones": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\compact_zones\\meshes\\compact_zones.glb",
+    "compact_forest": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\compact_forest\\meshes\\compact_forest.glb",
+    "compact_environment_props": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\compact_environment_props\\meshes\\compact_environment_props.glb"
+  }
+}
