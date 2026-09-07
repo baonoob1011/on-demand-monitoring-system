@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -e
+
+REAL_GZ="/usr/bin/gz"
+
+if [ "${1:-}" = "sim" ] && [ -n "${FOREST3D_GZ_GUI_CONFIG:-}" ]; then
+    shift
+
+    has_gui_config=0
+    for arg in "$@"; do
+        if [ "$arg" = "--gui-config" ]; then
+            has_gui_config=1
+            break
+        fi
+    done
+
+    if [ "$has_gui_config" -eq 0 ]; then
+        exec "$REAL_GZ" sim --gui-config "$FOREST3D_GZ_GUI_CONFIG" "$@"
+    fi
+
+    exec "$REAL_GZ" sim "$@"
+fi
+
+exec "$REAL_GZ" "$@"

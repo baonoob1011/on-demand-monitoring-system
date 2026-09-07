@@ -43,6 +43,54 @@ start-drone-stack.ps1
 - `scripts/wsl-control.sh`: starts the Python Flight Controller.
 - `scripts/wsl-camera-view.sh`: waits for the downward camera topic, then opens the camera viewer.
 
+## Compact World Export
+
+Current IDE Run behavior:
+
+```text
+Run "Start Drone Stack" -> scripts/start-drone-stack.cmd -> compact world
+```
+
+Compact world:
+
+```text
+Gazebo version: 8.15.0
+SDF version: 1.9
+Export format: GLB
+Blender source: C:\Users\ACER\Documents\GitHub\doan\on-demand-monitoring-system\uav-monitoring-compact-world-v6-roads.blend
+Blender export backup: C:\Users\ACER\Documents\GitHub\doan\on-demand-monitoring-system\uav-monitoring-compact-world-v6-roads-export-source_20260907_095003.blend
+New Gazebo world: C:\Users\ACER\Documents\GitHub\doan\on-demand-monitoring-system\Forest3D\worlds\forest_monitoring_compact.sdf
+New world name: forest_monitoring_compact
+Compact model root: C:\Users\ACER\Documents\GitHub\doan\on-demand-monitoring-system\Forest3D\models\compact_*
+HOME / spawn pose: 0, -280, 8.65, 0, 0, 0
+```
+
+The old world is preserved:
+
+```text
+Legacy world: C:\Users\ACER\Documents\GitHub\doan\on-demand-monitoring-system\Forest3D\worlds\forest_monitoring.sdf
+Legacy copy: C:\Users\ACER\Documents\GitHub\doan\on-demand-monitoring-system\Forest3D\worlds\forest_monitoring_legacy.sdf
+Backup folder: C:\Users\ACER\Documents\GitHub\doan\on-demand-monitoring-system\Forest3D\backups\before_compact_world_export_20260907_095003
+```
+
+Commands:
+
+```powershell
+.\scripts\start-drone-stack.cmd
+.\scripts\start-drone-stack.cmd compact
+.\scripts\start-drone-stack.cmd legacy
+```
+
+Do not change the current drone spawn or main Gazebo view angle unless the user explicitly asks:
+
+```text
+compact PX4 spawn: 0, -280, 8.65, 0, 0, 0
+main Gazebo follow offset: x=-8, y=0, z=4
+camera target: x500_mono_cam_down_0
+```
+
+`wsl-clean-drone-stack.sh` must kill only real process names (`px4`, `gz`, `ruby`, `mavsdk_server`). Do not use broad `pkill -f '[p]x4'` style patterns because commands or log filenames containing `px4` can accidentally kill the launcher itself.
+
 ## Known-good drone launch command
 
 `wsl-sim.sh` should use PX4 to launch Gazebo and spawn the camera drone:
@@ -62,6 +110,43 @@ Notes:
 ```text
 /world/forest_monitoring/model/x500_mono_cam_down_0/link/camera_link/sensor/camera/image
 ```
+
+## Locked main Gazebo camera behavior
+
+Do not change this behavior unless the user explicitly asks to replace the camera system.
+
+The main Gazebo Sim viewport camera must keep the user's current third-person overview angle and follow the spawned drone model:
+
+```text
+target model: x500_mono_cam_down_0
+fallback target prefix: x500_mono_cam_down
+follow offset: x=-8, y=0, z=4
+view purpose: main Gazebo viewport follows the drone while keeping the current visible angle around the landing pad/world
+```
+
+Important rules:
+
+- Keep the main Gazebo viewport camera following the drone model, not a building, landing pad, world origin, or fixed pose.
+- Keep the separate `Downward Camera` window unchanged; it is the onboard camera sensor viewer.
+- Do not switch to an overly close PUBG-style offset such as `x=-3, z=1.6` unless the user explicitly asks again.
+- Do not replace the GUI with a minimal or blank camera-tracking-only config.
+- If camera tracking stops working, first verify `/gui/follow` and `/gui/follow/offset` services exist, then set:
+
+```bash
+gz service -s /gui/follow \
+  --reqtype gz.msgs.StringMsg \
+  --reptype gz.msgs.Boolean \
+  --timeout 5000 \
+  --req 'data: "x500_mono_cam_down_0"'
+
+gz service -s /gui/follow/offset \
+  --reqtype gz.msgs.Vector3d \
+  --reptype gz.msgs.Boolean \
+  --timeout 5000 \
+  --req 'x: -8 y: 0 z: 4'
+```
+
+This camera angle and follow logic is considered known-good and should be preserved.
 
 ## Quick checks
 

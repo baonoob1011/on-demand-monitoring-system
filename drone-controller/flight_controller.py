@@ -38,16 +38,18 @@ MAVSDK_CONTROL_GRPC_PORT = int(os.getenv("MAVSDK_CONTROL_GRPC_PORT", "50052"))
 MAVSDK_CONTROL_SYSID = int(os.getenv("MAVSDK_CONTROL_SYSID", "245"))
 MAVSDK_CONTROL_COMPID = int(os.getenv("MAVSDK_CONTROL_COMPID", "191"))
 
-MOVE_SPEED_M_S = float(os.getenv("CONTROL_MOVE_SPEED_M_S", "50.0"))
-VERTICAL_SPEED_M_S = float(os.getenv("CONTROL_VERTICAL_SPEED_M_S", "15.0"))
-YAW_STEP_DEG = float(os.getenv("CONTROL_YAW_STEP_DEG", "90.0"))
+MOVE_SPEED_M_S = float(os.getenv("CONTROL_MOVE_SPEED_M_S", "1000.0"))
+VERTICAL_SPEED_M_S = float(os.getenv("CONTROL_VERTICAL_SPEED_M_S", "300.0"))
+YAW_STEP_DEG = float(os.getenv("CONTROL_YAW_STEP_DEG", "60.0"))
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8080").rstrip("/")
 DEVICE_CODE = os.getenv("DEVICE_CODE", "DRONE-01")
 DRONE_ID = os.getenv("DRONE_ID", DEVICE_CODE)
 MISSION_ID = os.getenv("MISSION_ID", "MISSION_001")
+SIM_WORLD = os.getenv("SIM_WORLD", "legacy")
+DEFAULT_GAZEBO_WORLD = "forest_monitoring_compact" if SIM_WORLD == "compact" else "forest_monitoring"
 CAMERA_TOPIC = os.getenv(
     "GAZEBO_CAMERA_TOPIC",
-    "/world/forest_monitoring/model/x500_mono_cam_down_0/link/camera_link/sensor/camera/image",
+    f"/world/{DEFAULT_GAZEBO_WORLD}/model/x500_mono_cam_down_0/link/camera_link/sensor/camera/image",
 )
 
 
@@ -216,19 +218,23 @@ async def ensure_offboard_started(drone: System) -> None:
 
 
 async def check_readiness(drone: System) -> bool:
-    try:
-        async with asyncio.timeout(4.0):
-            async for state in drone.core.connection_state():
-                if state.is_connected:
-                    return True
-                await asyncio.sleep(0.1)
-    except asyncio.TimeoutError:
-        print("[WARN] MAVSDK is reachable but PX4 is disconnected.")
-        print("[ERR] Readiness check timed out. mavsdk_server may be unresponsive.")
-        return False
-    except grpc.aio.AioRpcError as exc:
-        print(f"[ERR] mavsdk_server dead or unreachable. gRPC error: {exc.code().name}")
-        return False
+    for attempt in range(5):
+        try:
+            async with asyncio.timeout(4.0):
+                async for state in drone.core.connection_state():
+                    if state.is_connected:
+                        return True
+                    await asyncio.sleep(0.1)
+        except asyncio.TimeoutError:
+            print("[WARN] MAVSDK is reachable but PX4 is disconnected.")
+            print("[ERR] Readiness check timed out. mavsdk_server may be unresponsive.")
+        except grpc.aio.AioRpcError as exc:
+            print(f"[WARN] mavsdk_server unavailable. gRPC error: {exc.code().name}")
+
+        if attempt < 4:
+            print("[HINT] Waiting for control bridge to recover...")
+            await asyncio.sleep(1.5)
+
     return False
 
 

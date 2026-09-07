@@ -26,9 +26,13 @@ import org.springframework.transaction.annotation.Transactional;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class PreflightCheckService {
 
-    private static final double MIN_BATTERY_PERCENT = 20.0;
-    private static final int MIN_GPS_SATELLITES = 6;
+    /** Per activity diagram: Battery >= 80% */
+    private static final double MIN_BATTERY_PERCENT = 80.0;
+    /** Per state diagram: GPS Lock >= 8 satellites */
+    private static final int MIN_GPS_SATELLITES = 8;
     private static final Duration MAX_TELEMETRY_AGE = Duration.ofSeconds(10);
+    /** Minimum storage required on drone for a mission (100 MB). */
+    private static final long MIN_STORAGE_MB = 100L;
 
     DeviceRepository deviceRepository;
     DeviceTelemetryRepository deviceTelemetryRepository;
@@ -36,6 +40,19 @@ public class PreflightCheckService {
 
     @Transactional
     public PreflightCheck run(String deviceCode) {
+        return run(deviceCode, null);
+    }
+
+    /**
+     * Run pre-flight check and link the resulting record to the given mission.
+     * Reads live telemetry sent by the drone via MQTT/telemetry_sender.py,
+     * validates all sensor fields, and persists a {@link PreflightCheck} snapshot.
+     *
+     * @param deviceCode drone device code
+     * @param missionId  mission this check belongs to (nullable for stand-alone checks)
+     */
+    @Transactional
+    public PreflightCheck run(String deviceCode, String missionId) {
         Device device = getOrCreateDrone(deviceCode);
         DeviceTelemetry telemetry = deviceTelemetryRepository.findByDeviceCode(deviceCode)
                 .orElseThrow(() -> new ApiException(
@@ -44,25 +61,40 @@ public class PreflightCheckService {
                                 + ". Start PX4/Gazebo and telemetry_sender.py first, then call preflight again."));
 
         List<String> failures = validate(telemetry);
+        String faultType = classifyFault(telemetry, failures);
+
         PreflightCheck preflightCheck = fromTelemetry(device, telemetry);
+        preflightCheck.setMissionId(missionId);
         preflightCheck.setOverallPassed(failures.isEmpty());
         preflightCheck.setFailureReason(failures.isEmpty() ? null : String.join("; ", failures));
+        preflightCheck.setFaultType(faultType);
         preflightCheck.setCheckedAt(Instant.now());
 
         return preflightCheckRepository.save(preflightCheck);
     }
 
+
+
     private List<String> validate(DeviceTelemetry telemetry) {
         List<String> failures = new ArrayList<>();
 
+        // --- Checklist 5: Telemetry stable (connection + freshness) ---
         requireTrue(failures, telemetry.getConnected(), "PX4/MAVSDK is not connected");
         requireFreshTelemetry(failures, telemetry);
         requirePresent(failures, telemetry.getLatitude(), "Latitude is missing");
         requirePresent(failures, telemetry.getLongitude(), "Longitude is missing");
         requirePresent(failures, telemetry.getRelativeAltitude(), "Relative altitude is missing");
-        requireMinimum(failures, telemetry.getBatteryPercent(), MIN_BATTERY_PERCENT, "Battery is below 20%");
+
+        // --- Checklist 1: Battery >= 80% ---
+        requireMinimum(failures, telemetry.getBatteryPercent(), MIN_BATTERY_PERCENT,
+                "Battery is below 80% (current: " + telemetry.getBatteryPercent() + "%)");
+
+        // --- Checklist 2: GPS Lock >= 8 satellites ---
         requireGpsFix(failures, telemetry.getGpsFixType());
-        requireMinimum(failures, telemetry.getGpsSatelliteCount(), MIN_GPS_SATELLITES, "GPS satellite count is below 6");
+        requireMinimum(failures, telemetry.getGpsSatelliteCount(), MIN_GPS_SATELLITES,
+                "GPS satellite count is below 8 (current: " + telemetry.getGpsSatelliteCount() + ")");
+
+        // --- Core flight sensors (hardware fault indicators) ---
         requireTrue(failures, telemetry.getGyrometerOk(), "Gyrometer is not OK");
         requireTrue(failures, telemetry.getAccelerometerOk(), "Accelerometer is not OK");
         requireTrue(failures, telemetry.getMagnetometerOk(), "Magnetometer is not OK");
@@ -73,6 +105,29 @@ public class PreflightCheckService {
         requireFalse(failures, telemetry.getInAir(), "Drone is already in air");
 
         return failures;
+    }
+
+    /**
+     * Classify the type of failure:
+     * - "BATTERY" if the only/main failure is low battery (handled by charge station).
+     * - "HARDWARE" for any sensor/hardware-level failure (handled by maintenance team).
+     * Returns null when there is no failure.
+     */
+    String classifyFault(DeviceTelemetry telemetry, List<String> failures) {
+        if (failures.isEmpty()) return null;
+
+        boolean batteryLow = telemetry.getBatteryPercent() != null
+                && telemetry.getBatteryPercent() < MIN_BATTERY_PERCENT;
+
+        boolean hardwareFault = !Boolean.TRUE.equals(telemetry.getGyrometerOk())
+                || !Boolean.TRUE.equals(telemetry.getAccelerometerOk())
+                || !Boolean.TRUE.equals(telemetry.getMagnetometerOk())
+                || !Boolean.TRUE.equals(telemetry.getArmable())
+                || !Boolean.TRUE.equals(telemetry.getConnected());
+
+        if (hardwareFault) return "HARDWARE";
+        if (batteryLow)    return "BATTERY";
+        return "HARDWARE"; // default: assume hardware fault for any other issue
     }
 
     private PreflightCheck fromTelemetry(Device device, DeviceTelemetry telemetry) {
