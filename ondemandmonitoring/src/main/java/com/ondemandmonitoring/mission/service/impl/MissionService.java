@@ -145,7 +145,7 @@ public class MissionService implements IMissionService {
         deviceRepository.save(drone);
 
         mission.setStatus(MissionStatus.PENDING_APPROVAL);
-        log.warn("Mission {} order status re-queued to PENDING_APPROVAL for Manager re-assignment (Flow 2)", mission.getId());
+        log.warn("Mission {} order status re-queued to PENDING_APPROVAL for Manager re-assignment", mission.getId());
     }
 
     private FlightToken issueFlightToken(String missionId, String deviceCode, String operatorId) {
