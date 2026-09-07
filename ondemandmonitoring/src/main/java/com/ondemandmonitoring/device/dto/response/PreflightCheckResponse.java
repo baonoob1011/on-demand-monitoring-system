@@ -1,6 +1,7 @@
 package com.ondemandmonitoring.device.dto.response;
 
 import com.ondemandmonitoring.device.domain.PreflightCheck;
+import com.ondemandmonitoring.mission.dto.response.FlightTokenResponse;
 import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -14,8 +15,10 @@ public class PreflightCheckResponse {
 
     String id;
     String deviceCode;
+    String missionId;
     Boolean overallPassed;
     String failureReason;
+    String faultType;
     Double batteryPercent;
     String gpsFixType;
     Integer gpsSatelliteCount;
@@ -29,28 +32,19 @@ public class PreflightCheckResponse {
     Boolean connected;
     Boolean inAir;
     String flightMode;
-    Instant checkedAt;
 
-    public static PreflightCheckResponse from(PreflightCheck preflightCheck) {
-        return PreflightCheckResponse.builder()
-                .id(preflightCheck.getId())
-                .deviceCode(preflightCheck.getDevice().getDeviceCode())
-                .overallPassed(preflightCheck.getOverallPassed())
-                .failureReason(preflightCheck.getFailureReason())
-                .batteryPercent(preflightCheck.getBatteryPercent())
-                .gpsFixType(preflightCheck.getGpsFixType())
-                .gpsSatelliteCount(preflightCheck.getGpsSatelliteCount())
-                .gyrometerOk(preflightCheck.getGyrometerOk())
-                .accelerometerOk(preflightCheck.getAccelerometerOk())
-                .magnetometerOk(preflightCheck.getMagnetometerOk())
-                .localPositionOk(preflightCheck.getLocalPositionOk())
-                .globalPositionOk(preflightCheck.getGlobalPositionOk())
-                .homePositionOk(preflightCheck.getHomePositionOk())
-                .armable(preflightCheck.getArmable())
-                .connected(preflightCheck.getConnected())
-                .inAir(preflightCheck.getInAir())
-                .flightMode(preflightCheck.getFlightMode())
-                .checkedAt(preflightCheck.getCheckedAt())
-                .build();
-    }
+    // Extended checklist fields (per diagram)
+    Boolean cameraOk;
+    Boolean gimbalOk;
+    Long storageAvailableMb;
+    Boolean storageOk;
+    Boolean weatherOk;
+    String weatherNotes;
+
+    // Flight Access Token issued when preflight passes
+    FlightTokenResponse flightToken;
+
+    Instant checkedAt;
 }
+
+

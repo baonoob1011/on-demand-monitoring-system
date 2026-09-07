@@ -4,16 +4,17 @@ import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.device.domain.PreflightCheck;
 import com.ondemandmonitoring.device.dto.response.PreflightCheckResponse;
 import com.ondemandmonitoring.device.service.PreflightCheckService;
+import com.ondemandmonitoring.device.mapper.PreflightCheckMapper;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
+@Tag(name = "Device Diagnostics", description = "APIs for standalone drone preflight check diagnostics")
 @RestController
 @RequestMapping("/api/devices/{deviceCode}/preflight-checks")
 @RequiredArgsConstructor
@@ -21,13 +22,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class PreflightCheckController {
 
     PreflightCheckService preflightCheckService;
+    PreflightCheckMapper preflightCheckMapper;
 
+    @Operation(summary = "Run standalone preflight check", description = "Executes diagnostic checklist on a drone and returns check status")
     @PostMapping
-    public ResponseEntity<ApiResponse<PreflightCheckResponse>> run(@PathVariable String deviceCode) {
-        PreflightCheck preflightCheck = preflightCheckService.run(deviceCode);
+    public ResponseEntity<ApiResponse<PreflightCheckResponse>> run(
+            @PathVariable String deviceCode,
+            @RequestParam(required = false) String missionId) {
+        PreflightCheck preflightCheck = preflightCheckService.run(deviceCode, missionId);
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body(ApiResponse.created("Preflight check completed", PreflightCheckResponse.from(preflightCheck)));
+                .body(ApiResponse.created("Preflight check completed", preflightCheckMapper.toResponse(preflightCheck)));
     }
 }
