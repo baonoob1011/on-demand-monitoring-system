@@ -2,7 +2,12 @@
 # Runtime weather hotkeys for Gazebo Sim. This does not restart PX4/Gazebo.
 set +e
 
-WORLD="${GZ_WORLD_NAME:-forest_monitoring}"
+SIM_WORLD="${SIM_WORLD:-legacy}"
+if [ "$SIM_WORLD" = "compact" ]; then
+    WORLD="forest_monitoring_compact"
+else
+    WORLD="${GZ_WORLD_NAME:-forest_monitoring}"
+fi
 LIGHT_SERVICE="/world/${WORLD}/light_config"
 WIND_TOPIC="/world/${WORLD}/wind"
 CURRENT_WEATHER="CLEAR_DAY"

@@ -38,16 +38,18 @@ MAVSDK_CONTROL_GRPC_PORT = int(os.getenv("MAVSDK_CONTROL_GRPC_PORT", "50052"))
 MAVSDK_CONTROL_SYSID = int(os.getenv("MAVSDK_CONTROL_SYSID", "245"))
 MAVSDK_CONTROL_COMPID = int(os.getenv("MAVSDK_CONTROL_COMPID", "191"))
 
-MOVE_SPEED_M_S = float(os.getenv("CONTROL_MOVE_SPEED_M_S", "50.0"))
-VERTICAL_SPEED_M_S = float(os.getenv("CONTROL_VERTICAL_SPEED_M_S", "30.0"))
-YAW_STEP_DEG = float(os.getenv("CONTROL_YAW_STEP_DEG", "30.0"))
+MOVE_SPEED_M_S = float(os.getenv("CONTROL_MOVE_SPEED_M_S", "1000.0"))
+VERTICAL_SPEED_M_S = float(os.getenv("CONTROL_VERTICAL_SPEED_M_S", "300.0"))
+YAW_STEP_DEG = float(os.getenv("CONTROL_YAW_STEP_DEG", "60.0"))
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8080").rstrip("/")
 DEVICE_CODE = os.getenv("DEVICE_CODE", "DRONE-01")
 DRONE_ID = os.getenv("DRONE_ID", DEVICE_CODE)
 MISSION_ID = os.getenv("MISSION_ID", "MISSION_001")
+SIM_WORLD = os.getenv("SIM_WORLD", "legacy")
+DEFAULT_GAZEBO_WORLD = "forest_monitoring_compact" if SIM_WORLD == "compact" else "forest_monitoring"
 CAMERA_TOPIC = os.getenv(
     "GAZEBO_CAMERA_TOPIC",
-    "/world/forest_monitoring/model/x500_mono_cam_down_0/link/camera_link/sensor/camera/image",
+    f"/world/{DEFAULT_GAZEBO_WORLD}/model/x500_mono_cam_down_0/link/camera_link/sensor/camera/image",
 )
 
 

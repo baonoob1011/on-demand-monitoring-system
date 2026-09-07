@@ -5,16 +5,16 @@ echo '========================================'
 echo ' Cleaning previous drone simulation...'
 echo '========================================'
 
-pkill -9 -f '[p]x4' || true
-pkill -9 -f '[g]z' || true
-pkill -9 -f '[r]uby' || true
-pkill -9 -u "$USER" -f '[m]avsdk_server' 2>/dev/null || true
+pkill -9 -x px4 || true
+pkill -9 -x gz || true
+pkill -9 -x ruby || true
+pkill -9 -u "$USER" -x mavsdk_server 2>/dev/null || true
 
 sleep 2
 
-if pgrep -u "$USER" -f '[p]x4|[g]z|[r]uby' >/dev/null 2>&1; then
+if pgrep -u "$USER" -x 'px4|gz|ruby' >/dev/null 2>&1; then
     echo '[WARN] Some PX4/Gazebo/Ruby processes are still running:'
-    pgrep -a -u "$USER" -f '[p]x4|[g]z|[r]uby' || true
+    pgrep -a -u "$USER" -x 'px4|gz|ruby' || true
 else
     echo '[OK] Old PX4/Gazebo/Ruby processes stopped.'
 fi
