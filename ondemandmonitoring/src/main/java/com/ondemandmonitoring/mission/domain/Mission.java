@@ -35,6 +35,18 @@ public class Mission extends BaseEntity {
     @Column(name = "address", length = 500)
     String address;
 
+    @Column(name = "assigned_device_code", length = 50)
+    String assignedDeviceCode;
+
+    @Column(name = "target_north_m")
+    Double targetNorthM;
+
+    @Column(name = "target_east_m")
+    Double targetEastM;
+
+    @Column(name = "target_altitude_m")
+    Double targetAltitudeM;
+
     // ===== Schedule =====
 
     @Column(name = "scheduled_start_at")

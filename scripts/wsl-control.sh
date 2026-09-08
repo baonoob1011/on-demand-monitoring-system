@@ -28,16 +28,30 @@ print_server_log_tail() {
 }
 
 kill_stale_mavsdk_server() {
-    pkill -f "mavsdk_server.*${MAVSDK_PORT}" 2>/dev/null || true
+    printf '%s\n' '[MAVSDK] Cleaning stale mavsdk_server processes...'
 
-    for _ in $(seq 1 10); do
-        if ! is_port_listening; then
+    # Chỉ cho phép một mavsdk_server tồn tại.
+    pkill -x mavsdk_server 2>/dev/null || true
+
+    for _ in $(seq 1 20); do
+        grpc_busy=0
+        udp_busy=0
+
+        ss -ltn 2>/dev/null | grep -q ":${MAVSDK_PORT} " && grpc_busy=1
+        ss -lun 2>/dev/null | grep -q ":14030 " && udp_busy=1
+
+        if [ "$grpc_busy" -eq 0 ] && [ "$udp_busy" -eq 0 ]; then
+            printf '%s\n' '[MAVSDK] Stale cleanup complete'
             return 0
         fi
-        sleep 0.3
+
+        sleep 0.25
     done
 
-    printf '[MAVSDK] Port %s still busy after stale cleanup\n' "$MAVSDK_PORT"
+    printf '%s\n' '[MAVSDK] WARNING: control ports still busy after cleanup'
+    ss -ltnp 2>/dev/null | grep ":${MAVSDK_PORT} " || true
+    ss -lunp 2>/dev/null | grep ":14030 " || true
+
     return 1
 }
 
