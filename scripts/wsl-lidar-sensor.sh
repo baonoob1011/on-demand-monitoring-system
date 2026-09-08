@@ -3,12 +3,21 @@ set -euo pipefail
 
 PROJECT_PATH="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system"
 SENSOR_DIR="$PROJECT_PATH/drone/obstacle_avoidance"
+ENV_FILE="$PROJECT_PATH/drone/.env.example"
 LIDAR_TOPIC="${LIDAR_TOPIC:-/lidar}"
+
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+fi
 
 echo '========================================'
 echo ' LiDAR Sensor Monitor'
 echo '========================================'
 echo "Topic: $LIDAR_TOPIC"
+echo "Thresholds: warning=${LIDAR_WARNING_DISTANCE_M:-25.0} obstacle=${LIDAR_OBSTACLE_DISTANCE_M:-15.0} emergency=${LIDAR_EMERGENCY_DISTANCE_M:-7.0}"
 echo
 echo '[LIDAR] Waiting for Gazebo sensor topic...'
 

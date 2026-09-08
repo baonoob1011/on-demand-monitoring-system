@@ -4,9 +4,17 @@ set -uo pipefail
 echo 'Waiting 35s for PX4 + Gazebo to fully initialize...'
 sleep 35
 
-REPO_CONTROLLER="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/drone-controller"
+REPO_CONTROLLER="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/drone"
+ENV_FILE="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/ondemandmonitoring/.env"
 cd ~/drone-controller || exit 1
 cp "$REPO_CONTROLLER/flight_controller.py" flight_controller.py
+
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+fi
 
 source ~/drone-env/bin/activate
 
@@ -28,16 +36,31 @@ print_server_log_tail() {
 }
 
 kill_stale_mavsdk_server() {
-    pkill -f "mavsdk_server.*${MAVSDK_PORT}" 2>/dev/null || true
+    printf '%s\n' '[MAVSDK] Cleaning stale mavsdk_server processes...'
 
-    for _ in $(seq 1 10); do
-        if ! is_port_listening; then
+    # Chỉ dọn MAVSDK control server trên port 50052.
+    # Telemetry dùng chung gRPC server này nên không chạy server riêng.
+    pkill -f "mavsdk_server.*-p ${MAVSDK_PORT}" 2>/dev/null || true
+
+    for _ in $(seq 1 20); do
+        grpc_busy=0
+        udp_busy=0
+
+        ss -ltn 2>/dev/null | grep -q ":${MAVSDK_PORT} " && grpc_busy=1
+        ss -lun 2>/dev/null | grep -q ":14030 " && udp_busy=1
+
+        if [ "$grpc_busy" -eq 0 ] && [ "$udp_busy" -eq 0 ]; then
+            printf '%s\n' '[MAVSDK] Stale cleanup complete'
             return 0
         fi
-        sleep 0.3
+
+        sleep 0.25
     done
 
-    printf '[MAVSDK] Port %s still busy after stale cleanup\n' "$MAVSDK_PORT"
+    printf '%s\n' '[MAVSDK] WARNING: control ports still busy after cleanup'
+    ss -ltnp 2>/dev/null | grep ":${MAVSDK_PORT} " || true
+    ss -lunp 2>/dev/null | grep ":14030 " || true
+
     return 1
 }
 

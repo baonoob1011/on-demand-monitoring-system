@@ -2,10 +2,12 @@ import asyncio
 import logging
 import math
 import os
+import socket
 import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
+import grpc
 import httpx
 from dotenv import load_dotenv
 from mavsdk import System
@@ -14,9 +16,9 @@ from mavsdk import System
 load_dotenv()
 
 PX4_SYSTEM_ADDRESS = os.getenv("PX4_SYSTEM_ADDRESS", "udp://:14540")
-MAVSDK_TELEMETRY_GRPC_PORT = int(os.getenv("MAVSDK_TELEMETRY_GRPC_PORT", "50051"))
+MAVSDK_TELEMETRY_GRPC_PORT = int(os.getenv("MAVSDK_TELEMETRY_GRPC_PORT", "50052"))
 MAVSDK_TELEMETRY_SYSID = int(os.getenv("MAVSDK_TELEMETRY_SYSID", "245"))
-MAVSDK_TELEMETRY_COMPID = int(os.getenv("MAVSDK_TELEMETRY_COMPID", "190"))
+MAVSDK_TELEMETRY_COMPID = int(os.getenv("MAVSDK_TELEMETRY_COMPID", "191"))
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8080").rstrip("/")
 DEVICE_CODE = os.getenv("DEVICE_CODE", "DRONE-01")
 TELEMETRY_INTERVAL_SECONDS = float(os.getenv("TELEMETRY_INTERVAL_SECONDS", "5"))
@@ -201,26 +203,75 @@ def first_attr(source: Any, *names: str) -> Any:
     return None
 
 
-async def run_stream(name: str, stream: Callable[[], Any], handler: Callable[[Any], Awaitable[None]]) -> None:
-    while True:
+class TelemetryConnectionLost(Exception):
+    pass
+
+
+def is_grpc_unavailable(exc: Exception) -> bool:
+    if not isinstance(exc, grpc.aio.AioRpcError):
+        return False
+
+    if exc.code() == grpc.StatusCode.UNAVAILABLE:
+        return True
+
+    details = (exc.details() or "").lower()
+    return any(
+        text in details
+        for text in (
+            "stream removed",
+            "socket closed",
+            "connection reset",
+            "connection refused",
+            "failed to connect",
+        )
+    )
+
+
+async def wait_for_grpc_port(timeout_seconds: float = 60.0) -> bool:
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+    while asyncio.get_running_loop().time() < deadline:
         try:
-            async for item in stream():
-                await handler(item)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            LOGGER.warning("%s stream failed; retrying in 2 seconds", name, exc_info=True)
-            await asyncio.sleep(2)
+            with socket.create_connection(("127.0.0.1", MAVSDK_TELEMETRY_GRPC_PORT), timeout=0.5):
+                return True
+        except OSError:
+            await asyncio.sleep(0.5)
+    return False
 
 
-async def connect_px4(drone: System) -> None:
-    LOGGER.info("Connecting to PX4...")
-    await drone.connect(system_address=PX4_SYSTEM_ADDRESS)
+def new_mavsdk_system() -> System:
+    return System(
+        mavsdk_server_address="localhost",
+        port=MAVSDK_TELEMETRY_GRPC_PORT,
+        sysid=MAVSDK_TELEMETRY_SYSID,
+        compid=MAVSDK_TELEMETRY_COMPID,
+    )
+
+
+async def run_stream(name: str, stream: Callable[[], Any], handler: Callable[[Any], Awaitable[None]]) -> None:
+    try:
+        async for item in stream():
+            await handler(item)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        if is_grpc_unavailable(exc):
+            raise TelemetryConnectionLost(name) from exc
+        LOGGER.warning("%s stream failed; restarting telemetry generation", name)
+        raise TelemetryConnectionLost(name) from exc
+
+
+async def connect_px4(drone: System, generation: int) -> None:
+    LOGGER.info("[MAVSDK-TELEMETRY] waiting for server 127.0.0.1:%s", MAVSDK_TELEMETRY_GRPC_PORT)
+    while not await wait_for_grpc_port(10.0):
+        LOGGER.warning("[MAVSDK-TELEMETRY] server unavailable on 127.0.0.1:%s", MAVSDK_TELEMETRY_GRPC_PORT)
+
+    LOGGER.info("[MAVSDK-TELEMETRY] server available")
+    await drone.connect()
 
     async for connection_state in drone.core.connection_state():
         await state.update(connected=connection_state.is_connected)
         if connection_state.is_connected:
-            LOGGER.info("PX4 connected")
+            LOGGER.info("[MAVSDK-TELEMETRY] PX4 reconnected generation=%s", generation)
             return
 
 
@@ -392,13 +443,77 @@ async def send_telemetry() -> None:
             await asyncio.sleep(TELEMETRY_INTERVAL_SECONDS)
 
 
+async def run_telemetry_stream_generation(drone: System, generation: int) -> None:
+    await configure_telemetry_rates(drone)
+    LOGGER.info("[TELEMETRY] streams restarted generation=%s", generation)
+
+    tasks = [
+        asyncio.create_task(watch_connection(drone), name=f"connection-{generation}"),
+        asyncio.create_task(watch_battery(drone), name=f"battery-{generation}"),
+        asyncio.create_task(watch_position(drone), name=f"position-{generation}"),
+        asyncio.create_task(watch_gps_info(drone), name=f"gps_info-{generation}"),
+        asyncio.create_task(watch_health(drone), name=f"health-{generation}"),
+        asyncio.create_task(watch_heading(drone), name=f"heading-{generation}"),
+        asyncio.create_task(watch_velocity(drone), name=f"velocity_ned-{generation}"),
+        asyncio.create_task(watch_armed(drone), name=f"armed-{generation}"),
+        asyncio.create_task(watch_flight_mode(drone), name=f"flight_mode-{generation}"),
+        asyncio.create_task(watch_home(drone), name=f"home-{generation}"),
+        asyncio.create_task(watch_attitude(drone), name=f"attitude_euler-{generation}"),
+        asyncio.create_task(watch_in_air(drone), name=f"in_air-{generation}"),
+    ]
+
+    try:
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+        for task in done:
+            exc = task.exception()
+            if exc is not None:
+                raise exc
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def telemetry_supervisor() -> None:
+    generation = 0
+    backoff_s = 1.0
+
+    while True:
+        generation += 1
+        drone = new_mavsdk_system()
+
+        try:
+            await connect_px4(drone, generation)
+            backoff_s = 1.0
+            await run_telemetry_stream_generation(drone, generation)
+        except asyncio.CancelledError:
+            raise
+        except TelemetryConnectionLost as exc:
+            await state.update(connected=False)
+            LOGGER.warning("[MAVSDK-TELEMETRY] connection lost (%s)", exc)
+        except grpc.aio.AioRpcError as exc:
+            await state.update(connected=False)
+            if is_grpc_unavailable(exc):
+                LOGGER.warning("[MAVSDK-TELEMETRY] connection lost")
+            else:
+                LOGGER.warning("[MAVSDK-TELEMETRY] gRPC error; reconnecting")
+        except Exception:
+            await state.update(connected=False)
+            LOGGER.warning("[MAVSDK-TELEMETRY] telemetry generation failed; reconnecting", exc_info=True)
+
+        LOGGER.info("[MAVSDK-TELEMETRY] waiting %.1fs before reconnect", backoff_s)
+        await asyncio.sleep(backoff_s)
+        backoff_s = min(backoff_s * 1.5, 10.0)
+
+
 async def main() -> None:
     LOGGER.info("========================================")
     LOGGER.info(" On-Demand Monitoring Telemetry Sender")
     LOGGER.info("========================================")
     LOGGER.info("Device: %s", DEVICE_CODE)
     LOGGER.info("PX4: %s", PX4_SYSTEM_ADDRESS)
-    LOGGER.info("MAVSDK gRPC: localhost:%s", MAVSDK_TELEMETRY_GRPC_PORT)
+    LOGGER.info("MAVSDK gRPC shared server: localhost:%s", MAVSDK_TELEMETRY_GRPC_PORT)
     LOGGER.info("Backend: %s", BACKEND_BASE_URL)
     if USE_SITL_BATTERY_SIM:
         LOGGER.info(
@@ -409,29 +524,8 @@ async def main() -> None:
             SITL_BATTERY_MIN_PERCENT,
         )
 
-    drone = System(
-        port=MAVSDK_TELEMETRY_GRPC_PORT,
-        sysid=MAVSDK_TELEMETRY_SYSID,
-        compid=MAVSDK_TELEMETRY_COMPID,
-    )
-
-    await connect_px4(drone)
-    await configure_telemetry_rates(drone)
-
-    LOGGER.info("Starting telemetry streams...")
     await asyncio.gather(
-        watch_connection(drone),
-        watch_battery(drone),
-        watch_position(drone),
-        watch_gps_info(drone),
-        watch_health(drone),
-        watch_heading(drone),
-        watch_velocity(drone),
-        watch_armed(drone),
-        watch_flight_mode(drone),
-        watch_home(drone),
-        watch_attitude(drone),
-        watch_in_air(drone),
+        telemetry_supervisor(),
         send_telemetry(),
     )
 
