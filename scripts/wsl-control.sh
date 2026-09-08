@@ -4,9 +4,17 @@ set -uo pipefail
 echo 'Waiting 35s for PX4 + Gazebo to fully initialize...'
 sleep 35
 
-REPO_CONTROLLER="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/drone-controller"
+REPO_CONTROLLER="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/drone"
+ENV_FILE="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/ondemandmonitoring/.env"
 cd ~/drone-controller || exit 1
 cp "$REPO_CONTROLLER/flight_controller.py" flight_controller.py
+
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+fi
 
 source ~/drone-env/bin/activate
 
@@ -30,8 +38,9 @@ print_server_log_tail() {
 kill_stale_mavsdk_server() {
     printf '%s\n' '[MAVSDK] Cleaning stale mavsdk_server processes...'
 
-    # Chỉ cho phép một mavsdk_server tồn tại.
-    pkill -x mavsdk_server 2>/dev/null || true
+    # Chỉ dọn MAVSDK control server trên port 50052.
+    # Telemetry dùng chung gRPC server này nên không chạy server riêng.
+    pkill -f "mavsdk_server.*-p ${MAVSDK_PORT}" 2>/dev/null || true
 
     for _ in $(seq 1 20); do
         grpc_busy=0

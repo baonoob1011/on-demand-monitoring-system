@@ -12,6 +12,7 @@ import numpy as np
 
 POINTCLOUD_TOPIC = os.getenv("POINTCLOUD_LIDAR_TOPIC", "/lidar_3d")
 POINTCLOUD_MAX_RANGE_M = float(os.getenv("POINTCLOUD_MAX_RANGE_M", "60.0"))
+POINTCLOUD_MIN_VALID_DISTANCE_M = float(os.getenv("POINTCLOUD_MIN_VALID_DISTANCE_M", "1.0"))
 
 
 @dataclass(frozen=True)
@@ -84,7 +85,7 @@ def laserscan_to_points_body(msg, max_range_m: float = POINTCLOUD_MAX_RANGE_M) -
         Z = up
 
     Gazebo scan angle convention is treated as positive-left around Z, so
-    BODY Y is negated to keep positive-right for the planner.
+    BODY Y is negated to keep positive-right for visualization.
     """
 
     ranges = np.asarray(list(msg.ranges), dtype=np.float32)
@@ -104,7 +105,8 @@ def laserscan_to_points_body(msg, max_range_m: float = POINTCLOUD_MAX_RANGE_M) -
     finite = np.isfinite(ranges)
     range_min = float(getattr(msg, "range_min", 0.0) or 0.0)
     range_max = min(float(getattr(msg, "range_max", max_range_m) or max_range_m), max_range_m)
-    valid = finite & (ranges >= range_min) & (ranges <= range_max)
+    min_valid_range = max(range_min, POINTCLOUD_MIN_VALID_DISTANCE_M)
+    valid = finite & (ranges >= min_valid_range) & (ranges <= range_max)
 
     if not np.any(valid):
         return np.empty((0, 3), dtype=np.float32)
@@ -188,6 +190,7 @@ class PointCloudGateway:
 
 __all__ = [
     "POINTCLOUD_TOPIC",
+    "POINTCLOUD_MIN_VALID_DISTANCE_M",
     "PointCloudGateway",
     "PointCloudSnapshot",
     "laserscan_to_points_body",

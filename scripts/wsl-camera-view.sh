@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
 set -e
 
-FOREST3D_PATH="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/Forest3D"
+PROJECT_PATH="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system"
+FOREST3D_PATH="$PROJECT_PATH/Forest3D"
+DRONE_PATH="$PROJECT_PATH/drone"
+ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
+
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+fi
 
 SIM_WORLD="${SIM_WORLD:-compact}"
 
@@ -28,26 +38,20 @@ echo
 
 echo "[CAMERA] Waiting for camera stream..."
 
+source ~/drone-env/bin/activate
+
 for _ in $(seq 1 60); do
 
     if gz topic -l 2>/dev/null | grep -Fxq "$CAMERA_TOPIC"; then
 
         echo "[CAMERA] Topic found."
-        echo "[CAMERA] Preparing viewer..."
-
-        # Create runtime GUI config so the viewer always subscribes
-        # to the currently selected Gazebo world.
-        sed \
-          -e "s|/world/forest_monitoring/model/x500_mono_cam_down_0/link/camera_link/sensor/camera/image|${CAMERA_TOPIC}|g" \
-          -e "s|/world/forest_monitoring_compact/model/x500_mono_cam_down_0/link/camera_link/sensor/camera/image|${CAMERA_TOPIC}|g" \
-          "$CAMERA_VIEW_CONFIG" > "$RUNTIME_CONFIG"
-
-        echo "[CAMERA] Opening viewer:"
+        echo "[CAMERA] Opening HUD viewer:"
         echo "         $CAMERA_TOPIC"
 
         sleep 1
 
-        exec gz gui -c "$RUNTIME_CONFIG"
+        cd "$DRONE_PATH"
+        exec python3 downward_camera_viewer.py
     fi
 
     sleep 1

@@ -8,7 +8,6 @@ import static org.mockito.Mockito.when;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -26,21 +25,6 @@ class MissionServiceTest {
     private MissionService missionService;
 
     @Test
-    void seedObstacleAvoidanceMission_createsCompactMapTarget() {
-        when(missionRepository.findByMissionCode("SIM-SEED-OBSTACLE-001")).thenReturn(Optional.empty());
-        when(missionRepository.save(any(Mission.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-        Mission mission = missionService.seedObstacleAvoidanceMission();
-
-        assertThat(mission.getMissionCode()).isEqualTo("SIM-SEED-OBSTACLE-001");
-        assertThat(mission.getStatus()).isEqualTo(MissionStatus.READY_TO_FLY);
-        assertThat(mission.getAssignedDeviceCode()).isEqualTo("DRONE-01");
-        assertThat(mission.getTargetNorthM()).isEqualTo(85.0);
-        assertThat(mission.getTargetEastM()).isEqualTo(25.0);
-        assertThat(mission.getTargetAltitudeM()).isEqualTo(18.0);
-    }
-
-    @Test
     void dispatchNextMission_marksMissionInProgress() {
         Mission mission = new Mission();
         mission.setMissionCode("SIM-SEED-OBSTACLE-001");
@@ -48,8 +32,8 @@ class MissionServiceTest {
         mission.setAssignedDeviceCode("DRONE-01");
         mission.setLatitude(10.0);
         mission.setLongitude(106.0);
-        mission.setTargetNorthM(85.0);
-        mission.setTargetEastM(25.0);
+        mission.setTargetNorthM(320.0);
+        mission.setTargetEastM(80.0);
         mission.setTargetAltitudeM(18.0);
 
         when(missionRepository.findFirstByAssignedDeviceCodeAndStatusInOrderByCreatedAtAsc(

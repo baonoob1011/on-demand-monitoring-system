@@ -1,5 +1,7 @@
 import asyncio
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from io import BytesIO
 import logging
 import math
@@ -33,9 +35,8 @@ if "/usr/lib/python3/dist-packages" not in sys.path:
 
 if str(DRONE_DIR) not in sys.path:
     sys.path.insert(0, str(DRONE_DIR))
-ENV_FILE = Path(
-    "/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/drone-controller/.env.example"
-)
+
+ENV_FILE = PROJECT_ROOT / "ondemandmonitoring" / ".env"
 
 load_dotenv(ENV_FILE)
 
@@ -45,30 +46,41 @@ print(
 )
 
 print(
-    "[ENV] Offline 3D planner mode",
+    "[ENV] Simple obstacle-stop mission mode",
     flush=True,
 )
 try:
     from obstacle_avoidance.lidar_gateway import LidarGateway
     from obstacle_avoidance.avoidance_controller import AvoidanceController
-    from obstacle_avoidance.sensor_reader import OBSTACLE_DISTANCE_M, front_obstacle_reading
-    from obstacle_avoidance.pointcloud_gateway import PointCloudGateway
-    from obstacle_avoidance.local_planner import LocalPlanner3D
-    from obstacle_avoidance.planner_types import MotionOwner, PlannerState, SavedMotion, VelocityCommand
+    from obstacle_avoidance.sensor_reader import (
+        OBSTACLE_DISTANCE_M,
+        WARNING_DISTANCE_M,
+        front_obstacle_reading,
+    )
 except ImportError as exc:
     LidarGateway = None
     AvoidanceController = None
-    PointCloudGateway = None
-    LocalPlanner3D = None
-    MotionOwner = None
-    PlannerState = None
-    SavedMotion = None
-    VelocityCommand = None
     OBSTACLE_DISTANCE_M = 5.0
+    WARNING_DISTANCE_M = 10.0
     front_obstacle_reading = None
     LIDAR_IMPORT_ERROR = exc
 else:
     LIDAR_IMPORT_ERROR = None
+
+
+class MotionOwner(Enum):
+    MANUAL = "MANUAL"
+    EMERGENCY = "EMERGENCY"
+
+
+@dataclass(frozen=True)
+class SavedMotion:
+    forward_m_s: float
+    right_m_s: float
+    down_m_s: float
+    north_m_s: float
+    east_m_s: float
+    yaw_deg: float
 
 try:
     from gz.msgs10.image_pb2 import Image as GzImage
@@ -79,34 +91,142 @@ except ImportError:
 
 
 load_dotenv()
-
 PX4_CONTROL_SYSTEM_ADDRESS = os.getenv(
     "PX4_CONTROL_SYSTEM_ADDRESS",
     "udpin://0.0.0.0:14030",
 )
-MAVSDK_CONTROL_GRPC_PORT = int(os.getenv("MAVSDK_CONTROL_GRPC_PORT", "50052"))
-MAVSDK_CONTROL_SYSID = int(os.getenv("MAVSDK_CONTROL_SYSID", "245"))
-MAVSDK_CONTROL_COMPID = int(os.getenv("MAVSDK_CONTROL_COMPID", "191"))
 
-MOVE_SPEED_M_S = float(os.getenv("CONTROL_MOVE_SPEED_M_S", "10.0"))
-VERTICAL_SPEED_M_S = float(os.getenv("CONTROL_VERTICAL_SPEED_M_S", "500.0"))
-YAW_STEP_DEG = float(os.getenv("CONTROL_YAW_STEP_DEG", "30.0"))
-SAFETY_POLL_INTERVAL_S = float(os.getenv("SAFETY_POLL_INTERVAL_S", "0.5"))
-PLANNER_LOOP_INTERVAL_S = 1.0 / float(os.getenv("PLANNER_LOOP_HZ", "8.0"))
-PLANNER_AUTO_FORWARD_SPEED_M_S = float(os.getenv("PLANNER_AUTO_FORWARD_SPEED_M_S", "3.0"))
-MISSION_POLL_INTERVAL_S = float(os.getenv("MISSION_POLL_INTERVAL_S", "5.0"))
-MISSION_ARRIVAL_RADIUS_M = float(os.getenv("MISSION_ARRIVAL_RADIUS_M", "3.0"))
-BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8080").rstrip("/")
-DEVICE_CODE = os.getenv("DEVICE_CODE", "DRONE-01")
-DRONE_ID = os.getenv("DRONE_ID", DEVICE_CODE)
-MISSION_ID = os.getenv("MISSION_ID", "MISSION_001")
-SIM_WORLD = os.getenv("SIM_WORLD", "legacy")
-DEFAULT_GAZEBO_WORLD = "forest_monitoring_compact" if SIM_WORLD == "compact" else "forest_monitoring"
+MAVSDK_CONTROL_GRPC_PORT = int(
+    os.getenv("MAVSDK_CONTROL_GRPC_PORT", "50052")
+)
+MAVSDK_CONTROL_SYSID = int(
+    os.getenv("MAVSDK_CONTROL_SYSID", "245")
+)
+MAVSDK_CONTROL_COMPID = int(
+    os.getenv("MAVSDK_CONTROL_COMPID", "191")
+)
+
+MOVE_SPEED_M_S = float(
+    os.getenv("CONTROL_MOVE_SPEED_M_S", "6.0")
+)
+VERTICAL_SPEED_M_S = float(
+    os.getenv("CONTROL_VERTICAL_SPEED_M_S", "2.0")
+)
+YAW_STEP_DEG = float(
+    os.getenv("CONTROL_YAW_STEP_DEG", "30.0")
+)
+
+SPEED_ADJUST_STEP_M_S = float(
+    os.getenv("CONTROL_SPEED_ADJUST_STEP_M_S", "200.0")
+)
+
+SAFETY_POLL_INTERVAL_S = float(
+    os.getenv("SAFETY_POLL_INTERVAL_S", "0.5")
+)
+
+MISSION_CRUISE_SPEED_M_S = float(
+    os.getenv("MISSION_CRUISE_SPEED_M_S", "2.0")
+)
+
+MISSION_WARNING_DISTANCE_M = float(
+    os.getenv("MISSION_WARNING_DISTANCE_M", "80.0")
+)
+
+MISSION_WARNING_MIN_SPEED_M_S = float(
+    os.getenv("MISSION_WARNING_MIN_SPEED_M_S", "1.0")
+)
+
+MISSION_WARNING_MAX_SPEED_M_S = float(
+    os.getenv("MISSION_WARNING_MAX_SPEED_M_S", "5.0")
+)
+
+MISSION_GOAL_SLOWDOWN_DISTANCE_M = float(
+    os.getenv("MISSION_GOAL_SLOWDOWN_DISTANCE_M", "15.0")
+)
+
+MISSION_GOAL_MIN_SPEED_M_S = float(
+    os.getenv("MISSION_GOAL_MIN_SPEED_M_S", "1.0")
+)
+
+MISSION_CLIMB_FIRST_TIMEOUT_S = float(
+    os.getenv("MISSION_CLIMB_FIRST_TIMEOUT_S", "60.0")
+)
+
+MISSION_CLIMB_MAX_OVERSHOOT_M = float(
+    os.getenv("MISSION_CLIMB_MAX_OVERSHOOT_M", "2.0")
+)
+
+MISSION_ALTITUDE_TOLERANCE_M = float(
+    os.getenv("MISSION_ALTITUDE_TOLERANCE_M", "1.0")
+)
+
+MISSION_ALTITUDE_HOLD_DEADBAND_M = float(
+    os.getenv("MISSION_ALTITUDE_HOLD_DEADBAND_M", "0.35")
+)
+
+MISSION_ALTITUDE_HOLD_MAX_VERTICAL_SPEED_M_S = float(
+    os.getenv("MISSION_ALTITUDE_HOLD_MAX_VERTICAL_SPEED_M_S", "1.0")
+)
+
+MISSION_FORWARD_START_SPEED_M_S = float(
+    os.getenv("MISSION_FORWARD_START_SPEED_M_S", "3.0")
+)
+
+MISSION_FORWARD_RAMP_SECONDS = float(
+    os.getenv("MISSION_FORWARD_RAMP_SECONDS", "8.0")
+)
+
+MISSION_LAUNCH_PAD_CLEAR_RADIUS_M = float(
+    os.getenv("MISSION_LAUNCH_PAD_CLEAR_RADIUS_M", "14.0")
+)
+
+MISSION_LAUNCH_PAD_MAX_SPEED_M_S = float(
+    os.getenv("MISSION_LAUNCH_PAD_MAX_SPEED_M_S", "3.0")
+)
+
+MISSION_POLL_INTERVAL_S = float(
+    os.getenv("MISSION_POLL_INTERVAL_S", "5.0")
+)
+
+MISSION_ARRIVAL_RADIUS_M = float(
+    os.getenv("MISSION_ARRIVAL_RADIUS_M", "3.0")
+)
+
+BACKEND_BASE_URL = os.getenv(
+    "BACKEND_BASE_URL",
+    "http://localhost:8080",
+).rstrip("/")
+
+DEVICE_CODE = os.getenv(
+    "DEVICE_CODE",
+    "DRONE-01",
+)
+
+DRONE_ID = os.getenv(
+    "DRONE_ID",
+    DEVICE_CODE,
+)
+
+MISSION_ID = os.getenv(
+    "MISSION_ID",
+    "MISSION_001",
+)
+
+SIM_WORLD = os.getenv(
+    "SIM_WORLD",
+    "legacy",
+)
+
+DEFAULT_GAZEBO_WORLD = (
+    "forest_monitoring_compact"
+    if SIM_WORLD == "compact"
+    else "forest_monitoring"
+)
+
 CAMERA_TOPIC = os.getenv(
     "GAZEBO_CAMERA_TOPIC",
     f"/world/{DEFAULT_GAZEBO_WORLD}/model/x500_mono_cam_down_0/link/camera_link/sensor/camera/image",
 )
-
 
 class MavsdkAckNoiseFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
@@ -123,6 +243,13 @@ def configure_mavsdk_logging() -> None:
 
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
     logging.getLogger("mavsdk_server").addFilter(MavsdkAckNoiseFilter())
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "on")
 
 
 def backend_url_candidates() -> list[str]:
@@ -410,6 +537,17 @@ async def ensure_offboard_started(drone: System) -> None:
             raise
 
 
+def is_climb_only_command(
+        north_m_s: float,
+        east_m_s: float,
+        down_m_s: float,
+) -> bool:
+    return (
+            math.hypot(north_m_s, east_m_s) <= 1e-6
+            and down_m_s < -1e-6
+    )
+
+
 async def check_readiness(drone: System) -> bool:
     for attempt in range(2):
         try:
@@ -499,7 +637,7 @@ async def set_motion(
         # ============================================================
         # START OFFBOARD CHỈ 1 LẦN CHO MỖI MAVSDK GENERATION
         #
-        # Không được gửi zero setpoint ở mỗi planner loop.
+        # Không được gửi zero setpoint ở mỗi control loop.
         # Reconnect -> manager.generation tăng -> start lại đúng 1 lần.
         # ============================================================
         if (
@@ -624,77 +762,127 @@ async def track_local_position(
 
         except (AttributeError, grpc.aio.AioRpcError):
             await asyncio.sleep(0.5)
-
 async def mission_poll_loop(
-        is_planner_enabled,
+        is_mission_enabled,
         has_active_mission,
         set_active_mission,
 ) -> None:
     last_error_log_s = 0.0
     active_backend_url = None
+    completed_or_dispatched_missions: set[str] = set()
 
     while True:
         await asyncio.sleep(MISSION_POLL_INTERVAL_S)
 
-        if not is_planner_enabled() or has_active_mission():
+        if not is_mission_enabled() or has_active_mission():
             continue
 
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = None
                 last_exc = None
-                candidates = [active_backend_url] if active_backend_url else []
-                candidates.extend(url for url in backend_url_candidates() if url not in candidates)
+
+                candidates = (
+                    [active_backend_url]
+                    if active_backend_url
+                    else []
+                )
+
+                candidates.extend(
+                    url
+                    for url in backend_url_candidates()
+                    if url not in candidates
+                )
 
                 for base_url in candidates:
                     try:
                         response = await client.get(
                             f"{base_url}/api/missions/next",
-                            params={"deviceCode": DEVICE_CODE},
+                            params={
+                                "deviceCode": DEVICE_CODE,
+                            },
                         )
+
                         active_backend_url = base_url
                         break
+
                     except httpx.HTTPError as exc:
                         last_exc = exc
 
                 if response is None:
-                    raise last_exc or httpx.ConnectError("No backend URL candidates available")
+                    raise (
+                            last_exc
+                            or httpx.ConnectError(
+                        "No backend URL candidates available"
+                    )
+                    )
 
             if response.status_code >= 400:
-                raise httpx.HTTPStatusError("mission dispatch failed", request=response.request, response=response)
+                raise httpx.HTTPStatusError(
+                    "mission dispatch failed",
+                    request=response.request,
+                    response=response,
+                )
 
             payload = response.json().get("data") or {}
+
             target_north = payload.get("targetNorthM")
             target_east = payload.get("targetEastM")
             target_altitude = payload.get("targetAltitudeM")
-            mission_code = payload.get("missionCode") or payload.get("id") or "UNKNOWN"
+
+            mission_code = (
+                    payload.get("missionCode")
+                    or payload.get("id")
+                    or "UNKNOWN"
+            )
+
+            if mission_code in completed_or_dispatched_missions:
+                continue
 
             if target_north is None or target_east is None:
-                print(f"[MISSION] Ignored mission without local target: {mission_code}", flush=True)
+                print(
+                    f"[MISSION] Ignored mission without local target: "
+                    f"{mission_code}",
+                    flush=True,
+                )
                 continue
+
+            completed_or_dispatched_missions.add(
+                mission_code
+            )
 
             set_active_mission(
                 {
                     "missionCode": mission_code,
                     "targetNorthM": float(target_north),
                     "targetEastM": float(target_east),
-                    "targetAltitudeM": None if target_altitude is None else float(target_altitude),
+                    "targetAltitudeM": (
+                        None
+                        if target_altitude is None
+                        else float(target_altitude)
+                    ),
                 }
             )
+
             print(
                 f"[MISSION] Dispatched {mission_code}: "
                 f"backend={active_backend_url} "
-                f"N={float(target_north):.1f} E={float(target_east):.1f} "
-                f"ALT={target_altitude if target_altitude is not None else 'hold'}",
+                f"N={float(target_north):.1f} "
+                f"E={float(target_east):.1f} "
+                f"ALT="
+                f"{target_altitude if target_altitude is not None else 'hold'}",
                 flush=True,
             )
+
         except (httpx.HTTPError, ValueError) as exc:
             now = asyncio.get_running_loop().time()
+
             if now - last_error_log_s >= 10.0:
-                print(f"[MISSION] Backend mission poll unavailable: {exc}", flush=True)
+                print(
+                    f"[MISSION] Backend mission poll unavailable: {exc}",
+                    flush=True,
+                )
                 last_error_log_s = now
-
-
 def body_velocity(
         forward: float,
         right: float,
@@ -727,149 +915,128 @@ def should_handle_front_obstacle(state, direction: str) -> bool:
     return is_forward_blocked(state) and is_front_obstacle_direction(direction)
 
 
-def planner_available() -> bool:
-    return PointCloudGateway is not None and LocalPlanner3D is not None and SavedMotion is not None
+def warning_speed_scale(front_distance_m: float) -> float:
+    if front_distance_m <= OBSTACLE_DISTANCE_M:
+        return 0.0
+
+    warning_span = max(WARNING_DISTANCE_M - OBSTACLE_DISTANCE_M, 0.1)
+    ratio = (front_distance_m - OBSTACLE_DISTANCE_M) / warning_span
+    ratio = max(0.0, min(1.0, ratio))
+
+    cruise_speed = max(MISSION_CRUISE_SPEED_M_S, 0.1)
+    min_scale = max(0.0, min(1.0, MISSION_WARNING_MIN_SPEED_M_S / cruise_speed))
+    return min_scale + ratio * (1.0 - min_scale)
 
 
-async def local_planner_loop(
-        planner,
-        pointcloud,
+def scale_horizontal_motion(saved_motion: SavedMotion, scale: float) -> SavedMotion:
+    return SavedMotion(
+        forward_m_s=saved_motion.forward_m_s * scale,
+        right_m_s=saved_motion.right_m_s * scale,
+        down_m_s=saved_motion.down_m_s,
+        north_m_s=saved_motion.north_m_s * scale,
+        east_m_s=saved_motion.east_m_s * scale,
+        yaw_deg=saved_motion.yaw_deg,
+    )
+
+
+async def mission_motion_loop(
         manager: MavsdkConnectionManager,
-        get_yaw,
         get_saved_motion,
-        has_manual_motion,
-        is_planner_enabled,
+        get_yaw,
+        is_mission_enabled,
         get_motion_owner,
-        set_motion_owner,
-        apply_rejoined_motion,
-        abort_active_mission,
-        disable_planner,
-):
-    last_snapshot_seq = None
-    last_log_reason = None
+        get_safety_speed_scale,
+        set_avoidance_drone,
+) -> None:
+    last_command_log_s = 0.0
+    unavailable_reported = False
 
     while True:
-        await asyncio.sleep(PLANNER_LOOP_INTERVAL_S)
+        await asyncio.sleep(SAFETY_POLL_INTERVAL_S)
 
-        if not is_planner_enabled():
-            if planner.is_active() and get_motion_owner() == MotionOwner.PLANNER:
-                set_motion_owner(MotionOwner.MANUAL)
-            planner.cancel()
+        if not is_mission_enabled():
             continue
 
         if get_motion_owner() == MotionOwner.EMERGENCY:
             continue
 
-        snapshot = pointcloud.snapshot()
-        if snapshot is None:
-            if last_log_reason != "waiting":
-                print("[PLANNER] Waiting for /lidar_3d point cloud", flush=True)
-                last_log_reason = "waiting"
-            continue
-
-        if snapshot.stamp_seq == last_snapshot_seq and not planner.is_active():
-            continue
-        last_snapshot_seq = snapshot.stamp_seq
-
         saved_motion = get_saved_motion()
         if saved_motion is None:
             continue
 
-        planner.begin(saved_motion)
-        result = planner.update(snapshot.points_body, get_yaw())
+        saved_motion = scale_horizontal_motion(
+            saved_motion,
+            get_safety_speed_scale(),
+        )
 
-        if result.reason != last_log_reason:
-            print(f"[PLANNER] {result.state.value}: {result.reason}", flush=True)
-            last_log_reason = result.reason
-
-        # ============================================================
-        # PATH CLEAR -> BAY THẲNG TỚI MISSION GOAL
-        # Planner chỉ takeover khi thật sự cần né vật cản.
-        # ============================================================
-        if result.reason == "straight path clear":
-            planner.cancel()
-
+        try:
             active_drone = await set_motion(
                 manager,
                 saved_motion.north_m_s,
                 saved_motion.east_m_s,
                 saved_motion.down_m_s,
-                saved_motion.yaw_deg,
-            )
-
-            if active_drone is None:
-                continue
-
-            set_motion_owner(MotionOwner.MANUAL)
-            continue
-
-        if result.state in {PlannerState.RECOVERY, PlannerState.FAILSAFE}:
-            await set_motion(
-                manager,
-                0.0,
-                0.0,
-                0.0,
                 get_yaw(),
             )
+            if active_drone is not None:
+                set_avoidance_drone(active_drone)
 
-            planner.cancel()
-            set_motion_owner(MotionOwner.PLANNER)
+            if unavailable_reported:
+                print("[MISSION] MAVSDK control restored", flush=True)
+                unavailable_reported = False
 
-            print(
-                "[PLANNER] No safe local path -> HOVER, keep mission and retry",
-                flush=True,
-            )
+            now_s = asyncio.get_running_loop().time()
+            if now_s - last_command_log_s >= 2.0:
+                last_command_log_s = now_s
+                print(
+                    f"[MISSION] SIMPLE CMD "
+                    f"N={saved_motion.north_m_s:.2f} "
+                    f"E={saved_motion.east_m_s:.2f} "
+                    f"D={saved_motion.down_m_s:.2f} "
+                    f"YAW_HOLD={get_yaw():.0f}",
+                    flush=True,
+                )
 
-            continue
+        except OffboardError as exc:
+            print_command_denied("mission motion", exc)
+        except grpc.aio.AioRpcError as exc:
+            if is_grpc_unavailable(exc):
+                if not unavailable_reported:
+                    print("[MISSION] MAVSDK unavailable - reconnecting")
+                    unavailable_reported = True
+                await manager.reconnect()
+            else:
+                print_mavsdk_unavailable("mission motion", exc)
 
-        if result.command is None:
-            if not planner.is_active():
-                set_motion_owner(MotionOwner.MANUAL)
-            continue
-
-        set_motion_owner(MotionOwner.PLANNER)
-        print(
-            "[PLANNER-CMD] "
-            f"N={result.command.north_m_s:.2f} "
-            f"E={result.command.east_m_s:.2f} "
-            f"D={result.command.down_m_s:.2f} "
-            f"YAW={result.command.yaw_deg:.0f}",
-            flush=True,
-        )
-        active_drone = await set_motion(
-            manager,
-            result.command.north_m_s,
-            result.command.east_m_s,
-            result.command.down_m_s,
-            result.command.yaw_deg,
-        )
-        if active_drone is None:
-            continue
-
-        if result.reason == "original route restored":
-            apply_rejoined_motion(saved_motion)
-            set_motion_owner(MotionOwner.MANUAL)
-            print("[PLANNER] Original route restored", flush=True)
 
 async def obstacle_safety_loop(
         avoidance,
         lidar,
         manager: MavsdkConnectionManager,
         get_yaw,
+        get_saved_motion,
         is_safety_sensor_enabled,
-        is_planner_enabled,
         get_motion_owner,
         set_motion_owner,
         stop_manual_motion,
+        set_safety_speed_scale,
+        is_launch_pad_clear,
 ):
     last_status = "CLEAR"
     unavailable_reported = False
     ready_reported = False
     mavsdk_unavailable_reported = False
+    last_warning_log_s = 0.0
 
     while True:
         if not is_safety_sensor_enabled():
             last_status = "CLEAR"
+            set_safety_speed_scale(1.0)
+            await asyncio.sleep(SAFETY_POLL_INTERVAL_S)
+            continue
+
+        if not is_launch_pad_clear():
+            last_status = "CLEAR"
+            set_safety_speed_scale(1.0)
             await asyncio.sleep(SAFETY_POLL_INTERVAL_S)
             continue
 
@@ -887,12 +1054,10 @@ async def obstacle_safety_loop(
             print("[SAFETY] 2D LiDAR emergency guard ready")
             ready_reported = True
 
-        front_emergency = (
-            status == "EMERGENCY"
-            and should_handle_front_obstacle(state, direction)
-        )
+        front_blocked = should_handle_front_obstacle(state, direction)
 
-        if front_emergency and get_motion_owner() != MotionOwner.EMERGENCY:
+        if front_blocked and get_motion_owner() != MotionOwner.EMERGENCY:
+            set_safety_speed_scale(0.0)
             set_motion_owner(MotionOwner.EMERGENCY)
             avoidance.set_yaw(get_yaw())
             stop_manual_motion(clear_saved=False)
@@ -908,7 +1073,7 @@ async def obstacle_safety_loop(
                     mavsdk_unavailable_reported = False
 
                 print(
-                    f"[SAFETY] EMERGENCY direction={direction} "
+                    f"[SAFETY] OBSTACLE_STOP status={status} direction={direction} "
                     f"front={state.front:.2f}m -> HOVER",
                     flush=True,
                 )
@@ -927,10 +1092,47 @@ async def obstacle_safety_loop(
             except Exception as exc:
                 print(f"[SAFETY] Hover failed: {exc}")
 
+        elif status == "WARNING" and direction == "FRONT":
+            scale = warning_speed_scale(state.front)
+            set_safety_speed_scale(scale)
+            saved_motion = get_saved_motion()
+
+            if saved_motion is not None and get_motion_owner() == MotionOwner.MANUAL:
+                slowed = scale_horizontal_motion(saved_motion, scale)
+                try:
+                    new_drone = await set_motion(
+                        manager,
+                        slowed.north_m_s,
+                        slowed.east_m_s,
+                        slowed.down_m_s,
+                        get_yaw(),
+                    )
+                    if new_drone is not None:
+                        avoidance.set_drone(new_drone)
+                except grpc.aio.AioRpcError as exc:
+                    if is_grpc_unavailable(exc):
+                        if not mavsdk_unavailable_reported:
+                            print("[SAFETY] MAVSDK unavailable - cannot slow down")
+                            mavsdk_unavailable_reported = True
+                        await manager.reconnect()
+                    else:
+                        print(f"[SAFETY] Slowdown failed: {exc}")
+                except Exception as exc:
+                    print(f"[SAFETY] Slowdown failed: {exc}")
+
+            now_s = asyncio.get_running_loop().time()
+            if now_s - last_warning_log_s >= 1.0:
+                print(
+                    f"[SAFETY] WARNING front={state.front:.2f}m "
+                    f"-> smooth slowdown scale={scale:.2f}",
+                    flush=True,
+                )
+                last_warning_log_s = now_s
+
         if status == "CLEAR":
+            set_safety_speed_scale(1.0)
             if get_motion_owner() == MotionOwner.EMERGENCY:
-                next_owner = MotionOwner.PLANNER if is_planner_enabled() else MotionOwner.MANUAL
-                set_motion_owner(next_owner)
+                set_motion_owner(MotionOwner.MANUAL)
             if last_status != "CLEAR":
                 print("[SAFETY] Path clear", flush=True)
 
@@ -947,7 +1149,8 @@ async def main() -> None:
     print()
     print("Keys: t takeoff | w forward | s back | a left | d right")
     print("      f up | v down | q yaw left | e yaw right | k stop")
-    print("      o toggle safety sensor | i toggle 3D planner")
+    print("      o toggle safety sensor")
+    print("      1 speed up 200m/s | 2 speed down 200m/s")
     print("      p photo | l land | x exit")
     print()
     print("Press one move key once to keep moving. Press k to stop/hover.")
@@ -974,25 +1177,29 @@ async def main() -> None:
     current_north_m_s = 0.0
     current_east_m_s = 0.0
     current_down_m_s = 0.0
+    control_speed_m_s = MOVE_SPEED_M_S
 
     safety_task = None
-    planner_task = None
-    mission_task = None
     position_task = None
     avoidance = None
     lidar = None
-    pointcloud = None
-    local_planner = None
-    safety_sensor_enabled = False
-    local_planner_enabled = False
+    safety_sensor_enabled = (
+    os.getenv("SAFETY_SENSOR_ENABLED", "true").strip().lower()
+        in {"1", "true", "yes", "on"}
+    )
+
     motion_owner = MotionOwner.MANUAL
     current_local_north_m = 0.0
     current_local_east_m = 0.0
     current_local_down_m = 0.0
     local_position_ready = False
-    active_mission = None
-    print("[SAFETY] Sensor default -> OFF (press o to enable)", flush=True)
-    print("[PLANNER] 3D planner default -> OFF (press i to enable)", flush=True)
+    safety_speed_scale = 1.0
+    print(
+        f"[SAFETY] Sensor default -> "
+        f"{'ON' if safety_sensor_enabled else 'OFF'} "
+        f"(press o to toggle)",
+        flush=True,
+    )
 
     def has_manual_motion() -> bool:
         return (
@@ -1010,6 +1217,10 @@ async def main() -> None:
     def get_motion_owner():
         return motion_owner
 
+    def set_safety_speed_scale(scale: float) -> None:
+        nonlocal safety_speed_scale
+        safety_speed_scale = max(0.0, min(1.0, scale))
+
     def update_local_position(north_m: float, east_m: float, down_m: float) -> None:
         nonlocal current_local_north_m
         nonlocal current_local_east_m
@@ -1020,223 +1231,20 @@ async def main() -> None:
         current_local_down_m = down_m
         local_position_ready = True
 
-    def has_active_mission() -> bool:
-        return active_mission is not None
-
-    def set_active_mission(mission) -> None:
-        nonlocal active_mission
-        active_mission = mission
-
-    def abort_active_mission() -> None:
-        nonlocal active_mission
-
-        if active_mission is not None:
-            print(
-                f"[MISSION] Aborted {active_mission['missionCode']}",
-                flush=True,
-            )
-
-        active_mission = None
-
-    async def complete_active_mission() -> None:
-        nonlocal active_mission
-
-        if active_mission is None:
-            return
-
-        mission_code = active_mission["missionCode"]
-
-        await set_motion(
-            connection_manager,
-            0.0,
-            0.0,
-            0.0,
-            current_yaw_deg,
+    def launch_pad_clear() -> bool:
+        if not local_position_ready:
+            return True
+        launch_distance = math.hypot(
+            current_local_north_m,
+            current_local_east_m,
         )
+        return launch_distance >= MISSION_LAUNCH_PAD_CLEAR_RADIUS_M
 
-        print(
-            f"[MISSION] ARRIVED {mission_code} -> HOVER",
-            flush=True,
-        )
-
-        active_mission = None
-
-        if local_planner is not None:
-            local_planner.cancel()
-
+    def force_manual_control() -> None:
         set_motion_owner(MotionOwner.MANUAL)
-
-    def disable_planner() -> None:
-        nonlocal local_planner_enabled
-        local_planner_enabled = False
 
 
     def current_saved_motion():
-        nonlocal active_mission
-        nonlocal current_yaw_deg
-
-        if active_mission is not None:
-            if not local_position_ready:
-                return None
-
-            target_north = float(active_mission["targetNorthM"])
-            target_east = float(active_mission["targetEastM"])
-            target_altitude = active_mission.get("targetAltitudeM")
-
-            delta_north = target_north - current_local_north_m
-            delta_east = target_east - current_local_east_m
-
-            horizontal_distance = math.hypot(
-                delta_north,
-                delta_east,
-            )
-
-            current_altitude = -current_local_down_m
-
-            altitude_error = 0.0
-            if target_altitude is not None:
-                altitude_error = (
-                        float(target_altitude) - current_altitude
-                )
-
-            horizontal_arrived = (
-                    horizontal_distance <= MISSION_ARRIVAL_RADIUS_M
-            )
-
-            vertical_arrived = (
-                    target_altitude is None
-                    or abs(altitude_error) <= 1.0
-            )
-
-            # ============================================================
-            # ARRIVED
-            # ============================================================
-            if horizontal_arrived and vertical_arrived:
-                if not active_mission.get("_completing", False):
-                    active_mission["_completing"] = True
-
-                    print(
-                        f"[MISSION] Arrived {active_mission['missionCode']} "
-                        f"h_error={horizontal_distance:.2f}m "
-                        f"v_error={abs(altitude_error):.2f}m",
-                        flush=True,
-                    )
-
-                    asyncio.create_task(
-                        complete_active_mission()
-                    )
-
-                return None
-
-            # ============================================================
-            # HORIZONTAL NAVIGATION
-            #
-            # Xa đích  -> tốc độ tối đa.
-            # Gần đích -> giảm tốc để không bay overshoot.
-            # ============================================================
-            north_m_s = 0.0
-            east_m_s = 0.0
-
-            # ============================================================
-            # MISSION PHASE 1 -> CLIMB FIRST
-            # ============================================================
-            # Chỉ climb thẳng đứng lúc mới cất cánh.
-            # Đạt khoảng 3m thì bắt đầu FORWARD tới backend target,
-            # altitude controller bên dưới vẫn tiếp tục đưa drone lên targetAltitudeM.
-            MIN_FORWARD_ALTITUDE_M = 3.0
-
-            climbing_first = (
-                    target_altitude is not None
-                    and current_altitude < MIN_FORWARD_ALTITUDE_M
-            )
-
-            if climbing_first:
-                print(
-                    f"[MISSION] CLIMB FIRST -> alt_error={altitude_error:.2f}m",
-                    flush=True,
-                )
-
-            # ============================================================
-            # MISSION PHASE 2 -> FORWARD TO BACKEND REQUEST
-            # ============================================================
-            elif (
-                    not horizontal_arrived
-                    and horizontal_distance > 1e-6
-            ):
-                horizontal_speed = min(
-                    PLANNER_AUTO_FORWARD_SPEED_M_S,
-                    max(
-                        0.6,
-                        horizontal_distance * 0.35,
-                        ),
-                )
-
-                scale = horizontal_speed / horizontal_distance
-
-                north_m_s = delta_north * scale
-                east_m_s = delta_east * scale
-
-                print(
-                    f"[MISSION] FORWARD TO REQUEST -> "
-                    f"N={target_north:.1f} "
-                    f"E={target_east:.1f} "
-                    f"distance={horizontal_distance:.1f}m",
-                    flush=True,
-                )
-
-            # ============================================================
-            # ALTITUDE NAVIGATION
-            #
-            # PX4 NED:
-            #   down < 0 = bay lên
-            #   down > 0 = bay xuống
-            # ============================================================
-            down_m_s = 0.0
-
-            if not vertical_arrived:
-                vertical_speed = min(
-                    abs(altitude_error) * 0.4,
-                    1.0,
-                    )
-
-                down_m_s = -math.copysign(
-                    vertical_speed,
-                    altitude_error,
-                )
-
-            # ============================================================
-            # YAW THEO HƯỚNG ĐÍCH
-            # ============================================================
-            if horizontal_distance > MISSION_ARRIVAL_RADIUS_M:
-                heading_deg = (
-                        math.degrees(
-                            math.atan2(
-                                delta_east,
-                                delta_north,
-                            )
-                        )
-                        % 360.0
-                )
-
-                current_yaw_deg = heading_deg
-            else:
-                heading_deg = current_yaw_deg
-
-            return SavedMotion(
-                forward_m_s=math.hypot(
-                    north_m_s,
-                    east_m_s,
-                ),
-                right_m_s=0.0,
-                down_m_s=down_m_s,
-                north_m_s=north_m_s,
-                east_m_s=east_m_s,
-                yaw_deg=heading_deg,
-            )
-
-        # ================================================================
-        # MANUAL MODE
-        # ================================================================
         if not has_manual_motion():
             return None
 
@@ -1248,21 +1256,6 @@ async def main() -> None:
             east_m_s=current_east_m_s,
             yaw_deg=current_yaw_deg,
         )
-    def apply_rejoined_motion(saved_motion) -> None:
-        nonlocal current_forward_m_s
-        nonlocal current_right_m_s
-        nonlocal current_north_m_s
-        nonlocal current_east_m_s
-        nonlocal current_down_m_s
-        nonlocal current_yaw_deg
-
-        current_forward_m_s = saved_motion.forward_m_s
-        current_right_m_s = saved_motion.right_m_s
-        current_north_m_s = saved_motion.north_m_s
-        current_east_m_s = saved_motion.east_m_s
-        current_down_m_s = saved_motion.down_m_s
-        current_yaw_deg = saved_motion.yaw_deg
-
     def stop_manual_motion(clear_saved: bool = True) -> None:
         nonlocal current_forward_m_s
         nonlocal current_right_m_s
@@ -1276,57 +1269,58 @@ async def main() -> None:
         current_east_m_s = 0.0
         current_down_m_s = 0.0
 
-    async def resume_previous_motion():
-        nonlocal current_forward_m_s
-        nonlocal current_right_m_s
-        nonlocal current_north_m_s
-        nonlocal current_east_m_s
-        nonlocal current_down_m_s
-        nonlocal current_yaw_deg
+    def current_mission_debug():
+        if active_mission is None or not local_position_ready:
+            return {
+                "missionCode": "NONE",
+                "target": "NONE",
+                "position": "UNKNOWN",
+                "remaining": "UNKNOWN",
+                "altitude": "UNKNOWN",
+                "altitude_error": "UNKNOWN",
+                "launch_distance": "UNKNOWN",
+            }
 
-        if (
-                current_forward_m_s == 0.0
-                and current_right_m_s == 0.0
-                and current_down_m_s == 0.0
-        ):
-            print(
-                "[RESUME] No previous movement -> remain HOVER",
-                flush=True,
-            )
-            return
-
-        current_north_m_s, current_east_m_s = body_velocity(
-            current_forward_m_s,
-            current_right_m_s,
-            current_yaw_deg,
+        target_north = float(active_mission["targetNorthM"])
+        target_east = float(active_mission["targetEastM"])
+        target_altitude = active_mission.get("targetAltitudeM")
+        current_altitude = abs(current_local_down_m)
+        horizontal_remaining = math.hypot(
+            target_north - current_local_north_m,
+            target_east - current_local_east_m,
+        )
+        launch_distance = math.hypot(
+            current_local_north_m - float(active_mission.get("_launch_north_m", current_local_north_m)),
+            current_local_east_m - float(active_mission.get("_launch_east_m", current_local_east_m)),
         )
 
-        print(
-            "[RESUME] ========================================\n"
-            "[RESUME] Avoidance complete -> resume movement\n"
-            f"[RESUME] FORWARD : {current_forward_m_s:.2f} m/s\n"
-            f"[RESUME] RIGHT   : {current_right_m_s:.2f} m/s\n"
-            f"[RESUME] DOWN    : {current_down_m_s:.2f} m/s\n"
-            f"[RESUME] YAW     : {current_yaw_deg:.2f} deg\n"
-            "[RESUME] ========================================",
-            flush=True,
-        )
+        if target_altitude is None:
+            altitude_error = "hold"
+            target_altitude_text = "hold"
+        else:
+            altitude_error = f"{float(target_altitude) - current_altitude:.2f}m"
+            target_altitude_text = f"{float(target_altitude):.1f}m"
 
-        active_drone = await set_motion(
-            connection_manager,
-            current_north_m_s,
-            current_east_m_s,
-            current_down_m_s,
-            current_yaw_deg,
-        )
-
-        if active_drone is not None and avoidance is not None:
-            avoidance.set_drone(active_drone)
-
-        print(
-            "[RESUME] Previous movement resumed",
-            flush=True,
-        )
+        return {
+            "missionCode": active_mission.get("missionCode", "UNKNOWN"),
+            "phase": active_mission.get("_phase", "UNKNOWN"),
+            "target": (
+                f"N={target_north:.1f} E={target_east:.1f} "
+                f"ALT={target_altitude_text}"
+            ),
+            "position": (
+                f"N={current_local_north_m:.1f} "
+                f"E={current_local_east_m:.1f} "
+                f"D={current_local_down_m:.1f}"
+            ),
+            "remaining": f"{horizontal_remaining:.1f}m horizontal",
+            "altitude": f"{current_altitude:.1f}m",
+            "altitude_error": altitude_error,
+            "launch_distance": (
+                f"{launch_distance:.1f}/"
+                f"{MISSION_LAUNCH_PAD_CLEAR_RADIUS_M:.1f}m"
+            ),
+        }
 
     # ================================================================
     # START LIDAR / SAFETY
@@ -1356,57 +1350,67 @@ async def main() -> None:
                 lidar,
                 connection_manager,
                 lambda: current_yaw_deg,
+                current_saved_motion,
                 lambda: safety_sensor_enabled,
-                lambda: local_planner_enabled,
                 get_motion_owner,
                 set_motion_owner,
                 stop_manual_motion,
+                set_safety_speed_scale,
+                launch_pad_clear,
             )
         )
-
-    mission_task = asyncio.create_task(
-        mission_poll_loop(
-            lambda: local_planner_enabled,
-            has_active_mission,
-            set_active_mission,
-        )
-    )
-
-    if planner_available():
-        pointcloud = PointCloudGateway()
-        if pointcloud.start():
-            local_planner = LocalPlanner3D()
-            planner_task = asyncio.create_task(
-                local_planner_loop(
-                    local_planner,
-                    pointcloud,
-                    connection_manager,
-                    lambda: current_yaw_deg,
-                    current_saved_motion,
-                    has_manual_motion,
-                    lambda: local_planner_enabled,
-                    get_motion_owner,
-                    set_motion_owner,
-                    apply_rejoined_motion,
-                    abort_active_mission,
-                    disable_planner,
-                )
-            )
-        else:
-            print("[PLANNER] 3D point cloud unavailable")
-    else:
-        print("[PLANNER] 3D planner unavailable")
-
 
     while True:
 
         key = await asyncio.to_thread(read_key)
 
+        if (
+                motion_owner != MotionOwner.MANUAL
+                and not safety_sensor_enabled
+        ):
+            force_manual_control()
+
         if key in {"w", "a", "s", "d", "f", "v", "q", "e"} and motion_owner != MotionOwner.MANUAL:
-            print("[CONTROL] Autonomous avoidance active", flush=True)
+            print("[CONTROL] Obstacle stop active - hover until path is clear", flush=True)
             continue
 
-        if key == "t":
+        if key in {"1", "2"}:
+            delta = SPEED_ADJUST_STEP_M_S if key == "1" else -SPEED_ADJUST_STEP_M_S
+            control_speed_m_s = max(0.0, control_speed_m_s + delta)
+            mission_cruise_speed_m_s = max(0.0, mission_cruise_speed_m_s + delta)
+            print(
+                f"[SPEED] manual={control_speed_m_s:.1f}m/s "
+                f"mission={mission_cruise_speed_m_s:.1f}m/s "
+                f"step={SPEED_ADJUST_STEP_M_S:.1f}m/s",
+                flush=True,
+            )
+
+            body_horizontal = math.hypot(current_forward_m_s, current_right_m_s)
+            if body_horizontal > 1e-6 and motion_owner == MotionOwner.MANUAL:
+                scale = control_speed_m_s / body_horizontal
+                current_forward_m_s *= scale
+                current_right_m_s *= scale
+                current_north_m_s, current_east_m_s = body_velocity(
+                    current_forward_m_s,
+                    current_right_m_s,
+                    current_yaw_deg,
+                )
+                try:
+                    active_drone = await set_motion(
+                        connection_manager,
+                        current_north_m_s,
+                        current_east_m_s,
+                        current_down_m_s,
+                        current_yaw_deg,
+                    )
+                    if active_drone is not None and avoidance is not None:
+                        avoidance.set_drone(active_drone)
+                except OffboardError as exc:
+                    print_command_denied("speed adjust", exc)
+                except grpc.aio.AioRpcError as exc:
+                    print_mavsdk_unavailable("speed adjust", exc)
+
+        elif key == "t":
             print("[CMD] arm + takeoff")
             active_drone = await safe_arm(connection_manager)
             if active_drone is not None:
@@ -1437,7 +1441,7 @@ async def main() -> None:
                                 print_mavsdk_unavailable("takeoff retry", retry_exc)
         elif key == "w":
             print("[CMD] forward")
-            current_forward_m_s = MOVE_SPEED_M_S
+            current_forward_m_s = control_speed_m_s
             current_right_m_s = 0.0
             current_north_m_s, current_east_m_s = body_velocity(
                 current_forward_m_s, current_right_m_s, current_yaw_deg
@@ -1453,7 +1457,7 @@ async def main() -> None:
                 print_mavsdk_unavailable("forward", exc)
         elif key == "s":
             print("[CMD] backward")
-            current_forward_m_s = -MOVE_SPEED_M_S
+            current_forward_m_s = -control_speed_m_s
             current_right_m_s = 0.0
             current_north_m_s, current_east_m_s = body_velocity(
                 current_forward_m_s, current_right_m_s, current_yaw_deg
@@ -1470,7 +1474,7 @@ async def main() -> None:
         elif key == "a":
             print("[CMD] left")
             current_forward_m_s = 0.0
-            current_right_m_s = -MOVE_SPEED_M_S
+            current_right_m_s = -control_speed_m_s
             current_north_m_s, current_east_m_s = body_velocity(
                 current_forward_m_s, current_right_m_s, current_yaw_deg
             )
@@ -1486,7 +1490,7 @@ async def main() -> None:
         elif key == "d":
             print("[CMD] right")
             current_forward_m_s = 0.0
-            current_right_m_s = MOVE_SPEED_M_S
+            current_right_m_s = control_speed_m_s
             current_north_m_s, current_east_m_s = body_velocity(
                 current_forward_m_s, current_right_m_s, current_yaw_deg
             )
@@ -1566,8 +1570,7 @@ async def main() -> None:
                 print_mavsdk_unavailable("yaw right", exc)
         elif key in ("k", "h"):
             print("[CMD] stop / hover")
-            if local_planner is not None:
-                local_planner.cancel()
+            active_mission = None
             set_motion_owner(MotionOwner.MANUAL)
             stop_manual_motion()
             try:
@@ -1578,12 +1581,10 @@ async def main() -> None:
                 print_command_denied("stop/hover", exc)
             except grpc.aio.AioRpcError as exc:
                 print_mavsdk_unavailable("stop/hover", exc)
-        elif key == "i":
-            local_planner_enabled = not local_planner_enabled
-            state = "ON" if local_planner_enabled else "OFF"
-            print(f"[PLANNER] 3D planner toggle -> {state}", flush=True)
         elif key == "o":
             safety_sensor_enabled = not safety_sensor_enabled
+            if not safety_sensor_enabled and motion_owner == MotionOwner.EMERGENCY:
+                force_manual_control()
             state = "ON" if safety_sensor_enabled else "OFF"
             print(f"[SAFETY] Sensor toggle -> {state}", flush=True)
         elif key == "p":
