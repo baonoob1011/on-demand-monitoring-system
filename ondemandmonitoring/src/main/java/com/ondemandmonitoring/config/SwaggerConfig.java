@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.common.config;
+package com.ondemandmonitoring.config;
 
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Components;

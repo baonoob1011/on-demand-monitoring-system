@@ -2,7 +2,7 @@ spring:
   application:
     name: ${SPRING_APPLICATION_NAME}
   config:
-    import: optional:file:.env[.properties],optional:file:ondemandmonitoring/.env[.properties]
+    import: optional:file:.env[.properties],optional:file:../.env[.properties],optional:file:ondemandmonitoring/.env[.properties]
   datasource:
     url: ${SPRING_DATASOURCE_URL}
     username: ${SPRING_DATASOURCE_USERNAME}
@@ -22,6 +22,12 @@ spring:
       max-file-size: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE}
       max-request-size: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE}
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${COGNITO_ISSUER_URI:}
+
 mybatis:
   mapper-locations: ${MYBATIS_MAPPER_LOCATIONS}
   type-aliases-package: ${MYBATIS_TYPE_ALIASES_PACKAGE}
@@ -36,8 +42,21 @@ aws:
   s3:
     bucket: ${AWS_S3_BUCKET}
     prefix: ${AWS_S3_PREFIX}
+  cognito:
+    region: ${AWS__COGNITO_REGION}
+    user-pool-id: ${AWS_COGNITO_USER_POOL_ID:}
+    client-id: ${AWS_COGNITO_CLIENT_ID:}
+    client-secret: ${AWS_COGNITO_CLIENT_SECRET:}
+    domain: ${AWS_COGNITO_DOMAIN:}
 
-
+auth:
+  outbox:
+    fixed-delay-ms: ${AUTH_OUTBOX_FIXED_DELAY_MS:30000}
+    max-attempts: ${AUTH_OUTBOX_MAX_ATTEMPTS:8}
+  refresh-token-cookie:
+    secure: ${AUTH_REFRESH_COOKIE_SECURE:false}
+    max-age-seconds: ${AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS:2592000}
+    same-site: ${AUTH_REFRESH_COOKIE_SAME_SITE:Lax}
 
 springdoc:
   api-docs:
