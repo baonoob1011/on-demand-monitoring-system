@@ -1,4 +1,4 @@
-.env
+ondemandmonitoring/.env
 *.env
 *.env.*
 !.env.example
