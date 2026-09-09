@@ -3,7 +3,7 @@ set -euo pipefail
 
 PROJECT_PATH="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system"
 SENSOR_DIR="$PROJECT_PATH/drone/obstacle_avoidance"
-ENV_FILE="$PROJECT_PATH/drone/.env.example"
+ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
 LIDAR_TOPIC="${LIDAR_TOPIC:-/lidar}"
 
 if [ -f "$ENV_FILE" ]; then

@@ -7,6 +7,7 @@ REPO_CONTROLLER="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-sy
 ENV_FILE="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/ondemandmonitoring/.env"
 cd ~/drone-controller
 cp "$REPO_CONTROLLER/telemetry_sender.py" telemetry_sender.py
+cp "$REPO_CONTROLLER/sitl_battery_sim.py" sitl_battery_sim.py
 
 if [ -f "$ENV_FILE" ]; then
     set -a

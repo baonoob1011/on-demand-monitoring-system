@@ -5,6 +5,7 @@ import importlib
 import math
 import os
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -17,6 +18,12 @@ import numpy as np
 from dotenv import load_dotenv
 from mavsdk import System
 
+from sitl_battery_sim import (
+    SitlBatterySimulator,
+    battery_level,
+    normalize_real_battery_percent,
+)
+
 GZ_PYTHON_DIST_PACKAGES = "/usr/lib/python3/dist-packages"
 if GZ_PYTHON_DIST_PACKAGES not in sys.path:
     sys.path.append(GZ_PYTHON_DIST_PACKAGES)
@@ -24,7 +31,7 @@ if GZ_PYTHON_DIST_PACKAGES not in sys.path:
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ENV_FILE = PROJECT_ROOT / "ondemandmonitoring" / ".env"
-load_dotenv(ENV_FILE)
+load_dotenv(ENV_FILE, override=True)
 
 DEFAULT_WORLD = "forest_monitoring_compact"
 DEFAULT_MODEL = "x500_mono_cam_down_0"
@@ -32,12 +39,38 @@ DEFAULT_CAMERA_TOPIC = (
     f"/world/{DEFAULT_WORLD}/model/{DEFAULT_MODEL}/link/camera_link/sensor/camera/image"
 )
 
+WORLD_NAME = os.getenv("GZ_WORLD_NAME", DEFAULT_WORLD)
+MODEL_NAME = os.getenv("GZ_MODEL_NAME", DEFAULT_MODEL)
 CAMERA_TOPIC = os.getenv("GAZEBO_CAMERA_TOPIC", DEFAULT_CAMERA_TOPIC)
 MAVSDK_GRPC_PORT = int(os.getenv("MAVSDK_CONTROL_GRPC_PORT", "50052"))
 MAVSDK_SYSID = int(os.getenv("MAVSDK_CONTROL_SYSID", "245"))
 MAVSDK_COMPID = int(os.getenv("MAVSDK_CONTROL_COMPID", "191"))
 WINDOW_NAME = os.getenv("DOWNWARD_CAMERA_WINDOW_TITLE", "Downward Camera")
 STALE_AFTER_S = float(os.getenv("CAMERA_HUD_TELEMETRY_STALE_AFTER_S", "3.0"))
+CAMERA_DEFAULT_VIEW = os.getenv("CAMERA_DEFAULT_VIEW", "DOWN").strip().upper()
+CAMERA_TOGGLE_DEBOUNCE_S = float(os.getenv("CAMERA_TOGGLE_DEBOUNCE_S", "0.35"))
+battery_sim = SitlBatterySimulator()
+
+
+def camera_switch_button_rect(width: int, height: int) -> tuple[int, int, int, int]:
+    scale = max(0.55, min(width, height) / 720.0)
+    font_scale = 0.55 * scale
+    margin = max(12, int(18 * scale))
+    pad = max(10, int(14 * scale))
+    hint = "[C] SWITCH CAMERA"
+    hint_scale = font_scale * 0.95
+    hint_thickness = max(1, int(2 * scale))
+    (hint_w, hint_h), _baseline = cv2.getTextSize(
+        hint,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        hint_scale,
+        hint_thickness,
+    )
+    x2 = width - margin
+    x1 = max(margin, x2 - hint_w - pad * 2)
+    y1 = margin
+    y2 = y1 + hint_h + pad * 2
+    return x1, y1, x2, y2
 
 
 @dataclass
@@ -50,6 +83,11 @@ class DroneTelemetryState:
     yaw_deg: float | None = None
     speed_m_s: float | None = None
     battery_percent: float | None = None
+    battery_level: str | None = None
+    camera_mode: str = CAMERA_DEFAULT_VIEW if CAMERA_DEFAULT_VIEW in {"DOWN", "FRONT"} else "DOWN"
+    velocity_north_m_s: float | None = None
+    velocity_east_m_s: float | None = None
+    velocity_down_m_s: float | None = None
     satellites: int | None = None
     flight_mode: str | None = None
     armed: bool | None = None
@@ -75,6 +113,11 @@ class DroneTelemetryState:
                 yaw_deg=self.yaw_deg,
                 speed_m_s=self.speed_m_s,
                 battery_percent=self.battery_percent,
+                battery_level=self.battery_level,
+                camera_mode=self.camera_mode,
+                velocity_north_m_s=self.velocity_north_m_s,
+                velocity_east_m_s=self.velocity_east_m_s,
+                velocity_down_m_s=self.velocity_down_m_s,
                 satellites=self.satellites,
                 flight_mode=self.flight_mode,
                 armed=self.armed,
@@ -116,6 +159,78 @@ class CameraFrameStore:
             return frame, self.width, self.height, self.pixel_format, self.fps
 
 
+class GazeboCameraOrientationController:
+    def __init__(self, world_name: str, model_name: str) -> None:
+        self.world_name = world_name
+        self.model_name = model_name
+        default_topic = f"/model/{self.model_name}/command/camera_pitch"
+        self.command_topic = os.getenv("GAZEBO_CAMERA_PITCH_TOPIC", default_topic)
+        self.front_position_rad = float(os.getenv("CAMERA_FRONT_JOINT_POSITION_RAD", "-1.57079632679"))
+        self.down_position_rad = float(os.getenv("CAMERA_DOWN_JOINT_POSITION_RAD", "0.0"))
+        self.current_mode = CAMERA_DEFAULT_VIEW if CAMERA_DEFAULT_VIEW in {"DOWN", "FRONT"} else "DOWN"
+        self._last_toggle_s = 0.0
+
+    def toggle(self) -> str | None:
+        now = time.monotonic()
+        if now - self._last_toggle_s < CAMERA_TOGGLE_DEBOUNCE_S:
+            return None
+        self._last_toggle_s = now
+
+        next_mode = "FRONT" if self.current_mode == "DOWN" else "DOWN"
+        if self.request_mode(next_mode):
+            self.current_mode = next_mode
+            print(f"[C] Camera view -> {next_mode}", flush=True)
+            return next_mode
+        return None
+
+    def request_mode(self, mode: str) -> bool:
+        if not self._command_topic_available():
+            print(f"[CAMERA] Failed to set {mode}: command topic not ready: {self.command_topic}", flush=True)
+            return False
+
+        joint_position = self.front_position_rad if mode == "FRONT" else self.down_position_rad
+        command = [
+            "gz",
+            "topic",
+            "-t",
+            self.command_topic,
+            "-m",
+            "gz.msgs.Double",
+            "-p",
+            f"data: {joint_position:.12f}",
+        ]
+
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=1.5, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            print(f"[CAMERA] Failed to set {mode}: {exc}", flush=True)
+            return False
+
+        if result.returncode == 0:
+            return True
+
+        message = (result.stderr or result.stdout or "Gazebo service returned no success").strip()
+        print(f"[CAMERA] Failed to set {mode}: {message}", flush=True)
+        return False
+
+    def _command_topic_available(self) -> bool:
+        try:
+            result = subprocess.run(
+                ["gz", "topic", "-l"],
+                capture_output=True,
+                text=True,
+                timeout=1.5,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+
+        if result.returncode != 0:
+            return False
+
+        return any(line.strip() == self.command_topic for line in result.stdout.splitlines())
+
+
 def clean_enum_name(value: Any) -> str | None:
     if value is None:
         return None
@@ -151,14 +266,6 @@ def format_gps(state: DroneTelemetryState) -> str:
     if state.latitude_deg is None or state.longitude_deg is None:
         return "--"
     return f"{state.latitude_deg:.6f}, {state.longitude_deg:.6f}"
-
-
-def normalize_battery_percent(value: float | None) -> float | None:
-    if value is None or math.isnan(value) or value < 0:
-        return None
-    if value <= 1.0:
-        return value * 100.0
-    return value
 
 
 def normalize_yaw(value: float | None) -> float | None:
@@ -298,16 +405,15 @@ async def telemetry_supervisor(state: DroneTelemetryState) -> None:
                         speed_m_s=math.sqrt(
                             float(velocity.north_m_s) ** 2 + float(velocity.east_m_s) ** 2
                         ),
+                        velocity_north_m_s=number_or_none(velocity.north_m_s),
+                        velocity_east_m_s=number_or_none(velocity.east_m_s),
+                        velocity_down_m_s=number_or_none(velocity.down_m_s),
                     ),
                 ),
                 run_stream(
                     "battery",
                     drone.telemetry.battery,
-                    lambda battery: state.update(
-                        battery_percent=normalize_battery_percent(
-                            number_or_none(battery.remaining_percent)
-                        ),
-                    ),
+                    lambda battery: update_real_battery(state, battery),
                 ),
                 run_stream(
                     "gps_info",
@@ -339,6 +445,28 @@ async def telemetry_supervisor(state: DroneTelemetryState) -> None:
             await asyncio.sleep(1.5)
 
 
+def update_real_battery(state: DroneTelemetryState, battery: Any) -> None:
+    if battery_sim.enabled:
+        return
+
+    percent = normalize_real_battery_percent(number_or_none(battery.remaining_percent))
+    state.update(
+        battery_percent=percent,
+        battery_level=battery_level(percent),
+    )
+
+
+async def sitl_battery_loop(state: DroneTelemetryState) -> None:
+    while True:
+        snapshot = battery_sim.snapshot()
+        if snapshot is not None:
+            state.update(
+                battery_percent=snapshot.percent,
+                battery_level=snapshot.level,
+            )
+        await asyncio.sleep(0.5)
+
+
 def draw_hud(frame: np.ndarray, state: DroneTelemetryState, topic: str, fps: float, pixel_format: str) -> np.ndarray:
     output = frame.copy()
     height, width = output.shape[:2]
@@ -367,6 +495,7 @@ def draw_hud(frame: np.ndarray, state: DroneTelemetryState, topic: str, fps: flo
             ("MODE", "--"),
             ("ARMED", "--"),
             ("IN AIR", "--"),
+            ("CAM", state.camera_mode),
         ]
     else:
         rows = [
@@ -379,11 +508,21 @@ def draw_hud(frame: np.ndarray, state: DroneTelemetryState, topic: str, fps: flo
             ("YAW", format_float(state.yaw_deg, " deg", 1)),
             ("", ""),
             ("SPEED", format_float(state.speed_m_s, " m/s", 1)),
-            ("BATTERY", "--" if state.battery_percent is None else f"{state.battery_percent:.0f}%"),
+            (
+                "BATTERY",
+                "--"
+                if state.battery_percent is None
+                else (
+                    f"{state.battery_percent:.0f}%"
+                    if state.battery_level in {None, "NORMAL"}
+                    else f"{state.battery_percent:.0f}% [{state.battery_level}]"
+                ),
+            ),
             ("SAT", "--" if state.satellites is None else str(state.satellites)),
             ("MODE", state.flight_mode or "--"),
             ("ARMED", format_bool(state.armed)),
             ("IN AIR", format_bool(state.in_air)),
+            ("CAM", state.camera_mode),
         ]
 
     hud_h = pad * 2 + line_h * len(rows)
@@ -467,6 +606,25 @@ def draw_hud(frame: np.ndarray, state: DroneTelemetryState, topic: str, fps: flo
         )
         iy += line_h
 
+    hint = "[C] SWITCH CAMERA"
+    hint_scale = font_scale * 0.95
+    hint_thickness = max(1, int(2 * scale))
+    hx1, hy1, hx2, hy2 = camera_switch_button_rect(width, height)
+    overlay = output.copy()
+    cv2.rectangle(overlay, (hx1, hy1), (hx2, hy2), (28, 56, 96), -1)
+    output = cv2.addWeighted(overlay, 0.72, output, 0.28, 0)
+    cv2.rectangle(output, (hx1, hy1), (hx2, hy2), (235, 235, 235), 1)
+    cv2.putText(
+        output,
+        hint,
+        (hx1 + pad, hy2 - pad),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        hint_scale,
+        (255, 255, 255),
+        hint_thickness,
+        cv2.LINE_AA,
+    )
+
     return output
 
 
@@ -477,14 +635,22 @@ def draw_waiting_frame(topic: str) -> np.ndarray:
     return frame
 
 
+async def run_telemetry_tasks(state: DroneTelemetryState) -> None:
+    await asyncio.gather(
+        telemetry_supervisor(state),
+        sitl_battery_loop(state),
+    )
+
+
 def run_telemetry_thread(state: DroneTelemetryState) -> None:
-    asyncio.run(telemetry_supervisor(state))
+    asyncio.run(run_telemetry_tasks(state))
 
 
 def main() -> int:
     telemetry_state = DroneTelemetryState()
     frame_store = CameraFrameStore()
     subscriber = GazeboCameraSubscriber(CAMERA_TOPIC, frame_store)
+    camera_controller = GazeboCameraOrientationController(WORLD_NAME, MODEL_NAME)
 
     if not subscriber.start():
         return 1
@@ -502,6 +668,24 @@ def main() -> int:
 
     print(f"[HUD] Reading telemetry from shared MAVSDK gRPC localhost:{MAVSDK_GRPC_PORT}", flush=True)
     print("[HUD] Read-only display mode; no flight commands are sent.", flush=True)
+    print("[HUD] Press C or click [C] SWITCH CAMERA to toggle FRONT/DOWN camera.", flush=True)
+
+    def switch_camera() -> None:
+        mode = camera_controller.toggle()
+        if mode is not None:
+            telemetry_state.update(camera_mode=mode)
+
+    def handle_mouse(event: int, x: int, y: int, _flags: int, _param: object) -> None:
+        if event != cv2.EVENT_LBUTTONDOWN:
+            return
+        frame, width, height, _pixel_format, _fps = frame_store.snapshot()
+        if frame is None:
+            width, height = 640, 480
+        x1, y1, x2, y2 = camera_switch_button_rect(width, height)
+        if x1 <= x <= x2 and y1 <= y <= y2:
+            switch_camera()
+
+    cv2.setMouseCallback(WINDOW_NAME, handle_mouse)
 
     try:
         while True:
@@ -514,9 +698,12 @@ def main() -> int:
             output = draw_hud(frame, state_snapshot, CAMERA_TOPIC, fps, pixel_format)
             cv2.imshow(WINDOW_NAME, output)
 
-            key = cv2.waitKey(1) & 0xFF
-            if key in (27, ord("q"), ord("x")):
+            key = cv2.waitKeyEx(1)
+            key_char = chr(key & 0xFF).lower() if 0 <= key <= 0x10FFFF else ""
+            if key == 27 or key_char in {"q", "x"}:
                 break
+            if key_char == "c":
+                switch_camera()
     finally:
         cv2.destroyAllWindows()
 
