@@ -62,7 +62,7 @@ Blender export backup: C:\Users\ACER\Documents\GitHub\doan\on-demand-monitoring-
 New Gazebo world: C:\Users\ACER\Documents\GitHub\doan\on-demand-monitoring-system\Forest3D\worlds\forest_monitoring_compact.sdf
 New world name: forest_monitoring_compact
 Compact model root: C:\Users\ACER\Documents\GitHub\doan\on-demand-monitoring-system\Forest3D\models\compact_*
-HOME / spawn pose: 0, -280, 8.65, 0, 0, 0
+HOME / spawn pose: 0, -280, 9.8, 0, 0, 0
 ```
 
 The old world is preserved:
@@ -84,7 +84,7 @@ Commands:
 Do not change the current drone spawn or main Gazebo view angle unless the user explicitly asks:
 
 ```text
-compact PX4 spawn: 0, -280, 8.65, 0, 0, 0
+compact PX4 spawn: 0, -280, 9.8, 0, 0, 0
 main Gazebo follow offset: x=-8, y=0, z=4
 camera target: x500_mono_cam_down_0
 ```

@@ -9,6 +9,7 @@ pkill -9 -x px4 || true
 pkill -9 -x gz || true
 pkill -9 -x ruby || true
 pkill -9 -u "$USER" -x mavsdk_server 2>/dev/null || true
+rm -f /tmp/forest3d_sitl_battery_state.json /tmp/forest3d_sitl_battery_state.tmp || true
 
 sleep 2
 

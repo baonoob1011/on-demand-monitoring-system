@@ -3,7 +3,7 @@ import logging
 import math
 import os
 import socket
-import time
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
@@ -12,8 +12,22 @@ import httpx
 from dotenv import load_dotenv
 from mavsdk import System
 
+from sitl_battery_sim import (
+    BatteryInputs,
+    SitlBatterySimulator,
+    battery_level,
+    normalize_real_battery_percent,
+)
 
-load_dotenv()
+
+PROJECT_ROOT = Path(
+    os.getenv(
+        "PROJECT_PATH",
+        "/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system",
+    )
+)
+ENV_FILE = PROJECT_ROOT / "ondemandmonitoring" / ".env"
+load_dotenv(ENV_FILE, override=True)
 
 PX4_SYSTEM_ADDRESS = os.getenv("PX4_SYSTEM_ADDRESS", "udp://:14540")
 MAVSDK_TELEMETRY_GRPC_PORT = int(os.getenv("MAVSDK_TELEMETRY_GRPC_PORT", "50052"))
@@ -22,19 +36,14 @@ MAVSDK_TELEMETRY_COMPID = int(os.getenv("MAVSDK_TELEMETRY_COMPID", "191"))
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8080").rstrip("/")
 DEVICE_CODE = os.getenv("DEVICE_CODE", "DRONE-01")
 TELEMETRY_INTERVAL_SECONDS = float(os.getenv("TELEMETRY_INTERVAL_SECONDS", "5"))
-USE_SITL_BATTERY_SIM = os.getenv("USE_SITL_BATTERY_SIM", "true").lower() in ("1", "true", "yes", "on")
-SITL_BATTERY_START_PERCENT = float(os.getenv("SITL_BATTERY_START_PERCENT", "100"))
-SITL_BATTERY_MIN_PERCENT = float(os.getenv("SITL_BATTERY_MIN_PERCENT", "30"))
-SITL_BATTERY_DRAIN_INTERVAL_SECONDS = float(os.getenv("SITL_BATTERY_DRAIN_INTERVAL_SECONDS", "60"))
-SITL_BATTERY_DRAIN_PER_INTERVAL = float(os.getenv("SITL_BATTERY_DRAIN_PER_INTERVAL", "0.01"))
-
 LOGGER = logging.getLogger("telemetry_sender")
-TAKEOFF_STARTED_AT_MONOTONIC: float | None = None
+battery_sim = SitlBatterySimulator()
 
 
 @dataclass
 class TelemetryState:
     battery_percent: float | None = None
+    battery_level: str | None = None
 
     latitude: float | None = None
     longitude: float | None = None
@@ -83,17 +92,25 @@ class TelemetryState:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     async def update(self, **values: Any) -> None:
-        global TAKEOFF_STARTED_AT_MONOTONIC
         async with self.lock:
-            if values.get("in_air") is True and self.in_air is not True and TAKEOFF_STARTED_AT_MONOTONIC is None:
-                TAKEOFF_STARTED_AT_MONOTONIC = time.monotonic()
             for key, value in values.items():
                 setattr(self, key, value)
+
+    async def battery_inputs(self) -> BatteryInputs:
+        async with self.lock:
+            return BatteryInputs(
+                armed=self.armed,
+                in_air=self.in_air,
+                velocity_north_m_s=self.velocity_north,
+                velocity_east_m_s=self.velocity_east,
+                velocity_down_m_s=self.velocity_down,
+            )
 
     async def snapshot(self) -> dict[str, Any]:
         async with self.lock:
             return {
                 "batteryPercent": self.battery_percent,
+                "batteryLevel": self.battery_level,
                 "latitude": self.latitude,
                 "longitude": self.longitude,
                 "absoluteAltitude": self.absolute_altitude,
@@ -164,24 +181,6 @@ def clean_enum_name(value: Any) -> str | None:
         return str(name)
     text = str(value)
     return text.rsplit(".", maxsplit=1)[-1]
-
-
-def normalize_battery_percent(value: float | None) -> float | None:
-    if USE_SITL_BATTERY_SIM:
-        if TAKEOFF_STARTED_AT_MONOTONIC is None:
-            return round(SITL_BATTERY_START_PERCENT, 2)
-        elapsed_seconds = time.monotonic() - TAKEOFF_STARTED_AT_MONOTONIC
-        drain_steps = math.floor(elapsed_seconds / SITL_BATTERY_DRAIN_INTERVAL_SECONDS)
-        simulated_percent = SITL_BATTERY_START_PERCENT - (drain_steps * SITL_BATTERY_DRAIN_PER_INTERVAL)
-        return round(max(SITL_BATTERY_MIN_PERCENT, simulated_percent), 2)
-
-    if value is None or math.isnan(value) or value < 0:
-        return None
-    if value <= 1:
-        percent = value * 100
-    else:
-        percent = value
-    return round(percent, 2)
 
 
 def number_or_none(value: Any) -> float | None:
@@ -299,9 +298,25 @@ async def watch_connection(drone: System) -> None:
 
 async def watch_battery(drone: System) -> None:
     async def handle(battery: Any) -> None:
-        await state.update(battery_percent=normalize_battery_percent(battery.remaining_percent))
+        real_percent = normalize_real_battery_percent(number_or_none(battery.remaining_percent))
+        if not battery_sim.enabled:
+            await state.update(
+                battery_percent=round(real_percent, 2) if real_percent is not None else None,
+                battery_level=battery_level(real_percent),
+            )
 
     await run_stream("battery", drone.telemetry.battery, handle)
+
+
+async def watch_sitl_battery_sim() -> None:
+    while True:
+        snapshot = battery_sim.update(await state.battery_inputs())
+        if snapshot is not None:
+            await state.update(
+                battery_percent=snapshot.percent,
+                battery_level=snapshot.level,
+            )
+        await asyncio.sleep(0.5)
 
 
 async def watch_position(drone: System) -> None:
@@ -515,18 +530,18 @@ async def main() -> None:
     LOGGER.info("PX4: %s", PX4_SYSTEM_ADDRESS)
     LOGGER.info("MAVSDK gRPC shared server: localhost:%s", MAVSDK_TELEMETRY_GRPC_PORT)
     LOGGER.info("Backend: %s", BACKEND_BASE_URL)
-    if USE_SITL_BATTERY_SIM:
+    if battery_sim.enabled:
         LOGGER.info(
-            "SITL battery simulation enabled: start %.1f%%, drain %.2f%% every %.0fs, minimum %.1f%%",
-            SITL_BATTERY_START_PERCENT,
-            SITL_BATTERY_DRAIN_PER_INTERVAL,
-            SITL_BATTERY_DRAIN_INTERVAL_SECONDS,
-            SITL_BATTERY_MIN_PERCENT,
+            "SITL battery simulation enabled: start %.1f%%, min %.1f%%, state %s",
+            battery_sim.start_percent,
+            battery_sim.min_percent,
+            battery_sim.state_path,
         )
 
     await asyncio.gather(
         telemetry_supervisor(),
         send_telemetry(),
+        watch_sitl_battery_sim(),
     )
 
 

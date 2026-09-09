@@ -25,6 +25,7 @@ MAVSDK_PID=""
 MONITOR_PID=""
 RESTART_COUNT=0
 MAX_RESTARTS=10
+SERVER_RESTART_COOLDOWN_S="${MAVSDK_SERVER_RESTART_COOLDOWN_S:-5}"
 
 is_port_listening() {
     ss -ltn 2>/dev/null | grep -q ":${MAVSDK_PORT} "
@@ -33,6 +34,28 @@ is_port_listening() {
 print_server_log_tail() {
     printf '%s\n' '[MAVSDK] Last server log:'
     tail -n 8 "$MAVSDK_LOG" 2>/dev/null || true
+}
+
+server_exit_code() {
+    local pid="$1"
+    local code
+    if wait "$pid" 2>/dev/null; then
+        code=0
+    else
+        code=$?
+    fi
+    printf '%s' "$code"
+}
+
+print_server_exit() {
+    local reason="$1"
+    local pid="${MAVSDK_PID:-}"
+    local code="unknown"
+    if [ -n "$pid" ]; then
+        code="$(server_exit_code "$pid")"
+    fi
+    printf '[MAVSDK-CONN] Server process exited reason=%s pid=%s code=%s\n' "$reason" "${pid:-unknown}" "$code"
+    print_server_log_tail
 }
 
 kill_stale_mavsdk_server() {
@@ -73,13 +96,13 @@ start_mavsdk_server() {
         udpin://0.0.0.0:14030 \
         > "$MAVSDK_LOG" 2>&1 &
     MAVSDK_PID=$!
+    printf '[MAVSDK] Started pid=%s port=%s\n' "$MAVSDK_PID" "$MAVSDK_PORT"
 }
 
 wait_for_mavsdk_port() {
     for _ in $(seq 1 20); do
         if [ -n "${MAVSDK_PID:-}" ] && ! kill -0 "$MAVSDK_PID" 2>/dev/null; then
-            printf '%s\n' '[MAVSDK] Server exited unexpectedly'
-            print_server_log_tail
+            print_server_exit "startup-port-wait"
             return 1
         fi
 
@@ -99,8 +122,7 @@ wait_for_mavsdk_port() {
 wait_for_mavsdk_system() {
     for _ in $(seq 1 30); do
         if [ -n "${MAVSDK_PID:-}" ] && ! kill -0 "$MAVSDK_PID" 2>/dev/null; then
-            printf '%s\n' '[MAVSDK] Server exited unexpectedly'
-            print_server_log_tail
+            print_server_exit "px4-discovery-wait"
             return 1
         fi
 
@@ -133,8 +155,7 @@ monitor_mavsdk_server() {
             continue
         fi
 
-        printf '%s\n' '[MAVSDK] Server exited unexpectedly'
-        print_server_log_tail
+        print_server_exit "monitor"
 
         if [ "$RESTART_COUNT" -ge "$MAX_RESTARTS" ]; then
             printf '%s\n' '[MAVSDK] Restart limit reached'
@@ -142,14 +163,13 @@ monitor_mavsdk_server() {
         fi
 
         RESTART_COUNT=$((RESTART_COUNT + 1))
-        sleep_seconds=$((2 + RESTART_COUNT * 2))
+        sleep_seconds=$((SERVER_RESTART_COOLDOWN_S + RESTART_COUNT * 2))
         if [ "$sleep_seconds" -gt 10 ]; then
             sleep_seconds=10
         fi
 
         printf '[MAVSDK] Restart attempt %s/%s in %ss\n' "$RESTART_COUNT" "$MAX_RESTARTS" "$sleep_seconds"
         sleep "$sleep_seconds"
-        kill_stale_mavsdk_server || true
         start_and_wait_mavsdk || true
     done
 }

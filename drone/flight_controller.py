@@ -38,7 +38,7 @@ if str(DRONE_DIR) not in sys.path:
 
 ENV_FILE = PROJECT_ROOT / "ondemandmonitoring" / ".env"
 
-load_dotenv(ENV_FILE)
+load_dotenv(ENV_FILE, override=True)
 
 print(
     f"[ENV] Loaded: {ENV_FILE}",
@@ -90,7 +90,7 @@ except ImportError:
     Node = None
 
 
-load_dotenv()
+load_dotenv(ENV_FILE, override=True)
 PX4_CONTROL_SYSTEM_ADDRESS = os.getenv(
     "PX4_CONTROL_SYSTEM_ADDRESS",
     "udpin://0.0.0.0:14030",
@@ -105,12 +105,27 @@ MAVSDK_CONTROL_SYSID = int(
 MAVSDK_CONTROL_COMPID = int(
     os.getenv("MAVSDK_CONTROL_COMPID", "191")
 )
+MAVSDK_DISCONNECT_GRACE_S = float(
+    os.getenv("MAVSDK_DISCONNECT_GRACE_S", "8.0")
+)
+MAVSDK_RECONNECT_CONFIRM_S = float(
+    os.getenv("MAVSDK_RECONNECT_CONFIRM_S", "1.5")
+)
+MAVSDK_COMMAND_RECOVERY_WAIT_S = float(
+    os.getenv("MAVSDK_COMMAND_RECOVERY_WAIT_S", "6.0")
+)
+MAVSDK_HEALTH_LOG_INTERVAL_S = float(
+    os.getenv("MAVSDK_HEALTH_LOG_INTERVAL_S", "15.0")
+)
+MAVSDK_CLIENT_RECONNECT_COOLDOWN_S = float(
+    os.getenv("MAVSDK_CLIENT_RECONNECT_COOLDOWN_S", "3.0")
+)
 
 MOVE_SPEED_M_S = float(
-    os.getenv("CONTROL_MOVE_SPEED_M_S", "6.0")
+    os.getenv("CONTROL_MOVE_SPEED_M_S", "500.0")
 )
 VERTICAL_SPEED_M_S = float(
-    os.getenv("CONTROL_VERTICAL_SPEED_M_S", "2.0")
+    os.getenv("CONTROL_VERTICAL_SPEED_M_S", "500.0")
 )
 YAW_STEP_DEG = float(
     os.getenv("CONTROL_YAW_STEP_DEG", "30.0")
@@ -118,6 +133,12 @@ YAW_STEP_DEG = float(
 
 SPEED_ADJUST_STEP_M_S = float(
     os.getenv("CONTROL_SPEED_ADJUST_STEP_M_S", "200.0")
+)
+PX4_SPEED_LIMIT_M_S = float(
+    os.getenv(
+        "PX4_SPEED_LIMIT_M_S",
+        str(max(MOVE_SPEED_M_S, VERTICAL_SPEED_M_S)),
+    )
 )
 
 SAFETY_POLL_INTERVAL_S = float(
@@ -226,6 +247,17 @@ DEFAULT_GAZEBO_WORLD = (
 CAMERA_TOPIC = os.getenv(
     "GAZEBO_CAMERA_TOPIC",
     f"/world/{DEFAULT_GAZEBO_WORLD}/model/x500_mono_cam_down_0/link/camera_link/sensor/camera/image",
+)
+GZ_MODEL_NAME = os.getenv("GZ_MODEL_NAME", "x500_mono_cam_down_0")
+CAMERA_DEFAULT_VIEW = os.getenv("CAMERA_DEFAULT_VIEW", "DOWN").strip().upper()
+CAMERA_TOGGLE_DEBOUNCE_S = float(os.getenv("CAMERA_TOGGLE_DEBOUNCE_S", "0.35"))
+GAZEBO_CAMERA_PITCH_TOPIC = os.getenv(
+    "GAZEBO_CAMERA_PITCH_TOPIC",
+    f"/model/{GZ_MODEL_NAME}/command/camera_pitch",
+)
+CAMERA_DOWN_JOINT_POSITION_RAD = float(os.getenv("CAMERA_DOWN_JOINT_POSITION_RAD", "0.0"))
+CAMERA_FRONT_JOINT_POSITION_RAD = float(
+    os.getenv("CAMERA_FRONT_JOINT_POSITION_RAD", "-1.57079632679")
 )
 
 class MavsdkAckNoiseFilter(logging.Filter):
@@ -383,7 +415,60 @@ class CameraGateway:
         print(response.text[:500])
 
 
-async def connect_px4(drone: System) -> None:
+class CameraOrientationController:
+    def __init__(self) -> None:
+        self.current_mode = CAMERA_DEFAULT_VIEW if CAMERA_DEFAULT_VIEW in {"DOWN", "FRONT"} else "DOWN"
+        self._last_toggle_s = 0.0
+
+    def toggle(self) -> None:
+        now = time.monotonic()
+        if now - self._last_toggle_s < CAMERA_TOGGLE_DEBOUNCE_S:
+            return
+        self._last_toggle_s = now
+
+        next_mode = "FRONT" if self.current_mode == "DOWN" else "DOWN"
+        if self.request_mode(next_mode):
+            self.current_mode = next_mode
+            print(f"[CAMERA] View -> {next_mode} (press c to switch)", flush=True)
+
+    def request_mode(self, mode: str) -> bool:
+        joint_position = (
+            CAMERA_FRONT_JOINT_POSITION_RAD
+            if mode == "FRONT"
+            else CAMERA_DOWN_JOINT_POSITION_RAD
+        )
+        command = [
+            "gz",
+            "topic",
+            "-t",
+            GAZEBO_CAMERA_PITCH_TOPIC,
+            "-m",
+            "gz.msgs.Double",
+            "-p",
+            f"data: {joint_position:.12f}",
+        ]
+
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=1.5,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            print(f"[CAMERA] Switch failed: {exc}", flush=True)
+            return False
+
+        if result.returncode == 0:
+            return True
+
+        message = (result.stderr or result.stdout or "camera command failed").strip()
+        print(f"[CAMERA] Switch failed: {message}", flush=True)
+        return False
+
+
+async def connect_px4(drone: System) -> bool:
     print("[PX4] Waiting for control connection...")
 
     try:
@@ -398,7 +483,9 @@ async def connect_px4(drone: System) -> None:
         print_mavsdk_unavailable("PX4 init", exc)
         print("[WARN] Continuing in degraded mode")
         print("[WARN] Arm/takeoff will perform their own readiness checks")
-        return
+        return False
+
+    await configure_px4_speed_limits(drone)
 
     print("[PX4] Waiting for local position (up to 60s)...")
     try:
@@ -413,11 +500,45 @@ async def connect_px4(drone: System) -> None:
                 print(f"[PX4] Health: {status}", flush=True)
                 if health.is_local_position_ok and health.is_global_position_ok:
                     print("\n[PX4] Local position OK - Ready to fly!")
-                    return
+                    return True
     except (asyncio.TimeoutError, grpc.aio.AioRpcError):
         print("\n[WARN] PX4 telemetry health stream unavailable")
         print("[WARN] Continuing in degraded mode")
         print("[WARN] Arm/takeoff will perform their own readiness checks")
+        return False
+
+
+async def configure_px4_speed_limits(
+        drone: System,
+        horizontal_speed_m_s: float | None = None,
+        vertical_speed_m_s: float | None = None,
+) -> None:
+    horizontal = MOVE_SPEED_M_S if horizontal_speed_m_s is None else horizontal_speed_m_s
+    vertical = VERTICAL_SPEED_M_S if vertical_speed_m_s is None else vertical_speed_m_s
+    limit = max(PX4_SPEED_LIMIT_M_S, horizontal, vertical)
+    params = {
+        "MPC_XY_VEL_MAX": horizontal,
+        "MPC_Z_VEL_MAX_UP": vertical,
+        "MPC_Z_VEL_MAX_DN": vertical,
+        "MPC_TKO_SPEED": vertical,
+        "MPC_ACC_HOR_MAX": limit,
+        "MPC_ACC_UP_MAX": limit,
+        "MPC_ACC_DOWN_MAX": limit,
+    }
+
+    applied = []
+    skipped = []
+    for name, value in params.items():
+        try:
+            await drone.param.set_param_float(name, float(value))
+            applied.append(f"{name}={float(value):.1f}")
+        except Exception:
+            skipped.append(name)
+
+    if applied:
+        print(f"[PX4] Speed params synced: {', '.join(applied)}", flush=True)
+    if skipped:
+        print(f"[PX4] Speed params skipped: {', '.join(skipped)}", flush=True)
 
 
 def print_command_denied(command: str, exc: Exception) -> None:
@@ -469,6 +590,15 @@ class MavsdkConnectionManager:
         self.generation = 0
         self.last_reconnect_attempt_s = 0.0
         self.last_unavailable_log_s = 0.0
+        self.px4_connected = False
+        self.grpc_connected = False
+        self.last_px4_connected_s = 0.0
+        self.last_connection_update_s = 0.0
+        self.last_health_log_s = 0.0
+        self.px4_disconnect_count = 0
+        self._connection_monitor_task: asyncio.Task | None = None
+        self._degraded_since_s: float | None = None
+        self._degraded_logged = False
 
     def _new_drone(self) -> System:
         return System(
@@ -481,15 +611,22 @@ class MavsdkConnectionManager:
     async def connect(self) -> System:
         async with self.lock:
             drone = self._new_drone()
-            await connect_px4(drone)
+            px4_ready = await connect_px4(drone)
             self.drone = drone
             self.generation += 1
+            now_s = asyncio.get_running_loop().time()
+            self.grpc_connected = True
+            self.px4_connected = px4_ready
+            if px4_ready:
+                self.last_px4_connected_s = now_s
+            self.last_connection_update_s = now_s
+            self._start_connection_monitor(drone, self.generation)
             return drone
 
     async def reconnect(self) -> System | None:
         async with self.lock:
             now = asyncio.get_running_loop().time()
-            wait_s = 3.0 - (now - self.last_reconnect_attempt_s)
+            wait_s = MAVSDK_CLIENT_RECONNECT_COOLDOWN_S - (now - self.last_reconnect_attempt_s)
             if wait_s > 0:
                 await asyncio.sleep(wait_s)
 
@@ -511,13 +648,30 @@ class MavsdkConnectionManager:
 
             try:
                 await drone.connect()
+                connected_since = 0.0
                 async with asyncio.timeout(20):
                     async for state in drone.core.connection_state():
+                        now_s = asyncio.get_running_loop().time()
                         if state.is_connected:
-                            self.drone = drone
-                            self.generation += 1
-                            print("[MAVSDK-CLIENT] PX4 reconnected")
-                            return drone
+                            if connected_since <= 0.0:
+                                connected_since = now_s
+                            if now_s - connected_since >= MAVSDK_RECONNECT_CONFIRM_S:
+                                self.drone = drone
+                                self.generation += 1
+                                self.grpc_connected = True
+                                self.px4_connected = True
+                                self.last_px4_connected_s = now_s
+                                self.last_connection_update_s = now_s
+                                await configure_px4_speed_limits(drone)
+                                self._start_connection_monitor(drone, self.generation)
+                                print(
+                                    f"[MAVSDK-CONN] Recreating System generation={self.generation}",
+                                    flush=True,
+                                )
+                                print("[MAVSDK-CLIENT] PX4 reconnected")
+                                return drone
+                        else:
+                            connected_since = 0.0
             except (asyncio.TimeoutError, grpc.aio.AioRpcError) as exc:
                 print_mavsdk_unavailable("MAVSDK client reconnect", exc)
 
@@ -526,6 +680,90 @@ class MavsdkConnectionManager:
 
     async def get_drone(self) -> System | None:
         return self.drone
+
+    def _start_connection_monitor(self, drone: System, generation: int) -> None:
+        if self._connection_monitor_task is not None:
+            self._connection_monitor_task.cancel()
+        self._connection_monitor_task = asyncio.create_task(
+            self._monitor_connection_state(drone, generation),
+            name=f"mavsdk-connection-{generation}",
+        )
+
+    async def _monitor_connection_state(self, drone: System, generation: int) -> None:
+        print(f"[MAVSDK-CONN] monitor started generation={generation}", flush=True)
+        try:
+            async for state in drone.core.connection_state():
+                if generation != self.generation:
+                    return
+
+                now_s = asyncio.get_running_loop().time()
+                self.grpc_connected = True
+                self.last_connection_update_s = now_s
+
+                if state.is_connected:
+                    if not self.px4_connected and self._degraded_since_s is not None:
+                        print(
+                            f"[MAVSDK-CONN] Recovered after {now_s - self._degraded_since_s:.1f}s",
+                            flush=True,
+                        )
+                    self.px4_connected = True
+                    self.last_px4_connected_s = now_s
+                    self._degraded_since_s = None
+                    self._degraded_logged = False
+                else:
+                    if self.px4_connected:
+                        self.px4_disconnect_count += 1
+                        self._degraded_since_s = now_s
+                        self._degraded_logged = False
+                    self.px4_connected = False
+                    if not self._degraded_logged:
+                        print(
+                            "[MAVSDK-CONN] DEGRADED - PX4 heartbeat temporarily missing",
+                            flush=True,
+                        )
+                        self._degraded_logged = True
+
+                if now_s - self.last_health_log_s >= MAVSDK_HEALTH_LOG_INTERVAL_S:
+                    age = now_s - self.last_px4_connected_s if self.last_px4_connected_s else -1.0
+                    print(
+                        f"[MAVSDK-HEALTH] gen={self.generation} "
+                        f"grpc={'OK' if self.grpc_connected else 'LOST'} "
+                        f"px4={'OK' if self.px4_connected else 'DEGRADED'} "
+                        f"last_px4_seen_age={age:.1f}s "
+                        f"px4_disconnects={self.px4_disconnect_count}",
+                        flush=True,
+                    )
+                    self.last_health_log_s = now_s
+        except asyncio.CancelledError:
+            raise
+        except grpc.aio.AioRpcError as exc:
+            if generation == self.generation:
+                self.grpc_connected = False
+                print(
+                    f"[MAVSDK-CONN] connection monitor ended: {exc.code().name}",
+                    flush=True,
+                )
+        except Exception as exc:
+            if generation == self.generation:
+                self.grpc_connected = False
+                print(f"[MAVSDK-CONN] connection monitor ended: {exc}", flush=True)
+
+    def connection_age_s(self) -> float | None:
+        if not self.last_px4_connected_s:
+            return None
+        return asyncio.get_running_loop().time() - self.last_px4_connected_s
+
+    def recently_connected(self) -> bool:
+        age = self.connection_age_s()
+        return age is not None and age <= MAVSDK_DISCONNECT_GRACE_S
+
+    async def wait_until_ready(self, timeout_s: float) -> bool:
+        deadline = asyncio.get_running_loop().time() + timeout_s
+        while asyncio.get_running_loop().time() < deadline:
+            if self.px4_connected or self.recently_connected():
+                return True
+            await asyncio.sleep(0.1)
+        return self.px4_connected or self.recently_connected()
 
 
 async def ensure_offboard_started(drone: System) -> None:
@@ -548,24 +786,28 @@ def is_climb_only_command(
     )
 
 
-async def check_readiness(drone: System) -> bool:
-    for attempt in range(2):
-        try:
-            async with asyncio.timeout(4.0):
-                async for state in drone.core.connection_state():
-                    if state.is_connected:
-                        return True
-                    await asyncio.sleep(0.1)
-        except asyncio.TimeoutError:
-            print("[WARN] MAVSDK is reachable but PX4 is disconnected.")
-            print("[ERR] Readiness check timed out. mavsdk_server may be unresponsive.")
-        except grpc.aio.AioRpcError as exc:
-            print(f"[WARN] mavsdk_server unavailable. gRPC error: {exc.code().name}")
+async def check_readiness(manager: MavsdkConnectionManager) -> bool:
+    if manager.px4_connected:
+        return True
 
-        if attempt < 1:
-            print("[HINT] Waiting for control bridge to recover...")
-            await asyncio.sleep(1.0)
+    age = manager.connection_age_s()
+    if manager.recently_connected():
+        print(
+            f"[MAVSDK-CONN] DEGRADED - using recent PX4 state age={age:.1f}s",
+            flush=True,
+        )
+        return True
 
+    print("[MAVSDK-CONN] Waiting briefly for PX4 recovery...", flush=True)
+    if await manager.wait_until_ready(MAVSDK_COMMAND_RECOVERY_WAIT_S):
+        return True
+
+    age_text = "--" if age is None else f"{age:.1f}s"
+    print(
+        f"[MAVSDK-CONN] PX4 disconnected >{MAVSDK_DISCONNECT_GRACE_S:.1f}s "
+        f"(last_seen={age_text})",
+        flush=True,
+    )
     return False
 
 
@@ -582,7 +824,7 @@ async def safe_arm(manager: MavsdkConnectionManager) -> System | None:
 
     for attempt in range(3):
         try:
-            if not await check_readiness(drone):
+            if not await check_readiness(manager):
                 refreshed = await manager.reconnect()
                 if refreshed is None:
                     print("[ERR] MAVSDK control bridge unavailable")
@@ -632,6 +874,10 @@ async def set_motion(
         drone = await manager.reconnect()
         if drone is None:
             return None
+    elif not await check_readiness(manager):
+        drone = await manager.reconnect()
+        if drone is None:
+            return None
 
     try:
         # ============================================================
@@ -672,7 +918,13 @@ async def set_motion(
 
         print_mavsdk_unavailable("movement", exc)
 
-        drone = await manager.reconnect()
+        if await manager.wait_until_ready(MAVSDK_COMMAND_RECOVERY_WAIT_S):
+            drone = await manager.get_drone()
+            if drone is None:
+                return None
+        else:
+            drone = await manager.reconnect()
+
         if drone is None:
             return None
 
@@ -762,127 +1014,21 @@ async def track_local_position(
 
         except (AttributeError, grpc.aio.AioRpcError):
             await asyncio.sleep(0.5)
-async def mission_poll_loop(
-        is_mission_enabled,
-        has_active_mission,
-        set_active_mission,
-) -> None:
-    last_error_log_s = 0.0
-    active_backend_url = None
-    completed_or_dispatched_missions: set[str] = set()
+
+
+async def event_loop_watchdog() -> None:
+    expected_interval_s = 0.5
+    warn_after_s = 1.5
+    loop = asyncio.get_running_loop()
+    next_wake_s = loop.time() + expected_interval_s
 
     while True:
-        await asyncio.sleep(MISSION_POLL_INTERVAL_S)
-
-        if not is_mission_enabled() or has_active_mission():
-            continue
-
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = None
-                last_exc = None
-
-                candidates = (
-                    [active_backend_url]
-                    if active_backend_url
-                    else []
-                )
-
-                candidates.extend(
-                    url
-                    for url in backend_url_candidates()
-                    if url not in candidates
-                )
-
-                for base_url in candidates:
-                    try:
-                        response = await client.get(
-                            f"{base_url}/api/missions/next",
-                            params={
-                                "deviceCode": DEVICE_CODE,
-                            },
-                        )
-
-                        active_backend_url = base_url
-                        break
-
-                    except httpx.HTTPError as exc:
-                        last_exc = exc
-
-                if response is None:
-                    raise (
-                            last_exc
-                            or httpx.ConnectError(
-                        "No backend URL candidates available"
-                    )
-                    )
-
-            if response.status_code >= 400:
-                raise httpx.HTTPStatusError(
-                    "mission dispatch failed",
-                    request=response.request,
-                    response=response,
-                )
-
-            payload = response.json().get("data") or {}
-
-            target_north = payload.get("targetNorthM")
-            target_east = payload.get("targetEastM")
-            target_altitude = payload.get("targetAltitudeM")
-
-            mission_code = (
-                    payload.get("missionCode")
-                    or payload.get("id")
-                    or "UNKNOWN"
-            )
-
-            if mission_code in completed_or_dispatched_missions:
-                continue
-
-            if target_north is None or target_east is None:
-                print(
-                    f"[MISSION] Ignored mission without local target: "
-                    f"{mission_code}",
-                    flush=True,
-                )
-                continue
-
-            completed_or_dispatched_missions.add(
-                mission_code
-            )
-
-            set_active_mission(
-                {
-                    "missionCode": mission_code,
-                    "targetNorthM": float(target_north),
-                    "targetEastM": float(target_east),
-                    "targetAltitudeM": (
-                        None
-                        if target_altitude is None
-                        else float(target_altitude)
-                    ),
-                }
-            )
-
-            print(
-                f"[MISSION] Dispatched {mission_code}: "
-                f"backend={active_backend_url} "
-                f"N={float(target_north):.1f} "
-                f"E={float(target_east):.1f} "
-                f"ALT="
-                f"{target_altitude if target_altitude is not None else 'hold'}",
-                flush=True,
-            )
-
-        except (httpx.HTTPError, ValueError) as exc:
-            now = asyncio.get_running_loop().time()
-
-            if now - last_error_log_s >= 10.0:
-                print(
-                    f"[MISSION] Backend mission poll unavailable: {exc}",
-                    flush=True,
-                )
-                last_error_log_s = now
+        await asyncio.sleep(expected_interval_s)
+        now_s = loop.time()
+        lag_s = now_s - next_wake_s
+        if lag_s > warn_after_s:
+            print(f"[PERF] asyncio event-loop lag={lag_s:.1f}s", flush=True)
+        next_wake_s = now_s + expected_interval_s
 def body_velocity(
         forward: float,
         right: float,
@@ -937,75 +1083,6 @@ def scale_horizontal_motion(saved_motion: SavedMotion, scale: float) -> SavedMot
         east_m_s=saved_motion.east_m_s * scale,
         yaw_deg=saved_motion.yaw_deg,
     )
-
-
-async def mission_motion_loop(
-        manager: MavsdkConnectionManager,
-        get_saved_motion,
-        get_yaw,
-        is_mission_enabled,
-        get_motion_owner,
-        get_safety_speed_scale,
-        set_avoidance_drone,
-) -> None:
-    last_command_log_s = 0.0
-    unavailable_reported = False
-
-    while True:
-        await asyncio.sleep(SAFETY_POLL_INTERVAL_S)
-
-        if not is_mission_enabled():
-            continue
-
-        if get_motion_owner() == MotionOwner.EMERGENCY:
-            continue
-
-        saved_motion = get_saved_motion()
-        if saved_motion is None:
-            continue
-
-        saved_motion = scale_horizontal_motion(
-            saved_motion,
-            get_safety_speed_scale(),
-        )
-
-        try:
-            active_drone = await set_motion(
-                manager,
-                saved_motion.north_m_s,
-                saved_motion.east_m_s,
-                saved_motion.down_m_s,
-                get_yaw(),
-            )
-            if active_drone is not None:
-                set_avoidance_drone(active_drone)
-
-            if unavailable_reported:
-                print("[MISSION] MAVSDK control restored", flush=True)
-                unavailable_reported = False
-
-            now_s = asyncio.get_running_loop().time()
-            if now_s - last_command_log_s >= 2.0:
-                last_command_log_s = now_s
-                print(
-                    f"[MISSION] SIMPLE CMD "
-                    f"N={saved_motion.north_m_s:.2f} "
-                    f"E={saved_motion.east_m_s:.2f} "
-                    f"D={saved_motion.down_m_s:.2f} "
-                    f"YAW_HOLD={get_yaw():.0f}",
-                    flush=True,
-                )
-
-        except OffboardError as exc:
-            print_command_denied("mission motion", exc)
-        except grpc.aio.AioRpcError as exc:
-            if is_grpc_unavailable(exc):
-                if not unavailable_reported:
-                    print("[MISSION] MAVSDK unavailable - reconnecting")
-                    unavailable_reported = True
-                await manager.reconnect()
-            else:
-                print_mavsdk_unavailable("mission motion", exc)
 
 
 async def obstacle_safety_loop(
@@ -1150,7 +1227,8 @@ async def main() -> None:
     print("Keys: t takeoff | w forward | s back | a left | d right")
     print("      f up | v down | q yaw left | e yaw right | k stop")
     print("      o toggle safety sensor")
-    print("      1 speed up 200m/s | 2 speed down 200m/s")
+    print("      1 speed up | 2 speed down")
+    print("      c switch camera down/front")
     print("      p photo | l land | x exit")
     print()
     print("Press one move key once to keep moving. Press k to stop/hover.")
@@ -1161,6 +1239,7 @@ async def main() -> None:
 
     camera = CameraGateway()
     camera.start()
+    camera_orientation = CameraOrientationController()
 
     current_yaw_deg = 0.0
 
@@ -1178,9 +1257,14 @@ async def main() -> None:
     current_east_m_s = 0.0
     current_down_m_s = 0.0
     control_speed_m_s = MOVE_SPEED_M_S
+    control_vertical_speed_m_s = VERTICAL_SPEED_M_S
 
     safety_task = None
     position_task = None
+    watchdog_task = asyncio.create_task(
+        event_loop_watchdog(),
+        name="event-loop-watchdog",
+    )
     avoidance = None
     lidar = None
     safety_sensor_enabled = (
@@ -1269,59 +1353,6 @@ async def main() -> None:
         current_east_m_s = 0.0
         current_down_m_s = 0.0
 
-    def current_mission_debug():
-        if active_mission is None or not local_position_ready:
-            return {
-                "missionCode": "NONE",
-                "target": "NONE",
-                "position": "UNKNOWN",
-                "remaining": "UNKNOWN",
-                "altitude": "UNKNOWN",
-                "altitude_error": "UNKNOWN",
-                "launch_distance": "UNKNOWN",
-            }
-
-        target_north = float(active_mission["targetNorthM"])
-        target_east = float(active_mission["targetEastM"])
-        target_altitude = active_mission.get("targetAltitudeM")
-        current_altitude = abs(current_local_down_m)
-        horizontal_remaining = math.hypot(
-            target_north - current_local_north_m,
-            target_east - current_local_east_m,
-        )
-        launch_distance = math.hypot(
-            current_local_north_m - float(active_mission.get("_launch_north_m", current_local_north_m)),
-            current_local_east_m - float(active_mission.get("_launch_east_m", current_local_east_m)),
-        )
-
-        if target_altitude is None:
-            altitude_error = "hold"
-            target_altitude_text = "hold"
-        else:
-            altitude_error = f"{float(target_altitude) - current_altitude:.2f}m"
-            target_altitude_text = f"{float(target_altitude):.1f}m"
-
-        return {
-            "missionCode": active_mission.get("missionCode", "UNKNOWN"),
-            "phase": active_mission.get("_phase", "UNKNOWN"),
-            "target": (
-                f"N={target_north:.1f} E={target_east:.1f} "
-                f"ALT={target_altitude_text}"
-            ),
-            "position": (
-                f"N={current_local_north_m:.1f} "
-                f"E={current_local_east_m:.1f} "
-                f"D={current_local_down_m:.1f}"
-            ),
-            "remaining": f"{horizontal_remaining:.1f}m horizontal",
-            "altitude": f"{current_altitude:.1f}m",
-            "altitude_error": altitude_error,
-            "launch_distance": (
-                f"{launch_distance:.1f}/"
-                f"{MISSION_LAUNCH_PAD_CLEAR_RADIUS_M:.1f}m"
-            ),
-        }
-
     # ================================================================
     # START LIDAR / SAFETY
     # ================================================================
@@ -1375,17 +1406,29 @@ async def main() -> None:
             continue
 
         if key in {"1", "2"}:
+            vertical_direction = -1.0 if current_down_m_s < 0.0 else 1.0
             delta = SPEED_ADJUST_STEP_M_S if key == "1" else -SPEED_ADJUST_STEP_M_S
             control_speed_m_s = max(0.0, control_speed_m_s + delta)
-            mission_cruise_speed_m_s = max(0.0, mission_cruise_speed_m_s + delta)
+            control_vertical_speed_m_s = max(0.0, control_vertical_speed_m_s + delta)
             print(
-                f"[SPEED] manual={control_speed_m_s:.1f}m/s "
-                f"mission={mission_cruise_speed_m_s:.1f}m/s "
+                f"[SPEED] horizontal={control_speed_m_s:.1f}m/s "
+                f"vertical={control_vertical_speed_m_s:.1f}m/s "
                 f"step={SPEED_ADJUST_STEP_M_S:.1f}m/s",
                 flush=True,
             )
 
             body_horizontal = math.hypot(current_forward_m_s, current_right_m_s)
+            if abs(current_down_m_s) > 1e-6:
+                current_down_m_s = vertical_direction * control_vertical_speed_m_s
+
+            active_drone = await connection_manager.get_drone()
+            if active_drone is not None:
+                await configure_px4_speed_limits(
+                    active_drone,
+                    control_speed_m_s,
+                    control_vertical_speed_m_s,
+                )
+
             if body_horizontal > 1e-6 and motion_owner == MotionOwner.MANUAL:
                 scale = control_speed_m_s / body_horizontal
                 current_forward_m_s *= scale
@@ -1395,6 +1438,21 @@ async def main() -> None:
                     current_right_m_s,
                     current_yaw_deg,
                 )
+                try:
+                    active_drone = await set_motion(
+                        connection_manager,
+                        current_north_m_s,
+                        current_east_m_s,
+                        current_down_m_s,
+                        current_yaw_deg,
+                    )
+                    if active_drone is not None and avoidance is not None:
+                        avoidance.set_drone(active_drone)
+                except OffboardError as exc:
+                    print_command_denied("speed adjust", exc)
+                except grpc.aio.AioRpcError as exc:
+                    print_mavsdk_unavailable("speed adjust", exc)
+            elif abs(current_down_m_s) > 1e-6 and motion_owner == MotionOwner.MANUAL:
                 try:
                     active_drone = await set_motion(
                         connection_manager,
@@ -1505,7 +1563,11 @@ async def main() -> None:
                 print_mavsdk_unavailable("right", exc)
         elif key == "f":
             print("[CMD] up")
-            current_down_m_s = -VERTICAL_SPEED_M_S
+            current_forward_m_s = 0.0
+            current_right_m_s = 0.0
+            current_north_m_s = 0.0
+            current_east_m_s = 0.0
+            current_down_m_s = -control_vertical_speed_m_s
             try:
                 active_drone = await set_motion(connection_manager, current_north_m_s, current_east_m_s, current_down_m_s, current_yaw_deg)
                 if active_drone is not None and avoidance is not None:
@@ -1516,7 +1578,11 @@ async def main() -> None:
                 print_mavsdk_unavailable("up", exc)
         elif key == "v":
             print("[CMD] down")
-            current_down_m_s = VERTICAL_SPEED_M_S
+            current_forward_m_s = 0.0
+            current_right_m_s = 0.0
+            current_north_m_s = 0.0
+            current_east_m_s = 0.0
+            current_down_m_s = control_vertical_speed_m_s
             try:
                 active_drone = await set_motion(connection_manager, current_north_m_s, current_east_m_s, current_down_m_s, current_yaw_deg)
                 if active_drone is not None and avoidance is not None:
@@ -1570,7 +1636,6 @@ async def main() -> None:
                 print_mavsdk_unavailable("yaw right", exc)
         elif key in ("k", "h"):
             print("[CMD] stop / hover")
-            active_mission = None
             set_motion_owner(MotionOwner.MANUAL)
             stop_manual_motion()
             try:
@@ -1587,6 +1652,8 @@ async def main() -> None:
                 force_manual_control()
             state = "ON" if safety_sensor_enabled else "OFF"
             print(f"[SAFETY] Sensor toggle -> {state}", flush=True)
+        elif key == "c":
+            camera_orientation.toggle()
         elif key == "p":
             task = asyncio.create_task(camera.capture_and_upload())
             task.add_done_callback(
