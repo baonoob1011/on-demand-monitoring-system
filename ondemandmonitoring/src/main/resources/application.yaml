@@ -2,7 +2,7 @@ spring:
   application:
     name: ${SPRING_APPLICATION_NAME}
   config:
-    import: optional:file:.env[.properties],optional:file:../.env[.properties],optional:file:ondemandmonitoring/.env[.properties]
+    import: optional:file:.env[.properties],optional:file:ondemandmonitoring/.env[.properties]
   datasource:
     url: ${SPRING_DATASOURCE_URL}
     username: ${SPRING_DATASOURCE_USERNAME}
@@ -21,6 +21,9 @@ spring:
     multipart:
       max-file-size: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE}
       max-request-size: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE}
+  sql:
+    init:
+      mode: always
 
   security:
     oauth2:
@@ -43,11 +46,14 @@ aws:
     bucket: ${AWS_S3_BUCKET}
     prefix: ${AWS_S3_PREFIX}
   cognito:
-    region: ${AWS__COGNITO_REGION}
+    region: ${AWS_COGNITO_REGION}
     user-pool-id: ${AWS_COGNITO_USER_POOL_ID:}
     client-id: ${AWS_COGNITO_CLIENT_ID:}
     client-secret: ${AWS_COGNITO_CLIENT_SECRET:}
     domain: ${AWS_COGNITO_DOMAIN:}
+
+cors:
+  address: ${CORS_ADDRESS}
 
 auth:
   outbox:

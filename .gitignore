@@ -10,3 +10,5 @@ drone-controller/.venv/
 drone-controller/__pycache__/
 drone-controller/*.pyc
 Python/.venv/
+drone-controller/.env.example
+drone-controller/.env.example

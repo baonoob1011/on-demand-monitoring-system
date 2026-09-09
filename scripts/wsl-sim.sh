@@ -15,7 +15,7 @@ case "$SIM_WORLD" in
         WORLD_NAME="forest_monitoring_compact"
         FOREST3D_WORLD_FILE="$FOREST3D_PATH/worlds/forest_monitoring_compact.sdf"
         PX4_GZ_WORLD_PATH="$PX4_ROOT/Tools/simulation/gz/worlds/forest_monitoring_compact.sdf"
-        PX4_SPAWN_POSE="0,-280,15.0,0,0,0"
+        PX4_SPAWN_POSE="0,-280,9.8,0,0,0"
         ;;
     legacy)
         WORLD_NAME="forest_monitoring"
@@ -102,7 +102,6 @@ echo '========================================'
         echo "[SIM] Camera follow skipped: /gui/follow service not ready"
     fi
 ) &
-
 cd "$PX4_ROOT"
 PX4_GZ_WORLD="$WORLD_NAME" \
 PX4_GZ_MODEL_POSE="$PX4_SPAWN_POSE" \

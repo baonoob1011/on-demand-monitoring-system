@@ -1,0 +1,21 @@
+{
+  "source": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\uav-monitoring-compact-world-v6-roads-export-source_20260907_095003.blend",
+  "backup": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\uav-monitoring-compact-world-v6-roads-export-source_20260907_095003.before-green-flight-path-removal.blend",
+  "removed": [
+    {
+      "name": "POLISH_River_Shrub_4_-1",
+      "location": [
+        1.999,
+        -44.865,
+        11.224
+      ],
+      "collections": [
+        "ENV_SHRUBS"
+      ],
+      "materials": [
+        "MAT_Grass_DeepForest"
+      ]
+    }
+  ],
+  "missing": []
+}
