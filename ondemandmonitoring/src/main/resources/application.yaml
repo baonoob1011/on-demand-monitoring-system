@@ -40,7 +40,8 @@ aws:
     bucket: ${AWS_S3_BUCKET}
     prefix: ${AWS_S3_PREFIX}
 
-
+cors:
+  address: ${CORS_ADDRESS}
 
 springdoc:
   api-docs:
