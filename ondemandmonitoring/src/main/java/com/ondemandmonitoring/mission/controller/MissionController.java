@@ -4,13 +4,11 @@ import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.device.domain.DeviceImage;
 import com.ondemandmonitoring.device.dto.response.DeviceImageResponse;
 import com.ondemandmonitoring.device.dto.response.PreflightCheckResponse;
-import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.request.DroneReplacementRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionFailRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionRejectRequest;
 import com.ondemandmonitoring.mission.dto.request.PostFlightStatusRequest;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
-import com.ondemandmonitoring.mission.mapper.MissionMapper;
 import com.ondemandmonitoring.device.mapper.DeviceImageMapper;
 import com.ondemandmonitoring.mission.service.IMissionMediaUploadService;
 import com.ondemandmonitoring.mission.service.IMissionService;
@@ -28,10 +26,11 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
  * REST entry point for all Flow 3 (Drone Operator) mission lifecycle use cases.
+ * Enterprise pattern: Thin controller receiving DTOs directly from Service layer.
  *
  * Base path: /api/missions
  */
-@Tag(name = "Mission Operations", description = "APIs for Drone Operator mission lifecycle, GCS pairing, preflight checks, and flight execution")
+@Tag(name = "Mission Operations (Flow 3)", description = "APIs for Drone Operator mission lifecycle, GCS pairing, preflight checks, and flight execution")
 @RestController
 @RequestMapping("/api/missions")
 @RequiredArgsConstructor
@@ -40,14 +39,17 @@ public class MissionController {
 
     IMissionService missionService;
     IMissionMediaUploadService missionMediaUploadService;
-    MissionMapper missionMapper;
     DeviceImageMapper deviceImageMapper;
+
+    // ------------------------------------------------------------------
+    // Query
+    // ------------------------------------------------------------------
 
     /** GET /api/missions/{id} – retrieve mission details */
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<MissionResponse>> getById(@PathVariable String id) {
-        Mission mission = missionService.findById(id);
-        return ResponseEntity.ok(ApiResponse.ok(missionMapper.toResponse(mission)));
+        MissionResponse response = missionService.getByIdResponse(id);
+        return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
     // ------------------------------------------------------------------
@@ -63,8 +65,8 @@ public class MissionController {
     public ResponseEntity<ApiResponse<MissionResponse>> accept(
             @PathVariable String id,
             @RequestHeader("X-Operator-Id") String operatorId) {
-        Mission mission = missionService.acceptMission(id, operatorId);
-        return ResponseEntity.ok(ApiResponse.ok("Mission đã được chấp nhận", missionMapper.toResponse(mission)));
+        MissionResponse response = missionService.acceptMission(id, operatorId);
+        return ResponseEntity.ok(ApiResponse.ok("Mission đã được chấp nhận", response));
     }
 
     /**
@@ -77,8 +79,8 @@ public class MissionController {
             @PathVariable String id,
             @RequestHeader("X-Operator-Id") String operatorId,
             @Valid @RequestBody MissionRejectRequest request) {
-        Mission mission = missionService.rejectMission(id, operatorId, request.getReason());
-        return ResponseEntity.ok(ApiResponse.ok("Mission đã bị từ chối, hệ thống sẽ phân công lại", missionMapper.toResponse(mission)));
+        MissionResponse response = missionService.rejectMission(id, operatorId, request.getReason());
+        return ResponseEntity.ok(ApiResponse.ok("Mission đã bị từ chối, hệ thống sẽ phân công lại", response));
     }
 
     // ------------------------------------------------------------------
@@ -92,8 +94,8 @@ public class MissionController {
      */
     @PostMapping("/{id}/connect")
     public ResponseEntity<ApiResponse<MissionResponse>> connectGcs(@PathVariable String id) {
-        Mission mission = missionService.connectGcs(id);
-        return ResponseEntity.ok(ApiResponse.ok("Telemetry link with GCS confirmed (CONNECTED)", missionMapper.toResponse(mission)));
+        MissionResponse response = missionService.connectGcs(id);
+        return ResponseEntity.ok(ApiResponse.ok("Telemetry link with GCS confirmed (CONNECTED)", response));
     }
 
     /**
@@ -122,8 +124,8 @@ public class MissionController {
     public ResponseEntity<ApiResponse<MissionResponse>> replaceDrone(
             @PathVariable String id,
             @Valid @RequestBody DroneReplacementRequest request) {
-        Mission mission = missionService.replaceDrone(id, request.getNewDeviceCode());
-        return ResponseEntity.ok(ApiResponse.ok("Drone successfully replaced", missionMapper.toResponse(mission)));
+        MissionResponse response = missionService.replaceDrone(id, request.getNewDeviceCode());
+        return ResponseEntity.ok(ApiResponse.ok("Drone successfully replaced", response));
     }
 
     // ------------------------------------------------------------------
@@ -138,8 +140,8 @@ public class MissionController {
     public ResponseEntity<ApiResponse<MissionResponse>> handover(
             @PathVariable String id,
             @RequestHeader("X-Operator-Id") String operatorId) {
-        Mission mission = missionService.handoverControl(id, operatorId);
-        return ResponseEntity.ok(ApiResponse.ok("Control handed over to operator " + operatorId, missionMapper.toResponse(mission)));
+        MissionResponse response = missionService.handoverControl(id, operatorId);
+        return ResponseEntity.ok(ApiResponse.ok("Control handed over to operator " + operatorId, response));
     }
 
     // ------------------------------------------------------------------
@@ -154,29 +156,29 @@ public class MissionController {
     public ResponseEntity<ApiResponse<MissionResponse>> start(
             @PathVariable String id,
             @RequestParam(required = false) String tokenValue) {
-        Mission mission = missionService.startMission(id, tokenValue);
-        return ResponseEntity.ok(ApiResponse.ok("Takeoff confirmed – mission IN_FLIGHT", missionMapper.toResponse(mission)));
+        MissionResponse response = missionService.startMission(id, tokenValue);
+        return ResponseEntity.ok(ApiResponse.ok("Takeoff confirmed – mission IN_FLIGHT", response));
     }
 
     /** POST /api/missions/{id}/return – drone heads back, RETURNING */
     @PostMapping("/{id}/return")
     public ResponseEntity<ApiResponse<MissionResponse>> markReturning(@PathVariable String id) {
-        Mission mission = missionService.markReturning(id);
-        return ResponseEntity.ok(ApiResponse.ok("Drone đang quay trở về", missionMapper.toResponse(mission)));
+        MissionResponse response = missionService.markReturning(id);
+        return ResponseEntity.ok(ApiResponse.ok("Drone đang quay trở về", response));
     }
 
     /** POST /api/missions/{id}/postflight – drone landed, POSTFLIGHT_CHECKING */
     @PostMapping("/{id}/postflight")
     public ResponseEntity<ApiResponse<MissionResponse>> startPostflight(@PathVariable String id) {
-        Mission mission = missionService.startPostflightChecking(id);
-        return ResponseEntity.ok(ApiResponse.ok("Bắt đầu kiểm tra sau bay", missionMapper.toResponse(mission)));
+        MissionResponse response = missionService.startPostflightChecking(id);
+        return ResponseEntity.ok(ApiResponse.ok("Bắt đầu kiểm tra sau bay", response));
     }
 
     /** POST /api/missions/{id}/complete – operator confirms complete */
     @PostMapping("/{id}/complete")
     public ResponseEntity<ApiResponse<MissionResponse>> complete(@PathVariable String id) {
-        Mission mission = missionService.completeMission(id);
-        return ResponseEntity.ok(ApiResponse.ok("Mission đã hoàn thành", missionMapper.toResponse(mission)));
+        MissionResponse response = missionService.completeMission(id);
+        return ResponseEntity.ok(ApiResponse.ok("Mission đã hoàn thành", response));
     }
 
     /** POST /api/missions/{id}/fail – operator reports mission failure */
@@ -184,8 +186,8 @@ public class MissionController {
     public ResponseEntity<ApiResponse<MissionResponse>> fail(
             @PathVariable String id,
             @Valid @RequestBody MissionFailRequest request) {
-        Mission mission = missionService.failMission(id, request.getReason());
-        return ResponseEntity.ok(ApiResponse.ok("Mission đã báo lỗi thất bại", missionMapper.toResponse(mission)));
+        MissionResponse response = missionService.failMission(id, request.getReason());
+        return ResponseEntity.ok(ApiResponse.ok("Mission đã báo lỗi thất bại", response));
     }
 
     // ------------------------------------------------------------------
@@ -215,8 +217,9 @@ public class MissionController {
     @PatchMapping("/{id}/postflight-status")
     public ResponseEntity<ApiResponse<MissionResponse>> updatePostFlightStatus(
             @PathVariable String id,
+            @RequestParam String deviceCode,
             @Valid @RequestBody PostFlightStatusRequest request) {
-        Mission mission = missionService.updatePostFlightStatus(id, request.getNewDeviceStatus(), request.getNotes());
-        return ResponseEntity.ok(ApiResponse.ok("Cập nhật trạng thái drone sau bay thành công", missionMapper.toResponse(mission)));
+        MissionResponse response = missionService.updatePostFlightStatus(id, request.getNewDeviceStatus(), request.getNotes());
+        return ResponseEntity.ok(ApiResponse.ok("Cập nhật trạng thái drone sau bay thành công", response));
     }
 }
