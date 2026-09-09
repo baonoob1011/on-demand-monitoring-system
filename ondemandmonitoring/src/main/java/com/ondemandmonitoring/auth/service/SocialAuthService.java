@@ -48,20 +48,21 @@ public class SocialAuthService {
         String email = identity.email().trim().toLowerCase(Locale.ROOT);
         var existingUser = userService.findOptionalByEmail(email);
         boolean accountCreated = existingUser.isEmpty();
-        User user = existingUser
-                .map(existing -> userService.syncExternalIdentity(
-                        existing,
-                        identity.username(),
-                        identity.subject(),
-                        identity.fullName(),
-                        true))
-                .orElseGet(() -> createUser(request, identity, email));
-
-        if (!Boolean.TRUE.equals(user.getIsActive())) {
-            throw new ApiException(ErrorCode.ACCOUNT_DISABLED);
-        }
-
+        User user;
         try {
+            user = existingUser
+                    .map(existing -> userService.syncExternalIdentity(
+                            existing,
+                            identity.username(),
+                            identity.subject(),
+                            identity.fullName(),
+                            true))
+                    .orElseGet(() -> createUser(request, identity, email));
+
+            if (!Boolean.TRUE.equals(user.getIsActive())) {
+                throw new ApiException(ErrorCode.ACCOUNT_DISABLED);
+            }
+
             cognitoUserDirectory.addUserToGroup(identity.username(), user.getRole().name());
         } catch (RuntimeException exception) {
             if (accountCreated) {
