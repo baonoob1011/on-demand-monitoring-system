@@ -20,6 +20,21 @@ public enum ErrorCode {
     RESOURCE_NOT_FOUND("Không tìm thấy dữ liệu", HttpStatus.NOT_FOUND),
     RESOURCE_ALREADY_EXISTS("Dữ liệu đã tồn tại", HttpStatus.CONFLICT),
 
+    EMAIL_ALREADY_EXISTS("Email đã được đăng ký", HttpStatus.CONFLICT),
+    USER_NOT_FOUND("Không tìm thấy người dùng", HttpStatus.NOT_FOUND),
+    INVALID_CREDENTIALS("Email hoặc mật khẩu không đúng", HttpStatus.UNAUTHORIZED),
+    USER_NOT_CONFIRMED("Tài khoản chưa được xác thực email", HttpStatus.FORBIDDEN),
+    ACCOUNT_DISABLED("Tài khoản đã bị vô hiệu hóa", HttpStatus.FORBIDDEN),
+    OTP_INVALID("Mã OTP không hợp lệ", HttpStatus.BAD_REQUEST),
+    OTP_EXPIRED("Mã OTP đã hết hạn", HttpStatus.BAD_REQUEST),
+    USER_ALREADY_CONFIRMED("Tài khoản đã được xác thực", HttpStatus.CONFLICT),
+    PASSWORD_POLICY_VIOLATED("Mật khẩu không đáp ứng chính sách bảo mật", HttpStatus.BAD_REQUEST),
+    REFRESH_TOKEN_INVALID("Refresh token không hợp lệ hoặc đã hết hạn", HttpStatus.UNAUTHORIZED),
+    AUTH_PROVIDER_ERROR("Không thể kết nối nhà cung cấp xác thực", HttpStatus.BAD_GATEWAY),
+    SOCIAL_AUTH_NOT_CONFIGURED("Social authentication chưa được cấu hình", HttpStatus.NOT_IMPLEMENTED),
+    SOCIAL_EMAIL_NOT_VERIFIED("Email social chưa được xác thực", HttpStatus.UNAUTHORIZED),
+    SOCIAL_PROVIDER_UNSUPPORTED("Nhà cung cấp social chưa được hỗ trợ", HttpStatus.BAD_REQUEST),
+
     INTERNAL_SERVER_ERROR("Lỗi hệ thống", HttpStatus.INTERNAL_SERVER_ERROR),
 
 

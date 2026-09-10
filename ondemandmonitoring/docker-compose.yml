@@ -27,7 +27,8 @@ services:
 #        condition: service_healthy
 
   postgres:
-    image: pgvector/pgvector:pg17
+    image: postgis/postgis:17-3.5
+    pull_policy: always
     container_name: ondemand-postgres
     restart: unless-stopped
     ports:
