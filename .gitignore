@@ -20,6 +20,9 @@ out/
 !**/src/test/**/out/
 .kotlin
 
+### Maven build output ###
+**/target/
+
 ### Eclipse ###
 .apt_generated
 .classpath

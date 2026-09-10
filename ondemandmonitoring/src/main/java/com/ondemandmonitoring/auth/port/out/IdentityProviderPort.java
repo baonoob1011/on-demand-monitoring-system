@@ -10,25 +10,29 @@ public interface IdentityProviderPort {
 
     ManagedIdentity createInvitedUser(CreateManagedAccountRequest request);
 
-    void confirmSignUp(String email, String otpCode);
+    void confirmSignUp(String username, String otpCode);
 
-    void resendConfirmationCode(String email);
+    void resendConfirmationCode(String username);
 
-    AuthenticationTokens authenticate(String email, String password);
+    AuthenticationTokens authenticate(String username, String password);
 
-    AuthenticationTokens respondToNewPasswordChallenge(String email, String session, String newPassword);
+    AuthenticationTokens respondToNewPasswordChallenge(String username, String session, String newPassword);
 
     AuthenticationTokens refresh(String refreshToken, String username);
 
-    void forgotPassword(String email);
+    void forgotPassword(String username);
 
-    void resetPassword(String email, String otpCode, String newPassword);
+    void resetPassword(String username, String otpCode, String newPassword);
 
     void revoke(String refreshToken);
 
     void globalSignOut(String accessToken);
 
     void addUserToGroup(String username, String role);
+
+    void linkSocialIdentity(String destinationUsername, String providerName, String providerSubject);
+
+    void setPermanentPassword(String username, String password);
 
     void deleteUser(String username);
 

@@ -45,51 +45,51 @@ public class CognitoIdentityProviderAdapter implements IdentityProviderPort {
                         AttributeType.builder().name("email_verified").value("true").build(),
                         AttributeType.builder().name("name").value(request.getFullName()).build())
                 .desiredDeliveryMediums(DeliveryMediumType.EMAIL)
-                // MessageAction is intentionally omitted: Cognito sends the invitation email.
+        // MessageAction is intentionally omitted: Cognito sends the invitation email.
                 .build());
 
         UserType user = response.user();
-        return new ManagedIdentity(request.getEmail(), attribute(user, "sub"));
+        return new ManagedIdentity(user.username(), attribute(user, "sub"));
     }
 
     @Override
-    public void confirmSignUp(String email, String otpCode) {
+    public void confirmSignUp(String username, String otpCode) {
         client.confirmSignUp(ConfirmSignUpRequest.builder()
                 .clientId(properties.clientId())
-                .secretHash(secretHash(email))
-                .username(email)
+                .secretHash(secretHash(username))
+                .username(username)
                 .confirmationCode(otpCode)
                 .build());
     }
 
     @Override
-    public void resendConfirmationCode(String email) {
+    public void resendConfirmationCode(String username) {
         client.resendConfirmationCode(ResendConfirmationCodeRequest.builder()
                 .clientId(properties.clientId())
-                .secretHash(secretHash(email))
-                .username(email)
+                .secretHash(secretHash(username))
+                .username(username)
                 .build());
     }
 
     @Override
-    public AuthenticationTokens authenticate(String email, String password) {
+    public AuthenticationTokens authenticate(String username, String password) {
         AdminInitiateAuthResponse response = client.adminInitiateAuth(AdminInitiateAuthRequest.builder()
                 .userPoolId(properties.userPoolId())
                 .clientId(properties.clientId())
                 .authFlow(AuthFlowType.ADMIN_USER_PASSWORD_AUTH)
                 .authParameters(Map.of(
-                        "USERNAME", email,
+                        "USERNAME", username,
                         "PASSWORD", password,
-                        "SECRET_HASH", secretHash(email)))
+                        "SECRET_HASH", secretHash(username)))
                 .build());
         if (response.challengeName() != null && response.session() != null) {
-            return AuthenticationTokens.challenge(email, response.challengeNameAsString(), response.session());
+            return AuthenticationTokens.challenge(username, response.challengeNameAsString(), response.session());
         }
-        return tokens(response.authenticationResult(), email);
+        return tokens(response.authenticationResult(), username);
     }
 
     @Override
-    public AuthenticationTokens respondToNewPasswordChallenge(String email, String session, String newPassword) {
+    public AuthenticationTokens respondToNewPasswordChallenge(String username, String session, String newPassword) {
         AdminRespondToAuthChallengeResponse response = client.adminRespondToAuthChallenge(
                 AdminRespondToAuthChallengeRequest.builder()
                         .userPoolId(properties.userPoolId())
@@ -97,11 +97,11 @@ public class CognitoIdentityProviderAdapter implements IdentityProviderPort {
                         .challengeName(ChallengeNameType.NEW_PASSWORD_REQUIRED)
                         .session(session)
                         .challengeResponses(Map.of(
-                                "USERNAME", email,
+                                "USERNAME", username,
                                 "NEW_PASSWORD", newPassword,
-                                "SECRET_HASH", secretHash(email)))
+                                "SECRET_HASH", secretHash(username)))
                         .build());
-        return tokens(response.authenticationResult(), email);
+        return tokens(response.authenticationResult(), username);
     }
 
     @Override
@@ -118,20 +118,20 @@ public class CognitoIdentityProviderAdapter implements IdentityProviderPort {
     }
 
     @Override
-    public void forgotPassword(String email) {
+    public void forgotPassword(String username) {
         client.forgotPassword(ForgotPasswordRequest.builder()
                 .clientId(properties.clientId())
-                .secretHash(secretHash(email))
-                .username(email)
+                .secretHash(secretHash(username))
+                .username(username)
                 .build());
     }
 
     @Override
-    public void resetPassword(String email, String otpCode, String newPassword) {
+    public void resetPassword(String username, String otpCode, String newPassword) {
         client.confirmForgotPassword(ConfirmForgotPasswordRequest.builder()
                 .clientId(properties.clientId())
-                .secretHash(secretHash(email))
-                .username(email)
+                .secretHash(secretHash(username))
+                .username(username)
                 .confirmationCode(otpCode)
                 .password(newPassword)
                 .build());
@@ -159,6 +159,33 @@ public class CognitoIdentityProviderAdapter implements IdentityProviderPort {
                 .userPoolId(properties.userPoolId())
                 .username(username)
                 .groupName(role)
+                .build());
+    }
+
+    @Override
+    public void linkSocialIdentity(String destinationUsername, String providerName, String providerSubject) {
+        client.adminLinkProviderForUser(AdminLinkProviderForUserRequest.builder()
+                .userPoolId(properties.userPoolId())
+                .destinationUser(ProviderUserIdentifierType.builder()
+                        .providerName("Cognito")
+                        .providerAttributeName("Cognito_Subject")
+                        .providerAttributeValue(destinationUsername)
+                        .build())
+                .sourceUser(ProviderUserIdentifierType.builder()
+                        .providerName(providerName)
+                        .providerAttributeName("Cognito_Subject")
+                        .providerAttributeValue(providerSubject)
+                        .build())
+                .build());
+    }
+
+    @Override
+    public void setPermanentPassword(String username, String password) {
+        client.adminSetUserPassword(AdminSetUserPasswordRequest.builder()
+                .userPoolId(properties.userPoolId())
+                .username(username)
+                .password(password)
+                .permanent(true)
                 .build());
     }
 

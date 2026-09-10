@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.auth.dto.response;
 
-import com.ondemandmonitoring.user.enumeration.UserRole;
+import com.ondemandmonitoring.role.domain.RoleCode;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -9,7 +9,7 @@ import lombok.Getter;
 public class ManagedAccountResponse {
 
     private String email;
-    private UserRole role;
+    private RoleCode role;
     private boolean invitationSent;
     private boolean passwordChangeRequired;
 }

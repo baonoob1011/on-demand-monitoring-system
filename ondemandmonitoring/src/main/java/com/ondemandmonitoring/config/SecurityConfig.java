@@ -15,7 +15,7 @@ import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import com.ondemandmonitoring.user.enumeration.UserRole;
+import com.ondemandmonitoring.role.domain.RoleCode;
 
 import java.util.Collection;
 import java.util.List;
@@ -27,11 +27,11 @@ import java.util.Set;
 public class SecurityConfig {
 
     private static final Set<String> BUSINESS_ROLE_GROUPS = Set.of(
-            UserRole.CUSTOMER.name(),
-            UserRole.STAFF.name(),
-            UserRole.DRONE_OPERATOR.name(),
-            UserRole.SYSTEM_OPERATOR.name(),
-            UserRole.ADMIN.name());
+            RoleCode.CUSTOMER.name(),
+            RoleCode.STAFF.name(),
+            RoleCode.DRONE_OPERATOR.name(),
+            RoleCode.SYSTEM_OPERATOR.name(),
+            RoleCode.ADMIN.name());
 
     @Value("${app.cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173}")
     private String allowedOrigins;
