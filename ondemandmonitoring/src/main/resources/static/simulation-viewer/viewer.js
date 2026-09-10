@@ -11,10 +11,12 @@ const metadataBox = document.getElementById("metadataBox");
 const mouseReadout = document.getElementById("mouseReadout");
 const debugToggle = document.getElementById("debugToggle");
 const editToggle = document.getElementById("editToggle");
+const saveZoneButton = document.getElementById("saveZone");
 const createZoneButton = document.getElementById("createZone");
 const deleteZoneButton = document.getElementById("deleteZone");
 const reloadZonesButton = document.getElementById("reloadZones");
 const saveStatusEl = document.getElementById("saveStatus");
+const toastEl = document.getElementById("toast");
 
 let metadata;
 let zones = [];
@@ -26,6 +28,7 @@ let selectedZoneId = null;
 let dragging = false;
 let lastPointer = null;
 let zoneDrag = null;
+let toastTimer = null;
 
 function apiData(payload) {
   return payload.data || payload.result || payload;
@@ -263,6 +266,7 @@ function drawZoneList() {
 
 function selectZone(zoneId) {
   selectedZoneId = zoneId;
+  saveZoneButton.disabled = !zoneId;
   deleteZoneButton.disabled = !zoneId;
   overlayEl.querySelectorAll(".zone-polygon").forEach((el) => {
     el.classList.toggle("selected", el.dataset.zoneId === zoneId);
@@ -294,9 +298,18 @@ function selectZone(zoneId) {
   `;
 }
 
-function setSaveStatus(message, saving = false) {
+function setSaveStatus(message, saving = false, type = "info") {
   saveStatusEl.textContent = message;
-  saveStatusEl.style.color = saving ? "#1d4ed8" : "";
+  saveStatusEl.className = `save-status ${saving ? "saving" : type}`;
+
+  toastEl.textContent = message;
+  toastEl.className = `toast visible ${saving ? "saving" : type}`;
+  window.clearTimeout(toastTimer);
+  if (!saving) {
+    toastTimer = window.setTimeout(() => {
+      toastEl.classList.remove("visible");
+    }, type === "error" ? 5200 : 3200);
+  }
 }
 
 function pointerToSim(event) {
@@ -374,9 +387,9 @@ async function saveZone(zoneId) {
     redrawOverlay();
     drawZoneList();
     selectZone(saved.id);
-    setSaveStatus(`Saved ${saved.name} to DB.`);
+    setSaveStatus(`Saved ${saved.name} to DB successfully.`, false, "success");
   } catch (error) {
-    setSaveStatus(error.message);
+    setSaveStatus(error.message, false, "error");
     console.error(error);
   }
 }
@@ -423,9 +436,9 @@ async function createZone() {
     redrawOverlay();
     drawZoneList();
     selectZone(created.id);
-    setSaveStatus(`Created ${created.name} in DB. Drag it where you want.`);
+    setSaveStatus(`Created ${created.name} in DB successfully. Drag it where you want.`, false, "success");
   } catch (error) {
-    setSaveStatus(error.message);
+    setSaveStatus(error.message, false, "error");
     console.error(error);
   }
 }
@@ -439,7 +452,7 @@ async function reloadZones() {
   drawZoneList();
   detailsEl.className = "details empty";
   detailsEl.textContent = "Click a zone polygon.";
-  setSaveStatus("Reloaded DB zones.");
+  setSaveStatus("Reloaded zones from DB successfully.", false, "success");
 }
 
 async function deleteSelectedZone() {
@@ -460,9 +473,9 @@ async function deleteSelectedZone() {
     redrawOverlay();
     drawZoneList();
     selectZone(null);
-    setSaveStatus(`Deleted ${zone.name} from DB.`);
+    setSaveStatus(`Deleted ${zone.name} from DB successfully.`, false, "success");
   } catch (error) {
-    setSaveStatus(error.message);
+    setSaveStatus(error.message, false, "error");
     console.error(error);
   }
 }
@@ -494,9 +507,15 @@ function attachControls() {
 
   reloadZonesButton.addEventListener("click", () => {
     reloadZones().catch((error) => {
-      setSaveStatus(error.message);
+      setSaveStatus(error.message, false, "error");
       console.error(error);
     });
+  });
+
+  saveZoneButton.addEventListener("click", () => {
+    if (selectedZoneId) {
+      saveZone(selectedZoneId);
+    }
   });
 
   createZoneButton.addEventListener("click", () => {
@@ -533,7 +552,7 @@ function attachControls() {
     applyTransform();
   });
 
-  mapEl.addEventListener("pointerup", () => {
+  window.addEventListener("pointerup", () => {
     if (zoneDrag) {
       const changedZoneId = zoneDrag.zoneId;
       const shouldSave = zoneDrag.changed;

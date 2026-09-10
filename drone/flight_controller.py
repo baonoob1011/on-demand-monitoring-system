@@ -10,6 +10,7 @@ import socket
 import subprocess
 import termios
 import threading
+import time
 import tty
 import sys
 import grpc
@@ -119,6 +120,9 @@ MAVSDK_HEALTH_LOG_INTERVAL_S = float(
 )
 MAVSDK_CLIENT_RECONNECT_COOLDOWN_S = float(
     os.getenv("MAVSDK_CLIENT_RECONNECT_COOLDOWN_S", "3.0")
+)
+OFFBOARD_SETPOINT_RATE_HZ = float(
+    os.getenv("OFFBOARD_SETPOINT_RATE_HZ", "15.0")
 )
 
 MOVE_SPEED_M_S = float(
@@ -599,6 +603,12 @@ class MavsdkConnectionManager:
         self._connection_monitor_task: asyncio.Task | None = None
         self._degraded_since_s: float | None = None
         self._degraded_logged = False
+        self._offboard_sender_task: asyncio.Task | None = None
+        self._desired_velocity = VelocityNedYaw(0.0, 0.0, 0.0, 0.0)
+        self._desired_velocity_dirty = False
+        self._setpoint_intervals: list[float] = []
+        self._last_setpoint_sent_s: float | None = None
+        self._last_setpoint_stats_s = 0.0
 
     def _new_drone(self) -> System:
         return System(
@@ -680,6 +690,90 @@ class MavsdkConnectionManager:
 
     async def get_drone(self) -> System | None:
         return self.drone
+
+    def update_desired_motion(
+            self,
+            north_m_s: float,
+            east_m_s: float,
+            down_m_s: float,
+            yaw_deg: float,
+    ) -> None:
+        self._desired_velocity = VelocityNedYaw(
+            north_m_s,
+            east_m_s,
+            down_m_s,
+            yaw_deg,
+        )
+        self._desired_velocity_dirty = True
+
+    def stop_desired_motion(self, yaw_deg: float = 0.0) -> None:
+        self.update_desired_motion(0.0, 0.0, 0.0, yaw_deg)
+
+    def ensure_offboard_sender(self) -> None:
+        if self._offboard_sender_task is not None and not self._offboard_sender_task.done():
+            return
+        self._offboard_sender_task = asyncio.create_task(
+            self._offboard_sender_loop(),
+            name="offboard-setpoint-sender",
+        )
+
+    async def stop_offboard_sender(self) -> None:
+        self.stop_desired_motion()
+        task = self._offboard_sender_task
+        self._offboard_sender_task = None
+        if task is not None and not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            print("[OFFBOARD] Sender stopped", flush=True)
+
+    async def _offboard_sender_loop(self) -> None:
+        interval_s = 1.0 / max(OFFBOARD_SETPOINT_RATE_HZ, 1.0)
+        offboard_generation = -1
+        print(
+            f"[OFFBOARD] Sender started target={OFFBOARD_SETPOINT_RATE_HZ:.1f}Hz",
+            flush=True,
+        )
+        while True:
+            await asyncio.sleep(interval_s)
+            drone = self.drone
+            if drone is None:
+                continue
+
+            try:
+                if offboard_generation != self.generation:
+                    await ensure_offboard_started(drone)
+                    offboard_generation = self.generation
+                    self._offboard_generation = self.generation
+                    print(
+                        f"[OFFBOARD] Started generation={self.generation}",
+                        flush=True,
+                    )
+
+                now_s = asyncio.get_running_loop().time()
+                if self._last_setpoint_sent_s is not None:
+                    gap_s = now_s - self._last_setpoint_sent_s
+                    self._setpoint_intervals.append(gap_s)
+                    if len(self._setpoint_intervals) > 300:
+                        self._setpoint_intervals = self._setpoint_intervals[-300:]
+                self._last_setpoint_sent_s = now_s
+
+                await drone.offboard.set_velocity_ned(self._desired_velocity)
+
+                if now_s - self._last_setpoint_stats_s >= 5.0 and self._setpoint_intervals:
+                    intervals = self._setpoint_intervals
+                    avg_s = sum(intervals) / len(intervals)
+                    hz = 1.0 / avg_s if avg_s > 0 else 0.0
+                    print(
+                        f"[OFFBOARD] setpoint stats count={len(intervals)} "
+                        f"avg_hz={hz:.1f} max_gap={max(intervals):.3f}s",
+                        flush=True,
+                    )
+                    self._last_setpoint_stats_s = now_s
+            except asyncio.CancelledError:
+                raise
+            except (OffboardError, grpc.aio.AioRpcError) as exc:
+                print_command_denied("offboard setpoint", exc)
+                await asyncio.sleep(0.5)
 
     def _start_connection_monitor(self, drone: System, generation: int) -> None:
         if self._connection_monitor_task is not None:
@@ -880,36 +974,8 @@ async def set_motion(
             return None
 
     try:
-        # ============================================================
-        # START OFFBOARD CHỈ 1 LẦN CHO MỖI MAVSDK GENERATION
-        #
-        # Không được gửi zero setpoint ở mỗi control loop.
-        # Reconnect -> manager.generation tăng -> start lại đúng 1 lần.
-        # ============================================================
-        if (
-                getattr(manager, "_offboard_generation", -1)
-                != manager.generation
-        ):
-            await ensure_offboard_started(drone)
-            manager._offboard_generation = manager.generation
-
-            print(
-                f"[OFFBOARD] Started generation={manager.generation}",
-                flush=True,
-            )
-
-        # ============================================================
-        # GỬI COMMAND THẬT
-        # ============================================================
-        await drone.offboard.set_velocity_ned(
-            VelocityNedYaw(
-                north_m_s,
-                east_m_s,
-                down_m_s,
-                yaw_deg,
-            )
-        )
-
+        manager.update_desired_motion(north_m_s, east_m_s, down_m_s, yaw_deg)
+        manager.ensure_offboard_sender()
         return drone
 
     except grpc.aio.AioRpcError as exc:
@@ -929,28 +995,8 @@ async def set_motion(
             return None
 
         try:
-            # manager.generation đã đổi sau reconnect,
-            # nên System mới phải start OFFBOARD lại đúng 1 lần.
-            if (
-                    getattr(manager, "_offboard_generation", -1)
-                    != manager.generation
-            ):
-                await ensure_offboard_started(drone)
-                manager._offboard_generation = manager.generation
-
-                print(
-                    f"[OFFBOARD] Restarted generation={manager.generation}",
-                    flush=True,
-                )
-
-            await drone.offboard.set_velocity_ned(
-                VelocityNedYaw(
-                    north_m_s,
-                    east_m_s,
-                    down_m_s,
-                    yaw_deg,
-                )
-            )
+            manager.update_desired_motion(north_m_s, east_m_s, down_m_s, yaw_deg)
+            manager.ensure_offboard_sender()
 
             return drone
 
@@ -1663,6 +1709,7 @@ async def main() -> None:
             )
         elif key == "l":
             print("[CMD] land")
+            await connection_manager.stop_offboard_sender()
             active_drone = await connection_manager.get_drone()
             if active_drone is None:
                 active_drone = await connection_manager.reconnect()
@@ -1692,6 +1739,7 @@ async def main() -> None:
                             print_mavsdk_unavailable("land retry", retry_exc)
         elif key == "x":
             print("[SHUTDOWN] Stopped by user")
+            await connection_manager.stop_offboard_sender()
             return
 
 

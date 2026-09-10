@@ -36,6 +36,9 @@ MAVSDK_TELEMETRY_COMPID = int(os.getenv("MAVSDK_TELEMETRY_COMPID", "191"))
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8080").rstrip("/")
 DEVICE_CODE = os.getenv("DEVICE_CODE", "DRONE-01")
 TELEMETRY_INTERVAL_SECONDS = float(os.getenv("TELEMETRY_INTERVAL_SECONDS", "5"))
+MAVSDK_GRPC_READY_TIMEOUT_S = float(os.getenv("MAVSDK_GRPC_READY_TIMEOUT_S", "10.0"))
+MAVSDK_PX4_DISCOVERY_TIMEOUT_S = float(os.getenv("MAVSDK_PX4_DISCOVERY_TIMEOUT_S", "20.0"))
+MAVSDK_TELEMETRY_PROFILE = os.getenv("MAVSDK_TELEMETRY_PROFILE", "lean").strip().lower()
 LOGGER = logging.getLogger("telemetry_sender")
 battery_sim = SitlBatterySimulator()
 
@@ -161,6 +164,12 @@ class TelemetryState:
 
 state = TelemetryState()
 
+# Backend telemetry is intentionally disabled until a future Backend request
+# explicitly enables it.  The MAVSDK streams below remain active because they
+# provide flight-control, safety, and shared HUD state.
+backend_telemetry_enabled = False
+_backend_telemetry_task: asyncio.Task[None] | None = None
+
 
 class MavsdkAckNoiseFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
@@ -261,17 +270,18 @@ async def run_stream(name: str, stream: Callable[[], Any], handler: Callable[[An
 
 async def connect_px4(drone: System, generation: int) -> None:
     LOGGER.info("[MAVSDK-TELEMETRY] waiting for server 127.0.0.1:%s", MAVSDK_TELEMETRY_GRPC_PORT)
-    while not await wait_for_grpc_port(10.0):
+    while not await wait_for_grpc_port(MAVSDK_GRPC_READY_TIMEOUT_S):
         LOGGER.warning("[MAVSDK-TELEMETRY] server unavailable on 127.0.0.1:%s", MAVSDK_TELEMETRY_GRPC_PORT)
 
     LOGGER.info("[MAVSDK-TELEMETRY] server available")
     await drone.connect()
 
-    async for connection_state in drone.core.connection_state():
-        await state.update(connected=connection_state.is_connected)
-        if connection_state.is_connected:
-            LOGGER.info("[MAVSDK-TELEMETRY] PX4 reconnected generation=%s", generation)
-            return
+    async with asyncio.timeout(MAVSDK_PX4_DISCOVERY_TIMEOUT_S):
+        async for connection_state in drone.core.connection_state():
+            await state.update(connected=connection_state.is_connected)
+            if connection_state.is_connected:
+                LOGGER.info("[MAVSDK-TELEMETRY] PX4 reconnected generation=%s", generation)
+                return
 
 
 async def configure_telemetry_rates(drone: System) -> None:
@@ -427,13 +437,16 @@ async def watch_in_air(drone: System) -> None:
 
 
 async def send_telemetry() -> None:
+    if not backend_telemetry_enabled:
+        return
+
     url = f"{BACKEND_BASE_URL}/api/devices/{DEVICE_CODE}/telemetry"
     timeout = httpx.Timeout(5.0)
     sent_count = 0
 
     LOGGER.info("Sending telemetry for %s every %s seconds", DEVICE_CODE, TELEMETRY_INTERVAL_SECONDS)
     async with httpx.AsyncClient(timeout=timeout) as client:
-        while True:
+        while backend_telemetry_enabled:
             if not await state.has_backend_required_fields():
                 await asyncio.sleep(TELEMETRY_INTERVAL_SECONDS)
                 continue
@@ -458,9 +471,28 @@ async def send_telemetry() -> None:
             await asyncio.sleep(TELEMETRY_INTERVAL_SECONDS)
 
 
+def start_backend_telemetry() -> asyncio.Task[None]:
+    """Start Backend telemetry on demand (future Backend-trigger hook)."""
+    global _backend_telemetry_task, backend_telemetry_enabled
+    backend_telemetry_enabled = True
+    if _backend_telemetry_task is None or _backend_telemetry_task.done():
+        _backend_telemetry_task = asyncio.create_task(send_telemetry(), name="backend-telemetry")
+    return _backend_telemetry_task
+
+
+async def stop_backend_telemetry() -> None:
+    """Stop Backend telemetry without affecting MAVSDK flight telemetry."""
+    global _backend_telemetry_task, backend_telemetry_enabled
+    backend_telemetry_enabled = False
+    if _backend_telemetry_task is not None:
+        _backend_telemetry_task.cancel()
+        await asyncio.gather(_backend_telemetry_task, return_exceptions=True)
+        _backend_telemetry_task = None
+
+
 async def run_telemetry_stream_generation(drone: System, generation: int) -> None:
     await configure_telemetry_rates(drone)
-    LOGGER.info("[TELEMETRY] streams restarted generation=%s", generation)
+    LOGGER.info("[TELEMETRY] streams restarted generation=%s profile=%s", generation, MAVSDK_TELEMETRY_PROFILE)
 
     tasks = [
         asyncio.create_task(watch_connection(drone), name=f"connection-{generation}"),
@@ -468,14 +500,19 @@ async def run_telemetry_stream_generation(drone: System, generation: int) -> Non
         asyncio.create_task(watch_position(drone), name=f"position-{generation}"),
         asyncio.create_task(watch_gps_info(drone), name=f"gps_info-{generation}"),
         asyncio.create_task(watch_health(drone), name=f"health-{generation}"),
-        asyncio.create_task(watch_heading(drone), name=f"heading-{generation}"),
         asyncio.create_task(watch_velocity(drone), name=f"velocity_ned-{generation}"),
         asyncio.create_task(watch_armed(drone), name=f"armed-{generation}"),
-        asyncio.create_task(watch_flight_mode(drone), name=f"flight_mode-{generation}"),
-        asyncio.create_task(watch_home(drone), name=f"home-{generation}"),
-        asyncio.create_task(watch_attitude(drone), name=f"attitude_euler-{generation}"),
         asyncio.create_task(watch_in_air(drone), name=f"in_air-{generation}"),
     ]
+    if MAVSDK_TELEMETRY_PROFILE == "full":
+        tasks.extend(
+            [
+                asyncio.create_task(watch_heading(drone), name=f"heading-{generation}"),
+                asyncio.create_task(watch_flight_mode(drone), name=f"flight_mode-{generation}"),
+                asyncio.create_task(watch_home(drone), name=f"home-{generation}"),
+                asyncio.create_task(watch_attitude(drone), name=f"attitude_euler-{generation}"),
+            ]
+        )
 
     try:
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
@@ -530,6 +567,7 @@ async def main() -> None:
     LOGGER.info("PX4: %s", PX4_SYSTEM_ADDRESS)
     LOGGER.info("MAVSDK gRPC shared server: localhost:%s", MAVSDK_TELEMETRY_GRPC_PORT)
     LOGGER.info("Backend: %s", BACKEND_BASE_URL)
+    LOGGER.info("[TELEMETRY-BE] Disabled - waiting for future Backend request")
     if battery_sim.enabled:
         LOGGER.info(
             "SITL battery simulation enabled: start %.1f%%, min %.1f%%, state %s",
@@ -540,7 +578,6 @@ async def main() -> None:
 
     await asyncio.gather(
         telemetry_supervisor(),
-        send_telemetry(),
         watch_sitl_battery_sim(),
     )
 
