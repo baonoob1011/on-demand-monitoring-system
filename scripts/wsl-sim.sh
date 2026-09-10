@@ -4,11 +4,22 @@ set -e
 
 FOREST3D_PATH="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/Forest3D"
 PROJECT_PATH="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system"
+ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
 PX4_ROOT="$HOME/PX4-Autopilot"
 PX4_BUILD="$PX4_ROOT/build/px4_sitl_default"
 PX4_GZ_PLUGIN_PATH="$PX4_BUILD/src/modules/simulation/gz_plugins"
 FOREST3D_GZ_GUI_CONFIG="$FOREST3D_PATH/gui/forest_monitoring_gui.config"
 SIM_WORLD="${1:-${SIM_WORLD:-legacy}}"
+PX4_MAVLINK_RC="$PX4_ROOT/ROMFS/px4fmu_common/init.d-posix/px4-rc.mavlink"
+
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+fi
+
+PX4_ONBOARD_MAVLINK_RATE_B_S="${PX4_ONBOARD_MAVLINK_RATE_B_S:-100000}"
 
 case "$SIM_WORLD" in
     compact)
@@ -38,6 +49,49 @@ export LD_LIBRARY_PATH="${PX4_GZ_PLUGIN_PATH}:${LD_LIBRARY_PATH:-}"
 
 # Sync selected Forest3D world to PX4.
 cp "$FOREST3D_WORLD_FILE" "$PX4_GZ_WORLD_PATH"
+
+# MAVSDK uses PX4's onboard-payload MAVLink endpoint at UDP 14030.
+# Gazebo can run at a low real-time factor on this machine. PX4 schedules
+# stream rates in simulation time, while MAVSDK heartbeat timeout is wall-clock.
+# Keep only this MAVSDK-facing HEARTBEAT stream high enough to stay above the
+# timeout threshold even when SITL runs at roughly 5-10% real time.
+if [ -f "$PX4_MAVLINK_RC" ]; then
+    python3 - "$PX4_MAVLINK_RC" "$PX4_ONBOARD_MAVLINK_RATE_B_S" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+path = Path(sys.argv[1])
+rate = sys.argv[2]
+new = f"mavlink start -x -u $udp_onboard_payload_port_local -r {rate} -f -m onboard -o $udp_onboard_payload_port_remote $mavlink_network_interface_arg"
+text = path.read_text()
+pattern = re.compile(
+    r"mavlink start -x -u \$udp_onboard_payload_port_local -r \d+ "
+    r"-f -m onboard -o \$udp_onboard_payload_port_remote "
+    r"\$mavlink_network_interface_arg"
+)
+updated, count = pattern.subn(new, text, count=1)
+updated = re.sub(
+    r"\n\s*mavlink stream -r \d+(?:\.\d+)? -s HEARTBEAT -u \$udp_onboard_payload_port_local\s*",
+    "\n",
+    updated,
+)
+if count != 1:
+    print(f"[SIM] ERROR: expected one onboard MAVLink start line in {path}, found {count}", file=sys.stderr)
+    sys.exit(1)
+heartbeat = "mavlink stream -r 20 -s HEARTBEAT -u $udp_onboard_payload_port_local"
+if heartbeat not in updated:
+    updated = updated.replace(new, f"{new}\n{heartbeat}", 1)
+if count and updated != text:
+    path.write_text(updated)
+print(new)
+print(heartbeat)
+PY
+    echo "[SIM] PX4 onboard MAVLink 14030 rate target: ${PX4_ONBOARD_MAVLINK_RATE_B_S} B/s"
+else
+    echo "[SIM] ERROR: PX4 MAVLink rc file not found: $PX4_MAVLINK_RC" >&2
+    exit 1
+fi
 
 echo '========================================'
 echo ' Starting PX4 + Gazebo + Drone'

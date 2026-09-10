@@ -176,6 +176,43 @@ body {
   padding: 8px 10px;
 }
 
+.toast {
+  position: absolute;
+  z-index: 8;
+  left: 50%;
+  top: 18px;
+  max-width: min(520px, calc(100% - 160px));
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgba(31, 41, 55, 0.94);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.22);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -8px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.toast.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.toast.success {
+  background: rgba(22, 101, 52, 0.96);
+}
+
+.toast.saving {
+  background: rgba(29, 78, 216, 0.96);
+}
+
+.toast.error {
+  background: rgba(185, 28, 28, 0.96);
+}
+
 .mouse-readout {
   display: none;
   left: 14px;
@@ -285,6 +322,21 @@ body {
   margin-top: 8px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.save-status.success {
+  color: #166534;
+  font-weight: 700;
+}
+
+.save-status.saving {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.save-status.error {
+  color: #b91c1c;
+  font-weight: 700;
 }
 
 .details.empty {

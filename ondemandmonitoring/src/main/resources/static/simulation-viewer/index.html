@@ -27,6 +27,7 @@
           <input id="debugToggle" type="checkbox">
           Debug
         </label>
+        <div id="toast" class="toast" role="status" aria-live="polite"></div>
         <div id="map" class="map-viewport">
           <div id="mapContent" class="map-content">
             <img id="basemap" alt="Top-down simulation map">
@@ -49,6 +50,7 @@
               <input id="editToggle" type="checkbox">
               Edit zones
             </label>
+            <button id="saveZone" type="button" disabled>Save DB</button>
             <button id="createZone" type="button">Create</button>
             <button id="deleteZone" type="button" disabled>Delete</button>
             <button id="reloadZones" type="button">Reload DB</button>

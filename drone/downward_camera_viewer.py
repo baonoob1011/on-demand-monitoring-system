@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import json
 import math
 import os
 import socket
@@ -45,10 +46,22 @@ CAMERA_TOPIC = os.getenv("GAZEBO_CAMERA_TOPIC", DEFAULT_CAMERA_TOPIC)
 MAVSDK_GRPC_PORT = int(os.getenv("MAVSDK_CONTROL_GRPC_PORT", "50052"))
 MAVSDK_SYSID = int(os.getenv("MAVSDK_CONTROL_SYSID", "245"))
 MAVSDK_COMPID = int(os.getenv("MAVSDK_CONTROL_COMPID", "191"))
+CAMERA_HUD_MAVSDK_TELEMETRY = (
+    os.getenv("CAMERA_HUD_MAVSDK_TELEMETRY", "false").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
 WINDOW_NAME = os.getenv("DOWNWARD_CAMERA_WINDOW_TITLE", "Downward Camera")
 STALE_AFTER_S = float(os.getenv("CAMERA_HUD_TELEMETRY_STALE_AFTER_S", "3.0"))
 CAMERA_DEFAULT_VIEW = os.getenv("CAMERA_DEFAULT_VIEW", "DOWN").strip().upper()
 CAMERA_TOGGLE_DEBOUNCE_S = float(os.getenv("CAMERA_TOGGLE_DEBOUNCE_S", "0.35"))
+CONTROL_MOVE_SPEED_M_S = float(os.getenv("CONTROL_MOVE_SPEED_M_S", "500.0"))
+CONTROL_VERTICAL_SPEED_M_S = float(os.getenv("CONTROL_VERTICAL_SPEED_M_S", "500.0"))
+PX4_SPEED_LIMIT_M_S = float(
+    os.getenv("PX4_SPEED_LIMIT_M_S", str(max(CONTROL_MOVE_SPEED_M_S, CONTROL_VERTICAL_SPEED_M_S)))
+)
+CONTROL_SPEED_STATE_FILE = Path(
+    os.getenv("CONTROL_SPEED_STATE_FILE", "/tmp/forest3d_control_speed_state.json")
+)
 battery_sim = SitlBatterySimulator()
 
 
@@ -82,6 +95,9 @@ class DroneTelemetryState:
     pitch_deg: float | None = None
     yaw_deg: float | None = None
     speed_m_s: float | None = None
+    command_speed_m_s: float | None = CONTROL_MOVE_SPEED_M_S
+    effective_command_speed_m_s: float | None = CONTROL_MOVE_SPEED_M_S
+    max_speed_m_s: float | None = PX4_SPEED_LIMIT_M_S
     battery_percent: float | None = None
     battery_level: str | None = None
     camera_mode: str = CAMERA_DEFAULT_VIEW if CAMERA_DEFAULT_VIEW in {"DOWN", "FRONT"} else "DOWN"
@@ -112,6 +128,9 @@ class DroneTelemetryState:
                 pitch_deg=self.pitch_deg,
                 yaw_deg=self.yaw_deg,
                 speed_m_s=self.speed_m_s,
+                command_speed_m_s=self.command_speed_m_s,
+                effective_command_speed_m_s=self.effective_command_speed_m_s,
+                max_speed_m_s=self.max_speed_m_s,
                 battery_percent=self.battery_percent,
                 battery_level=self.battery_level,
                 camera_mode=self.camera_mode,
@@ -254,6 +273,24 @@ def format_float(value: float | None, suffix: str = "", precision: int = 1) -> s
     if value is None:
         return "--"
     return f"{value:.{precision}f}{suffix}"
+
+
+def read_control_speed_state() -> dict[str, float]:
+    try:
+        payload = json.loads(CONTROL_SPEED_STATE_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    result = {}
+    for key in (
+        "horizontalSpeedMps",
+        "effectiveHorizontalSpeedMps",
+        "px4SpeedLimitMps",
+    ):
+        value = number_or_none(payload.get(key))
+        if value is not None:
+            result[key] = value
+    return result
 
 
 def format_bool(value: bool | None) -> str:
@@ -490,6 +527,8 @@ def draw_hud(frame: np.ndarray, state: DroneTelemetryState, topic: str, fps: flo
             ("PITCH", "--"),
             ("YAW", "--"),
             ("SPEED", "--"),
+            ("CMD SPD", format_float(state.command_speed_m_s, " m/s", 1)),
+            ("MAX SPD", format_float(state.max_speed_m_s, " m/s", 1)),
             ("BATTERY", "--"),
             ("SAT", "--"),
             ("MODE", "--"),
@@ -508,6 +547,8 @@ def draw_hud(frame: np.ndarray, state: DroneTelemetryState, topic: str, fps: flo
             ("YAW", format_float(state.yaw_deg, " deg", 1)),
             ("", ""),
             ("SPEED", format_float(state.speed_m_s, " m/s", 1)),
+            ("CMD SPD", format_float(state.effective_command_speed_m_s, " m/s", 1)),
+            ("MAX SPD", format_float(state.max_speed_m_s, " m/s", 1)),
             (
                 "BATTERY",
                 "--"
@@ -655,18 +696,22 @@ def main() -> int:
     if not subscriber.start():
         return 1
 
-    telemetry_thread = threading.Thread(
-        target=run_telemetry_thread,
-        args=(telemetry_state,),
-        name="camera-hud-telemetry",
-        daemon=True,
-    )
-    telemetry_thread.start()
+    if CAMERA_HUD_MAVSDK_TELEMETRY:
+        telemetry_thread = threading.Thread(
+            target=run_telemetry_thread,
+            args=(telemetry_state,),
+            name="camera-hud-telemetry",
+            daemon=True,
+        )
+        telemetry_thread.start()
 
     cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
     cv2.resizeWindow(WINDOW_NAME, 960, 720)
 
-    print(f"[HUD] Reading telemetry from shared MAVSDK gRPC localhost:{MAVSDK_GRPC_PORT}", flush=True)
+    if CAMERA_HUD_MAVSDK_TELEMETRY:
+        print(f"[HUD] Reading telemetry from shared MAVSDK gRPC localhost:{MAVSDK_GRPC_PORT}", flush=True)
+    else:
+        print("[HUD] MAVSDK telemetry overlay disabled for control stability", flush=True)
     print("[HUD] Read-only display mode; no flight commands are sent.", flush=True)
     print("[HUD] Press C or click [C] SWITCH CAMERA to toggle FRONT/DOWN camera.", flush=True)
 
@@ -695,6 +740,11 @@ def main() -> int:
                 pixel_format = "--"
 
             state_snapshot = telemetry_state.snapshot()
+            speed_state = read_control_speed_state()
+            if speed_state:
+                state_snapshot.command_speed_m_s = speed_state.get("horizontalSpeedMps")
+                state_snapshot.effective_command_speed_m_s = speed_state.get("effectiveHorizontalSpeedMps")
+                state_snapshot.max_speed_m_s = speed_state.get("px4SpeedLimitMps")
             output = draw_hud(frame, state_snapshot, CAMERA_TOPIC, fps, pixel_format)
             cv2.imshow(WINDOW_NAME, output)
 
