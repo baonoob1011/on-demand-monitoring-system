@@ -39,6 +39,11 @@ forest3d.yaml
 
 # Generated outputs
 models/
+!/models/
+/models/*
+!/models/x500_mono_cam_down/
+!/models/x500_mono_cam_down/model.config
+!/models/x500_mono_cam_down/model.sdf
 worlds/
 !worlds/
 !worlds/forest_monitoring.sdf

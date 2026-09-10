@@ -1,0 +1,31 @@
+{
+  "source": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\uav-monitoring-compact-world-v6-roads-export-source_20260907_095003.blend",
+  "backup": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\uav-monitoring-compact-world-v6-roads-export-source_20260907_095003.before-start-tree-removal.blend",
+  "removed": [
+    {
+      "name": "POLISH_River_Shrub_7_-1",
+      "location": [
+        -4.536,
+        -278.608,
+        9.337
+      ],
+      "collections": [
+        "ENV_SHRUBS"
+      ],
+      "materials": [
+        "MAT_Grass_DeepForest"
+      ]
+    }
+  ],
+  "exports_refreshed": [
+    "Forest3D\\models\\compact_terrain\\meshes\\compact_terrain.glb",
+    "Forest3D\\models\\compact_water\\meshes\\compact_water.glb",
+    "Forest3D\\models\\compact_roads\\meshes\\compact_roads.glb",
+    "Forest3D\\models\\compact_bridges\\meshes\\compact_bridges.glb",
+    "Forest3D\\models\\compact_home\\meshes\\compact_home.glb",
+    "Forest3D\\models\\compact_highrise\\meshes\\compact_highrise.glb",
+    "Forest3D\\models\\compact_zones\\meshes\\compact_zones.glb",
+    "Forest3D\\models\\compact_forest\\meshes\\compact_forest.glb",
+    "Forest3D\\models\\compact_environment_props\\meshes\\compact_environment_props.glb"
+  ]
+}

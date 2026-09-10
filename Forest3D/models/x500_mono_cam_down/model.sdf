@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sdf version="1.9">
+  <model name="x500_mono_cam_down">
+    <self_collide>false</self_collide>
+
+    <include merge="true">
+      <uri>model://x500</uri>
+    </include>
+
+    <link name="camera_link">
+      <pose relative_to="base_link">0 0 -0.20 0 1.57079632679 0</pose>
+      <inertial>
+        <pose>0.03 0.03 0.03 0 0 0</pose>
+        <mass>0.050</mass>
+        <inertia>
+          <ixx>0.00004</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.00004</iyy>
+          <iyz>0</iyz>
+          <izz>0.00004</izz>
+        </inertia>
+      </inertial>
+      <visual name="camera_housing">
+        <geometry>
+          <box>
+            <size>0.02 0.04 0.04</size>
+          </box>
+        </geometry>
+      </visual>
+      <visual name="camera_lens">
+        <pose>0.015 0 0 0 1.5707 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.008</radius>
+            <length>0.01</length>
+          </cylinder>
+        </geometry>
+      </visual>
+      <sensor name="camera_front" type="camera">
+        <gz_frame_id>camera_link</gz_frame_id>
+        <pose>0 0 0 0 0 0</pose>
+        <camera>
+          <horizontal_fov>1.74</horizontal_fov>
+          <image>
+            <width>960</width>
+            <height>720</height>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>3000</far>
+          </clip>
+        </camera>
+        <always_on>true</always_on>
+        <update_rate>8</update_rate>
+        <visualize>false</visualize>
+      </sensor>
+      <sensor name="camera_down" type="camera">
+        <gz_frame_id>camera_link_down</gz_frame_id>
+        <pose>0 0 0 0 -1.57079632679 0</pose>
+        <camera>
+          <horizontal_fov>1.74</horizontal_fov>
+          <image>
+            <width>960</width>
+            <height>720</height>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>3000</far>
+          </clip>
+        </camera>
+        <always_on>true</always_on>
+        <update_rate>8</update_rate>
+        <visualize>false</visualize>
+      </sensor>
+      <gravity>true</gravity>
+      <velocity_decay />
+    </link>
+
+    <joint name="CameraJoint" type="fixed">
+      <parent>base_link</parent>
+      <child>camera_link</child>
+      <pose relative_to="base_link">0 0 -0.20 0 1.57079632679 0</pose>
+    </joint>
+
+    <link name="lidar_link">
+      <pose relative_to="base_link">0 0 0.18 0 0 0</pose>
+      <inertial>
+        <mass>0.05</mass>
+        <inertia>
+          <ixx>0.0001</ixx>
+          <iyy>0.0001</iyy>
+          <izz>0.0001</izz>
+        </inertia>
+      </inertial>
+      <visual name="lidar_visual">
+        <geometry>
+          <cylinder>
+            <radius>0.045</radius>
+            <length>0.035</length>
+          </cylinder>
+        </geometry>
+      </visual>
+      <sensor name="lidar" type="gpu_lidar">
+        <always_on>true</always_on>
+        <update_rate>8</update_rate>
+        <visualize>false</visualize>
+        <topic>lidar</topic>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>180</samples>
+              <resolution>1</resolution>
+              <min_angle>-3.14159265359</min_angle>
+              <max_angle>3.14159265359</max_angle>
+            </horizontal>
+          </scan>
+          <range>
+            <min>0.20</min>
+            <max>2000.0</max>
+            <resolution>0.05</resolution>
+          </range>
+        </lidar>
+      </sensor>
+      <sensor name="lidar_3d" type="gpu_lidar">
+        <always_on>true</always_on>
+        <update_rate>2</update_rate>
+        <visualize>false</visualize>
+        <topic>/lidar_3d</topic>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>180</samples>
+              <resolution>1</resolution>
+              <min_angle>-3.14159265359</min_angle>
+              <max_angle>3.14159265359</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>8</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.52359877559</min_angle>
+              <max_angle>0.52359877559</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.20</min>
+            <max>60.0</max>
+            <resolution>0.05</resolution>
+          </range>
+        </lidar>
+      </sensor>
+    </link>
+
+    <joint name="LidarJoint" type="fixed">
+      <parent>base_link</parent>
+      <child>lidar_link</child>
+    </joint>
+  </model>
+</sdf>
