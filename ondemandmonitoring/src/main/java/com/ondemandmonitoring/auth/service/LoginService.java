@@ -9,6 +9,7 @@ import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.user.service.IUserService;
 import com.ondemandmonitoring.user.domain.User;
+import com.ondemandmonitoring.user.enumeration.IdentityProvider;
 import com.ondemandmonitoring.user.dto.response.UserProfileResponse;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.transaction.Transactional;
@@ -36,9 +37,10 @@ public class LoginService {
         String email = normalizeEmail(request.getEmail());
         User user = userService.findByEmail(email);
         ensureCanLogin(user);
+        String username = userService.getCognitoUsername(email, IdentityProvider.LOCAL);
 
         try {
-            AuthenticationTokens tokens = identityProvider.authenticate(email, request.getPassword());
+            AuthenticationTokens tokens = identityProvider.authenticate(username, request.getPassword());
             if (tokens.requiresChallenge()) {
                 return AuthResponse.builder()
                         .status("PASSWORD_CHANGE_REQUIRED")
@@ -70,10 +72,11 @@ public class LoginService {
         String email = normalizeEmail(request.getEmail());
         User user = userService.findByEmail(email);
         ensureCanLogin(user);
+        String username = userService.getCognitoUsername(email, IdentityProvider.LOCAL);
 
         try {
             AuthenticationTokens tokens = identityProvider.respondToNewPasswordChallenge(
-                    email, request.getSession(), request.getNewPassword());
+                    username, request.getSession(), request.getNewPassword());
             userService.recordLogin(user.getId());
             if (tokens.refreshToken() != null) {
                 refreshTokenCookieService.write(response, tokens.refreshToken(), tokens.username());
@@ -138,7 +141,7 @@ public class LoginService {
                 .fullName(user.getFullName())
                 .email(user.getEmail())
                 .emailVerified(user.getEmailVerified())
-                .role(user.getRole())
+                .role(user.getRole().getCode())
                 .isActive(user.getIsActive())
                 .build();
         return AuthResponse.builder()

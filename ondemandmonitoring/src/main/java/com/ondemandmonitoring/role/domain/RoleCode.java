@@ -1,6 +1,6 @@
-package com.ondemandmonitoring.user.enumeration;
+package com.ondemandmonitoring.role.domain;
 
-public enum UserRole {
+public enum RoleCode {
     CUSTOMER,
     STAFF,
     DRONE_OPERATOR,

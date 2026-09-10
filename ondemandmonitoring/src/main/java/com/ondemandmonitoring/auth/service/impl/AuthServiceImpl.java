@@ -9,12 +9,9 @@ import com.ondemandmonitoring.auth.service.LoginService;
 import com.ondemandmonitoring.auth.service.PasswordService;
 import com.ondemandmonitoring.auth.service.RegisterService;
 import com.ondemandmonitoring.auth.service.SocialAuthService;
-import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.common.exception.ErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -58,9 +55,9 @@ public class AuthServiceImpl implements IAuthService {
     }
 
     @Override
-    public void createLocalPassword(CreateLocalPasswordRequest request) {
-        throw new ApiException(ErrorCode.SOCIAL_AUTH_NOT_CONFIGURED,
-                "Local password creation is not available for the current authentication flow");
+    public void linkLocalIdentity(String cognitoSub, String cognitoUsername,
+                                  LinkLocalIdentityRequest request) {
+        socialAuthService.linkLocalIdentity(cognitoSub, cognitoUsername, request.getPassword());
     }
 
     @Override

@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.auth.dto.request;
 
-import com.ondemandmonitoring.user.enumeration.UserRole;
+import com.ondemandmonitoring.role.domain.RoleCode;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -19,5 +19,5 @@ public class CreateManagedAccountRequest {
     private String fullName;
 
     @NotNull
-    private UserRole role;
+    private RoleCode role;
 }
