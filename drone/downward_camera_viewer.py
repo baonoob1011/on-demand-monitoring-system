@@ -37,12 +37,21 @@ load_dotenv(ENV_FILE, override=True)
 DEFAULT_WORLD = "forest_monitoring_compact"
 DEFAULT_MODEL = "x500_mono_cam_down_0"
 DEFAULT_CAMERA_TOPIC = (
-    f"/world/{DEFAULT_WORLD}/model/{DEFAULT_MODEL}/link/camera_link/sensor/camera/image"
+    f"/world/{DEFAULT_WORLD}/model/{DEFAULT_MODEL}/link/camera_link/sensor/camera_down/image"
+)
+DEFAULT_CAMERA_DOWN_TOPIC = (
+    f"/world/{DEFAULT_WORLD}/model/{DEFAULT_MODEL}/link/camera_link/sensor/camera_down/image"
+)
+DEFAULT_CAMERA_FRONT_TOPIC = (
+    f"/world/{DEFAULT_WORLD}/model/{DEFAULT_MODEL}/link/camera_link/sensor/camera_front/image"
 )
 
 WORLD_NAME = os.getenv("GZ_WORLD_NAME", DEFAULT_WORLD)
 MODEL_NAME = os.getenv("GZ_MODEL_NAME", DEFAULT_MODEL)
-CAMERA_TOPIC = os.getenv("GAZEBO_CAMERA_TOPIC", DEFAULT_CAMERA_TOPIC)
+CAMERA_DEFAULT_VIEW = os.getenv("CAMERA_DEFAULT_VIEW", "DOWN").strip().upper()
+CAMERA_DOWN_TOPIC = os.getenv("GAZEBO_CAMERA_DOWN_TOPIC", os.getenv("GAZEBO_CAMERA_TOPIC", DEFAULT_CAMERA_DOWN_TOPIC))
+CAMERA_FRONT_TOPIC = os.getenv("GAZEBO_CAMERA_FRONT_TOPIC", DEFAULT_CAMERA_FRONT_TOPIC)
+CAMERA_TOPIC = CAMERA_DOWN_TOPIC if CAMERA_DEFAULT_VIEW == "DOWN" else CAMERA_FRONT_TOPIC
 MAVSDK_GRPC_PORT = int(os.getenv("MAVSDK_CONTROL_GRPC_PORT", "50052"))
 MAVSDK_SYSID = int(os.getenv("MAVSDK_CONTROL_SYSID", "245"))
 MAVSDK_COMPID = int(os.getenv("MAVSDK_CONTROL_COMPID", "191"))
@@ -52,8 +61,8 @@ CAMERA_HUD_MAVSDK_TELEMETRY = (
 )
 WINDOW_NAME = os.getenv("DOWNWARD_CAMERA_WINDOW_TITLE", "Downward Camera")
 STALE_AFTER_S = float(os.getenv("CAMERA_HUD_TELEMETRY_STALE_AFTER_S", "3.0"))
-CAMERA_DEFAULT_VIEW = os.getenv("CAMERA_DEFAULT_VIEW", "DOWN").strip().upper()
 CAMERA_TOGGLE_DEBOUNCE_S = float(os.getenv("CAMERA_TOGGLE_DEBOUNCE_S", "0.35"))
+CAMERA_VIEWER_MAX_FPS = float(os.getenv("CAMERA_VIEWER_MAX_FPS", "20"))
 CONTROL_MOVE_SPEED_M_S = float(os.getenv("CONTROL_MOVE_SPEED_M_S", "500.0"))
 CONTROL_VERTICAL_SPEED_M_S = float(os.getenv("CONTROL_VERTICAL_SPEED_M_S", "500.0"))
 PX4_SPEED_LIMIT_M_S = float(
@@ -61,6 +70,9 @@ PX4_SPEED_LIMIT_M_S = float(
 )
 CONTROL_SPEED_STATE_FILE = Path(
     os.getenv("CONTROL_SPEED_STATE_FILE", "/tmp/forest3d_control_speed_state.json")
+)
+CAMERA_VIEW_STATE_FILE = Path(
+    os.getenv("CAMERA_VIEW_STATE_FILE", "/tmp/forest3d_camera_view_state.json")
 )
 battery_sim = SitlBatterySimulator()
 
@@ -70,19 +82,19 @@ def camera_switch_button_rect(width: int, height: int) -> tuple[int, int, int, i
     font_scale = 0.55 * scale
     margin = max(12, int(18 * scale))
     pad = max(10, int(14 * scale))
-    hint = "[C] SWITCH CAMERA"
+    label = "[C] SWITCH"
     hint_scale = font_scale * 0.95
     hint_thickness = max(1, int(2 * scale))
-    (hint_w, hint_h), _baseline = cv2.getTextSize(
-        hint,
+    (label_w, label_h), _baseline = cv2.getTextSize(
+        label,
         cv2.FONT_HERSHEY_SIMPLEX,
         hint_scale,
         hint_thickness,
     )
     x2 = width - margin
-    x1 = max(margin, x2 - hint_w - pad * 2)
+    x1 = max(margin, x2 - label_w - pad * 2)
     y1 = margin
-    y2 = y1 + hint_h + pad * 2
+    y2 = y1 + label_h + pad * 2
     return x1, y1, x2, y2
 
 
@@ -184,8 +196,8 @@ class GazeboCameraOrientationController:
         self.model_name = model_name
         default_topic = f"/model/{self.model_name}/command/camera_pitch"
         self.command_topic = os.getenv("GAZEBO_CAMERA_PITCH_TOPIC", default_topic)
-        self.front_position_rad = float(os.getenv("CAMERA_FRONT_JOINT_POSITION_RAD", "-1.57079632679"))
-        self.down_position_rad = float(os.getenv("CAMERA_DOWN_JOINT_POSITION_RAD", "0.0"))
+        self.front_position_rad = float(os.getenv("CAMERA_FRONT_JOINT_POSITION_RAD", "0.0"))
+        self.down_position_rad = float(os.getenv("CAMERA_DOWN_JOINT_POSITION_RAD", "-1.57079632679"))
         self.current_mode = CAMERA_DEFAULT_VIEW if CAMERA_DEFAULT_VIEW in {"DOWN", "FRONT"} else "DOWN"
         self._last_toggle_s = 0.0
 
@@ -196,41 +208,20 @@ class GazeboCameraOrientationController:
         self._last_toggle_s = now
 
         next_mode = "FRONT" if self.current_mode == "DOWN" else "DOWN"
-        if self.request_mode(next_mode):
-            self.current_mode = next_mode
-            print(f"[C] Camera view -> {next_mode}", flush=True)
-            return next_mode
+        return self.set_mode(next_mode)
+
+    def set_mode(self, mode: str) -> str | None:
+        normalized = mode.strip().upper()
+        if normalized not in {"DOWN", "FRONT"}:
+            return None
+        if self.request_mode(normalized):
+            self.current_mode = normalized
+            print(f"[CAMERA] View -> {normalized}", flush=True)
+            return normalized
         return None
 
     def request_mode(self, mode: str) -> bool:
-        if not self._command_topic_available():
-            print(f"[CAMERA] Failed to set {mode}: command topic not ready: {self.command_topic}", flush=True)
-            return False
-
-        joint_position = self.front_position_rad if mode == "FRONT" else self.down_position_rad
-        command = [
-            "gz",
-            "topic",
-            "-t",
-            self.command_topic,
-            "-m",
-            "gz.msgs.Double",
-            "-p",
-            f"data: {joint_position:.12f}",
-        ]
-
-        try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=1.5, check=False)
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            print(f"[CAMERA] Failed to set {mode}: {exc}", flush=True)
-            return False
-
-        if result.returncode == 0:
-            return True
-
-        message = (result.stderr or result.stdout or "Gazebo service returned no success").strip()
-        print(f"[CAMERA] Failed to set {mode}: {message}", flush=True)
-        return False
+        return mode in {"DOWN", "FRONT"}
 
     def _command_topic_available(self) -> bool:
         try:
@@ -647,7 +638,7 @@ def draw_hud(frame: np.ndarray, state: DroneTelemetryState, topic: str, fps: flo
         )
         iy += line_h
 
-    hint = "[C] SWITCH CAMERA"
+    label = "[C] SWITCH"
     hint_scale = font_scale * 0.95
     hint_thickness = max(1, int(2 * scale))
     hx1, hy1, hx2, hy2 = camera_switch_button_rect(width, height)
@@ -657,7 +648,7 @@ def draw_hud(frame: np.ndarray, state: DroneTelemetryState, topic: str, fps: flo
     cv2.rectangle(output, (hx1, hy1), (hx2, hy2), (235, 235, 235), 1)
     cv2.putText(
         output,
-        hint,
+        label,
         (hx1 + pad, hy2 - pad),
         cv2.FONT_HERSHEY_SIMPLEX,
         hint_scale,
@@ -676,6 +667,17 @@ def draw_waiting_frame(topic: str) -> np.ndarray:
     return frame
 
 
+def read_camera_view_state() -> str | None:
+    try:
+        raw = CAMERA_VIEW_STATE_FILE.read_text(encoding="utf-8")
+        payload = json.loads(raw)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    mode = str(payload.get("mode", "")).strip().upper()
+    return mode if mode in {"DOWN", "FRONT"} else None
+
+
 async def run_telemetry_tasks(state: DroneTelemetryState) -> None:
     await asyncio.gather(
         telemetry_supervisor(state),
@@ -689,11 +691,17 @@ def run_telemetry_thread(state: DroneTelemetryState) -> None:
 
 def main() -> int:
     telemetry_state = DroneTelemetryState()
-    frame_store = CameraFrameStore()
-    subscriber = GazeboCameraSubscriber(CAMERA_TOPIC, frame_store)
+    frame_stores = {
+        "DOWN": CameraFrameStore(),
+        "FRONT": CameraFrameStore(),
+    }
+    subscribers = [
+        GazeboCameraSubscriber(CAMERA_DOWN_TOPIC, frame_stores["DOWN"]),
+        GazeboCameraSubscriber(CAMERA_FRONT_TOPIC, frame_stores["FRONT"]),
+    ]
     camera_controller = GazeboCameraOrientationController(WORLD_NAME, MODEL_NAME)
 
-    if not subscriber.start():
+    if not all(subscriber.start() for subscriber in subscribers):
         return 1
 
     if CAMERA_HUD_MAVSDK_TELEMETRY:
@@ -713,7 +721,9 @@ def main() -> int:
     else:
         print("[HUD] MAVSDK telemetry overlay disabled for control stability", flush=True)
     print("[HUD] Read-only display mode; no flight commands are sent.", flush=True)
-    print("[HUD] Press C or click [C] SWITCH CAMERA to toggle FRONT/DOWN camera.", flush=True)
+    camera_controller.set_mode(camera_controller.current_mode)
+    telemetry_state.update(camera_mode=camera_controller.current_mode)
+    print("[HUD] Press C or click [C] SWITCH to toggle FRONT/DOWN camera.", flush=True)
 
     def switch_camera() -> None:
         mode = camera_controller.toggle()
@@ -723,7 +733,8 @@ def main() -> int:
     def handle_mouse(event: int, x: int, y: int, _flags: int, _param: object) -> None:
         if event != cv2.EVENT_LBUTTONDOWN:
             return
-        frame, width, height, _pixel_format, _fps = frame_store.snapshot()
+        active_store = frame_stores.get(telemetry_state.snapshot().camera_mode, frame_stores["DOWN"])
+        frame, width, height, _pixel_format, _fps = active_store.snapshot()
         if frame is None:
             width, height = 640, 480
         x1, y1, x2, y2 = camera_switch_button_rect(width, height)
@@ -733,19 +744,32 @@ def main() -> int:
     cv2.setMouseCallback(WINDOW_NAME, handle_mouse)
 
     try:
+        frame_interval_s = 1.0 / max(CAMERA_VIEWER_MAX_FPS, 1.0)
+        next_frame_s = time.monotonic()
         while True:
-            frame, _width, _height, pixel_format, fps = frame_store.snapshot()
-            if frame is None:
-                frame = draw_waiting_frame(CAMERA_TOPIC)
-                pixel_format = "--"
+            now_s = time.monotonic()
+            if now_s < next_frame_s:
+                time.sleep(min(next_frame_s - now_s, 0.02))
+            next_frame_s = time.monotonic() + frame_interval_s
 
             state_snapshot = telemetry_state.snapshot()
+            requested_mode = read_camera_view_state()
+            if requested_mode and requested_mode != state_snapshot.camera_mode:
+                telemetry_state.update(camera_mode=requested_mode)
+                state_snapshot = telemetry_state.snapshot()
+            active_topic = CAMERA_DOWN_TOPIC if state_snapshot.camera_mode == "DOWN" else CAMERA_FRONT_TOPIC
+            active_store = frame_stores.get(state_snapshot.camera_mode, frame_stores["DOWN"])
+            frame, _width, _height, pixel_format, fps = active_store.snapshot()
+            if frame is None:
+                frame = draw_waiting_frame(active_topic)
+                pixel_format = "--"
+
             speed_state = read_control_speed_state()
             if speed_state:
                 state_snapshot.command_speed_m_s = speed_state.get("horizontalSpeedMps")
                 state_snapshot.effective_command_speed_m_s = speed_state.get("effectiveHorizontalSpeedMps")
                 state_snapshot.max_speed_m_s = speed_state.get("px4SpeedLimitMps")
-            output = draw_hud(frame, state_snapshot, CAMERA_TOPIC, fps, pixel_format)
+            output = draw_hud(frame, state_snapshot, active_topic, fps, pixel_format)
             cv2.imshow(WINDOW_NAME, output)
 
             key = cv2.waitKeyEx(1)
