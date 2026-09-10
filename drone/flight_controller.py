@@ -3,9 +3,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from io import BytesIO
+import json
 import logging
 import math
 import os
+import shlex
 import socket
 import subprocess
 import termios
@@ -123,6 +125,10 @@ MAVSDK_CLIENT_RECONNECT_COOLDOWN_S = float(
 )
 OFFBOARD_SETPOINT_RATE_HZ = float(
     os.getenv("OFFBOARD_SETPOINT_RATE_HZ", "15.0")
+)
+OFFBOARD_SETPOINT_STATS_ENABLED = (
+    os.getenv("OFFBOARD_SETPOINT_STATS_ENABLED", "false").strip().lower()
+    in {"1", "true", "yes", "on"}
 )
 
 MOVE_SPEED_M_S = float(
@@ -250,7 +256,7 @@ DEFAULT_GAZEBO_WORLD = (
 
 CAMERA_TOPIC = os.getenv(
     "GAZEBO_CAMERA_TOPIC",
-    f"/world/{DEFAULT_GAZEBO_WORLD}/model/x500_mono_cam_down_0/link/camera_link/sensor/camera/image",
+    f"/world/{DEFAULT_GAZEBO_WORLD}/model/x500_mono_cam_down_0/link/camera_link/sensor/camera_down/image",
 )
 GZ_MODEL_NAME = os.getenv("GZ_MODEL_NAME", "x500_mono_cam_down_0")
 CAMERA_DEFAULT_VIEW = os.getenv("CAMERA_DEFAULT_VIEW", "DOWN").strip().upper()
@@ -259,9 +265,12 @@ GAZEBO_CAMERA_PITCH_TOPIC = os.getenv(
     "GAZEBO_CAMERA_PITCH_TOPIC",
     f"/model/{GZ_MODEL_NAME}/command/camera_pitch",
 )
-CAMERA_DOWN_JOINT_POSITION_RAD = float(os.getenv("CAMERA_DOWN_JOINT_POSITION_RAD", "0.0"))
+CAMERA_DOWN_JOINT_POSITION_RAD = float(os.getenv("CAMERA_DOWN_JOINT_POSITION_RAD", "-1.57079632679"))
 CAMERA_FRONT_JOINT_POSITION_RAD = float(
-    os.getenv("CAMERA_FRONT_JOINT_POSITION_RAD", "-1.57079632679")
+    os.getenv("CAMERA_FRONT_JOINT_POSITION_RAD", "0.0")
+)
+CAMERA_VIEW_STATE_FILE = Path(
+    os.getenv("CAMERA_VIEW_STATE_FILE", "/tmp/forest3d_camera_view_state.json")
 )
 
 class MavsdkAckNoiseFilter(logging.Filter):
@@ -431,9 +440,25 @@ class CameraOrientationController:
         self._last_toggle_s = now
 
         next_mode = "FRONT" if self.current_mode == "DOWN" else "DOWN"
-        if self.request_mode(next_mode):
-            self.current_mode = next_mode
-            print(f"[CAMERA] View -> {next_mode} (press c to switch)", flush=True)
+        self.set_mode(next_mode)
+
+    def set_mode(self, mode: str) -> None:
+        normalized = mode.strip().upper()
+        if normalized not in {"DOWN", "FRONT"}:
+            return
+        self.current_mode = normalized
+        self._write_state(normalized)
+        print(f"[CAMERA] View -> {normalized} (press c to switch)", flush=True)
+
+    def _write_state(self, mode: str) -> None:
+        payload = {
+            "mode": mode,
+            "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+        try:
+            CAMERA_VIEW_STATE_FILE.write_text(json.dumps(payload), encoding="utf-8")
+        except OSError as exc:
+            print(f"[CAMERA] State write failed: {exc}", flush=True)
 
     def request_mode(self, mode: str) -> bool:
         joint_position = (
@@ -555,6 +580,71 @@ def print_mavsdk_unavailable(command: str, exc: Exception) -> None:
     details = exc.details() if isinstance(exc, grpc.aio.AioRpcError) else str(exc)
     print(f"[WARN] {command} failed: MAVSDK connection unavailable ({code}: {details})")
     print("[HINT] PX4/Gazebo may still be running. Restart only the Flight Control tab, or rerun start-drone-stack.cmd.")
+
+
+def is_monitor_running(process_pattern: str) -> bool:
+    command = (
+        f"pgrep -af {shlex.quote(process_pattern)} "
+        "| grep -v 'pgrep -af' "
+        "| grep -v 'bash -lc' "
+        "| grep -v 'flight_controller.py' "
+        ">/dev/null 2>&1"
+    )
+    result = subprocess.run(["bash", "-lc", command], check=False)
+    return result.returncode == 0
+
+
+def stop_monitor_window(name: str, process_pattern: str) -> None:
+    command = (
+        f"for pid in $(pgrep -f {shlex.quote(process_pattern)} 2>/dev/null || true); do "
+        "cmd=$(tr '\\0' ' ' < /proc/$pid/cmdline 2>/dev/null || true); "
+        "case \"$cmd\" in "
+        "*flight_controller.py*|*pgrep -f*|*bash -lc*) continue ;; "
+        "esac; "
+        "kill \"$pid\" 2>/dev/null || true; "
+        "done"
+    )
+    subprocess.run(["bash", "-lc", command], check=False)
+    print(f"[MONITOR] Closed {name}", flush=True)
+
+
+def open_monitor_window(name: str, script_name: str) -> None:
+    script = PROJECT_ROOT / "scripts" / script_name
+    if not script.exists():
+        print(f"[MONITOR] {name} script not found: {script}", flush=True)
+        return
+
+    command = f"SIM_WORLD=compact exec {script.as_posix()}"
+    try:
+        subprocess.Popen(
+            [
+                "wt.exe",
+                "new-tab",
+                "--title",
+                name,
+                "wsl.exe",
+                "-d",
+                "Ubuntu-24.04",
+                "--",
+                "bash",
+                "-lc",
+                command,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError as exc:
+        print(f"[MONITOR] Failed to open {name}: {exc}", flush=True)
+        return
+
+    print(f"[MONITOR] Opening {name}...", flush=True)
+
+
+def toggle_monitor_window(name: str, script_name: str, process_pattern: str) -> None:
+    if is_monitor_running(process_pattern):
+        stop_monitor_window(name, process_pattern)
+        return
+    open_monitor_window(name, script_name)
 
 
 def is_grpc_unavailable(exc: Exception) -> bool:
@@ -759,7 +849,11 @@ class MavsdkConnectionManager:
 
                 await drone.offboard.set_velocity_ned(self._desired_velocity)
 
-                if now_s - self._last_setpoint_stats_s >= 5.0 and self._setpoint_intervals:
+                if (
+                    OFFBOARD_SETPOINT_STATS_ENABLED
+                    and now_s - self._last_setpoint_stats_s >= 5.0
+                    and self._setpoint_intervals
+                ):
                     intervals = self._setpoint_intervals
                     avg_s = sum(intervals) / len(intervals)
                     hz = 1.0 / avg_s if avg_s > 0 else 0.0
@@ -1275,6 +1369,7 @@ async def main() -> None:
     print("      o toggle safety sensor")
     print("      1 speed up | 2 speed down")
     print("      c switch camera down/front")
+    print("      3 camera monitor on/off | 4 LiDAR monitor on/off | 5 telemetry on/off")
     print("      p photo | l land | x exit")
     print()
     print("Press one move key once to keep moving. Press k to stop/hover.")
@@ -1700,6 +1795,24 @@ async def main() -> None:
             print(f"[SAFETY] Sensor toggle -> {state}", flush=True)
         elif key == "c":
             camera_orientation.toggle()
+        elif key == "3":
+            toggle_monitor_window(
+                "Camera monitor",
+                "wsl-camera-view.sh",
+                "downward_camera_viewer.py|wsl-camera-view.sh",
+            )
+        elif key == "4":
+            toggle_monitor_window(
+                "LiDAR monitor",
+                "wsl-sensor-monitor.sh",
+                "drone.visualization.sensor_dashboard|wsl-sensor-monitor.sh",
+            )
+        elif key == "5":
+            toggle_monitor_window(
+                "Telemetry monitor",
+                "wsl-telemetry.sh",
+                "telemetry_sender.py|wsl-telemetry.sh",
+            )
         elif key == "p":
             task = asyncio.create_task(camera.capture_and_upload())
             task.add_done_callback(

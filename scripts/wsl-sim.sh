@@ -49,6 +49,11 @@ export LD_LIBRARY_PATH="${PX4_GZ_PLUGIN_PATH}:${LD_LIBRARY_PATH:-}"
 
 # Sync selected Forest3D world to PX4.
 cp "$FOREST3D_WORLD_FILE" "$PX4_GZ_WORLD_PATH"
+mkdir -p "$PX4_ROOT/Tools/simulation/gz/models/x500_mono_cam_down"
+cp "$FOREST3D_PATH/models/x500_mono_cam_down/model.sdf" \
+    "$PX4_ROOT/Tools/simulation/gz/models/x500_mono_cam_down/model.sdf"
+cp "$FOREST3D_PATH/models/x500_mono_cam_down/model.config" \
+    "$PX4_ROOT/Tools/simulation/gz/models/x500_mono_cam_down/model.config"
 
 # MAVSDK uses PX4's onboard-payload MAVLink endpoint at UDP 14030.
 # Gazebo can run at a low real-time factor on this machine. PX4 schedules
