@@ -49,6 +49,13 @@ public class SecurityConfig {
             "/api/v1/auth/csrf",
             "/api/v1/auth/logout",
             "/v3/api-docs/**",
+            // Simulation Viewer – static assets and the APIs called by viewer.js
+            "/simulation-viewer",
+            "/simulation-viewer/**",
+            "/api/zones",
+            "/api/zones/**",
+            "/api/simulation-map",
+            "/api/simulation-map/**",
             "/swagger-ui/**",
             "/swagger-ui.html"
     };
@@ -67,7 +74,10 @@ public class SecurityConfig {
                                 "/api/v1/auth/first-login/change-password",
                                 "/api/v1/auth/social/sync",
                                 "/api/v1/auth/forgot-password",
-                                "/api/v1/auth/reset-password"))
+                                "/api/v1/auth/reset-password",
+                                // Simulation Viewer APIs (PUT/POST/DELETE from browser JS)
+                                "/api/zones/**",
+                                "/api/simulation-map/**"))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
