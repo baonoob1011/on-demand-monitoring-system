@@ -163,23 +163,6 @@ public class CognitoIdentityProviderAdapter implements IdentityProviderPort {
     }
 
     @Override
-    public void linkSocialIdentity(String destinationUsername, String providerName, String providerSubject) {
-        client.adminLinkProviderForUser(AdminLinkProviderForUserRequest.builder()
-                .userPoolId(properties.userPoolId())
-                .destinationUser(ProviderUserIdentifierType.builder()
-                        .providerName("Cognito")
-                        .providerAttributeName("Cognito_Subject")
-                        .providerAttributeValue(destinationUsername)
-                        .build())
-                .sourceUser(ProviderUserIdentifierType.builder()
-                        .providerName(providerName)
-                        .providerAttributeName("Cognito_Subject")
-                        .providerAttributeValue(providerSubject)
-                        .build())
-                .build());
-    }
-
-    @Override
     public void setPermanentPassword(String username, String password) {
         client.adminSetUserPassword(AdminSetUserPasswordRequest.builder()
                 .userPoolId(properties.userPoolId())

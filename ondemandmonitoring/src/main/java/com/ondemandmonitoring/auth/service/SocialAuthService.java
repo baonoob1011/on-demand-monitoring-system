@@ -7,6 +7,7 @@ import com.ondemandmonitoring.auth.enumeration.SocialAuthIntent;
 import com.ondemandmonitoring.auth.port.out.SocialAuthenticationResult;
 import com.ondemandmonitoring.auth.port.out.SocialIdentityProviderPort;
 import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
+import com.ondemandmonitoring.auth.port.out.AuthenticationTokens;
 import com.ondemandmonitoring.auth.infrastructure.outbox.AuthOutboxService;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
@@ -20,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.CognitoIdentityProviderException;
 
 import java.util.Locale;
 
@@ -82,8 +84,16 @@ public class SocialAuthService {
         }
 
         userService.recordLogin(user.getId());
-        if (identity.refreshToken() != null) {
-            refreshTokenCookieService.write(response, identity.refreshToken(), identity.username());
+        
+        AuthenticationTokens responseTokens = refreshAfterGroupAssignment(
+                identity,
+                effectiveCognitoUsername,
+                email);
+        if (responseTokens.refreshToken() != null) {
+            refreshTokenCookieService.write(
+                    response,
+                    responseTokens.refreshToken(),
+                    responseTokens.username());
         }
 
         UserProfileResponse profile = UserProfileResponse.builder()
@@ -96,10 +106,44 @@ public class SocialAuthService {
                 .build();
 
         return AuthResponse.builder()
-                .accessToken(identity.accessToken())
-                .expiresIn(identity.expiresIn())
+                .accessToken(responseTokens.accessToken())
+                .expiresIn(responseTokens.expiresIn())
                 .user(profile)
                 .build();
+    }
+
+    private AuthenticationTokens refreshAfterGroupAssignment(
+            SocialAuthenticationResult identity,
+            String cognitoUsername,
+            String email) {
+        if (identity.refreshToken() == null || identity.refreshToken().isBlank()) {
+            log.warn("Social login did not return a refresh token; the initial access token may not contain groups. email={}",
+                    email);
+            return new AuthenticationTokens(
+                    identity.accessToken(),
+                    null,
+                    identity.expiresIn(),
+                    cognitoUsername);
+        }
+
+        try {
+            AuthenticationTokens refreshed = cognitoUserDirectory.refresh(
+                    identity.refreshToken(),
+                    cognitoUsername);
+            return new AuthenticationTokens(
+                    refreshed.accessToken(),
+                    refreshed.refreshToken() == null
+                            ? identity.refreshToken()
+                            : refreshed.refreshToken(),
+                    refreshed.expiresIn(),
+                    cognitoUsername);
+        } catch (CognitoIdentityProviderException exception) {
+            log.error("Unable to refresh social token after group assignment. email={}, cognitoUsername={}",
+                    email, cognitoUsername, exception);
+            throw new ApiException(
+                    ErrorCode.AUTH_PROVIDER_ERROR,
+                    "Unable to refresh social token after role synchronization");
+        }
     }
 
     @Transactional
@@ -115,18 +159,6 @@ public class SocialAuthService {
     }
 
     private User syncExistingSocialIdentity(User user, SocialAuthenticationResult identity) {
-        if (userService.hasIdentity(user.getId(), IdentityProvider.LOCAL)
-                && !userService.hasIdentity(user.getId(), IdentityProvider.GOOGLE)) {
-            if (identity.providerSubject() == null || identity.providerSubject().isBlank()) {
-                throw new ApiException(ErrorCode.AUTH_PROVIDER_ERROR,
-                        "Google provider subject is missing; the identity cannot be linked");
-            }
-            String localUsername = userService.getCognitoUsername(
-                    user.getEmail(), IdentityProvider.LOCAL);
-            if (!localUsername.equals(identity.username())) {
-                cognitoUserDirectory.linkSocialIdentity(localUsername, "Google", identity.providerSubject());
-            }
-        }
         return userService.syncSocialIdentity(
                 user,
                 identity.username(),
