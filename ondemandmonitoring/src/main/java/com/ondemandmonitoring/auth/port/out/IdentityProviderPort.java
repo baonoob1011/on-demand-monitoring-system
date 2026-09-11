@@ -30,8 +30,6 @@ public interface IdentityProviderPort {
 
     void addUserToGroup(String username, String role);
 
-    void linkSocialIdentity(String destinationUsername, String providerName, String providerSubject);
-
     void setPermanentPassword(String username, String password);
 
     void deleteUser(String username);
