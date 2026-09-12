@@ -283,6 +283,15 @@ body {
   line-height: 1.55;
 }
 
+.restricted-editor {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 0 10px;
+  color: var(--restricted);
+  font-weight: 700;
+}
+
 .editor-actions {
   display: flex;
   align-items: center;

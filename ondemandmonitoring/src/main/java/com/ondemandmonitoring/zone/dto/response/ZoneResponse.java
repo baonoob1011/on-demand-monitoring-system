@@ -13,6 +13,7 @@ public class ZoneResponse {
     private String name;
     private String zoneType;
     private String purpose;
+    private Boolean restricted;
     private Double centerXM;
     private Double centerYM;
     private Double radiusM;

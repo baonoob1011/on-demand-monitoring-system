@@ -73,6 +73,14 @@ function closedCoordinates(coordinates) {
   return [...opened.map(([x, y]) => [x, y]), [...opened[0]]];
 }
 
+function isRestrictedZone(zone) {
+  if (Object.prototype.hasOwnProperty.call(zone || {}, "restricted")) {
+    return zone.restricted === true;
+  }
+  const type = String(zone?.zoneType || "").trim().toUpperCase();
+  return ["AIRPORT", "RESTRICTED", "NO_FLY", "NO-FLY", "NOFLY"].includes(type);
+}
+
 function centroid(coordinates) {
   const usable = coordinates.slice(0, -1);
   const total = usable.reduce((acc, [x, y]) => {
@@ -139,7 +147,7 @@ function redrawOverlay() {
 
 function drawZones() {
   for (const zone of zones) {
-    const isRestricted = zone.code === "AIRPORT";
+    const isRestricted = isRestrictedZone(zone);
     const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
     polygon.setAttribute("points", coordinateListToPoints(zone.coordinates));
     polygon.setAttribute("class", isRestricted ? "zone-polygon restricted-zone" : "zone-polygon");
@@ -257,8 +265,8 @@ function drawZoneList() {
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.zoneId = zone.id;
-    button.classList.toggle("restricted-zone-button", zone.code === "AIRPORT");
-    button.textContent = zone.code === "AIRPORT" ? `${zone.name} - Restricted` : zone.name;
+    button.classList.toggle("restricted-zone-button", isRestrictedZone(zone));
+    button.textContent = isRestrictedZone(zone) ? `${zone.name} - Restricted` : zone.name;
     button.addEventListener("click", () => selectZone(zone.id));
     zoneListEl.appendChild(button);
   }
@@ -289,6 +297,11 @@ function selectZone(zoneId) {
     <strong>ID:</strong> <code>${zone.id}</code><br>
     <strong>Code:</strong> <code>${zone.code}</code><br>
     <strong>Type:</strong> ${zone.zoneType}<br>
+    <strong>Restricted:</strong> ${isRestrictedZone(zone) ? "YES" : "NO"}<br>
+    <label class="restricted-editor">
+      <input id="restrictedZoneToggle" type="checkbox" ${isRestrictedZone(zone) ? "checked" : ""}>
+      Restricted / No-Fly Zone
+    </label>
     <strong>Area:</strong> ${Number(zone.areaSquareMeters).toFixed(2)} m²<br>
     <strong>Bounds:</strong><br>
     minX=${bounds.minX.toFixed(2)} maxX=${bounds.maxX.toFixed(2)}<br>
@@ -296,6 +309,15 @@ function selectZone(zoneId) {
     <strong>Coordinates:</strong>
     <pre>${zone.coordinates.map(([x, y]) => `${x.toFixed(2)}, ${y.toFixed(2)}`).join("\n")}</pre>
   `;
+
+  const restrictedToggle = document.getElementById("restrictedZoneToggle");
+  restrictedToggle?.addEventListener("change", (event) => {
+    zone.restricted = event.target.checked;
+    redrawOverlay();
+    drawZoneList();
+    selectZone(zone.id);
+    setSaveStatus(`Restricted flag changed for ${zone.name}. Click Save DB to persist.`, false, "info");
+  });
 }
 
 function setSaveStatus(message, saving = false, type = "info") {
@@ -377,7 +399,10 @@ async function saveZone(zoneId) {
     const response = await fetch(`/api/zones/${zone.id}/polygon`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ coordinates: zone.coordinates }),
+      body: JSON.stringify({
+        coordinates: zone.coordinates,
+        restricted: isRestrictedZone(zone),
+      }),
     });
     if (!response.ok) {
       throw new Error(`Save failed: HTTP ${response.status}`);
@@ -397,6 +422,7 @@ async function saveZone(zoneId) {
 async function createZone() {
   const name = window.prompt("New zone name?", "Custom Zone");
   if (!name || !name.trim()) return;
+  const restricted = window.confirm("Mark this zone as Restricted / No-Fly?");
 
   const rect = mapEl.getBoundingClientRect();
   const centerPx = (rect.width / 2 - panX) / scale;
@@ -420,6 +446,7 @@ async function createZone() {
         name: name.trim(),
         zoneType: "CUSTOM",
         purpose: "Created from simulation viewer",
+        restricted,
         coordinates,
       }),
     });

@@ -40,6 +40,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
     @Override
     @Transactional
     public void run(String... args) {
+        ensureRestrictedColumn();
         List<SimulationZone> zones = simulationZones();
 
         int createdZones = 0;
@@ -50,6 +51,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                 entity.setName(zone.name());
                 entity.setZoneType(zone.type());
                 entity.setPurpose(zone.purpose());
+                entity.setRestricted(zone.restricted());
                 entity.setCenterXM(zone.x());
                 entity.setCenterYM(zone.y());
                 entity.setRadiusM(zone.radius());
@@ -64,6 +66,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
         if (createdZones > 0) {
             log.info("Seeded {} simulation zones from {}", createdZones, SOURCE_WORLD);
         }
+        markAirportRestricted();
 
         int createdMapFeatures = 0;
         for (MapFeature feature : simulationMapFeatures()) {
@@ -105,6 +108,21 @@ public class SimulationZoneSeeder implements CommandLineRunner {
         log.info("==================================================");
     }
 
+    private void ensureRestrictedColumn() {
+        jdbcTemplate.execute("""
+                ALTER TABLE IF EXISTS public.zones
+                ADD COLUMN IF NOT EXISTS restricted BOOLEAN NOT NULL DEFAULT FALSE
+                """);
+    }
+
+    private void markAirportRestricted() {
+        jdbcTemplate.update("""
+                UPDATE public.zones
+                SET restricted = TRUE
+                WHERE code = 'AIRPORT'
+                """);
+    }
+
     private void createPgAdminGeometryViewerViews() {
         jdbcTemplate.execute("DROP VIEW IF EXISTS public.simulation_pgadmin_map");
         jdbcTemplate.execute("DROP VIEW IF EXISTS public.zones_pgadmin_map");
@@ -119,6 +137,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                     name,
                     zone_type,
                     purpose,
+                    restricted,
                     center_x_m,
                     center_y_m,
                     radius_m,
@@ -164,6 +183,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                     name,
                     zone_type,
                     purpose,
+                    restricted,
                     center_x_m,
                     center_y_m,
                     radius_m,
@@ -181,6 +201,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                     name,
                     'ZONE' AS layer,
                     zone_type AS feature_type,
+                    restricted,
                     1000 AS display_order,
                     source_world,
                     coordinate_system,
@@ -193,6 +214,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                     name,
                     'MAP' AS layer,
                     feature_type,
+                    false AS restricted,
                     display_order,
                     source_world,
                     coordinate_system,
@@ -258,6 +280,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                         "DRONE_BASE",
                         "Helipad / Drone Base",
                         "HOME",
+                        false,
                         -31.0,
                         -296.7,
                         68.0,
@@ -267,6 +290,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                         "AIRPORT",
                         "Airport",
                         "AIRPORT",
+                        true,
                         -236.7,
                         -246.0,
                         110.0,
@@ -280,6 +304,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                         "DAM",
                         "Dam",
                         "DAM",
+                        false,
                         0.0,
                         149.5,
                         88.0,
@@ -297,6 +322,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                         "CONSTRUCTION_SITE",
                         "Construction Site",
                         "CONSTRUCTION",
+                        false,
                         218.0,
                         -50.0,
                         58.0,
@@ -310,6 +336,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                         "AGRICULTURAL_FIELD",
                         "Agricultural Field",
                         "AGRICULTURE",
+                        false,
                         268.0,
                         -203.0,
                         46.0,
@@ -323,6 +350,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                         "INDUSTRIAL_WAREHOUSE",
                         "Industrial Warehouse",
                         "INDUSTRIAL",
+                        false,
                         -206.9,
                         -65.1,
                         54.0,
@@ -336,6 +364,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                         "LOGISTICS_YARD",
                         "Logistics Yard",
                         "LOGISTICS",
+                        false,
                         175.9,
                         -295.1,
                         88.0,
@@ -349,6 +378,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                         "TELECOM_TOWER",
                         "Telecom Tower",
                         "TELECOM",
+                        false,
                         260.0,
                         280.0,
                         26.0,
@@ -358,6 +388,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                         "LANDSLIDE_FLOOD_AREA",
                         "Landslide / Flood Area",
                         "ENVIRONMENTAL_HAZARD",
+                        false,
                         -259.3,
                         282.2,
                         72.0,
@@ -371,6 +402,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                         "FOREST_MONITORING_AREA",
                         "Forest Monitoring Area",
                         "FOREST",
+                        false,
                         -185.0,
                         38.0,
                         82.0,
@@ -386,6 +418,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                         "REMOTE_MONITORING_TARGET",
                         "Remote Monitoring Target",
                         "REMOTE_TARGET",
+                        false,
                         250.0,
                         45.0,
                         42.0,
@@ -500,6 +533,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
             String code,
             String name,
             String type,
+            boolean restricted,
             double x,
             double y,
             double radius,
