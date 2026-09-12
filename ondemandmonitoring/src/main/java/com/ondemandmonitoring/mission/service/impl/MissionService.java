@@ -11,11 +11,13 @@ import com.ondemandmonitoring.device.service.PreflightCheckService;
 import com.ondemandmonitoring.mission.domain.FlightToken;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.response.FlightTokenResponse;
+import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.FlightTokenRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.device.mapper.PreflightCheckMapper;
 import com.ondemandmonitoring.mission.mapper.FlightTokenMapper;
+import com.ondemandmonitoring.mission.mapper.MissionMapper;
 import com.ondemandmonitoring.mission.service.IMissionService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +32,7 @@ import java.util.UUID;
 
 /**
  * Implementation of {@link IMissionService} for mission lifecycle management.
+ * Enterprise pattern: Maps entities to DTOs within @Transactional scope to guarantee safety against LazyInitializationException.
  */
 @Slf4j
 @Service
@@ -43,8 +46,25 @@ public class MissionService implements IMissionService {
     DeviceRepository deviceRepository;
     FlightTokenRepository flightTokenRepository;
     PreflightCheckService preflightCheckService;
+    MissionMapper missionMapper;
     FlightTokenMapper flightTokenMapper;
     PreflightCheckMapper preflightCheckMapper;
+
+    // =========================================================================
+    // Query Methods
+    // =========================================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public MissionResponse getByIdResponse(String missionId) {
+        return missionMapper.toResponse(getOrThrow(missionId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Mission findById(String missionId) {
+        return getOrThrow(missionId);
+    }
 
     // =========================================================================
     // F3.1 – Operator Acceptance / Rejection
@@ -52,19 +72,20 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    public Mission acceptMission(String missionId, String operatorId) {
+    public MissionResponse acceptMission(String missionId, String operatorId) {
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
 
         mission.setOperatorId(operatorId);
         mission.setStatus(MissionStatus.SCHEDULED);
         log.info("Mission {} accepted by operator {}", missionId, operatorId);
-        return missionRepository.save(mission);
+        Mission saved = missionRepository.save(mission);
+        return missionMapper.toResponse(saved);
     }
 
     @Override
     @Transactional
-    public Mission rejectMission(String missionId, String operatorId, String reason) {
+    public MissionResponse rejectMission(String missionId, String operatorId, String reason) {
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
 
@@ -72,7 +93,8 @@ public class MissionService implements IMissionService {
         mission.setRejectionReason(reason);
         mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
         log.warn("Mission {} rejected by operator {} – reason: {}", missionId, operatorId, reason);
-        return missionRepository.save(mission);
+        Mission saved = missionRepository.save(mission);
+        return missionMapper.toResponse(saved);
     }
 
     // =========================================================================
@@ -81,7 +103,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    public Mission connectGcs(String missionId) {
+    public MissionResponse connectGcs(String missionId) {
         Mission mission = getOrThrow(missionId);
         if (mission.getStatus() != MissionStatus.SCHEDULED && mission.getStatus() != MissionStatus.CONNECTED) {
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID,
@@ -95,7 +117,8 @@ public class MissionService implements IMissionService {
         }
 
         log.info("Mission {} – powerOnAndPairWithGCSApp confirmed, status CONNECTED", missionId);
-        return missionRepository.save(mission);
+        Mission saved = missionRepository.save(mission);
+        return missionMapper.toResponse(saved);
     }
 
     @Override
@@ -145,17 +168,18 @@ public class MissionService implements IMissionService {
         deviceRepository.save(drone);
 
         mission.setStatus(MissionStatus.PENDING_APPROVAL);
-        log.warn("Mission {} order status re-queued to PENDING_APPROVAL for Manager re-assignment", mission.getId());
+        log.warn("Mission {} order status re-queued to PENDING_APPROVAL for Manager re-assignment (Flow 2)", mission.getId());
     }
 
     private FlightToken issueFlightToken(String missionId, String deviceCode, String operatorId) {
+        Instant now = Instant.now();
         FlightToken token = new FlightToken();
-        token.setTokenValue(UUID.randomUUID().toString());
+        token.setTokenValue(com.ondemandmonitoring.mission.util.FlightTokenGenerator.generateTokenValue(missionId, deviceCode, operatorId, now));
         token.setMissionId(missionId);
         token.setDeviceCode(deviceCode);
         token.setOperatorId(operatorId);
-        token.setIssuedAt(Instant.now());
-        token.setExpiresAt(Instant.now().plusSeconds(TOKEN_TTL_SECONDS));
+        token.setIssuedAt(now);
+        token.setExpiresAt(now.plusSeconds(TOKEN_TTL_SECONDS));
         token.setUsed(false);
         token.setRevoked(false);
         return flightTokenRepository.save(token);
@@ -163,7 +187,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    public Mission replaceDrone(String missionId, String newDeviceCode) {
+    public MissionResponse replaceDrone(String missionId, String newDeviceCode) {
         Mission mission = getOrThrow(missionId);
         Device newDrone = deviceRepository.findByDeviceCode(newDeviceCode)
                 .orElseThrow(() -> new ApiException(ErrorCode.DRONE_NOT_AVAILABLE, "Drone " + newDeviceCode + " không tồn tại"));
@@ -190,17 +214,19 @@ public class MissionService implements IMissionService {
         mission.setDevice(newDrone);
         mission.setStatus(MissionStatus.CONNECTED);
         log.info("Mission {} – replaced drone with {}, status reset to CONNECTED", missionId, newDeviceCode);
-        return missionRepository.save(mission);
+        Mission saved = missionRepository.save(mission);
+        return missionMapper.toResponse(saved);
     }
 
     @Override
     @Transactional
-    public Mission handoverControl(String missionId, String operatorId) {
+    public MissionResponse handoverControl(String missionId, String operatorId) {
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.READY_TO_FLY);
         mission.setOperatorId(operatorId);
         log.info("Mission {} – control handed over to operator {} at {}", missionId, operatorId, Instant.now());
-        return missionRepository.save(mission);
+        Mission saved = missionRepository.save(mission);
+        return missionMapper.toResponse(saved);
     }
 
     // =========================================================================
@@ -209,7 +235,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    public Mission startMission(String missionId, String tokenValue) {
+    public MissionResponse startMission(String missionId, String tokenValue) {
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.READY_TO_FLY);
 
@@ -246,18 +272,19 @@ public class MissionService implements IMissionService {
         updateDeviceStatus(mission, DeviceStatus.ACTIVE_MISSION);
 
         log.info("Mission {} IN_FLIGHT – WebSocket telemetry and RTSP video stream OPENED", missionId);
-        return missionRepository.save(mission);
+        Mission saved = missionRepository.save(mission);
+        return missionMapper.toResponse(saved);
     }
 
     @Override
     @Transactional
-    public Mission startMission(String missionId) {
+    public MissionResponse startMission(String missionId) {
         return startMission(missionId, null);
     }
 
     @Override
     @Transactional
-    public Mission markReturning(String missionId) {
+    public MissionResponse markReturning(String missionId) {
         Mission mission = getOrThrow(missionId);
         if (mission.getStatus() != MissionStatus.IN_FLIGHT && mission.getStatus() != MissionStatus.IN_PROGRESS) {
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID,
@@ -266,40 +293,44 @@ public class MissionService implements IMissionService {
         mission.setStatus(MissionStatus.RETURNING);
         updateDeviceStatus(mission, DeviceStatus.RETURNING);
         log.info("Mission {} – drone returning to base", missionId);
-        return missionRepository.save(mission);
+        Mission saved = missionRepository.save(mission);
+        return missionMapper.toResponse(saved);
     }
 
     @Override
     @Transactional
-    public Mission startPostflightChecking(String missionId) {
+    public MissionResponse startPostflightChecking(String missionId) {
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.RETURNING);
         mission.setStatus(MissionStatus.POSTFLIGHT_CHECKING);
         log.info("Mission {} – post-flight inspection started", missionId);
-        return missionRepository.save(mission);
+        Mission saved = missionRepository.save(mission);
+        return missionMapper.toResponse(saved);
     }
 
     @Override
     @Transactional
-    public Mission completeMission(String missionId) {
+    public MissionResponse completeMission(String missionId) {
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.POSTFLIGHT_CHECKING);
         mission.setStatus(MissionStatus.COMPLETED);
         mission.setCompletedAt(Instant.now());
         updateDeviceStatus(mission, DeviceStatus.AVAILABLE);
         log.info("Mission {} COMPLETED successfully", missionId);
-        return missionRepository.save(mission);
+        Mission saved = missionRepository.save(mission);
+        return missionMapper.toResponse(saved);
     }
 
     @Override
     @Transactional
-    public Mission failMission(String missionId, String reason) {
+    public MissionResponse failMission(String missionId, String reason) {
         Mission mission = getOrThrow(missionId);
         mission.setStatus(MissionStatus.FAILED);
         mission.setFailureReason(reason);
         updateDeviceStatus(mission, DeviceStatus.AVAILABLE);
         log.error("Mission {} FAILED – reason: {}", missionId, reason);
-        return missionRepository.save(mission);
+        Mission saved = missionRepository.save(mission);
+        return missionMapper.toResponse(saved);
     }
 
     // =========================================================================
@@ -308,7 +339,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    public Mission updatePostFlightStatus(String missionId, DeviceStatus newDeviceStatus, String notes) {
+    public MissionResponse updatePostFlightStatus(String missionId, DeviceStatus newDeviceStatus, String notes) {
         Mission mission = getOrThrow(missionId);
         Device device = mission.getDevice();
         if (device == null) {
@@ -326,17 +357,8 @@ public class MissionService implements IMissionService {
             log.info("Mission {} post-flight notes: {}", missionId, notes);
         }
         log.info("Mission {} post-flight completed – drone {} status set to {}", missionId, device.getDeviceCode(), newDeviceStatus);
-        return missionRepository.save(mission);
-    }
-
-    // =========================================================================
-    // Query
-    // =========================================================================
-
-    @Override
-    @Transactional(readOnly = true)
-    public Mission findById(String missionId) {
-        return getOrThrow(missionId);
+        Mission saved = missionRepository.save(mission);
+        return missionMapper.toResponse(saved);
     }
 
     // =========================================================================

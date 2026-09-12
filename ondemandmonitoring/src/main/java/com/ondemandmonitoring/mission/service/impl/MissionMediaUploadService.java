@@ -30,12 +30,17 @@ public class MissionMediaUploadService implements IMissionMediaUploadService {
 
     @Override
     public DeviceImage uploadWithRetry(String missionId, String deviceCode, MultipartFile file) {
+        return uploadWithRetry(missionId, deviceCode, file, null);
+    }
+
+    @Override
+    public DeviceImage uploadWithRetry(String missionId, String deviceCode, MultipartFile file, String mediaType) {
         Exception lastException = null;
 
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {
                 log.info("Mission {} – media upload attempt {}/{}", missionId, attempt, MAX_ATTEMPTS);
-                DeviceImage image = deviceImageService.upload(missionId, deviceCode, Instant.now(), file);
+                DeviceImage image = deviceImageService.upload(missionId, deviceCode, Instant.now(), file, mediaType);
                 log.info("Mission {} – media uploaded successfully on attempt {}", missionId, attempt);
                 return image;
             } catch (Exception ex) {

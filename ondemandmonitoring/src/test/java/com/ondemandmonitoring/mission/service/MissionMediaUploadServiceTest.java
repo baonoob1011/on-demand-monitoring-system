@@ -42,20 +42,20 @@ class MissionMediaUploadServiceTest {
     @Test
     void upload_succeedsOnFirstAttempt() {
         DeviceImage saved = new DeviceImage();
-        when(deviceImageService.upload(anyString(), anyString(), any(), any())).thenReturn(saved);
+        when(deviceImageService.upload(anyString(), anyString(), any(), any(), any())).thenReturn(saved);
         MultipartFile file = mock(MultipartFile.class);
 
         DeviceImage result = uploadService.uploadWithRetry("m-1", "DRONE-01", file);
 
         assertThat(result).isSameAs(saved);
-        verify(deviceImageService, times(1)).upload(anyString(), anyString(), any(), any());
+        verify(deviceImageService, times(1)).upload(anyString(), anyString(), any(), any(), any());
     }
 
     @Test
     void upload_retriesAndSucceedsOnSecondAttempt() {
         DeviceImage saved = new DeviceImage();
         MultipartFile file = mock(MultipartFile.class);
-        when(deviceImageService.upload(anyString(), anyString(), any(), any()))
+        when(deviceImageService.upload(anyString(), anyString(), any(), any(), any()))
                 .thenThrow(new RuntimeException("network timeout"))
                 .thenReturn(saved);
 
@@ -67,13 +67,13 @@ class MissionMediaUploadServiceTest {
 
         DeviceImage result = fastService.uploadWithRetry("m-2", "DRONE-01", file);
         assertThat(result).isSameAs(saved);
-        verify(deviceImageService, times(2)).upload(anyString(), anyString(), any(), any());
+        verify(deviceImageService, times(2)).upload(anyString(), anyString(), any(), any(), any());
     }
 
     @Test
     void upload_allRetriesExhausted_createsNotificationAndThrows() {
         MultipartFile file = mock(MultipartFile.class);
-        when(deviceImageService.upload(anyString(), anyString(), any(), any()))
+        when(deviceImageService.upload(anyString(), anyString(), any(), any(), any()))
                 .thenThrow(new RuntimeException("S3 down"));
 
         TrackingUploadService trackingService = new TrackingUploadService(deviceImageService);
@@ -83,6 +83,6 @@ class MissionMediaUploadServiceTest {
                 .hasMessageContaining("3 lần thử");
 
         assertThat(trackingService.notificationCount).isEqualTo(1);
-        verify(deviceImageService, times(3)).upload(anyString(), anyString(), any(), any());
+        verify(deviceImageService, times(3)).upload(anyString(), anyString(), any(), any(), any());
     }
 }

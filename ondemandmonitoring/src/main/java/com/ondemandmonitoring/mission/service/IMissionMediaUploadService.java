@@ -17,4 +17,6 @@ public interface IMissionMediaUploadService {
      * @return Saved DeviceImage record
      */
     DeviceImage uploadWithRetry(String missionId, String deviceCode, MultipartFile file);
+
+    DeviceImage uploadWithRetry(String missionId, String deviceCode, MultipartFile file, String mediaType);
 }

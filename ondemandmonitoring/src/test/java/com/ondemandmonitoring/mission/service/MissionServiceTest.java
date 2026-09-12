@@ -10,12 +10,14 @@ import com.ondemandmonitoring.device.service.PreflightCheckService;
 import com.ondemandmonitoring.mission.domain.FlightToken;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.response.FlightTokenResponse;
+import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
+import com.ondemandmonitoring.mission.mapper.FlightTokenMapper;
+import com.ondemandmonitoring.mission.mapper.MissionMapper;
+import com.ondemandmonitoring.device.mapper.PreflightCheckMapper;
 import com.ondemandmonitoring.mission.repository.FlightTokenRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.mission.service.impl.MissionService;
-import com.ondemandmonitoring.device.mapper.PreflightCheckMapper;
-import com.ondemandmonitoring.mission.mapper.FlightTokenMapper;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -37,6 +39,7 @@ class MissionServiceTest {
     DeviceRepository deviceRepository;
     FlightTokenRepository flightTokenRepository;
     PreflightCheckService preflightCheckService;
+    MissionMapper missionMapper;
     FlightTokenMapper flightTokenMapper;
     PreflightCheckMapper preflightCheckMapper;
     MissionService missionService;
@@ -47,16 +50,36 @@ class MissionServiceTest {
         deviceRepository      = mock(DeviceRepository.class);
         flightTokenRepository = mock(FlightTokenRepository.class);
         preflightCheckService = mock(PreflightCheckService.class);
+        missionMapper         = mock(MissionMapper.class);
         flightTokenMapper     = mock(FlightTokenMapper.class);
         preflightCheckMapper  = mock(PreflightCheckMapper.class);
+
         missionService = new MissionService(
                 missionRepository,
                 deviceRepository,
                 flightTokenRepository,
                 preflightCheckService,
+                missionMapper,
                 flightTokenMapper,
                 preflightCheckMapper
         );
+
+        when(missionMapper.toResponse(any())).thenAnswer(inv -> {
+            Mission m = inv.getArgument(0);
+            if (m == null) return null;
+            return MissionResponse.builder()
+                    .id(m.getId())
+                    .missionCode(m.getMissionCode())
+                    .status(m.getStatus())
+                    .operatorId(m.getOperatorId())
+                    .deviceId(m.getDevice() != null ? m.getDevice().getId() : null)
+                    .deviceCode(m.getDevice() != null ? m.getDevice().getDeviceCode() : null)
+                    .rejectionReason(m.getRejectionReason())
+                    .failureReason(m.getFailureReason())
+                    .startedAt(m.getStartedAt())
+                    .completedAt(m.getCompletedAt())
+                    .build();
+        });
 
         when(flightTokenMapper.toResponse(any())).thenAnswer(inv -> {
             FlightToken ft = inv.getArgument(0);
@@ -91,7 +114,7 @@ class MissionServiceTest {
             when(missionRepository.findById("m-1")).thenReturn(Optional.of(mission));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            Mission result = missionService.acceptMission("m-1", "op-01");
+            MissionResponse result = missionService.acceptMission("m-1", "op-01");
 
             assertThat(result.getStatus()).isEqualTo(MissionStatus.SCHEDULED);
             assertThat(result.getOperatorId()).isEqualTo("op-01");
@@ -125,7 +148,7 @@ class MissionServiceTest {
             when(missionRepository.findById("m-2")).thenReturn(Optional.of(mission));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            Mission result = missionService.rejectMission("m-2", "op-01", "Trùng lịch cá nhân");
+            MissionResponse result = missionService.rejectMission("m-2", "op-01", "Trùng lịch cá nhân");
 
             assertThat(result.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
             assertThat(result.getRejectionReason()).isEqualTo("Trùng lịch cá nhân");
@@ -172,7 +195,7 @@ class MissionServiceTest {
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(deviceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            Mission result = missionService.connectGcs("m-gcs");
+            MissionResponse result = missionService.connectGcs("m-gcs");
 
             assertThat(result.getStatus()).isEqualTo(MissionStatus.CONNECTED);
             assertThat(drone.getStatus()).isEqualTo(DeviceStatus.PREFLIGHT);
@@ -185,7 +208,7 @@ class MissionServiceTest {
             when(missionRepository.findById("m-gcs2")).thenReturn(Optional.of(mission));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            Mission result = missionService.connectGcs("m-gcs2");
+            MissionResponse result = missionService.connectGcs("m-gcs2");
 
             assertThat(result.getStatus()).isEqualTo(MissionStatus.CONNECTED);
         }
@@ -302,9 +325,9 @@ class MissionServiceTest {
             when(deviceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            Mission result = missionService.replaceDrone("m-6", "DRONE-OK");
+            MissionResponse result = missionService.replaceDrone("m-6", "DRONE-OK");
 
-            assertThat(result.getDevice().getDeviceCode()).isEqualTo("DRONE-OK");
+            assertThat(result.getDeviceCode()).isEqualTo("DRONE-OK");
             assertThat(brokenDrone.getStatus()).isEqualTo(DeviceStatus.MAINTENANCE);
             assertThat(result.getStatus()).isEqualTo(MissionStatus.CONNECTED);
         }
@@ -360,7 +383,7 @@ class MissionServiceTest {
             when(missionRepository.findById("m-5")).thenReturn(Optional.of(mission));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            Mission result = missionService.handoverControl("m-5", "op-new");
+            MissionResponse result = missionService.handoverControl("m-5", "op-new");
 
             assertThat(result.getOperatorId()).isEqualTo("op-new");
         }
@@ -402,7 +425,7 @@ class MissionServiceTest {
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(deviceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            Mission result = missionService.startMission("m-7", "valid-token");
+            MissionResponse result = missionService.startMission("m-7", "valid-token");
 
             assertThat(result.getStatus()).isEqualTo(MissionStatus.IN_FLIGHT);
             assertThat(result.getStartedAt()).isNotNull();
@@ -459,7 +482,7 @@ class MissionServiceTest {
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(deviceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            Mission result = missionService.startMission("m-7");
+            MissionResponse result = missionService.startMission("m-7");
 
             assertThat(result.getStatus()).isEqualTo(MissionStatus.IN_FLIGHT);
             assertThat(autoToken.isUsed()).isTrue();
@@ -487,7 +510,7 @@ class MissionServiceTest {
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(deviceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            Mission result = missionService.markReturning("m-ret");
+            MissionResponse result = missionService.markReturning("m-ret");
 
             assertThat(result.getStatus()).isEqualTo(MissionStatus.RETURNING);
             assertThat(drone.getStatus()).isEqualTo(DeviceStatus.RETURNING);
@@ -508,7 +531,7 @@ class MissionServiceTest {
             when(missionRepository.findById("m-pf")).thenReturn(Optional.of(mission));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            Mission result = missionService.startPostflightChecking("m-pf");
+            MissionResponse result = missionService.startPostflightChecking("m-pf");
 
             assertThat(result.getStatus()).isEqualTo(MissionStatus.POSTFLIGHT_CHECKING);
         }
@@ -535,7 +558,7 @@ class MissionServiceTest {
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(deviceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            Mission result = missionService.completeMission("m-8");
+            MissionResponse result = missionService.completeMission("m-8");
 
             assertThat(result.getStatus()).isEqualTo(MissionStatus.COMPLETED);
             assertThat(result.getCompletedAt()).isNotNull();
@@ -564,7 +587,7 @@ class MissionServiceTest {
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(deviceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            Mission result = missionService.failMission("m-9", "GPS lost");
+            MissionResponse result = missionService.failMission("m-9", "GPS lost");
 
             assertThat(result.getStatus()).isEqualTo(MissionStatus.FAILED);
             assertThat(result.getFailureReason()).isEqualTo("GPS lost");
@@ -582,7 +605,7 @@ class MissionServiceTest {
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(deviceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            Mission result = missionService.updatePostFlightStatus("m-post", DeviceStatus.AVAILABLE, "Cánh quạt bình thường");
+            MissionResponse result = missionService.updatePostFlightStatus("m-post", DeviceStatus.AVAILABLE, "Cánh quạt bình thường");
 
             assertThat(drone.getStatus()).isEqualTo(DeviceStatus.AVAILABLE);
             assertThat(result.getStatus()).isEqualTo(MissionStatus.COMPLETED);

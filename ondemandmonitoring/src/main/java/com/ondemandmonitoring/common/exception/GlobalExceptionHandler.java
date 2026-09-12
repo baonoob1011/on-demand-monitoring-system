@@ -38,12 +38,14 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
-    public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(NoResourceFoundException exception) {
+    public ResponseEntity<Void> handleNoResourceFound(NoResourceFoundException exception) {
+        log.debug(
+                "No endpoint found for {} {}",
+                exception.getHttpMethod(),
+                exception.getResourcePath());
         return ResponseEntity
                 .status(ErrorCode.RESOURCE_NOT_FOUND.getStatus())
-                .body(ApiResponse.error(
-                        ErrorCode.RESOURCE_NOT_FOUND.name(),
-                        "No endpoint found for " + exception.getHttpMethod() + " " + exception.getResourcePath()));
+                .build();
     }
 
     @ExceptionHandler(Exception.class)
