@@ -56,6 +56,8 @@ public class SecurityConfig {
             "/api/zones/**",
             "/api/simulation-map",
             "/api/simulation-map/**",
+            "/api/missions/*/images",
+            "/api/missions/*/media",
             "/swagger-ui/**",
             "/swagger-ui.html"
     };
@@ -77,7 +79,9 @@ public class SecurityConfig {
                                 "/api/v1/auth/reset-password",
                                 // Simulation Viewer APIs (PUT/POST/DELETE from browser JS)
                                 "/api/zones/**",
-                                "/api/simulation-map/**"))
+                                "/api/simulation-map/**",
+                                "/api/missions/*/images",
+                                "/api/missions/*/media"))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()

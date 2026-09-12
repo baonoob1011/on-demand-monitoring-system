@@ -200,9 +200,13 @@ public class MissionController {
     @PostMapping(value = "/{id}/media", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<DeviceImageResponse>> uploadMedia(
             @PathVariable String id,
-            @RequestParam String deviceCode,
+            @RequestParam(required = false) String deviceCode,
+            @RequestParam(required = false) String droneId,
+            @RequestParam(required = false) String capturedAt,
+            @RequestParam(required = false) String mediaType,
             @RequestParam("file") MultipartFile file) {
-        DeviceImage saved = missionMediaUploadService.uploadWithRetry(id, deviceCode, file);
+        String resolvedDeviceCode = deviceCode != null && !deviceCode.isBlank() ? deviceCode : droneId;
+        DeviceImage saved = missionMediaUploadService.uploadWithRetry(id, resolvedDeviceCode, file, mediaType);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok("Tải media thành công", deviceImageMapper.toResponse(saved)));
     }

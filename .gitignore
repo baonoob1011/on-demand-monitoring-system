@@ -5,6 +5,9 @@ ondemandmonitoring/.env
 !*.env.example
 
 ondemandmonitoring/.env
+ondemandmonitoring/uploads/
+__pycache__/
+*.pyc
 drone-controller/.env
 drone-controller/.venv/
 drone-controller/__pycache__/
