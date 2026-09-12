@@ -94,7 +94,6 @@ except ImportError:
     Node = None
 
 
-load_dotenv(ENV_FILE, override=True)
 PX4_CONTROL_SYSTEM_ADDRESS = os.getenv(
     "PX4_CONTROL_SYSTEM_ADDRESS",
     "udpin://0.0.0.0:14030",
@@ -151,6 +150,9 @@ PX4_SPEED_LIMIT_M_S = float(
         str(max(MOVE_SPEED_M_S, VERTICAL_SPEED_M_S)),
     )
 )
+TAKEOFF_CONFIRM_TIMEOUT_S = float(os.getenv("TAKEOFF_CONFIRM_TIMEOUT_S", "30.0"))
+TAKEOFF_CONFIRM_ALTITUDE_M = float(os.getenv("TAKEOFF_CONFIRM_ALTITUDE_M", "1.0"))
+MEDIA_UPLOAD_SHUTDOWN_WAIT_S = float(os.getenv("MEDIA_UPLOAD_SHUTDOWN_WAIT_S", "15.0"))
 
 SAFETY_POLL_INTERVAL_S = float(
     os.getenv("SAFETY_POLL_INTERVAL_S", "0.5")
@@ -329,6 +331,18 @@ def backend_url_candidates() -> list[str]:
     return deduped
 
 
+def is_connection_level_http_error(exc: httpx.HTTPError) -> bool:
+    return isinstance(
+        exc,
+        (
+            httpx.ConnectError,
+            httpx.ConnectTimeout,
+            httpx.NetworkError,
+            httpx.PoolTimeout,
+        ),
+    )
+
+
 def read_key() -> str:
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
@@ -410,11 +424,10 @@ class CameraGateway:
                 files = {"image": (filename, jpeg, "image/jpeg")}
                 try:
                     response = await client.post(upload_url, data=data, files=files)
-                    if response.status_code < 500:
-                        break
-                except httpx.TimeoutException as exc:
-                    last_error = f"timeout via {base_url}: {exc}"
+                    break
                 except httpx.HTTPError as exc:
+                    if not is_connection_level_http_error(exc):
+                        raise
                     last_error = f"{base_url}: {exc}"
 
         if response is None:
@@ -462,16 +475,15 @@ class CameraGateway:
         last_error = None
         async with httpx.AsyncClient(timeout=VIDEO_UPLOAD_TIMEOUT_S) as client:
             for base_url in backend_url_candidates():
-                upload_url = f"{base_url}/api/missions/{MISSION_ID}/media"
+                upload_url = f"{base_url}/api/missions/{recording.mission_id}/media"
                 try:
                     with path.open("rb") as video_file:
                         files = {"file": (path.name, video_file, "video/mp4")}
                         response = await client.post(upload_url, data=data, files=files)
-                    if response.status_code < 500:
-                        break
-                except httpx.TimeoutException as exc:
-                    last_error = f"timeout via {base_url}: {exc}"
+                    break
                 except httpx.HTTPError as exc:
+                    if not is_connection_level_http_error(exc):
+                        raise
                     last_error = f"{base_url}: {exc}"
 
         if response is None:
@@ -522,6 +534,12 @@ class CameraOrientationController:
     def set_mode(self, mode: str) -> None:
         normalized = mode.strip().upper()
         if normalized not in {"DOWN", "FRONT"}:
+            return
+        if not self.request_mode(normalized):
+            print(
+                f"[CAMERA] View remains {self.current_mode} - switch to {normalized} failed",
+                flush=True,
+            )
             return
         self.current_mode = normalized
         self._write_state(normalized)
@@ -893,6 +911,13 @@ class MavsdkConnectionManager:
             await asyncio.gather(task, return_exceptions=True)
             print("[OFFBOARD] Sender stopped", flush=True)
 
+    async def stop_connection_monitor(self) -> None:
+        task = self._connection_monitor_task
+        self._connection_monitor_task = None
+        if task is not None and not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
     async def _offboard_sender_loop(self) -> None:
         interval_s = 1.0 / max(OFFBOARD_SETPOINT_RATE_HZ, 1.0)
         offboard_generation = -1
@@ -1126,6 +1151,62 @@ async def safe_arm(manager: MavsdkConnectionManager) -> System | None:
     print("[ERR] Check: sensors OK, no safety switch active.")
     return None
 
+
+async def wait_for_takeoff_confirm(drone: System) -> bool:
+    print("[CMD] Takeoff command accepted - waiting for climb confirmation...", flush=True)
+    deadline = asyncio.get_running_loop().time() + TAKEOFF_CONFIRM_TIMEOUT_S
+    in_air_seen = False
+    altitude_seen = False
+
+    async def watch_in_air() -> None:
+        nonlocal in_air_seen
+        async for in_air in drone.telemetry.in_air():
+            if in_air:
+                in_air_seen = True
+                return
+
+    async def watch_altitude() -> None:
+        nonlocal altitude_seen
+        async for position in drone.telemetry.position():
+            altitude = float(getattr(position, "relative_altitude_m", 0.0) or 0.0)
+            if altitude >= TAKEOFF_CONFIRM_ALTITUDE_M:
+                altitude_seen = True
+                return
+
+    tasks = [
+        asyncio.create_task(watch_in_air(), name="takeoff-in-air"),
+        asyncio.create_task(watch_altitude(), name="takeoff-altitude"),
+    ]
+    try:
+        while asyncio.get_running_loop().time() < deadline:
+            if in_air_seen and altitude_seen:
+                print("[CMD] Takeoff confirmed. Use wasdqefv to start offboard flight, k to hover.", flush=True)
+                return True
+            if in_air_seen:
+                print("[CMD] Climbing...", flush=True)
+                break
+            await asyncio.sleep(0.2)
+
+        remaining = max(0.0, deadline - asyncio.get_running_loop().time())
+        if remaining > 0:
+            await asyncio.wait(tasks, timeout=remaining, return_when=asyncio.ALL_COMPLETED)
+
+        if in_air_seen and altitude_seen:
+            print("[CMD] Takeoff confirmed. Use wasdqefv to start offboard flight, k to hover.", flush=True)
+            return True
+
+        print("[WARN] Takeoff timeout - command may still be in progress", flush=True)
+        return False
+    except (grpc.aio.AioRpcError, asyncio.TimeoutError) as exc:
+        print_mavsdk_unavailable("takeoff confirmation", exc)
+        return False
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
 async def set_motion(
         manager: MavsdkConnectionManager,
         north_m_s: float,
@@ -1274,8 +1355,12 @@ def is_front_obstacle_direction(direction: str) -> bool:
     return direction == "FRONT"
 
 
-def should_handle_front_obstacle(state, direction: str) -> bool:
-    return is_forward_blocked(state) and is_front_obstacle_direction(direction)
+def should_handle_front_obstacle(state, saved_motion: SavedMotion | None) -> bool:
+    return (
+        saved_motion is not None
+        and saved_motion.forward_m_s > 1e-6
+        and is_forward_blocked(state)
+    )
 
 
 def warning_speed_scale(front_distance_m: float) -> float:
@@ -1348,7 +1433,8 @@ async def obstacle_safety_loop(
             print("[SAFETY] 2D LiDAR emergency guard ready")
             ready_reported = True
 
-        front_blocked = should_handle_front_obstacle(state, direction)
+        saved_motion = get_saved_motion()
+        front_blocked = should_handle_front_obstacle(state, saved_motion)
 
         if front_blocked and get_motion_owner() != MotionOwner.EMERGENCY:
             set_safety_speed_scale(0.0)
@@ -1465,7 +1551,7 @@ async def main() -> None:
     camera_orientation = CameraOrientationController()
 
     current_yaw_deg = 0.0
-    video_upload_tasks: set[asyncio.Task] = set()
+    media_tasks: set[asyncio.Task] = set()
 
     def set_current_yaw(yaw_deg: float) -> None:
         nonlocal current_yaw_deg
@@ -1571,6 +1657,9 @@ async def main() -> None:
         nonlocal current_east_m_s
         nonlocal current_down_m_s
 
+        if not clear_saved:
+            return
+
         current_forward_m_s = 0.0
         current_right_m_s = 0.0
         current_north_m_s = 0.0
@@ -1578,10 +1667,10 @@ async def main() -> None:
         current_down_m_s = 0.0
 
     def track_background_task(task: asyncio.Task, label: str) -> None:
-        video_upload_tasks.add(task)
+        media_tasks.add(task)
 
         def _done(done: asyncio.Task) -> None:
-            video_upload_tasks.discard(done)
+            media_tasks.discard(done)
             try:
                 exc = done.exception()
             except asyncio.CancelledError:
@@ -1590,6 +1679,47 @@ async def main() -> None:
                 print(f"[{label}] Background error: {exc}", flush=True)
 
         task.add_done_callback(_done)
+
+    async def wait_for_media_tasks(timeout_s: float = MEDIA_UPLOAD_SHUTDOWN_WAIT_S) -> None:
+        pending = [task for task in media_tasks if not task.done()]
+        if not pending:
+            return
+        print(f"[VIDEO] Waiting for {len(pending)} pending upload(s)", flush=True)
+        done, still_pending = await asyncio.wait(pending, timeout=timeout_s)
+        for task in done:
+            try:
+                task.result()
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:
+                print(f"[MEDIA] Background error: {exc}", flush=True)
+        if still_pending:
+            print("[VIDEO] Upload wait timeout - local file retained", flush=True)
+            for task in still_pending:
+                task.cancel()
+            await asyncio.gather(*still_pending, return_exceptions=True)
+
+    async def cancel_owned_tasks() -> None:
+        owned = [
+            ("safety", safety_task),
+            ("position", position_task),
+            ("watchdog", watchdog_task),
+        ]
+        for name, task in owned:
+            if task is not None and not task.done():
+                task.cancel()
+        tasks = [task for _name, task in owned if task is not None]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def cleanup_controller(upload_video: bool = True) -> None:
+        print("[SHUTDOWN] Cleaning up...", flush=True)
+        stop_video_recording(upload=upload_video)
+        await connection_manager.stop_offboard_sender()
+        await connection_manager.stop_connection_monitor()
+        await cancel_owned_tasks()
+        await wait_for_media_tasks()
+        print("[SHUTDOWN] Cleanup complete", flush=True)
 
     def stop_video_recording(upload: bool = True) -> RecordingResult | None:
         if not video_recorder.is_recording():
@@ -1739,8 +1869,7 @@ async def main() -> None:
                 try:
                     await active_drone.action.takeoff()
                     print("[CMD] Takeoff command sent - climbing...")
-                    await asyncio.sleep(5)
-                    print("[CMD] Takeoff complete. Use wasdqefv to start offboard flight, k to hover.")
+                    await wait_for_takeoff_confirm(active_drone)
                 except (ActionError, OffboardError) as exc:
                     print_command_denied("takeoff/offboard", exc)
                 except grpc.aio.AioRpcError as exc:
@@ -1753,8 +1882,7 @@ async def main() -> None:
                             try:
                                 await new_drone.action.takeoff()
                                 print("[CMD] Takeoff command sent - climbing...")
-                                await asyncio.sleep(5)
-                                print("[CMD] Takeoff complete. Use wasdqefv to start offboard flight, k to hover.")
+                                await wait_for_takeoff_confirm(new_drone)
                             except (ActionError, OffboardError) as retry_exc:
                                 print_command_denied("takeoff/offboard", retry_exc)
                             except grpc.aio.AioRpcError as retry_exc:
@@ -1936,11 +2064,7 @@ async def main() -> None:
             )
         elif key == "p":
             task = asyncio.create_task(camera.capture_and_upload())
-            task.add_done_callback(
-                lambda done: print(f"[CAMERA] Background error: {done.exception()}")
-                if done.exception()
-                else None
-            )
+            track_background_task(task, "CAMERA")
         elif key == "r":
             if video_recorder.is_recording():
                 stop_video_recording(upload=True)
@@ -1985,10 +2109,10 @@ async def main() -> None:
                             print_command_denied("land", retry_exc)
                         except grpc.aio.AioRpcError as retry_exc:
                             print_mavsdk_unavailable("land retry", retry_exc)
+            await wait_for_media_tasks()
         elif key == "x":
             print("[SHUTDOWN] Stopped by user")
-            stop_video_recording(upload=True)
-            await connection_manager.stop_offboard_sender()
+            await cleanup_controller(upload_video=True)
             return
 
 
