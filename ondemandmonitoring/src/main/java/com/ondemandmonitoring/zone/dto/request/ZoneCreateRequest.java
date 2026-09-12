@@ -19,6 +19,8 @@ public class ZoneCreateRequest {
 
     private String purpose;
 
+    private Boolean restricted;
+
     @NotEmpty
     private List<List<Double>> coordinates;
 }
