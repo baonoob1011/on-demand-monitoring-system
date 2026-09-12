@@ -23,6 +23,7 @@ from mavsdk.offboard import OffboardError, VelocityNedYaw
 from PIL import Image as PilImage
 from pathlib import Path
 from dotenv import load_dotenv
+from video.video_recorder import RecordingResult, VideoRecorder
 
 PROJECT_ROOT = Path(
     os.getenv(
@@ -272,6 +273,12 @@ CAMERA_FRONT_JOINT_POSITION_RAD = float(
 CAMERA_VIEW_STATE_FILE = Path(
     os.getenv("CAMERA_VIEW_STATE_FILE", "/tmp/forest3d_camera_view_state.json")
 )
+VIDEO_RECORDING_DIR = Path(
+    os.getenv("VIDEO_RECORDING_DIR", "/tmp/forest3d_drone_videos")
+)
+VIDEO_RECORDING_FPS = float(os.getenv("VIDEO_RECORDING_FPS", "15.0"))
+VIDEO_RECORDING_QUEUE_SIZE = int(os.getenv("VIDEO_RECORDING_QUEUE_SIZE", "4"))
+VIDEO_UPLOAD_TIMEOUT_S = float(os.getenv("VIDEO_UPLOAD_TIMEOUT_S", "120.0"))
 
 class MavsdkAckNoiseFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
@@ -333,11 +340,11 @@ def read_key() -> str:
 
 
 class CameraGateway:
-    def __init__(self) -> None:
+    def __init__(self, video_recorder: VideoRecorder | None = None) -> None:
         self.latest_frame: GzImage | None = None
         self.lock = threading.Lock()
         self.node = None
-        self.upload_url = f"{BACKEND_BASE_URL}/api/missions/{MISSION_ID}/images"
+        self.video_recorder = video_recorder
 
     def start(self) -> None:
         if Node is None or GzImage is None:
@@ -352,6 +359,8 @@ class CameraGateway:
     def _on_frame(self, msg: GzImage, *_args) -> None:
         with self.lock:
             self.latest_frame = msg
+        if self.video_recorder is not None and self.video_recorder.is_recording():
+            self.video_recorder.submit_frame(msg)
 
     def _latest_jpeg(self) -> bytes | None:
         with self.lock:
@@ -392,19 +401,24 @@ class CameraGateway:
             "droneId": DRONE_ID,
             "capturedAt": captured_at,
         }
-        files = {"image": (filename, jpeg, "image/jpeg")}
 
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(self.upload_url, data=data, files=files)
-        except httpx.ConnectError:
-            print("[CAMERA] Backend unavailable")
-            return
-        except httpx.TimeoutException:
-            print("[CAMERA] Upload timeout")
-            return
-        except httpx.HTTPError as exc:
-            print(f"[CAMERA] Upload failed: {exc}")
+        response = None
+        last_error = None
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            for base_url in backend_url_candidates():
+                upload_url = f"{base_url}/api/missions/{MISSION_ID}/images"
+                files = {"image": (filename, jpeg, "image/jpeg")}
+                try:
+                    response = await client.post(upload_url, data=data, files=files)
+                    if response.status_code < 500:
+                        break
+                except httpx.TimeoutException as exc:
+                    last_error = f"timeout via {base_url}: {exc}"
+                except httpx.HTTPError as exc:
+                    last_error = f"{base_url}: {exc}"
+
+        if response is None:
+            print(f"[CAMERA] Backend unavailable ({last_error or 'no route worked'})")
             return
 
         if 200 <= response.status_code < 300:
@@ -426,6 +440,69 @@ class CameraGateway:
 
         print(f"[CAMERA] Upload failed - HTTP {response.status_code}")
         print(response.text[:500])
+
+    async def upload_recorded_video(self, recording: RecordingResult) -> None:
+        path = recording.path
+        if not path.exists() or path.stat().st_size <= 0:
+            print(f"[VIDEO] Upload skipped - missing or empty file: {path}", flush=True)
+            return
+
+        size = path.stat().st_size
+        captured_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        data = {
+            "droneId": DRONE_ID,
+            "capturedAt": captured_at,
+            "mediaType": "VIDEO",
+        }
+        print(
+            f"[VIDEO] Upload started mission={recording.mission_id} size={size} path={path}",
+            flush=True,
+        )
+        response = None
+        last_error = None
+        async with httpx.AsyncClient(timeout=VIDEO_UPLOAD_TIMEOUT_S) as client:
+            for base_url in backend_url_candidates():
+                upload_url = f"{base_url}/api/missions/{MISSION_ID}/media"
+                try:
+                    with path.open("rb") as video_file:
+                        files = {"file": (path.name, video_file, "video/mp4")}
+                        response = await client.post(upload_url, data=data, files=files)
+                    if response.status_code < 500:
+                        break
+                except httpx.TimeoutException as exc:
+                    last_error = f"timeout via {base_url}: {exc}"
+                except httpx.HTTPError as exc:
+                    last_error = f"{base_url}: {exc}"
+
+        if response is None:
+            print(f"[VIDEO] Backend unavailable ({last_error or 'no route worked'})", flush=True)
+            return
+
+        if 200 <= response.status_code < 300:
+            try:
+                payload = response.json()
+            except ValueError:
+                print("[VIDEO] Upload success", flush=True)
+                return
+
+            media = payload.get("data") or {}
+            storage_provider = media.get("storageProvider", "UNKNOWN")
+            if storage_provider == "S3":
+                print(
+                    f"[VIDEO] Upload success provider=S3 key={media.get('s3Key')}",
+                    flush=True,
+                )
+            elif storage_provider == "LOCAL":
+                print(
+                    f"[VIDEO] Upload success provider=LOCAL path={media.get('s3Url')}",
+                    flush=True,
+                )
+            else:
+                print(f"[VIDEO] Upload success provider={storage_provider}", flush=True)
+            return
+
+        print(f"[VIDEO] Upload failed HTTP {response.status_code}", flush=True)
+        print(response.text[:500], flush=True)
 
 
 class CameraOrientationController:
@@ -1370,7 +1447,7 @@ async def main() -> None:
     print("      1 speed up | 2 speed down")
     print("      c switch camera down/front")
     print("      3 camera monitor on/off | 4 LiDAR monitor on/off | 5 telemetry on/off")
-    print("      p photo | l land | x exit")
+    print("      p photo | r video start/stop | l land | x exit")
     print()
     print("Press one move key once to keep moving. Press k to stop/hover.")
     print()
@@ -1378,11 +1455,17 @@ async def main() -> None:
     connection_manager = MavsdkConnectionManager()
     drone = await connection_manager.connect()
 
-    camera = CameraGateway()
+    video_recorder = VideoRecorder(
+        VIDEO_RECORDING_DIR,
+        fps=VIDEO_RECORDING_FPS,
+        queue_size=VIDEO_RECORDING_QUEUE_SIZE,
+    )
+    camera = CameraGateway(video_recorder)
     camera.start()
     camera_orientation = CameraOrientationController()
 
     current_yaw_deg = 0.0
+    video_upload_tasks: set[asyncio.Task] = set()
 
     def set_current_yaw(yaw_deg: float) -> None:
         nonlocal current_yaw_deg
@@ -1493,6 +1576,44 @@ async def main() -> None:
         current_north_m_s = 0.0
         current_east_m_s = 0.0
         current_down_m_s = 0.0
+
+    def track_background_task(task: asyncio.Task, label: str) -> None:
+        video_upload_tasks.add(task)
+
+        def _done(done: asyncio.Task) -> None:
+            video_upload_tasks.discard(done)
+            try:
+                exc = done.exception()
+            except asyncio.CancelledError:
+                return
+            if exc is not None:
+                print(f"[{label}] Background error: {exc}", flush=True)
+
+        task.add_done_callback(_done)
+
+    def stop_video_recording(upload: bool = True) -> RecordingResult | None:
+        if not video_recorder.is_recording():
+            return None
+        print("[VIDEO] Stopping recording...", flush=True)
+        result = video_recorder.stop_recording()
+        if result is None:
+            return None
+        print(
+            f"[VIDEO] Recording stopped frames={result.frames_written} "
+            f"duration={result.duration_s:.2f}s path={result.path}",
+            flush=True,
+        )
+        print(
+            f"[VIDEO] Stats fps={result.configured_fps:.1f} "
+            f"size={result.width}x{result.height} dropped={result.dropped_frames}",
+            flush=True,
+        )
+        if upload and result.frames_written > 0:
+            task = asyncio.create_task(camera.upload_recorded_video(result))
+            track_background_task(task, "VIDEO")
+        elif result.frames_written <= 0:
+            print("[VIDEO] Upload skipped - no frames were recorded", flush=True)
+        return result
 
     # ================================================================
     # START LIDAR / SAFETY
@@ -1820,8 +1941,22 @@ async def main() -> None:
                 if done.exception()
                 else None
             )
+        elif key == "r":
+            if video_recorder.is_recording():
+                stop_video_recording(upload=True)
+            else:
+                try:
+                    path = video_recorder.start_recording(MISSION_ID)
+                except RuntimeError as exc:
+                    print(f"[VIDEO] Recording unavailable: {exc}", flush=True)
+                else:
+                    print(
+                        f"[VIDEO] Recording started mission={MISSION_ID} path={path}",
+                        flush=True,
+                    )
         elif key == "l":
             print("[CMD] land")
+            stop_video_recording(upload=True)
             await connection_manager.stop_offboard_sender()
             active_drone = await connection_manager.get_drone()
             if active_drone is None:
@@ -1852,6 +1987,7 @@ async def main() -> None:
                             print_mavsdk_unavailable("land retry", retry_exc)
         elif key == "x":
             print("[SHUTDOWN] Stopped by user")
+            stop_video_recording(upload=True)
             await connection_manager.stop_offboard_sender()
             return
 

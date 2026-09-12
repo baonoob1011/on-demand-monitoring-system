@@ -8,6 +8,9 @@ REPO_CONTROLLER="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-sy
 ENV_FILE="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/ondemandmonitoring/.env"
 cd ~/drone-controller || exit 1
 cp "$REPO_CONTROLLER/flight_controller.py" flight_controller.py
+mkdir -p video
+cp "$REPO_CONTROLLER/video/__init__.py" video/__init__.py
+cp "$REPO_CONTROLLER/video/video_recorder.py" video/video_recorder.py
 
 if [ -f "$ENV_FILE" ]; then
     set -a
@@ -17,6 +20,14 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 source ~/drone-env/bin/activate
+
+if ! python - <<'PY' >/dev/null 2>&1
+import cv2
+PY
+then
+    printf '%s\n' '[VIDEO] Installing missing opencv-python dependency...'
+    python -m pip install -q opencv-python
+fi
 
 MAVSDK_BIN="$HOME/drone-env/lib/python3.12/site-packages/mavsdk/bin/mavsdk_server"
 MAVSDK_LOG="$PWD/mavsdk_control.log"
