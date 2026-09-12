@@ -4,12 +4,17 @@ import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.device.dto.response.DeviceImageResponse;
 import com.ondemandmonitoring.device.dto.response.MediaResponse;
 import com.ondemandmonitoring.device.domain.DeviceImage;
+import com.ondemandmonitoring.device.service.DeviceImageService.MediaContent;
 import com.ondemandmonitoring.device.service.DeviceImageService;
 import com.ondemandmonitoring.device.mapper.DeviceImageMapper;
 import java.time.Instant;
+import java.util.List;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -57,5 +62,35 @@ public class MediaController {
                 image,
                 presignedUrl,
                 deviceImageService.presignedUrlExpiresSeconds())));
+    }
+
+    @Operation(summary = "List mission media", description = "Lists image/video assets captured for a mission")
+    @GetMapping("/api/missions/{missionId}/media")
+    public ResponseEntity<ApiResponse<List<DeviceImageResponse>>> listMissionMedia(
+            @PathVariable String missionId,
+            @RequestParam(required = false) String mediaType) {
+        List<DeviceImageResponse> media = deviceImageService.listByMission(missionId, mediaType)
+                .stream()
+                .map(deviceImageMapper::toResponse)
+                .toList();
+
+        return ResponseEntity.ok(ApiResponse.ok(media));
+    }
+
+    @Operation(summary = "Get media file", description = "Streams the original image/video file from configured storage")
+    @GetMapping("/api/media/{mediaId}/file")
+    public ResponseEntity<InputStreamResource> getMediaFile(@PathVariable String mediaId) {
+        DeviceImage image = deviceImageService.getById(mediaId);
+        MediaContent mediaContent = deviceImageService.openMedia(image);
+        MediaType contentType = MediaType.parseMediaType(mediaContent.contentType());
+
+        return ResponseEntity.ok()
+                .contentType(contentType)
+                .contentLength(mediaContent.contentLength())
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
+                        .filename(mediaContent.fileName())
+                        .build()
+                        .toString())
+                .body(new InputStreamResource(mediaContent.inputStream()));
     }
 }

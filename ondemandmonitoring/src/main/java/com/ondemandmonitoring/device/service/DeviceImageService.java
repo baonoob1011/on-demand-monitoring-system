@@ -6,16 +6,19 @@ import com.ondemandmonitoring.device.domain.Device;
 import com.ondemandmonitoring.device.domain.DeviceImage;
 import com.ondemandmonitoring.device.enums.DeviceStatus;
 import com.ondemandmonitoring.device.enums.DeviceType;
-import com.ondemandmonitoring.device.infrastructure.s3.AwsS3Properties;
+import com.ondemandmonitoring.s3.AwsS3Properties;
+import com.ondemandmonitoring.s3.S3ObjectStorageService;
+import com.ondemandmonitoring.s3.S3ObjectStorageService.StoredObject;
+import com.ondemandmonitoring.s3.S3ObjectStorageService.StoredObjectStream;
 import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.device.repository.DeviceImageRepository;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -27,13 +30,6 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.presigner.S3Presigner;
-import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 @Service
 @Slf4j
@@ -46,11 +42,9 @@ public class DeviceImageService {
     private static final String MEDIA_TYPE_VIDEO = "VIDEO";
     private static final String STORAGE_PROVIDER_S3 = "S3";
     private static final String STORAGE_PROVIDER_LOCAL = "LOCAL";
-    private static final long PRESIGNED_URL_EXPIRES_SECONDS = 900;
     private static final Path LOCAL_IMAGE_DIR = Path.of("uploads", "drone-images");
 
-    S3Client s3Client;
-    S3Presigner s3Presigner;
+    S3ObjectStorageService s3ObjectStorageService;
     AwsS3Properties awsS3Properties;
     Environment environment;
     DeviceRepository deviceRepository;
@@ -80,7 +74,7 @@ public class DeviceImageService {
             return saveLocal(device, missionId, droneId, capturedAt, file, originalFileName, contentType, mediaType);
         }
 
-        String bucket = awsS3Properties.getBucket();
+        String bucket = s3ObjectStorageService.bucket();
         if (bucket == null || bucket.isBlank()) {
             log.warn("AWS S3 bucket is not configured; storing image locally");
             return saveLocal(device, missionId, droneId, capturedAt, file, originalFileName, contentType, mediaType);
@@ -88,25 +82,15 @@ public class DeviceImageService {
 
         String key = buildS3Key(missionId, droneId, mediaType);
         String diagnosticPrefix = MEDIA_TYPE_VIDEO.equals(mediaType) ? "[S3-VIDEO]" : "[S3-IMAGE]";
+        StoredObject storedObject;
 
         try {
-            PutObjectRequest putObjectRequest = PutObjectRequest.builder()
-                    .bucket(bucket)
-                    .key(key)
-                    .contentType(contentType)
-                    .contentLength(file.getSize())
-                    .build();
-            log.info("{} bucket={}", diagnosticPrefix, bucket);
-            log.info("{} key={}", diagnosticPrefix, key);
-            log.info("{} keyPrefix={}", diagnosticPrefix, s3KeyPrefix(key));
-            log.info("{} contentType={}", diagnosticPrefix, contentType);
-            log.info("{} metadata=none", diagnosticPrefix);
-            log.info("{} acl=none", diagnosticPrefix);
-            log.info("{} encryption=none", diagnosticPrefix);
-            log.info("{} putObject=normal contentLength={}", diagnosticPrefix, file.getSize());
-            s3Client.putObject(
-                    putObjectRequest,
-                    RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
+            storedObject = s3ObjectStorageService.put(
+                    key,
+                    contentType,
+                    file.getSize(),
+                    file.getInputStream(),
+                    diagnosticPrefix);
         } catch (IOException exception) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Cannot read uploaded image");
         } catch (RuntimeException exception) {
@@ -125,14 +109,14 @@ public class DeviceImageService {
             image.setOriginalFileName(originalFileName);
             image.setContentType(contentType);
             image.setFileSize(file.getSize());
-            image.setS3Bucket(bucket);
-            image.setS3Key(key);
-            image.setS3Url("s3://" + bucket + "/" + key);
+            image.setS3Bucket(storedObject.bucket());
+            image.setS3Key(storedObject.key());
+            image.setS3Url(storedObject.url());
             image.setCapturedAt(capturedAt == null ? Instant.now() : capturedAt);
 
             return deviceImageRepository.save(image);
         } catch (RuntimeException exception) {
-            cleanupUploadedObject(bucket, key);
+            cleanupUploadedObject(storedObject.bucket(), storedObject.key());
             throw exception;
         }
     }
@@ -143,25 +127,57 @@ public class DeviceImageService {
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Media not found"));
     }
 
+    @Transactional(readOnly = true)
+    public List<DeviceImage> listByMission(String missionId, String requestedMediaType) {
+        validateRequired("missionId", missionId);
+        if (requestedMediaType == null || requestedMediaType.isBlank()) {
+            return deviceImageRepository.findByMissionIdOrderByCapturedAtDesc(missionId);
+        }
+
+        String mediaType = normalizeMediaType(requestedMediaType);
+        return deviceImageRepository.findByMissionIdAndTypeOrderByCapturedAtDesc(missionId, mediaType);
+    }
+
+    public MediaContent openMedia(DeviceImage image) {
+        if (STORAGE_PROVIDER_LOCAL.equalsIgnoreCase(image.getStorageProvider())) {
+            Path path = Path.of(image.getS3Url());
+            try {
+                return new MediaContent(
+                        Files.newInputStream(path),
+                        Files.size(path),
+                        image.getContentType(),
+                        image.getOriginalFileName());
+            } catch (IOException exception) {
+                throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Cannot read local media file");
+            }
+        }
+
+        try {
+            StoredObjectStream stream = s3ObjectStorageService.open(image.getS3Bucket(), image.getS3Key());
+            return new MediaContent(
+                    stream.inputStream(),
+                    stream.contentLength() == null ? image.getFileSize() : stream.contentLength(),
+                    stream.contentType() == null || stream.contentType().isBlank()
+                            ? image.getContentType()
+                            : stream.contentType(),
+                    image.getOriginalFileName());
+        } catch (RuntimeException exception) {
+            log.error("Cannot read media from S3. bucket={}, key={}", image.getS3Bucket(), image.getS3Key(), exception);
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Cannot read media from S3: " + rootMessage(exception));
+        }
+    }
+
     public String createPresignedGetUrl(DeviceImage image) {
         if (STORAGE_PROVIDER_LOCAL.equalsIgnoreCase(image.getStorageProvider())) {
             return image.getS3Url();
         }
 
-        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
-                .bucket(image.getS3Bucket())
-                .key(image.getS3Key())
-                .build();
-        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
-                .signatureDuration(Duration.ofSeconds(PRESIGNED_URL_EXPIRES_SECONDS))
-                .getObjectRequest(getObjectRequest)
-                .build();
-
-        return s3Presigner.presignGetObject(presignRequest).url().toString();
+        return s3ObjectStorageService.createPresignedGetUrl(image.getS3Bucket(), image.getS3Key());
     }
 
     public long presignedUrlExpiresSeconds() {
-        return PRESIGNED_URL_EXPIRES_SECONDS;
+        return s3ObjectStorageService.presignedUrlExpiresSeconds();
     }
 
     private String validate(MultipartFile file, String requestedMediaType) {
@@ -212,14 +228,6 @@ public class DeviceImageService {
         return originalFileName.replaceAll("[^A-Za-z0-9._-]", "_");
     }
 
-    private String s3KeyPrefix(String key) {
-        int lastSlash = key.lastIndexOf('/');
-        if (lastSlash < 0) {
-            return "";
-        }
-        return key.substring(0, lastSlash + 1);
-    }
-
     private String safePathSegment(String value) {
         return value.replaceAll("[^A-Za-z0-9._-]", "_");
     }
@@ -231,11 +239,7 @@ public class DeviceImageService {
     }
 
     private void cleanupUploadedObject(String bucket, String key) {
-        try {
-            s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
-        } catch (RuntimeException cleanupException) {
-            log.warn("Failed to cleanup S3 object after DB error. bucket={}, key={}", bucket, key, cleanupException);
-        }
+        s3ObjectStorageService.deleteQuietly(bucket, key);
     }
 
     private DeviceImage saveLocal(
@@ -319,4 +323,14 @@ public class DeviceImageService {
                     return deviceRepository.save(device);
                 });
     }
+
+    private String normalizeMediaType(String requestedMediaType) {
+        String mediaType = requestedMediaType.strip().toUpperCase();
+        if (!MEDIA_TYPE_IMAGE.equals(mediaType) && !MEDIA_TYPE_VIDEO.equals(mediaType)) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "mediaType must be IMAGE or VIDEO");
+        }
+        return mediaType;
+    }
+
+    public record MediaContent(InputStream inputStream, long contentLength, String contentType, String fileName) {}
 }

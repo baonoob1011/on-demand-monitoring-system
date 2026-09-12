@@ -4,7 +4,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.ondemandmonitoring.device.infrastructure.s3.AwsS3Properties;
+import com.ondemandmonitoring.s3.AwsS3Properties;
+import com.ondemandmonitoring.s3.S3ObjectStorageService;
 import com.ondemandmonitoring.device.domain.Device;
 import com.ondemandmonitoring.device.domain.DeviceImage;
 import com.ondemandmonitoring.device.repository.DeviceRepository;
@@ -14,16 +15,13 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.env.Environment;
 import org.springframework.web.multipart.MultipartFile;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 class DeviceImageServiceTest {
 
     @Test
     void upload_rejectsMissingFile() {
         DeviceImageService service = new DeviceImageService(
-                mock(S3Client.class),
-                mock(S3Presigner.class),
+                mock(S3ObjectStorageService.class),
                 new AwsS3Properties(),
                 mock(Environment.class),
                 mock(DeviceRepository.class),
@@ -37,8 +35,7 @@ class DeviceImageServiceTest {
     @Test
     void upload_rejectsUnsupportedContentType() {
         DeviceImageService service = new DeviceImageService(
-                mock(S3Client.class),
-                mock(S3Presigner.class),
+                mock(S3ObjectStorageService.class),
                 new AwsS3Properties(),
                 mock(Environment.class),
                 mock(DeviceRepository.class),
@@ -54,8 +51,7 @@ class DeviceImageServiceTest {
     @Test
     void upload_rejectsMismatchedVideoMediaType() {
         DeviceImageService service = new DeviceImageService(
-                mock(S3Client.class),
-                mock(S3Presigner.class),
+                mock(S3ObjectStorageService.class),
                 new AwsS3Properties(),
                 mock(Environment.class),
                 mock(DeviceRepository.class),
@@ -80,8 +76,7 @@ class DeviceImageServiceTest {
         when(imageRepository.save(org.mockito.ArgumentMatchers.any(DeviceImage.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         DeviceImageService service = new DeviceImageService(
-                mock(S3Client.class),
-                mock(S3Presigner.class),
+                mock(S3ObjectStorageService.class),
                 new AwsS3Properties(),
                 environment,
                 deviceRepository,

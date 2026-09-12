@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.device.infrastructure.s3;
+package com.ondemandmonitoring.s3;
 
 import lombok.AccessLevel;
 import lombok.Getter;
