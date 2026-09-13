@@ -21,6 +21,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import com.ondemandmonitoring.media.domain.MediaStatus;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -113,6 +114,10 @@ public class DeviceImageService {
             image.setS3Key(storedObject.key());
             image.setS3Url(storedObject.url());
             image.setCapturedAt(capturedAt == null ? Instant.now() : capturedAt);
+            image.setMediaStatus(MediaStatus.AVAILABLE);
+            image.setUploadAttemptCount(1);
+            image.setValidatedAt(Instant.now());
+            image.setAvailableAt(Instant.now());
 
             return deviceImageRepository.save(image);
         } catch (RuntimeException exception) {
@@ -123,19 +128,23 @@ public class DeviceImageService {
 
     @Transactional(readOnly = true)
     public DeviceImage getById(String mediaId) {
-        return deviceImageRepository.findById(mediaId)
+        DeviceImage media = deviceImageRepository.findById(mediaId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Media not found"));
+        if (media.getMediaStatus() != null && media.getMediaStatus() != MediaStatus.AVAILABLE) {
+            throw new ApiException(ErrorCode.MEDIA_UPLOAD_NOT_ALLOWED, "Media is not available yet");
+        }
+        return media;
     }
 
     @Transactional(readOnly = true)
     public List<DeviceImage> listByMission(String missionId, String requestedMediaType) {
         validateRequired("missionId", missionId);
         if (requestedMediaType == null || requestedMediaType.isBlank()) {
-            return deviceImageRepository.findByMissionIdOrderByCapturedAtDesc(missionId);
+            return availableOnly(deviceImageRepository.findByMissionIdOrderByCapturedAtDesc(missionId));
         }
 
         String mediaType = normalizeMediaType(requestedMediaType);
-        return deviceImageRepository.findByMissionIdAndTypeOrderByCapturedAtDesc(missionId, mediaType);
+        return availableOnly(deviceImageRepository.findByMissionIdAndTypeOrderByCapturedAtDesc(missionId, mediaType));
     }
 
     public MediaContent openMedia(DeviceImage image) {
@@ -210,7 +219,7 @@ public class DeviceImageService {
         String fileName = timestamp + "-" + UUID.randomUUID() + (video ? ".mp4" : ".jpg");
         String missionPath = safePathSegment(missionId);
         String dronePath = safePathSegment(droneId);
-        String folder = "images";
+        String folder = video ? "videos" : "images";
         String key = "missions/" + missionPath + "/drones/" + dronePath + "/" + folder + "/" + fileName;
 
         if (normalizedPrefix.isBlank()) {
@@ -285,6 +294,10 @@ public class DeviceImageService {
         image.setS3Key(relativePath.toString().replace('\\', '/'));
         image.setS3Url(relativePath.toAbsolutePath().toString());
         image.setCapturedAt(capturedAt == null ? Instant.now() : capturedAt);
+        image.setMediaStatus(MediaStatus.AVAILABLE);
+        image.setUploadAttemptCount(1);
+        image.setValidatedAt(Instant.now());
+        image.setAvailableAt(Instant.now());
 
         return deviceImageRepository.save(image);
     }
@@ -330,6 +343,13 @@ public class DeviceImageService {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "mediaType must be IMAGE or VIDEO");
         }
         return mediaType;
+    }
+
+    private List<DeviceImage> availableOnly(List<DeviceImage> media) {
+        return media.stream()
+                .filter(item -> item.getMediaStatus() == null
+                        || item.getMediaStatus() == MediaStatus.AVAILABLE)
+                .toList();
     }
 
     public record MediaContent(InputStream inputStream, long contentLength, String contentType, String fileName) {}

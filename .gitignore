@@ -8,6 +8,7 @@ ondemandmonitoring/.env
 ondemandmonitoring/uploads/
 __pycache__/
 *.pyc
+drone/runtime/
 drone-controller/.env
 drone-controller/.venv/
 drone-controller/__pycache__/

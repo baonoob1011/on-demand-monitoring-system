@@ -2,6 +2,7 @@ package com.ondemandmonitoring.s3;
 
 import java.io.InputStream;
 import java.time.Duration;
+import java.util.Map;
 
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,8 @@ import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
 @Service
 @Slf4j
@@ -71,6 +74,29 @@ public class S3ObjectStorageService {
         return s3Presigner.presignGetObject(presignRequest).url().toString();
     }
 
+    public PresignedUpload createPresignedPutUrl(
+            String key,
+            String contentType,
+            long contentLength,
+            Map<String, String> metadata) {
+        PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                .bucket(bucket())
+                .key(key)
+                .contentType(contentType)
+                .contentLength(contentLength)
+                .metadata(metadata)
+                .build();
+        PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()
+                .signatureDuration(Duration.ofSeconds(PRESIGNED_URL_EXPIRES_SECONDS))
+                .putObjectRequest(putObjectRequest)
+                .build();
+        PresignedPutObjectRequest presigned = s3Presigner.presignPutObject(presignRequest);
+        return new PresignedUpload(
+                presigned.url().toString(),
+                presigned.signedHeaders(),
+                PRESIGNED_URL_EXPIRES_SECONDS);
+    }
+
     public void deleteQuietly(String bucket, String key) {
         try {
             s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
@@ -98,4 +124,6 @@ public class S3ObjectStorageService {
     public record StoredObject(String bucket, String key, String url) {}
 
     public record StoredObjectStream(InputStream inputStream, Long contentLength, String contentType) {}
+
+    public record PresignedUpload(String url, Map<String, java.util.List<String>> headers, long expiresInSeconds) {}
 }

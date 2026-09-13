@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package monitoring.flightcontroller.v1;
+
+service MediaService {
+  rpc CaptureImage(CaptureImageRequest) returns (MediaCommandAck);
+  rpc StartVideo(StartVideoRequest) returns (MediaCommandAck);
+  rpc StopVideo(StopVideoRequest) returns (MediaCommandAck);
+  rpc ListMedia(ListMediaRequest) returns (ListMediaResponse);
+  rpc DiscardMedia(DiscardMediaRequest) returns (MediaCommandAck);
+  rpc UploadMedia(UploadMediaRequest) returns (MediaCommandAck);
+  rpc WatchCommand(WatchCommandRequest) returns (stream MediaCommandUpdate);
+}
+
+enum MediaType {
+  MEDIA_TYPE_UNSPECIFIED = 0;
+  MEDIA_TYPE_IMAGE = 1;
+  MEDIA_TYPE_VIDEO = 2;
+}
+
+enum LocalMediaStatus {
+  LOCAL_MEDIA_STATUS_UNSPECIFIED = 0;
+  LOCAL_MEDIA_STATUS_CAPTURING = 1;
+  LOCAL_MEDIA_STATUS_REVIEW_PENDING = 2;
+  LOCAL_MEDIA_STATUS_UPLOAD_PENDING = 3;
+  LOCAL_MEDIA_STATUS_UPLOADING = 4;
+  LOCAL_MEDIA_STATUS_VALIDATING = 5;
+  LOCAL_MEDIA_STATUS_AVAILABLE = 6;
+  LOCAL_MEDIA_STATUS_RETRY_REQUIRED = 7;
+  LOCAL_MEDIA_STATUS_MANUAL_UPLOAD_REQUIRED = 8;
+  LOCAL_MEDIA_STATUS_DISCARDED = 9;
+  LOCAL_MEDIA_STATUS_FAILED = 10;
+}
+
+enum CommandState {
+  COMMAND_STATE_UNSPECIFIED = 0;
+  COMMAND_STATE_ACCEPTED = 1;
+  COMMAND_STATE_RUNNING = 2;
+  COMMAND_STATE_SUCCEEDED = 3;
+  COMMAND_STATE_FAILED = 4;
+}
+
+message CaptureImageRequest { string command_id = 1; string mission_id = 2; string drone_id = 3; }
+message StartVideoRequest { string command_id = 1; string mission_id = 2; string drone_id = 3; }
+message StopVideoRequest { string command_id = 1; }
+message ListMediaRequest { string mission_id = 1; }
+message DiscardMediaRequest { string command_id = 1; string local_media_id = 2; }
+message UploadMediaRequest { string command_id = 1; string local_media_id = 2; }
+message WatchCommandRequest { string command_id = 1; }
+
+message LocalMedia {
+  string local_media_id = 1;
+  string mission_id = 2;
+  string drone_id = 3;
+  MediaType media_type = 4;
+  LocalMediaStatus status = 5;
+  string file_name = 6;
+  string local_path = 7;
+  string content_type = 8;
+  int64 file_size = 9;
+  string checksum_sha256 = 10;
+  string captured_at = 11;
+  string backend_media_id = 12;
+  string error_code = 13;
+  string error_message = 14;
+}
+
+message MediaCommandAck {
+  string command_id = 1;
+  CommandState state = 2;
+  LocalMedia media = 3;
+  string error_code = 4;
+  string error_message = 5;
+}
+
+message MediaCommandUpdate {
+  string command_id = 1;
+  CommandState state = 2;
+  LocalMedia media = 3;
+  string error_code = 4;
+  string error_message = 5;
+}
+
+message ListMediaResponse { repeated LocalMedia media = 1; }

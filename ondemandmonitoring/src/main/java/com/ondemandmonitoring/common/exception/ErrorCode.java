@@ -46,7 +46,12 @@ public enum ErrorCode {
     DRONE_NOT_AVAILABLE("Drone is not available", HttpStatus.CONFLICT),
     SCHEDULE_CONFLICT("The drone is already scheduled for another mission during this time period",
                       HttpStatus.CONFLICT),
-    MEDIA_UPLOAD_FAILED("File upload failed after 3 attempts", HttpStatus.BAD_GATEWAY);
+    MEDIA_UPLOAD_FAILED("File upload failed after 3 attempts", HttpStatus.BAD_GATEWAY),
+    MEDIA_NOT_FOUND("Media not found", HttpStatus.NOT_FOUND),
+    MEDIA_IDEMPOTENCY_CONFLICT("Idempotency key was already used with different media metadata", HttpStatus.CONFLICT),
+    MEDIA_UPLOAD_NOT_ALLOWED("Media upload is not allowed for this mission", HttpStatus.CONFLICT),
+    MEDIA_UPLOAD_ATTEMPT_INVALID("Media upload attempt is invalid", HttpStatus.CONFLICT),
+    MEDIA_STORAGE_EVENT_UNAUTHORIZED("Storage event signature is invalid", HttpStatus.UNAUTHORIZED);
 
 
 

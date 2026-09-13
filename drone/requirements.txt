@@ -5,3 +5,5 @@ watchdog
 Pillow
 numpy
 opencv-python
+grpcio
+grpcio-tools

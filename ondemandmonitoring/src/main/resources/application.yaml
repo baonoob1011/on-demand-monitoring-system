@@ -66,6 +66,12 @@ auth:
     max-age-seconds: ${AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS:2592000}
     same-site: ${AUTH_REFRESH_COOKIE_SAME_SITE:Lax}
 
+app:
+  media:
+    max-image-bytes: ${MEDIA_MAX_IMAGE_BYTES:26214400}
+    max-video-bytes: ${MEDIA_MAX_VIDEO_BYTES:1073741824}
+    storage-event-secret: ${MEDIA_STORAGE_EVENT_SECRET:}
+
 springdoc:
   api-docs:
     path: /v3/api-docs

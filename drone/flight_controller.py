@@ -16,21 +16,17 @@ import time
 import tty
 import sys
 import grpc
-import httpx
 from mavsdk import System
 from mavsdk.action import ActionError
 from mavsdk.offboard import OffboardError, VelocityNedYaw
 from PIL import Image as PilImage
 from pathlib import Path
 from dotenv import load_dotenv
-from video.video_recorder import RecordingResult, VideoRecorder
+from video.video_recorder import VideoRecorder
 
 PROJECT_ROOT = Path(
-    os.getenv(
-        "PROJECT_PATH",
-        "/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system",
-    )
-)
+    os.getenv("PROJECT_PATH", str(Path(__file__).resolve().parents[1]))
+).expanduser().resolve()
 
 DRONE_DIR = PROJECT_ROOT / "drone"
 
@@ -40,9 +36,18 @@ if "/usr/lib/python3/dist-packages" not in sys.path:
 if str(DRONE_DIR) not in sys.path:
     sys.path.insert(0, str(DRONE_DIR))
 
+GENERATED_DIR = DRONE_DIR / "generated"
+if str(GENERATED_DIR) not in sys.path:
+    sys.path.insert(0, str(GENERATED_DIR))
+
+from flight_controller_service.backend_client import MediaBackendClient
+from flight_controller_service.grpc_server import start_media_grpc_server
+from flight_controller_service.local_media import LocalMediaRepository, LocalMediaStatus
+from flight_controller_service.media_coordinator import MediaCoordinator
+
 ENV_FILE = PROJECT_ROOT / "ondemandmonitoring" / ".env"
 
-load_dotenv(ENV_FILE, override=True)
+load_dotenv(ENV_FILE, override=False)
 
 print(
     f"[ENV] Loaded: {ENV_FILE}",
@@ -246,16 +251,12 @@ MISSION_ID = os.getenv(
     "MISSION_001",
 )
 
-SIM_WORLD = os.getenv(
-    "SIM_WORLD",
-    "legacy",
-)
+SIM_WORLD = os.getenv("SIM_WORLD", "legacy").strip() or "legacy"
 
-DEFAULT_GAZEBO_WORLD = (
-    "forest_monitoring_compact"
-    if SIM_WORLD == "compact"
-    else "forest_monitoring"
-)
+DEFAULT_GAZEBO_WORLD = {
+    "compact": "forest_monitoring_compact",
+    "legacy": "forest_monitoring",
+}.get(SIM_WORLD, SIM_WORLD)
 
 CAMERA_TOPIC = os.getenv(
     "GAZEBO_CAMERA_TOPIC",
@@ -281,6 +282,15 @@ VIDEO_RECORDING_DIR = Path(
 VIDEO_RECORDING_FPS = float(os.getenv("VIDEO_RECORDING_FPS", "15.0"))
 VIDEO_RECORDING_QUEUE_SIZE = int(os.getenv("VIDEO_RECORDING_QUEUE_SIZE", "4"))
 VIDEO_UPLOAD_TIMEOUT_S = float(os.getenv("VIDEO_UPLOAD_TIMEOUT_S", "120.0"))
+FLIGHT_CONTROLLER_GRPC_BIND = os.getenv("FLIGHT_CONTROLLER_GRPC_BIND", "0.0.0.0:50051")
+FLIGHT_CONTROLLER_GRPC_TOKEN = os.getenv("FLIGHT_CONTROLLER_GRPC_TOKEN", "")
+FLIGHT_CONTROLLER_GRPC_CERT = os.getenv("FLIGHT_CONTROLLER_GRPC_CERT", "")
+FLIGHT_CONTROLLER_GRPC_KEY = os.getenv("FLIGHT_CONTROLLER_GRPC_KEY", "")
+BACKEND_ACCESS_TOKEN = os.getenv("BACKEND_ACCESS_TOKEN", "")
+LOCAL_MEDIA_DIR = Path(os.getenv("LOCAL_MEDIA_DIR", "/tmp/forest3d_drone_media"))
+LOCAL_MEDIA_STATE_FILE = Path(
+    os.getenv("LOCAL_MEDIA_STATE_FILE", "/tmp/forest3d_drone_media/state.json")
+)
 
 class MavsdkAckNoiseFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
@@ -304,43 +314,6 @@ def env_bool(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in ("1", "true", "yes", "on")
-
-
-def backend_url_candidates() -> list[str]:
-    configured = BACKEND_BASE_URL.rstrip("/")
-    candidates = [configured]
-
-    if configured in {"http://localhost:8080", "http://127.0.0.1:8080"}:
-        candidates.append("http://host.docker.internal:8080")
-        candidates.append("http://172.20.176.1:8080")
-        try:
-            output = subprocess.check_output(
-                ["sh", "-lc", "awk '/^nameserver / {print $2; exit}' /etc/resolv.conf"],
-                text=True,
-                timeout=1.0,
-            ).strip()
-            if output:
-                candidates.append(f"http://{output}:8080")
-        except (OSError, subprocess.SubprocessError):
-            pass
-
-    deduped = []
-    for url in candidates:
-        if url and url not in deduped:
-            deduped.append(url)
-    return deduped
-
-
-def is_connection_level_http_error(exc: httpx.HTTPError) -> bool:
-    return isinstance(
-        exc,
-        (
-            httpx.ConnectError,
-            httpx.ConnectTimeout,
-            httpx.NetworkError,
-            httpx.PoolTimeout,
-        ),
-    )
 
 
 def read_key() -> str:
@@ -376,7 +349,7 @@ class CameraGateway:
         if self.video_recorder is not None and self.video_recorder.is_recording():
             self.video_recorder.submit_frame(msg)
 
-    def _latest_jpeg(self) -> bytes | None:
+    def capture_jpeg(self) -> bytes | None:
         with self.lock:
             frame = self.latest_frame
 
@@ -400,122 +373,6 @@ class CameraGateway:
         output = BytesIO()
         image.save(output, format="JPEG", quality=88)
         return output.getvalue()
-
-    async def capture_and_upload(self) -> None:
-        print("[CAMERA] Drone camera capture requested")
-        jpeg = await asyncio.to_thread(self._latest_jpeg)
-        if jpeg is None:
-            print("[CAMERA] No camera frame available")
-            return
-
-        captured_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        filename = f"{DRONE_ID}-downward-{timestamp}.jpg"
-        data = {
-            "droneId": DRONE_ID,
-            "capturedAt": captured_at,
-        }
-
-        response = None
-        last_error = None
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            for base_url in backend_url_candidates():
-                upload_url = f"{base_url}/api/missions/{MISSION_ID}/images"
-                files = {"image": (filename, jpeg, "image/jpeg")}
-                try:
-                    response = await client.post(upload_url, data=data, files=files)
-                    break
-                except httpx.HTTPError as exc:
-                    if not is_connection_level_http_error(exc):
-                        raise
-                    last_error = f"{base_url}: {exc}"
-
-        if response is None:
-            print(f"[CAMERA] Backend unavailable ({last_error or 'no route worked'})")
-            return
-
-        if 200 <= response.status_code < 300:
-            try:
-                payload = response.json()
-            except ValueError:
-                print("[CAMERA] Image uploaded successfully")
-                return
-
-            image = payload.get("data") or {}
-            storage_provider = image.get("storageProvider", "UNKNOWN")
-            print(f"[CAMERA] Image uploaded successfully ({storage_provider})")
-            if storage_provider == "S3":
-                print(f"[CAMERA] S3 bucket: {image.get('s3Bucket')}")
-                print(f"[CAMERA] S3 key: {image.get('s3Key')}")
-            elif storage_provider == "LOCAL":
-                print(f"[CAMERA] Local file: {image.get('s3Url')}")
-            return
-
-        print(f"[CAMERA] Upload failed - HTTP {response.status_code}")
-        print(response.text[:500])
-
-    async def upload_recorded_video(self, recording: RecordingResult) -> None:
-        path = recording.path
-        if not path.exists() or path.stat().st_size <= 0:
-            print(f"[VIDEO] Upload skipped - missing or empty file: {path}", flush=True)
-            return
-
-        size = path.stat().st_size
-        captured_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        data = {
-            "droneId": DRONE_ID,
-            "capturedAt": captured_at,
-            "mediaType": "VIDEO",
-        }
-        print(
-            f"[VIDEO] Upload started mission={recording.mission_id} size={size} path={path}",
-            flush=True,
-        )
-        response = None
-        last_error = None
-        async with httpx.AsyncClient(timeout=VIDEO_UPLOAD_TIMEOUT_S) as client:
-            for base_url in backend_url_candidates():
-                upload_url = f"{base_url}/api/missions/{recording.mission_id}/media"
-                try:
-                    with path.open("rb") as video_file:
-                        files = {"file": (path.name, video_file, "video/mp4")}
-                        response = await client.post(upload_url, data=data, files=files)
-                    break
-                except httpx.HTTPError as exc:
-                    if not is_connection_level_http_error(exc):
-                        raise
-                    last_error = f"{base_url}: {exc}"
-
-        if response is None:
-            print(f"[VIDEO] Backend unavailable ({last_error or 'no route worked'})", flush=True)
-            return
-
-        if 200 <= response.status_code < 300:
-            try:
-                payload = response.json()
-            except ValueError:
-                print("[VIDEO] Upload success", flush=True)
-                return
-
-            media = payload.get("data") or {}
-            storage_provider = media.get("storageProvider", "UNKNOWN")
-            if storage_provider == "S3":
-                print(
-                    f"[VIDEO] Upload success provider=S3 key={media.get('s3Key')}",
-                    flush=True,
-                )
-            elif storage_provider == "LOCAL":
-                print(
-                    f"[VIDEO] Upload success provider=LOCAL path={media.get('s3Url')}",
-                    flush=True,
-                )
-            else:
-                print(f"[VIDEO] Upload success provider={storage_provider}", flush=True)
-            return
-
-        print(f"[VIDEO] Upload failed HTTP {response.status_code}", flush=True)
-        print(response.text[:500], flush=True)
-
 
 class CameraOrientationController:
     def __init__(self) -> None:
@@ -1533,7 +1390,7 @@ async def main() -> None:
     print("      1 speed up | 2 speed down")
     print("      c switch camera down/front")
     print("      3 camera monitor on/off | 4 LiDAR monitor on/off | 5 telemetry on/off")
-    print("      p photo | r video start/stop | l land | x exit")
+    print("      p photo | r video start/stop | u upload latest | l land | x exit")
     print()
     print("Press one move key once to keep moving. Press k to stop/hover.")
     print()
@@ -1548,6 +1405,22 @@ async def main() -> None:
     )
     camera = CameraGateway(video_recorder)
     camera.start()
+    media_repository = LocalMediaRepository(LOCAL_MEDIA_STATE_FILE)
+    media_coordinator = MediaCoordinator(
+        camera.capture_jpeg,
+        video_recorder,
+        media_repository,
+        MediaBackendClient(BACKEND_BASE_URL, BACKEND_ACCESS_TOKEN, VIDEO_UPLOAD_TIMEOUT_S),
+        LOCAL_MEDIA_DIR,
+    )
+    media_grpc_server = await start_media_grpc_server(
+        media_coordinator,
+        FLIGHT_CONTROLLER_GRPC_BIND,
+        FLIGHT_CONTROLLER_GRPC_TOKEN,
+        FLIGHT_CONTROLLER_GRPC_CERT,
+        FLIGHT_CONTROLLER_GRPC_KEY,
+    )
+    print(f"Flight Controller media gRPC: {FLIGHT_CONTROLLER_GRPC_BIND}", flush=True)
     camera_orientation = CameraOrientationController()
 
     current_yaw_deg = 0.0
@@ -1714,36 +1587,50 @@ async def main() -> None:
 
     async def cleanup_controller(upload_video: bool = True) -> None:
         print("[SHUTDOWN] Cleaning up...", flush=True)
-        stop_video_recording(upload=upload_video)
+        stop_video_recording()
+        await media_grpc_server.stop(grace=5.0)
         await connection_manager.stop_offboard_sender()
         await connection_manager.stop_connection_monitor()
         await cancel_owned_tasks()
         await wait_for_media_tasks()
         print("[SHUTDOWN] Cleanup complete", flush=True)
 
-    def stop_video_recording(upload: bool = True) -> RecordingResult | None:
+    def stop_video_recording():
         if not video_recorder.is_recording():
             return None
         print("[VIDEO] Stopping recording...", flush=True)
-        result = video_recorder.stop_recording()
-        if result is None:
+        try:
+            media = media_coordinator.stop_video()
+        except RuntimeError as exc:
+            print(f"[VIDEO] Recording failed: {exc}", flush=True)
             return None
         print(
-            f"[VIDEO] Recording stopped frames={result.frames_written} "
-            f"duration={result.duration_s:.2f}s path={result.path}",
+            f"[VIDEO] Recording saved for review id={media.local_media_id} path={media.local_path}",
             flush=True,
         )
-        print(
-            f"[VIDEO] Stats fps={result.configured_fps:.1f} "
-            f"size={result.width}x{result.height} dropped={result.dropped_frames}",
-            flush=True,
-        )
-        if upload and result.frames_written > 0:
-            task = asyncio.create_task(camera.upload_recorded_video(result))
-            track_background_task(task, "VIDEO")
-        elif result.frames_written <= 0:
-            print("[VIDEO] Upload skipped - no frames were recorded", flush=True)
-        return result
+        return media
+
+    async def upload_latest_reviewed_media() -> None:
+        candidates = [
+            media for media in media_coordinator.list_media(MISSION_ID)
+            if media.status in {
+                LocalMediaStatus.REVIEW_PENDING.value,
+                LocalMediaStatus.RETRY_REQUIRED.value,
+            }
+        ]
+        if not candidates:
+            print("[MEDIA] No reviewed media is waiting for upload", flush=True)
+            return
+        media = candidates[0]
+        print(f"[MEDIA] Upload requested id={media.local_media_id}", flush=True)
+
+        async def print_update(updated) -> None:
+            print(f"[MEDIA] id={updated.local_media_id} status={updated.status}", flush=True)
+
+        try:
+            await media_coordinator.upload(media.local_media_id, print_update)
+        except Exception as exc:
+            print(f"[MEDIA] Upload failed: {exc}", flush=True)
 
     # ================================================================
     # START LIDAR / SAFETY
@@ -2063,14 +1950,25 @@ async def main() -> None:
                 "telemetry_sender.py|wsl-telemetry.sh",
             )
         elif key == "p":
-            task = asyncio.create_task(camera.capture_and_upload())
+            async def capture_for_review() -> None:
+                try:
+                    media = await media_coordinator.capture_image(MISSION_ID, DRONE_ID)
+                    print(
+                        f"[CAMERA] Photo saved for review id={media.local_media_id} "
+                        f"path={media.local_path}",
+                        flush=True,
+                    )
+                except RuntimeError as exc:
+                    print(f"[CAMERA] Capture failed: {exc}", flush=True)
+
+            task = asyncio.create_task(capture_for_review())
             track_background_task(task, "CAMERA")
         elif key == "r":
             if video_recorder.is_recording():
-                stop_video_recording(upload=True)
+                stop_video_recording()
             else:
                 try:
-                    path = video_recorder.start_recording(MISSION_ID)
+                    path = media_coordinator.start_video(MISSION_ID, DRONE_ID)
                 except RuntimeError as exc:
                     print(f"[VIDEO] Recording unavailable: {exc}", flush=True)
                 else:
@@ -2078,9 +1976,12 @@ async def main() -> None:
                         f"[VIDEO] Recording started mission={MISSION_ID} path={path}",
                         flush=True,
                     )
+        elif key == "u":
+            task = asyncio.create_task(upload_latest_reviewed_media())
+            track_background_task(task, "MEDIA")
         elif key == "l":
             print("[CMD] land")
-            stop_video_recording(upload=True)
+            stop_video_recording()
             await connection_manager.stop_offboard_sender()
             active_drone = await connection_manager.get_drone()
             if active_drone is None:
@@ -2112,7 +2013,7 @@ async def main() -> None:
             await wait_for_media_tasks()
         elif key == "x":
             print("[SHUTDOWN] Stopped by user")
-            await cleanup_controller(upload_video=True)
+            await cleanup_controller(upload_video=False)
             return
 
 

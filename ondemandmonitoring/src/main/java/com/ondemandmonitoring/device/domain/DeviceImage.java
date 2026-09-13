@@ -8,11 +8,14 @@ import lombok.Setter;
 import lombok.experimental.FieldDefaults;
 
 import java.time.Instant;
+import com.ondemandmonitoring.media.domain.MediaStatus;
 
 @Getter
 @Setter
 @Entity
-@Table(name = "device_images")
+@Table(name = "device_images", uniqueConstraints = @UniqueConstraint(
+        name = "uk_device_images_mission_device_local_media",
+        columnNames = {"mission_id", "device_id", "local_media_id"}))
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class DeviceImage extends BaseEntity {
 
@@ -52,4 +55,26 @@ public class DeviceImage extends BaseEntity {
 
     @Column(name = "captured_at", nullable = false)
     Instant capturedAt;
+
+    @Column(name = "local_media_id", length = 100)
+    String localMediaId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "media_status", length = 40)
+    MediaStatus mediaStatus = MediaStatus.AVAILABLE;
+
+    @Column(name = "checksum_sha256", length = 64)
+    String checksumSha256;
+
+    @Column(name = "upload_attempt_count")
+    Integer uploadAttemptCount = 0;
+
+    @Column(name = "validated_at")
+    Instant validatedAt;
+
+    @Column(name = "available_at")
+    Instant availableAt;
+
+    @Column(name = "validation_error", length = 1000)
+    String validationError;
 }

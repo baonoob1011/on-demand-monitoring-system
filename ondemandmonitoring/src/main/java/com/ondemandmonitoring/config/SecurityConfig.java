@@ -58,6 +58,7 @@ public class SecurityConfig {
             "/api/simulation-map/**",
             "/api/missions/*/images",
             "/api/missions/*/media",
+            "/api/internal/v1/storage-events/s3-object-created",
             "/swagger-ui/**",
             "/swagger-ui.html"
     };
@@ -81,7 +82,10 @@ public class SecurityConfig {
                                 "/api/zones/**",
                                 "/api/simulation-map/**",
                                 "/api/missions/*/images",
-                                "/api/missions/*/media"))
+                                "/api/missions/*/media",
+                                "/api/v1/missions/*/media-uploads",
+                                "/api/v1/media/**",
+                                "/api/internal/v1/storage-events/s3-object-created"))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
