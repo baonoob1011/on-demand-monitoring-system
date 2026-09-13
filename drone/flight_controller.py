@@ -7,6 +7,8 @@ import json
 import logging
 import math
 import os
+import queue
+import select
 import shlex
 import socket
 import subprocess
@@ -17,6 +19,7 @@ import tty
 import sys
 import grpc
 import httpx
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from mavsdk import System
 from mavsdk.action import ActionError
 from mavsdk.offboard import OffboardError, VelocityNedYaw
@@ -108,6 +111,8 @@ MAVSDK_CONTROL_SYSID = int(
 MAVSDK_CONTROL_COMPID = int(
     os.getenv("MAVSDK_CONTROL_COMPID", "191")
 )
+FLIGHT_CONTROL_API_PORT = int(os.getenv("FLIGHT_CONTROL_API_PORT", "8090"))
+FLIGHT_CONTROL_API_BIND = os.getenv("FLIGHT_CONTROL_API_BIND", "0.0.0.0")
 MAVSDK_DISCONNECT_GRACE_S = float(
     os.getenv("MAVSDK_DISCONNECT_GRACE_S", "8.0")
 )
@@ -348,6 +353,19 @@ def read_key() -> str:
     old_settings = termios.tcgetattr(fd)
     try:
         tty.setraw(fd)
+        return sys.stdin.read(1).lower()
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+
+def read_key_timeout(timeout_s: float) -> str | None:
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        readable, _, _ = select.select([sys.stdin], [], [], timeout_s)
+        if not readable:
+            return None
         return sys.stdin.read(1).lower()
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
@@ -740,6 +758,158 @@ def toggle_monitor_window(name: str, script_name: str, process_pattern: str) -> 
         stop_monitor_window(name, process_pattern)
         return
     open_monitor_window(name, script_name)
+
+
+CONTROL_COMMAND_KEYS = {
+    "takeoff": "t",
+    "forward": "w",
+    "back": "s",
+    "backward": "s",
+    "left": "a",
+    "right": "d",
+    "up": "f",
+    "down": "v",
+    "yaw_left": "q",
+    "yaw-right": "e",
+    "yaw_right": "e",
+    "stop": "k",
+    "hover": "k",
+    "safety_toggle": "o",
+    "speed_up": "1",
+    "speed_down": "2",
+    "camera_switch": "c",
+    "camera_monitor_toggle": "3",
+    "lidar_monitor_toggle": "4",
+    "telemetry_monitor_toggle": "5",
+    "photo": "p",
+    "video_toggle": "r",
+    "land": "l",
+    "return_to_base": "l",
+    "emergency_stop": "l",
+}
+
+
+class FlightControlApi:
+    def __init__(self, camera: CameraGateway, commands: "queue.Queue[str]", status_provider=None) -> None:
+        self.camera = camera
+        self.commands = commands
+        self.status_provider = status_provider
+        self.server: ThreadingHTTPServer | None = None
+        self.thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        owner = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, _format: str, *_args) -> None:
+                return
+
+            def _cors(self) -> None:
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+            def do_OPTIONS(self) -> None:
+                self.send_response(204)
+                self._cors()
+                self.end_headers()
+
+            def do_GET(self) -> None:
+                if self.path.startswith("/api/control/status"):
+                    status = {"online": True}
+                    if owner.status_provider is not None:
+                        try:
+                            status.update(owner.status_provider())
+                        except Exception as exc:
+                            status["statusError"] = str(exc)
+                    self.send_response(200)
+                    self._cors()
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps(status).encode("utf-8"))
+                    return
+
+                if not self.path.startswith("/stream.mjpg"):
+                    self.send_response(404)
+                    self._cors()
+                    self.end_headers()
+                    return
+
+                self.send_response(200)
+                self._cors()
+                self.send_header("Age", "0")
+                self.send_header("Cache-Control", "no-cache, private")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+                self.end_headers()
+
+                while True:
+                    try:
+                        frame = owner.camera._latest_jpeg()
+                        if frame is None:
+                            time.sleep(0.15)
+                            continue
+                        self.wfile.write(b"--frame\r\n")
+                        self.wfile.write(b"Content-Type: image/jpeg\r\n")
+                        self.wfile.write(f"Content-Length: {len(frame)}\r\n\r\n".encode("ascii"))
+                        self.wfile.write(frame)
+                        self.wfile.write(b"\r\n")
+                        time.sleep(1 / 15)
+                    except (BrokenPipeError, ConnectionResetError, OSError):
+                        return
+
+            def do_POST(self) -> None:
+                if not self.path.startswith("/api/control/command"):
+                    self.send_response(404)
+                    self._cors()
+                    self.end_headers()
+                    return
+
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
+                    payload = json.loads(body or "{}")
+                except (ValueError, json.JSONDecodeError):
+                    payload = {}
+
+                command = str(payload.get("command", "")).strip().lower()
+                key = CONTROL_COMMAND_KEYS.get(command)
+                if key is None:
+                    self.send_response(400)
+                    self._cors()
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"ok": False, "error": "unknown command"}).encode("utf-8"))
+                    return
+
+                owner.commands.put(key)
+                self.send_response(202)
+                self._cors()
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": True, "command": command}).encode("utf-8"))
+
+        try:
+            self.server = ThreadingHTTPServer((FLIGHT_CONTROL_API_BIND, FLIGHT_CONTROL_API_PORT), Handler)
+        except OSError as exc:
+            print(f"[API] Flight control API unavailable: {exc}", flush=True)
+            return
+
+        self.thread = threading.Thread(target=self.server.serve_forever, name="flight-control-api", daemon=True)
+        self.thread.start()
+        print(
+            f"[API] Live stream: http://localhost:{FLIGHT_CONTROL_API_PORT}/stream.mjpg",
+            flush=True,
+        )
+        print(
+            f"[API] Controls: POST http://localhost:{FLIGHT_CONTROL_API_PORT}/api/control/command",
+            flush=True,
+        )
+
+    def stop(self) -> None:
+        if self.server is not None:
+            self.server.shutdown()
+            self.server.server_close()
 
 
 def is_grpc_unavailable(exc: Exception) -> bool:
@@ -1549,6 +1719,7 @@ async def main() -> None:
     camera = CameraGateway(video_recorder)
     camera.start()
     camera_orientation = CameraOrientationController()
+    api_commands: queue.Queue[str] = queue.Queue()
 
     current_yaw_deg = 0.0
     media_tasks: set[asyncio.Task] = set()
@@ -1588,6 +1759,36 @@ async def main() -> None:
     current_local_down_m = 0.0
     local_position_ready = False
     safety_speed_scale = 1.0
+
+    def api_status() -> dict:
+        horizontal_speed = math.hypot(current_north_m_s, current_east_m_s)
+        return {
+            "missionId": MISSION_ID,
+            "deviceCode": DEVICE_CODE,
+            "positionReady": local_position_ready,
+            "positionNed": {
+                "northM": current_local_north_m,
+                "eastM": current_local_east_m,
+                "downM": current_local_down_m,
+            },
+            "positionGazebo": {
+                "x": current_local_east_m,
+                "y": current_local_north_m,
+            },
+            "yawDeg": current_yaw_deg,
+            "altitudeM": max(0.0, -current_local_down_m),
+            "speedMps": horizontal_speed,
+            "batteryPercent": 92,
+            "activeCommand": {
+                "forwardMps": current_forward_m_s,
+                "rightMps": current_right_m_s,
+                "downMps": current_down_m_s,
+            },
+            "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+
+    control_api = FlightControlApi(camera, api_commands, api_status)
+    control_api.start()
     print(
         f"[SAFETY] Sensor default -> "
         f"{'ON' if safety_sensor_enabled else 'OFF'} "
@@ -1714,6 +1915,7 @@ async def main() -> None:
 
     async def cleanup_controller(upload_video: bool = True) -> None:
         print("[SHUTDOWN] Cleaning up...", flush=True)
+        control_api.stop()
         stop_video_recording(upload=upload_video)
         await connection_manager.stop_offboard_sender()
         await connection_manager.stop_connection_monitor()
@@ -1785,7 +1987,12 @@ async def main() -> None:
 
     while True:
 
-        key = await asyncio.to_thread(read_key)
+        try:
+            key = api_commands.get_nowait()
+        except queue.Empty:
+            key = await asyncio.to_thread(read_key_timeout, 0.1)
+            if key is None:
+                continue
 
         if (
                 motion_owner != MotionOwner.MANUAL

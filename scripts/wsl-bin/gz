@@ -6,12 +6,24 @@ REAL_GZ="/usr/bin/gz"
 if [ "${1:-}" = "sim" ] && [ -n "${FOREST3D_GZ_GUI_CONFIG:-}" ]; then
     shift
 
+    if [ "${FOREST3D_WEB_ONLY:-}" = "1" ]; then
+        exec "$REAL_GZ" sim "$@"
+    fi
+
     has_gui_config=0
+    server_only=0
     for arg in "$@"; do
         if [ "$arg" = "--gui-config" ]; then
             has_gui_config=1
         fi
+        if [ "$arg" = "-s" ] || [ "$arg" = "--server" ]; then
+            server_only=1
+        fi
     done
+
+    if [ "$server_only" -eq 1 ]; then
+        exec "$REAL_GZ" sim "$@"
+    fi
 
     if [ "$has_gui_config" -eq 0 ]; then
         exec "$REAL_GZ" sim --gui-config "$FOREST3D_GZ_GUI_CONFIG" "$@"
