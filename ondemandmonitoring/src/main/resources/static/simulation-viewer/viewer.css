@@ -326,6 +326,10 @@ body {
   background: #eef6ff;
 }
 
+.readonly-viewer .editor-actions {
+  display: none;
+}
+
 .save-status {
   min-height: 20px;
   margin-top: 8px;

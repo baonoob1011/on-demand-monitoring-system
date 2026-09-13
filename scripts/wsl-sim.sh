@@ -20,6 +20,7 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 PX4_ONBOARD_MAVLINK_RATE_B_S="${PX4_ONBOARD_MAVLINK_RATE_B_S:-100000}"
+FOREST3D_WEB_ONLY="${FOREST3D_WEB_ONLY:-1}"
 
 case "$SIM_WORLD" in
     compact)
@@ -103,7 +104,13 @@ echo ' Starting PX4 + Gazebo + Drone'
 echo " World : $WORLD_NAME"
 echo ' Drone : x500_mono_cam_down'
 echo " Pose  : $PX4_SPAWN_POSE"
-echo " GUI   : $FOREST3D_GZ_GUI_CONFIG"
+if [ "$FOREST3D_WEB_ONLY" = "1" ]; then
+    export HEADLESS=1
+    echo " GUI   : disabled (web UI live view)"
+else
+    unset HEADLESS
+    echo " GUI   : $FOREST3D_GZ_GUI_CONFIG"
+fi
 echo '========================================'
 
 (

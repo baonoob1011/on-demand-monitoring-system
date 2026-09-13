@@ -1,6 +1,7 @@
 param(
     [ValidateSet("legacy", "compact")]
     [string]$SimWorld = "compact",
+    [switch]$ShowGazeboGui,
     [switch]$WithTelemetry,
     [switch]$WithCamera,
     [switch]$WithSensors
@@ -11,7 +12,8 @@ $ErrorActionPreference = "Stop"
 $ubuntuDistro = "Ubuntu-24.04"
 $scriptRoot = "/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/scripts"
 $simArg = $SimWorld
-$simCommand = "SIM_WORLD=${simArg} exec ${scriptRoot}/wsl-sim-pane.sh ${simArg}"
+$webOnly = if ($ShowGazeboGui) { "0" } else { "1" }
+$simCommand = "FOREST3D_WEB_ONLY=${webOnly} SIM_WORLD=${simArg} exec ${scriptRoot}/wsl-sim-pane.sh ${simArg}"
 
 wsl.exe -d $ubuntuDistro -- bash -lc "exec ${scriptRoot}/wsl-clean-drone-stack.sh" | Out-Null
 
@@ -20,7 +22,7 @@ if (Get-Command wt.exe -ErrorAction SilentlyContinue) {
         "new-tab", "--title", "RIGHT - Gazebo + PX4",
         "wsl.exe", "-d", $ubuntuDistro, "--", "bash", "-lc", $simCommand,
         ";", "split-pane", "--horizontal", "--size", "0.66", "--title", "LEFT - Flight Control",
-        "wsl.exe", "-d", $ubuntuDistro, "--", "bash", "-lc", "SIM_WORLD=${simArg} exec ${scriptRoot}/wsl-control.sh"
+        "wsl.exe", "-d", $ubuntuDistro, "--", "bash", "-lc", "FOREST3D_WEB_ONLY=${webOnly} SIM_WORLD=${simArg} exec ${scriptRoot}/wsl-control.sh"
     )
     if ($WithTelemetry) {
         $wtArgs += @(
@@ -47,7 +49,7 @@ if (Get-Command wt.exe -ErrorAction SilentlyContinue) {
 
 Start-Process wsl.exe -ArgumentList "-d", $ubuntuDistro, "--", "bash", "-lc", $simCommand
 Start-Sleep -Seconds 2
-Start-Process wsl.exe -ArgumentList "-d", $ubuntuDistro, "--", "bash", "-lc", "SIM_WORLD=${simArg} exec ${scriptRoot}/wsl-control.sh"
+Start-Process wsl.exe -ArgumentList "-d", $ubuntuDistro, "--", "bash", "-lc", "FOREST3D_WEB_ONLY=${webOnly} SIM_WORLD=${simArg} exec ${scriptRoot}/wsl-control.sh"
 if ($WithTelemetry) {
     Start-Process wsl.exe -ArgumentList "-d", $ubuntuDistro, "--", "bash", "-lc", "exec ${scriptRoot}/wsl-telemetry.sh"
 }

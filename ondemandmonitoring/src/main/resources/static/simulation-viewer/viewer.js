@@ -17,6 +17,7 @@ const deleteZoneButton = document.getElementById("deleteZone");
 const reloadZonesButton = document.getElementById("reloadZones");
 const saveStatusEl = document.getElementById("saveStatus");
 const toastEl = document.getElementById("toast");
+const readOnlyMode = new URLSearchParams(window.location.search).has("readonly");
 
 let metadata;
 let zones = [];
@@ -151,7 +152,7 @@ function drawZones() {
     const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
     polygon.setAttribute("points", coordinateListToPoints(zone.coordinates));
     polygon.setAttribute("class", isRestricted ? "zone-polygon restricted-zone" : "zone-polygon");
-    polygon.classList.toggle("editable", editToggle.checked);
+    polygon.classList.toggle("editable", !readOnlyMode && editToggle.checked);
     polygon.dataset.zoneId = zone.id;
     polygon.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -171,7 +172,7 @@ function drawZones() {
     label.textContent = isRestricted ? `${zone.name} - RESTRICTED` : zone.name;
     overlayEl.appendChild(label);
 
-    if (editToggle.checked && zone.id === selectedZoneId) {
+    if (!readOnlyMode && editToggle.checked && zone.id === selectedZoneId) {
       drawZoneHandles(zone);
     }
   }
@@ -274,8 +275,8 @@ function drawZoneList() {
 
 function selectZone(zoneId) {
   selectedZoneId = zoneId;
-  saveZoneButton.disabled = !zoneId;
-  deleteZoneButton.disabled = !zoneId;
+  saveZoneButton.disabled = readOnlyMode || !zoneId;
+  deleteZoneButton.disabled = readOnlyMode || !zoneId;
   overlayEl.querySelectorAll(".zone-polygon").forEach((el) => {
     el.classList.toggle("selected", el.dataset.zoneId === zoneId);
   });
@@ -298,10 +299,10 @@ function selectZone(zoneId) {
     <strong>Code:</strong> <code>${zone.code}</code><br>
     <strong>Type:</strong> ${zone.zoneType}<br>
     <strong>Restricted:</strong> ${isRestrictedZone(zone) ? "YES" : "NO"}<br>
-    <label class="restricted-editor">
+    ${readOnlyMode ? "" : `<label class="restricted-editor">
       <input id="restrictedZoneToggle" type="checkbox" ${isRestrictedZone(zone) ? "checked" : ""}>
       Restricted / No-Fly Zone
-    </label>
+    </label>`}
     <strong>Area:</strong> ${Number(zone.areaSquareMeters).toFixed(2)} m²<br>
     <strong>Bounds:</strong><br>
     minX=${bounds.minX.toFixed(2)} maxX=${bounds.maxX.toFixed(2)}<br>
@@ -312,6 +313,7 @@ function selectZone(zoneId) {
 
   const restrictedToggle = document.getElementById("restrictedZoneToggle");
   restrictedToggle?.addEventListener("change", (event) => {
+    if (readOnlyMode) return;
     zone.restricted = event.target.checked;
     redrawOverlay();
     drawZoneList();
@@ -342,7 +344,7 @@ function pointerToSim(event) {
 }
 
 function startZoneMove(event, zoneId) {
-  if (!editToggle.checked) return;
+  if (readOnlyMode || !editToggle.checked) return;
   event.preventDefault();
   event.stopPropagation();
   selectZone(zoneId);
@@ -356,6 +358,7 @@ function startZoneMove(event, zoneId) {
 }
 
 function startVertexMove(event, zoneId, vertexIndex) {
+  if (readOnlyMode) return;
   event.preventDefault();
   event.stopPropagation();
   selectZone(zoneId);
@@ -391,6 +394,10 @@ function updateZoneDrag(event) {
 }
 
 async function saveZone(zoneId) {
+  if (readOnlyMode) {
+    setSaveStatus("Read-only view: zone changes are disabled for this workspace.", false, "info");
+    return;
+  }
   const zone = zones.find((item) => item.id === zoneId);
   if (!zone) return;
 
@@ -420,6 +427,10 @@ async function saveZone(zoneId) {
 }
 
 async function createZone() {
+  if (readOnlyMode) {
+    setSaveStatus("Read-only view: creating zones is disabled for this workspace.", false, "info");
+    return;
+  }
   const name = window.prompt("New zone name?", "Custom Zone");
   if (!name || !name.trim()) return;
   const restricted = window.confirm("Mark this zone as Restricted / No-Fly?");
@@ -483,6 +494,10 @@ async function reloadZones() {
 }
 
 async function deleteSelectedZone() {
+  if (readOnlyMode) {
+    setSaveStatus("Read-only view: deleting zones is disabled for this workspace.", false, "info");
+    return;
+  }
   const zone = zones.find((item) => item.id === selectedZoneId);
   if (!zone) return;
 
@@ -517,6 +532,16 @@ function updateMouseReadout(event) {
 }
 
 function attachControls() {
+  document.body.classList.toggle("readonly-viewer", readOnlyMode);
+  if (readOnlyMode) {
+    editToggle.checked = false;
+    editToggle.disabled = true;
+    saveZoneButton.disabled = true;
+    createZoneButton.disabled = true;
+    deleteZoneButton.disabled = true;
+    setSaveStatus("Read-only view. Drone operators can inspect zones only.", false, "info");
+  }
+
   document.getElementById("zoomIn").addEventListener("click", () => zoomBy(1.25));
   document.getElementById("zoomOut").addEventListener("click", () => zoomBy(0.8));
   document.getElementById("home").addEventListener("click", fitHome);
@@ -527,6 +552,12 @@ function attachControls() {
   });
 
   editToggle.addEventListener("change", () => {
+    if (readOnlyMode) {
+      editToggle.checked = false;
+      mapEl.classList.remove("editing");
+      setSaveStatus("Read-only view: editing is disabled for this workspace.", false, "info");
+      return;
+    }
     mapEl.classList.toggle("editing", editToggle.checked);
     setSaveStatus(editToggle.checked ? "Edit on: drag a zone or its corner dots; release to save DB." : "Edit off.");
     redrawOverlay();
@@ -559,7 +590,7 @@ function attachControls() {
   }, { passive: false });
 
   mapEl.addEventListener("pointerdown", (event) => {
-    if (editToggle.checked) return;
+    if (!readOnlyMode && editToggle.checked) return;
     dragging = true;
     lastPointer = { x: event.clientX, y: event.clientY };
     mapEl.setPointerCapture(event.pointerId);
