@@ -1,6 +1,5 @@
-package com.ondemandmonitoring.device.dto.response;
+package com.ondemandmonitoring.media.dto.response;
 
-import com.ondemandmonitoring.device.domain.DeviceImage;
 import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -10,7 +9,7 @@ import lombok.experimental.FieldDefaults;
 @Getter
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class DeviceImageResponse {
+public class MediaAssetResponse {
 
     String id;
     String deviceCode;
@@ -26,4 +25,3 @@ public class DeviceImageResponse {
     Instant capturedAt;
     Instant createdAt;
 }
-

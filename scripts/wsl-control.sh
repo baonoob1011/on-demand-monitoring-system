@@ -8,6 +8,8 @@ REPO_CONTROLLER="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-sy
 ENV_FILE="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/ondemandmonitoring/.env"
 cd ~/drone-controller || exit 1
 cp "$REPO_CONTROLLER/flight_controller.py" flight_controller.py
+cp "$REPO_CONTROLLER/media_uploader.py" media_uploader.py
+cp "$REPO_CONTROLLER/battery_simulator.py" battery_simulator.py
 mkdir -p video
 cp "$REPO_CONTROLLER/video/__init__.py" video/__init__.py
 cp "$REPO_CONTROLLER/video/video_recorder.py" video/video_recorder.py

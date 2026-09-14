@@ -1,10 +1,10 @@
-package com.ondemandmonitoring.device.controller;
+package com.ondemandmonitoring.media.controller;
 
 import com.ondemandmonitoring.common.api.ApiResponse;
-import com.ondemandmonitoring.device.dto.response.DeviceImageResponse;
-import com.ondemandmonitoring.device.domain.DeviceImage;
-import com.ondemandmonitoring.device.service.DeviceImageService;
-import com.ondemandmonitoring.device.mapper.DeviceImageMapper;
+import com.ondemandmonitoring.media.dto.response.MediaAssetResponse;
+import com.ondemandmonitoring.media.domain.MediaAsset;
+import com.ondemandmonitoring.media.service.IMediaAssetService;
+import com.ondemandmonitoring.media.mapper.MediaAssetMapper;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -26,20 +26,20 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @RequestMapping("/api/devices/{deviceCode}/images")
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-public class DeviceImageController {
+public class MediaAssetController {
 
-    DeviceImageService deviceImageService;
-    DeviceImageMapper deviceImageMapper;
+    IMediaAssetService mediaAssetService;
+    MediaAssetMapper mediaAssetMapper;
 
     @Operation(summary = "Upload image for device", description = "Uploads a photo captured by a drone to storage")
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ApiResponse<DeviceImageResponse>> upload(
+    public ResponseEntity<ApiResponse<MediaAssetResponse>> upload(
             @PathVariable String deviceCode,
             @RequestPart("file") MultipartFile file) {
-        DeviceImage image = deviceImageService.upload(deviceCode, file);
+        MediaAsset image = mediaAssetService.upload(deviceCode, file);
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body(ApiResponse.created("Image uploaded", deviceImageMapper.toResponse(image)));
+                .body(ApiResponse.created("Image uploaded", mediaAssetMapper.toResponse(image)));
     }
 }

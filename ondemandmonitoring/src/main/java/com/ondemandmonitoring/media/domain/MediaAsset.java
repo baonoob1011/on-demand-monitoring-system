@@ -1,6 +1,7 @@
-package com.ondemandmonitoring.device.domain;
+package com.ondemandmonitoring.media.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
+import com.ondemandmonitoring.device.domain.Device;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -14,7 +15,7 @@ import java.time.Instant;
 @Entity
 @Table(name = "device_images")
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class DeviceImage extends BaseEntity {
+public class MediaAsset extends BaseEntity {
 
     @Column(name = "device_code", nullable = false, length = 50)
     String deviceCode;

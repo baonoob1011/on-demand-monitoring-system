@@ -1,6 +1,5 @@
-package com.ondemandmonitoring.device.dto.response;
+package com.ondemandmonitoring.media.dto.response;
 
-import com.ondemandmonitoring.device.domain.DeviceImage;
 import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -22,4 +21,3 @@ public class MediaResponse {
     Long fileSize;
     Instant capturedAt;
 }
-

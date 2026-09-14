@@ -18,7 +18,6 @@ import time
 import tty
 import sys
 import grpc
-import httpx
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from mavsdk import System
 from mavsdk.action import ActionError
@@ -28,6 +27,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from video.video_recorder import RecordingResult, VideoRecorder
 from battery_simulator import BatterySimulator, detect_battery_mode, preflight_battery_check
+from media_uploader import BackendUrlResolver, MediaUploader
 
 PROJECT_ROOT = Path(
     os.getenv(
@@ -326,55 +326,6 @@ def env_bool(name: str, default: bool = False) -> bool:
     return value.strip().lower() in ("1", "true", "yes", "on")
 
 
-def backend_url_candidates() -> list[str]:
-    configured = BACKEND_BASE_URL.rstrip("/")
-    candidates = [configured]
-
-    if configured in {"http://localhost:8080", "http://127.0.0.1:8080"}:
-        candidates.append("http://host.docker.internal:8080")
-        candidates.append("http://172.20.176.1:8080")
-        try:
-            output = subprocess.check_output(
-                ["sh", "-lc", "awk '/^nameserver / {print $2; exit}' /etc/resolv.conf"],
-                text=True,
-                timeout=1.0,
-            ).strip()
-            if output:
-                candidates.append(f"http://{output}:8080")
-        except (OSError, subprocess.SubprocessError):
-            pass
-
-    deduped = []
-    for url in candidates:
-        if url and url not in deduped:
-            deduped.append(url)
-    return deduped
-
-
-def backend_reachable(timeout_s: float = 0.8) -> tuple[bool, str]:
-    for base_url in backend_url_candidates():
-        try:
-            with httpx.Client(timeout=timeout_s) as client:
-                response = client.get(f"{base_url}/simulation-viewer/index.html")
-            if response.status_code < 500:
-                return True, base_url
-        except httpx.HTTPError:
-            continue
-    return False, BACKEND_BASE_URL
-
-
-def is_connection_level_http_error(exc: httpx.HTTPError) -> bool:
-    return isinstance(
-        exc,
-        (
-            httpx.ConnectError,
-            httpx.ConnectTimeout,
-            httpx.NetworkError,
-            httpx.PoolTimeout,
-        ),
-    )
-
-
 def read_key() -> str:
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
@@ -399,13 +350,18 @@ def read_key_timeout(timeout_s: float) -> str | None:
 
 
 class CameraGateway:
-    def __init__(self, video_recorder: VideoRecorder | None = None) -> None:
+    def __init__(
+        self,
+        video_recorder: VideoRecorder | None = None,
+        media_uploader: MediaUploader | None = None,
+    ) -> None:
         self.latest_frames: dict[str, GzImage] = {}
         self.latest_frame_time_s: dict[str, float] = {}
         self.current_mode = CAMERA_DEFAULT_VIEW if CAMERA_DEFAULT_VIEW in {"DOWN", "FRONT"} else "FRONT"
         self.lock = threading.Lock()
         self.node = None
         self.video_recorder = video_recorder
+        self.media_uploader = media_uploader
 
     def start(self) -> None:
         if Node is None or GzImage is None:
@@ -487,113 +443,18 @@ class CameraGateway:
             print("[CAMERA] No camera frame available")
             return
 
-        captured_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        filename = f"{DRONE_ID}-downward-{timestamp}.jpg"
-        data = {
-            "droneId": DRONE_ID,
-            "capturedAt": captured_at,
-        }
-
-        response = None
-        last_error = None
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            for base_url in backend_url_candidates():
-                upload_url = f"{base_url}/api/missions/{MISSION_ID}/images"
-                files = {"image": (filename, jpeg, "image/jpeg")}
-                try:
-                    response = await client.post(upload_url, data=data, files=files)
-                    break
-                except httpx.HTTPError as exc:
-                    if not is_connection_level_http_error(exc):
-                        raise
-                    last_error = f"{base_url}: {exc}"
-
-        if response is None:
-            print(f"[CAMERA] Backend unavailable ({last_error or 'no route worked'})")
+        if self.media_uploader is None:
+            print("[CAMERA] Media uploader unavailable")
             return
 
-        if 200 <= response.status_code < 300:
-            try:
-                payload = response.json()
-            except ValueError:
-                print("[CAMERA] Image uploaded successfully")
-                return
-
-            image = payload.get("data") or {}
-            storage_provider = image.get("storageProvider", "UNKNOWN")
-            print(f"[CAMERA] Image uploaded successfully ({storage_provider})")
-            if storage_provider == "S3":
-                print(f"[CAMERA] S3 bucket: {image.get('s3Bucket')}")
-                print(f"[CAMERA] S3 key: {image.get('s3Key')}")
-            elif storage_provider == "LOCAL":
-                print(f"[CAMERA] Local file: {image.get('s3Url')}")
-            return
-
-        print(f"[CAMERA] Upload failed - HTTP {response.status_code}")
-        print(response.text[:500])
+        await self.media_uploader.upload_image(jpeg)
 
     async def upload_recorded_video(self, recording: RecordingResult) -> None:
-        path = recording.path
-        if not path.exists() or path.stat().st_size <= 0:
-            print(f"[VIDEO] Upload skipped - missing or empty file: {path}", flush=True)
+        if self.media_uploader is None:
+            print("[VIDEO] Media uploader unavailable", flush=True)
             return
 
-        size = path.stat().st_size
-        captured_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        data = {
-            "droneId": DRONE_ID,
-            "capturedAt": captured_at,
-            "mediaType": "VIDEO",
-        }
-        print(
-            f"[VIDEO] Upload started mission={recording.mission_id} size={size} path={path}",
-            flush=True,
-        )
-        response = None
-        last_error = None
-        async with httpx.AsyncClient(timeout=VIDEO_UPLOAD_TIMEOUT_S) as client:
-            for base_url in backend_url_candidates():
-                upload_url = f"{base_url}/api/missions/{recording.mission_id}/media"
-                try:
-                    with path.open("rb") as video_file:
-                        files = {"file": (path.name, video_file, "video/mp4")}
-                        response = await client.post(upload_url, data=data, files=files)
-                    break
-                except httpx.HTTPError as exc:
-                    if not is_connection_level_http_error(exc):
-                        raise
-                    last_error = f"{base_url}: {exc}"
-
-        if response is None:
-            print(f"[VIDEO] Backend unavailable ({last_error or 'no route worked'})", flush=True)
-            return
-
-        if 200 <= response.status_code < 300:
-            try:
-                payload = response.json()
-            except ValueError:
-                print("[VIDEO] Upload success", flush=True)
-                return
-
-            media = payload.get("data") or {}
-            storage_provider = media.get("storageProvider", "UNKNOWN")
-            if storage_provider == "S3":
-                print(
-                    f"[VIDEO] Upload success provider=S3 key={media.get('s3Key')}",
-                    flush=True,
-                )
-            elif storage_provider == "LOCAL":
-                print(
-                    f"[VIDEO] Upload success provider=LOCAL path={media.get('s3Url')}",
-                    flush=True,
-                )
-            else:
-                print(f"[VIDEO] Upload success provider={storage_provider}", flush=True)
-            return
-
-        print(f"[VIDEO] Upload failed HTTP {response.status_code}", flush=True)
-        print(response.text[:500], flush=True)
+        await self.media_uploader.upload_video(recording)
 
 
 class CameraOrientationController:
@@ -1951,13 +1812,20 @@ async def main() -> None:
 
     connection_manager = MavsdkConnectionManager()
     drone = await connection_manager.connect()
+    backend_urls = BackendUrlResolver(BACKEND_BASE_URL)
+    media_uploader = MediaUploader(
+        backend_urls,
+        DRONE_ID,
+        MISSION_ID,
+        VIDEO_UPLOAD_TIMEOUT_S,
+    )
 
     video_recorder = VideoRecorder(
         VIDEO_RECORDING_DIR,
         fps=VIDEO_RECORDING_FPS,
         queue_size=VIDEO_RECORDING_QUEUE_SIZE,
     )
-    camera = CameraGateway(video_recorder)
+    camera = CameraGateway(video_recorder, media_uploader)
     camera.start()
     camera_orientation = CameraOrientationController(camera.set_view_mode)
     camera.set_view_mode(camera_orientation.current_mode)
@@ -2055,7 +1923,7 @@ async def main() -> None:
             )
         ) if current_health is not None else False
         module_ok = LIDAR_IMPORT_ERROR is None and Node is not None and GzImage is not None
-        backend_ok, backend_target = backend_reachable()
+        backend_ok, backend_target = backend_urls.reachable()
         battery_snapshot = simulated_battery.snapshot()
         simulated_battery_percent = battery_snapshot.battery_percent
         battery_ready_status, battery_ready_message = preflight_battery_check(simulated_battery_percent)

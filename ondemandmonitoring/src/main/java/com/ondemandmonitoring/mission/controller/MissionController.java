@@ -1,15 +1,15 @@
 package com.ondemandmonitoring.mission.controller;
 
 import com.ondemandmonitoring.common.api.ApiResponse;
-import com.ondemandmonitoring.device.domain.DeviceImage;
-import com.ondemandmonitoring.device.dto.response.DeviceImageResponse;
 import com.ondemandmonitoring.device.dto.response.PreflightCheckResponse;
+import com.ondemandmonitoring.media.domain.MediaAsset;
+import com.ondemandmonitoring.media.dto.response.MediaAssetResponse;
+import com.ondemandmonitoring.media.mapper.MediaAssetMapper;
 import com.ondemandmonitoring.mission.dto.request.DroneReplacementRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionFailRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionRejectRequest;
 import com.ondemandmonitoring.mission.dto.request.PostFlightStatusRequest;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
-import com.ondemandmonitoring.device.mapper.DeviceImageMapper;
 import com.ondemandmonitoring.mission.service.IMissionMediaUploadService;
 import com.ondemandmonitoring.mission.service.IMissionService;
 import jakarta.validation.Valid;
@@ -39,7 +39,7 @@ public class MissionController {
 
     IMissionService missionService;
     IMissionMediaUploadService missionMediaUploadService;
-    DeviceImageMapper deviceImageMapper;
+    MediaAssetMapper mediaAssetMapper;
 
     // ------------------------------------------------------------------
     // Query
@@ -198,7 +198,7 @@ public class MissionController {
      * POST /api/missions/{id}/media (Multipart)
      */
     @PostMapping(value = "/{id}/media", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ApiResponse<DeviceImageResponse>> uploadMedia(
+    public ResponseEntity<ApiResponse<MediaAssetResponse>> uploadMedia(
             @PathVariable String id,
             @RequestParam(required = false) String deviceCode,
             @RequestParam(required = false) String droneId,
@@ -206,9 +206,9 @@ public class MissionController {
             @RequestParam(required = false) String mediaType,
             @RequestParam("file") MultipartFile file) {
         String resolvedDeviceCode = deviceCode != null && !deviceCode.isBlank() ? deviceCode : droneId;
-        DeviceImage saved = missionMediaUploadService.uploadWithRetry(id, resolvedDeviceCode, file, mediaType);
+        MediaAsset saved = missionMediaUploadService.uploadWithRetry(id, resolvedDeviceCode, file, mediaType);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.ok("Tải media thành công", deviceImageMapper.toResponse(saved)));
+                .body(ApiResponse.ok("Tải media thành công", mediaAssetMapper.toResponse(saved)));
     }
 
     // ------------------------------------------------------------------
