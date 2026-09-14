@@ -27,6 +27,7 @@ from PIL import Image as PilImage
 from pathlib import Path
 from dotenv import load_dotenv
 from video.video_recorder import RecordingResult, VideoRecorder
+from battery_simulator import BatterySimulator, detect_battery_mode, preflight_battery_check
 
 PROJECT_ROOT = Path(
     os.getenv(
@@ -1637,6 +1638,49 @@ async def track_battery(
             raise
 
 
+async def track_in_air(
+        manager: MavsdkConnectionManager,
+        update_in_air,
+) -> None:
+    active_generation = -1
+
+    while True:
+        drone = await manager.get_drone()
+
+        if drone is None:
+            update_in_air(False)
+            await asyncio.sleep(0.5)
+            continue
+
+        generation = manager.generation
+
+        if generation != active_generation:
+            active_generation = generation
+            print(f"[AIR] Telemetry generation={generation}", flush=True)
+
+        try:
+            stream = drone.telemetry.in_air()
+
+            while generation == manager.generation:
+                try:
+                    in_air = await asyncio.wait_for(
+                        anext(stream),
+                        timeout=3.0,
+                    )
+                except StopAsyncIteration:
+                    break
+                except asyncio.TimeoutError:
+                    break
+
+                update_in_air(bool(in_air))
+
+        except asyncio.CancelledError:
+            raise
+        except (AttributeError, grpc.aio.AioRpcError):
+            update_in_air(False)
+            await asyncio.sleep(0.5)
+
+
 async def track_health(
         manager: MavsdkConnectionManager,
         update_health,
@@ -1942,6 +1986,8 @@ async def main() -> None:
     position_task = None
     battery_task = None
     health_task = None
+    in_air_task = None
+    simulated_battery_task = None
     watchdog_task = asyncio.create_task(
         event_loop_watchdog(),
         name="event-loop-watchdog",
@@ -1960,12 +2006,16 @@ async def main() -> None:
     current_velocity_north_m_s = 0.0
     current_velocity_east_m_s = 0.0
     current_velocity_down_m_s = 0.0
-    current_battery_percent = None
+    current_px4_battery_percent = None
+    current_in_air = False
     current_health = None
     current_health_update_s: float | None = None
     local_position_update_s: float | None = None
     local_position_ready = False
     safety_speed_scale = 1.0
+    simulated_battery = BatterySimulator(
+        float(os.getenv("SIM_BATTERY_INITIAL_PERCENT", "100.0"))
+    )
 
     def fresh(age_s: float | None, max_age_s: float) -> bool:
         return age_s is not None and math.isfinite(age_s) and age_s <= max_age_s
@@ -2006,6 +2056,9 @@ async def main() -> None:
         ) if current_health is not None else False
         module_ok = LIDAR_IMPORT_ERROR is None and Node is not None and GzImage is not None
         backend_ok, backend_target = backend_reachable()
+        battery_snapshot = simulated_battery.snapshot()
+        simulated_battery_percent = battery_snapshot.battery_percent
+        battery_ready_status, battery_ready_message = preflight_battery_check(simulated_battery_percent)
 
         checks = [
             check_item(
@@ -2048,6 +2101,13 @@ async def main() -> None:
                 "MAVSDK Health",
                 "PASS" if fresh(health_age_s, 5.0) and health_local_ok and health_sensor_ok else "FAIL",
                 "PX4 health ready" if fresh(health_age_s, 5.0) and health_local_ok and health_sensor_ok else "PX4 health not ready",
+                True,
+            ),
+            check_item(
+                "BATTERY",
+                "Battery",
+                battery_ready_status,
+                battery_ready_message,
                 True,
             ),
             check_item(
@@ -2099,6 +2159,7 @@ async def main() -> None:
         }
 
     def api_status() -> dict:
+        battery_snapshot = simulated_battery.snapshot()
         horizontal_speed = math.hypot(
             current_velocity_north_m_s,
             current_velocity_east_m_s,
@@ -2124,7 +2185,10 @@ async def main() -> None:
             "yawDeg": current_yaw_deg,
             "altitudeM": max(0.0, -current_local_down_m),
             "speedMps": horizontal_speed,
-            "batteryPercent": current_battery_percent,
+            "batteryPercent": round(battery_snapshot.battery_percent, 1),
+            "batteryState": battery_snapshot.battery_state,
+            "batteryDrainMode": battery_snapshot.battery_drain_mode,
+            "rawPx4BatteryPercent": current_px4_battery_percent,
             "connection": {
                 "grpcConnected": connection_manager.grpc_connected,
                 "px4Connected": connection_manager.px4_connected,
@@ -2200,15 +2264,30 @@ async def main() -> None:
         current_velocity_down_m_s = down_m_s
 
     def update_battery(percent: float | None) -> None:
-        nonlocal current_battery_percent
+        nonlocal current_px4_battery_percent
         if percent is not None:
-            current_battery_percent = percent
+            current_px4_battery_percent = percent
+
+    def update_in_air(in_air: bool) -> None:
+        nonlocal current_in_air
+        current_in_air = bool(in_air)
 
     def update_health(health) -> None:
         nonlocal current_health
         nonlocal current_health_update_s
         current_health = health
         current_health_update_s = time.monotonic()
+
+    async def update_simulated_battery_loop() -> None:
+        while True:
+            mode = detect_battery_mode(
+                in_air=current_in_air,
+                velocity_north_m_s=current_velocity_north_m_s,
+                velocity_east_m_s=current_velocity_east_m_s,
+                velocity_down_m_s=current_velocity_down_m_s,
+            )
+            simulated_battery.update(mode)
+            await asyncio.sleep(0.5)
 
     def launch_pad_clear() -> bool:
         if not local_position_ready:
@@ -2289,6 +2368,8 @@ async def main() -> None:
             ("safety", safety_task),
             ("position", position_task),
             ("battery", battery_task),
+            ("in-air", in_air_task),
+            ("simulated-battery", simulated_battery_task),
             ("health", health_task),
             ("watchdog", watchdog_task),
         ]
@@ -2350,6 +2431,18 @@ async def main() -> None:
             connection_manager,
             update_battery,
         )
+    )
+
+    in_air_task = asyncio.create_task(
+        track_in_air(
+            connection_manager,
+            update_in_air,
+        )
+    )
+
+    simulated_battery_task = asyncio.create_task(
+        update_simulated_battery_loop(),
+        name="simulated-battery",
     )
 
     health_task = asyncio.create_task(
