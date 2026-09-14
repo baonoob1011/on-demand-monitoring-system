@@ -73,3 +73,14 @@ springdoc:
     path: /swagger-ui.html
     operationsSorter: method
     tagsSorter: alpha
+
+openrouter:
+  base-url: https://openrouter.ai/api/v1
+  api-key: ${OPENROUTER_API_KEY}
+  site-url: http://localhost:8080
+  site-name: ${SPRING_APPLICATION_NAME}
+  default-model: openai/gpt-4o-mini
+  fallback-models:
+    # - google/gemini-2.5-flash
+    # - meta-llama/llama-3.3-70b-instruct
+    # - anthropic/claude-3.5-haiku
