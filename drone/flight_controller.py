@@ -90,6 +90,12 @@ class SavedMotion:
     yaw_deg: float
 
 try:
+    from geofence_monitor import px4_ned_to_sim_xy
+except ImportError:
+    def px4_ned_to_sim_xy(north_m: float, east_m: float) -> tuple[float, float]:
+        return east_m, north_m
+
+try:
     from gz.msgs10.image_pb2 import Image as GzImage
     from gz.transport13 import Node
 except ImportError:
@@ -266,8 +272,16 @@ CAMERA_TOPIC = os.getenv(
     "GAZEBO_CAMERA_TOPIC",
     f"/world/{DEFAULT_GAZEBO_WORLD}/model/x500_mono_cam_down_0/link/camera_link/sensor/camera_down/image",
 )
+CAMERA_DOWN_TOPIC = os.getenv(
+    "GAZEBO_CAMERA_DOWN_TOPIC",
+    f"/world/{DEFAULT_GAZEBO_WORLD}/model/x500_mono_cam_down_0/link/camera_link/sensor/camera_down/image",
+)
+CAMERA_FRONT_TOPIC = os.getenv(
+    "GAZEBO_CAMERA_FRONT_TOPIC",
+    f"/world/{DEFAULT_GAZEBO_WORLD}/model/x500_mono_cam_down_0/link/camera_link/sensor/camera_front/image",
+)
 GZ_MODEL_NAME = os.getenv("GZ_MODEL_NAME", "x500_mono_cam_down_0")
-CAMERA_DEFAULT_VIEW = os.getenv("CAMERA_DEFAULT_VIEW", "DOWN").strip().upper()
+CAMERA_DEFAULT_VIEW = os.getenv("CAMERA_DEFAULT_VIEW", "FRONT").strip().upper()
 CAMERA_TOGGLE_DEBOUNCE_S = float(os.getenv("CAMERA_TOGGLE_DEBOUNCE_S", "0.35"))
 GAZEBO_CAMERA_PITCH_TOPIC = os.getenv(
     "GAZEBO_CAMERA_PITCH_TOPIC",
@@ -336,6 +350,18 @@ def backend_url_candidates() -> list[str]:
     return deduped
 
 
+def backend_reachable(timeout_s: float = 0.8) -> tuple[bool, str]:
+    for base_url in backend_url_candidates():
+        try:
+            with httpx.Client(timeout=timeout_s) as client:
+                response = client.get(f"{base_url}/simulation-viewer/index.html")
+            if response.status_code < 500:
+                return True, base_url
+        except httpx.HTTPError:
+            continue
+    return False, BACKEND_BASE_URL
+
+
 def is_connection_level_http_error(exc: httpx.HTTPError) -> bool:
     return isinstance(
         exc,
@@ -373,7 +399,9 @@ def read_key_timeout(timeout_s: float) -> str | None:
 
 class CameraGateway:
     def __init__(self, video_recorder: VideoRecorder | None = None) -> None:
-        self.latest_frame: GzImage | None = None
+        self.latest_frames: dict[str, GzImage] = {}
+        self.latest_frame_time_s: dict[str, float] = {}
+        self.current_mode = CAMERA_DEFAULT_VIEW if CAMERA_DEFAULT_VIEW in {"DOWN", "FRONT"} else "FRONT"
         self.lock = threading.Lock()
         self.node = None
         self.video_recorder = video_recorder
@@ -385,18 +413,50 @@ class CameraGateway:
             return
 
         self.node = Node()
-        self.node.subscribe(GzImage, CAMERA_TOPIC, self._on_frame)
-        print(f"[CAMERA] Listening to drone sensor: {CAMERA_TOPIC}")
+        topics = {
+            "DOWN": CAMERA_DOWN_TOPIC,
+            "FRONT": CAMERA_FRONT_TOPIC,
+        }
+        for mode, topic in topics.items():
+            self.node.subscribe(GzImage, topic, self._make_frame_handler(mode))
+            print(f"[CAMERA] Listening to {mode.lower()} sensor: {topic}")
+        if CAMERA_TOPIC not in topics.values():
+            self.node.subscribe(GzImage, CAMERA_TOPIC, self._make_frame_handler(self.current_mode))
+            print(f"[CAMERA] Listening to fallback sensor: {CAMERA_TOPIC}")
 
-    def _on_frame(self, msg: GzImage, *_args) -> None:
+    def _make_frame_handler(self, mode: str):
+        def _on_frame(msg: GzImage, *_args) -> None:
+            with self.lock:
+                self.latest_frames[mode] = msg
+                self.latest_frame_time_s[mode] = time.monotonic()
+                is_active_mode = mode == self.current_mode
+            if is_active_mode and self.video_recorder is not None and self.video_recorder.is_recording():
+                self.video_recorder.submit_frame(msg)
+        return _on_frame
+
+    def latest_frame_age_s(self, mode: str | None = None) -> float | None:
+        target_mode = (mode or self.current_mode).strip().upper()
         with self.lock:
-            self.latest_frame = msg
-        if self.video_recorder is not None and self.video_recorder.is_recording():
-            self.video_recorder.submit_frame(msg)
+            timestamp = self.latest_frame_time_s.get(target_mode)
+            if timestamp is None:
+                timestamps = list(self.latest_frame_time_s.values())
+                timestamp = max(timestamps) if timestamps else None
+        if timestamp is None:
+            return None
+        return time.monotonic() - timestamp
+
+    def set_view_mode(self, mode: str) -> None:
+        normalized = mode.strip().upper()
+        if normalized not in {"DOWN", "FRONT"}:
+            return
+        with self.lock:
+            self.current_mode = normalized
 
     def _latest_jpeg(self) -> bytes | None:
         with self.lock:
-            frame = self.latest_frame
+            frame = self.latest_frames.get(self.current_mode)
+            if frame is None:
+                frame = self.latest_frames.get("DOWN") or self.latest_frames.get("FRONT")
 
         if frame is None:
             return None
@@ -536,9 +596,10 @@ class CameraGateway:
 
 
 class CameraOrientationController:
-    def __init__(self) -> None:
-        self.current_mode = CAMERA_DEFAULT_VIEW if CAMERA_DEFAULT_VIEW in {"DOWN", "FRONT"} else "DOWN"
+    def __init__(self, on_mode_change=None) -> None:
+        self.current_mode = CAMERA_DEFAULT_VIEW if CAMERA_DEFAULT_VIEW in {"DOWN", "FRONT"} else "FRONT"
         self._last_toggle_s = 0.0
+        self.on_mode_change = on_mode_change
 
     def toggle(self) -> None:
         now = time.monotonic()
@@ -553,12 +614,9 @@ class CameraOrientationController:
         normalized = mode.strip().upper()
         if normalized not in {"DOWN", "FRONT"}:
             return
-        if not self.request_mode(normalized):
-            print(
-                f"[CAMERA] View remains {self.current_mode} - switch to {normalized} failed",
-                flush=True,
-            )
-            return
+        self.request_mode(normalized)
+        if self.on_mode_change is not None:
+            self.on_mode_change(normalized)
         self.current_mode = normalized
         self._write_state(normalized)
         print(f"[CAMERA] View -> {normalized} (press c to switch)", flush=True)
@@ -599,14 +657,14 @@ class CameraOrientationController:
                 check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
-            print(f"[CAMERA] Switch failed: {exc}", flush=True)
+            print(f"[CAMERA] Pitch command unavailable: {exc}", flush=True)
             return False
 
         if result.returncode == 0:
             return True
 
         message = (result.stderr or result.stdout or "camera command failed").strip()
-        print(f"[CAMERA] Switch failed: {message}", flush=True)
+        print(f"[CAMERA] Pitch command skipped: {message}", flush=True)
         return False
 
 
@@ -790,10 +848,13 @@ CONTROL_COMMAND_KEYS = {
 
 
 class FlightControlApi:
-    def __init__(self, camera: CameraGateway, commands: "queue.Queue[str]", status_provider=None) -> None:
+    def __init__(self, camera: CameraGateway, commands: "queue.Queue[str]", status_provider=None, preflight_provider=None) -> None:
         self.camera = camera
         self.commands = commands
         self.status_provider = status_provider
+        self.preflight_provider = preflight_provider
+        self.preflight_check_id: str | None = None
+        self.preflight_started_at_s: float | None = None
         self.server: ThreadingHTTPServer | None = None
         self.thread: threading.Thread | None = None
 
@@ -829,6 +890,21 @@ class FlightControlApi:
                     self.wfile.write(json.dumps(status).encode("utf-8"))
                     return
 
+                if self.path.startswith("/api/preflight/"):
+                    check_id = self.path.rstrip("/").rsplit("/", 1)[-1]
+                    if owner.preflight_provider is None or check_id != owner.preflight_check_id:
+                        self.send_response(404)
+                        self._cors()
+                        self.end_headers()
+                        return
+                    payload = owner.preflight_provider(check_id, owner.preflight_started_at_s)
+                    self.send_response(200)
+                    self._cors()
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                    return
+
                 if not self.path.startswith("/stream.mjpg"):
                     self.send_response(404)
                     self._cors()
@@ -859,6 +935,20 @@ class FlightControlApi:
                         return
 
             def do_POST(self) -> None:
+                if self.path.startswith("/api/preflight/check"):
+                    owner.preflight_check_id = f"PF-{int(time.time() * 1000)}"
+                    owner.preflight_started_at_s = time.monotonic()
+                    payload = {
+                        "checkId": owner.preflight_check_id,
+                        "status": "CHECKING",
+                    }
+                    self.send_response(202)
+                    self._cors()
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                    return
+
                 if not self.path.startswith("/api/control/command"):
                     self.send_response(404)
                     self._cors()
@@ -979,7 +1069,7 @@ class MavsdkConnectionManager:
             px4_ready = await connect_px4(drone)
             self.drone = drone
             self.generation += 1
-            now_s = asyncio.get_running_loop().time()
+            now_s = time.monotonic()
             self.grpc_connected = True
             self.px4_connected = px4_ready
             if px4_ready:
@@ -1111,7 +1201,7 @@ class MavsdkConnectionManager:
                         flush=True,
                     )
 
-                now_s = asyncio.get_running_loop().time()
+                now_s = time.monotonic()
                 if self._last_setpoint_sent_s is not None:
                     gap_s = now_s - self._last_setpoint_sent_s
                     self._setpoint_intervals.append(gap_s)
@@ -1211,7 +1301,7 @@ class MavsdkConnectionManager:
     def connection_age_s(self) -> float | None:
         if not self.last_px4_connected_s:
             return None
-        return asyncio.get_running_loop().time() - self.last_px4_connected_s
+        return time.monotonic() - self.last_px4_connected_s
 
     def recently_connected(self) -> bool:
         age = self.connection_age_s()
@@ -1434,6 +1524,7 @@ async def set_motion(
 async def track_local_position(
         manager: MavsdkConnectionManager,
         update_position,
+        update_velocity=None,
 ) -> None:
     active_generation = -1
 
@@ -1470,15 +1561,121 @@ async def track_local_position(
                     break
 
                 position = sample.position
+                velocity = getattr(sample, "velocity", None)
 
                 update_position(
                     float(position.north_m),
                     float(position.east_m),
                     float(position.down_m),
                 )
+                if update_velocity is not None and velocity is not None:
+                    update_velocity(
+                        float(velocity.north_m_s),
+                        float(velocity.east_m_s),
+                        float(velocity.down_m_s),
+                    )
 
         except asyncio.CancelledError:
             raise
+
+        except (AttributeError, grpc.aio.AioRpcError):
+            await asyncio.sleep(0.5)
+
+
+def normalize_battery_percent(value: float | None) -> float | None:
+    if value is None or not math.isfinite(value):
+        return None
+    percent = value * 100.0 if 0.0 <= value <= 1.0 else value
+    return max(0.0, min(100.0, percent))
+
+
+async def track_battery(
+        manager: MavsdkConnectionManager,
+        update_battery,
+) -> None:
+    active_generation = -1
+
+    while True:
+        drone = await manager.get_drone()
+
+        if drone is None:
+            await asyncio.sleep(0.5)
+            continue
+
+        generation = manager.generation
+
+        if generation != active_generation:
+            active_generation = generation
+            print(
+                f"[BATTERY] Telemetry generation={generation}",
+                flush=True,
+            )
+
+        try:
+            stream = drone.telemetry.battery()
+
+            while generation == manager.generation:
+                try:
+                    battery = await asyncio.wait_for(
+                        anext(stream),
+                        timeout=3.0,
+                    )
+                except StopAsyncIteration:
+                    break
+                except asyncio.TimeoutError:
+                    break
+
+                update_battery(
+                    normalize_battery_percent(
+                        float(battery.remaining_percent)
+                        if battery.remaining_percent is not None
+                        else None
+                    )
+                )
+
+        except asyncio.CancelledError:
+            raise
+
+
+async def track_health(
+        manager: MavsdkConnectionManager,
+        update_health,
+) -> None:
+    active_generation = -1
+
+    while True:
+        drone = await manager.get_drone()
+
+        if drone is None:
+            await asyncio.sleep(0.5)
+            continue
+
+        generation = manager.generation
+
+        if generation != active_generation:
+            active_generation = generation
+            print(f"[HEALTH] Telemetry generation={generation}", flush=True)
+
+        try:
+            stream = drone.telemetry.health()
+
+            while generation == manager.generation:
+                try:
+                    health = await asyncio.wait_for(
+                        anext(stream),
+                        timeout=3.0,
+                    )
+                except StopAsyncIteration:
+                    break
+                except asyncio.TimeoutError:
+                    break
+
+                update_health(health)
+
+        except asyncio.CancelledError:
+            raise
+        except (AttributeError, grpc.aio.AioRpcError):
+            await asyncio.sleep(0.5)
 
         except (AttributeError, grpc.aio.AioRpcError):
             await asyncio.sleep(0.5)
@@ -1718,7 +1915,8 @@ async def main() -> None:
     )
     camera = CameraGateway(video_recorder)
     camera.start()
-    camera_orientation = CameraOrientationController()
+    camera_orientation = CameraOrientationController(camera.set_view_mode)
+    camera.set_view_mode(camera_orientation.current_mode)
     api_commands: queue.Queue[str] = queue.Queue()
 
     current_yaw_deg = 0.0
@@ -1742,6 +1940,8 @@ async def main() -> None:
 
     safety_task = None
     position_task = None
+    battery_task = None
+    health_task = None
     watchdog_task = asyncio.create_task(
         event_loop_watchdog(),
         name="event-loop-watchdog",
@@ -1757,11 +1957,157 @@ async def main() -> None:
     current_local_north_m = 0.0
     current_local_east_m = 0.0
     current_local_down_m = 0.0
+    current_velocity_north_m_s = 0.0
+    current_velocity_east_m_s = 0.0
+    current_velocity_down_m_s = 0.0
+    current_battery_percent = None
+    current_health = None
+    current_health_update_s: float | None = None
+    local_position_update_s: float | None = None
     local_position_ready = False
     safety_speed_scale = 1.0
 
+    def fresh(age_s: float | None, max_age_s: float) -> bool:
+        return age_s is not None and math.isfinite(age_s) and age_s <= max_age_s
+
+    def check_item(key: str, name: str, status: str, message: str, critical: bool = True) -> dict:
+        return {
+            "key": key,
+            "name": name,
+            "status": status,
+            "message": message,
+            "critical": critical,
+        }
+
+    def build_preflight_status(check_id: str, started_at_s: float | None) -> dict:
+        now_s = time.monotonic()
+        local_age_s = now_s - local_position_update_s if local_position_update_s is not None else None
+        health_age_s = now_s - current_health_update_s if current_health_update_s is not None else None
+        camera_age_s = camera.latest_frame_age_s("DOWN")
+        lidar_age_s = lidar.latest_scan_age_s() if lidar is not None and hasattr(lidar, "latest_scan_age_s") else None
+        connection_age_s = connection_manager.connection_age_s()
+        px4_ready = connection_manager.px4_connected or connection_manager.recently_connected()
+        grpc_ready = connection_manager.grpc_connected
+        local_values_ok = all(
+            math.isfinite(value)
+            for value in (
+                current_local_north_m,
+                current_local_east_m,
+                current_local_down_m,
+            )
+        )
+        health_local_ok = bool(getattr(current_health, "is_local_position_ok", False))
+        health_sensor_ok = all(
+            bool(getattr(current_health, field, False))
+            for field in (
+                "is_accelerometer_calibration_ok",
+                "is_gyrometer_calibration_ok",
+            )
+        ) if current_health is not None else False
+        module_ok = LIDAR_IMPORT_ERROR is None and Node is not None and GzImage is not None
+        backend_ok, backend_target = backend_reachable()
+
+        checks = [
+            check_item(
+                "GAZEBO",
+                "Gazebo Simulation",
+                "PASS" if fresh(camera_age_s, 5.0) or fresh(lidar_age_s, 5.0) else "FAIL",
+                "Drone model loaded" if fresh(camera_age_s, 5.0) or fresh(lidar_age_s, 5.0) else "No fresh Gazebo sensor data",
+                True,
+            ),
+            check_item(
+                "PX4",
+                "PX4 Flight Controller",
+                "PASS" if px4_ready else "FAIL",
+                "Ready for takeoff" if px4_ready else "PX4 heartbeat not available",
+                True,
+            ),
+            check_item(
+                "MAVSDK",
+                "MAVSDK Connection",
+                "PASS" if grpc_ready else "FAIL",
+                "PX4 discovered" if grpc_ready else "MAVSDK gRPC bridge unavailable",
+                True,
+            ),
+            check_item(
+                "PX4_CONTROL",
+                "PX4 Control",
+                "PASS" if px4_ready and grpc_ready else "FAIL",
+                "Flight controller ready" if px4_ready and grpc_ready else "Flight controller not connected",
+                True,
+            ),
+            check_item(
+                "LOCAL_POSITION",
+                "Local Position",
+                "PASS" if local_position_ready and local_values_ok and fresh(local_age_s, 3.0) else "FAIL",
+                "Ready to fly" if local_position_ready and local_values_ok and fresh(local_age_s, 3.0) else "No fresh PX4 local position received",
+                True,
+            ),
+            check_item(
+                "MAVSDK_HEALTH",
+                "MAVSDK Health",
+                "PASS" if fresh(health_age_s, 5.0) and health_local_ok and health_sensor_ok else "FAIL",
+                "PX4 health ready" if fresh(health_age_s, 5.0) and health_local_ok and health_sensor_ok else "PX4 health not ready",
+                True,
+            ),
+            check_item(
+                "LIDAR",
+                "LiDAR",
+                "PASS" if fresh(lidar_age_s, 5.0) else "WARN",
+                "Fresh scan received" if fresh(lidar_age_s, 5.0) else "No fresh scan received",
+                False,
+            ),
+            check_item(
+                "CAMERA",
+                "Downward Camera",
+                "PASS" if fresh(camera_age_s, 5.0) else "WARN",
+                "Camera frames received" if fresh(camera_age_s, 5.0) else "No recent downward camera frame",
+                False,
+            ),
+            check_item(
+                "BACKEND",
+                "Backend Connection",
+                "PASS" if backend_ok else "WARN",
+                backend_target if backend_ok else f"{backend_target} not reachable",
+                False,
+            ),
+            check_item(
+                "MEDIA",
+                "Media Upload",
+                "PASS" if module_ok else "WARN",
+                "Media capture pipeline ready" if module_ok else "Media capture pipeline not fully verified",
+                False,
+            ),
+            check_item(
+                "MODULES",
+                "Module Check",
+                "PASS" if module_ok else "WARN",
+                "Required components loaded" if module_ok else "Some optional Gazebo/LiDAR bindings are unavailable",
+                False,
+            ),
+        ]
+        completed = sum(1 for item in checks if item["status"] in {"PASS", "WARN", "FAIL"})
+        critical_failures = [item for item in checks if item["critical"] and item["status"] == "FAIL"]
+        overall = "FAILED" if critical_failures else "READY"
+        return {
+            "checkId": check_id,
+            "status": overall,
+            "progress": round((completed / len(checks)) * 100),
+            "startedAt": datetime.fromtimestamp(time.time() - (now_s - started_at_s), timezone.utc).isoformat().replace("+00:00", "Z") if started_at_s is not None else None,
+            "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "checks": checks,
+        }
+
     def api_status() -> dict:
-        horizontal_speed = math.hypot(current_north_m_s, current_east_m_s)
+        horizontal_speed = math.hypot(
+            current_velocity_north_m_s,
+            current_velocity_east_m_s,
+        )
+        connection_age_s = connection_manager.connection_age_s()
+        sim_x_m, sim_y_m = px4_ned_to_sim_xy(
+            current_local_north_m,
+            current_local_east_m,
+        )
         return {
             "missionId": MISSION_ID,
             "deviceCode": DEVICE_CODE,
@@ -1772,13 +2118,30 @@ async def main() -> None:
                 "downM": current_local_down_m,
             },
             "positionGazebo": {
-                "x": current_local_east_m,
-                "y": current_local_north_m,
+                "x": sim_x_m,
+                "y": sim_y_m,
             },
             "yawDeg": current_yaw_deg,
             "altitudeM": max(0.0, -current_local_down_m),
             "speedMps": horizontal_speed,
-            "batteryPercent": 92,
+            "batteryPercent": current_battery_percent,
+            "connection": {
+                "grpcConnected": connection_manager.grpc_connected,
+                "px4Connected": connection_manager.px4_connected,
+                "lastPx4SeenAgeS": connection_age_s,
+            },
+            "freshness": {
+                "localPositionAgeS": time.monotonic() - local_position_update_s if local_position_update_s is not None else None,
+                "healthAgeS": time.monotonic() - current_health_update_s if current_health_update_s is not None else None,
+                "cameraFrameAgeS": camera.latest_frame_age_s("DOWN"),
+                "lidarScanAgeS": lidar.latest_scan_age_s() if lidar is not None and hasattr(lidar, "latest_scan_age_s") else None,
+            },
+            "cameraMode": camera_orientation.current_mode,
+            "velocityNed": {
+                "northMps": current_velocity_north_m_s,
+                "eastMps": current_velocity_east_m_s,
+                "downMps": current_velocity_down_m_s,
+            },
             "activeCommand": {
                 "forwardMps": current_forward_m_s,
                 "rightMps": current_right_m_s,
@@ -1787,7 +2150,7 @@ async def main() -> None:
             "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
 
-    control_api = FlightControlApi(camera, api_commands, api_status)
+    control_api = FlightControlApi(camera, api_commands, api_status, build_preflight_status)
     control_api.start()
     print(
         f"[SAFETY] Sensor default -> "
@@ -1821,10 +2184,31 @@ async def main() -> None:
         nonlocal current_local_east_m
         nonlocal current_local_down_m
         nonlocal local_position_ready
+        nonlocal local_position_update_s
         current_local_north_m = north_m
         current_local_east_m = east_m
         current_local_down_m = down_m
         local_position_ready = True
+        local_position_update_s = time.monotonic()
+
+    def update_velocity(north_m_s: float, east_m_s: float, down_m_s: float) -> None:
+        nonlocal current_velocity_north_m_s
+        nonlocal current_velocity_east_m_s
+        nonlocal current_velocity_down_m_s
+        current_velocity_north_m_s = north_m_s
+        current_velocity_east_m_s = east_m_s
+        current_velocity_down_m_s = down_m_s
+
+    def update_battery(percent: float | None) -> None:
+        nonlocal current_battery_percent
+        if percent is not None:
+            current_battery_percent = percent
+
+    def update_health(health) -> None:
+        nonlocal current_health
+        nonlocal current_health_update_s
+        current_health = health
+        current_health_update_s = time.monotonic()
 
     def launch_pad_clear() -> bool:
         if not local_position_ready:
@@ -1904,6 +2288,8 @@ async def main() -> None:
         owned = [
             ("safety", safety_task),
             ("position", position_task),
+            ("battery", battery_task),
+            ("health", health_task),
             ("watchdog", watchdog_task),
         ]
         for name, task in owned:
@@ -1951,6 +2337,28 @@ async def main() -> None:
     # START LIDAR / SAFETY
     # ================================================================
 
+    position_task = asyncio.create_task(
+        track_local_position(
+            connection_manager,
+            update_local_position,
+            update_velocity,
+        )
+    )
+
+    battery_task = asyncio.create_task(
+        track_battery(
+            connection_manager,
+            update_battery,
+        )
+    )
+
+    health_task = asyncio.create_task(
+        track_health(
+            connection_manager,
+            update_health,
+        )
+    )
+
     if LidarGateway is None or AvoidanceController is None:
         print(f"[LIDAR] Disabled: {LIDAR_IMPORT_ERROR}")
         print(
@@ -1961,13 +2369,6 @@ async def main() -> None:
         lidar.start()
 
         avoidance = AvoidanceController(drone)
-
-        position_task = asyncio.create_task(
-            track_local_position(
-                connection_manager,
-                update_local_position,
-            )
-        )
 
         safety_task = asyncio.create_task(
             obstacle_safety_loop(
