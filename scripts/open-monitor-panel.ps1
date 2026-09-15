@@ -1,8 +1,19 @@
 $ErrorActionPreference = "Stop"
 
+function ConvertTo-WslPath([string]$WindowsPath) {
+    $fullPath = (Resolve-Path $WindowsPath).Path
+    if ($fullPath -notmatch "^([A-Za-z]):\\(.*)$") {
+        throw "Cannot convert path to WSL format: $fullPath"
+    }
+
+    $drive = $Matches[1].ToLowerInvariant()
+    $rest = $Matches[2] -replace "\\", "/"
+    return "/mnt/$drive/$rest"
+}
+
 $distro = "Ubuntu-24.04"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$repoRootWsl = (& wsl.exe -d $distro -- wslpath -a "$repoRoot").Trim()
+$repoRootWsl = ConvertTo-WslPath $repoRoot
 $scriptRoot = "$repoRootWsl/scripts"
 
 Add-Type -AssemblyName System.Windows.Forms

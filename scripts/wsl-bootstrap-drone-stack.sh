@@ -16,10 +16,29 @@ need_cmd() {
     command -v "$1" >/dev/null 2>&1
 }
 
-if [ -f "$MARKER_FILE" ] \
-    && [ -d "$PX4_ROOT/.git" ] \
-    && [ -x "$DRONE_ENV/bin/python" ] \
-    && [ -f "$PX4_ROOT/Tools/setup/ubuntu.sh" ]; then
+PX4_BUILD_READY=0
+if [ -f "$PX4_ROOT/Tools/setup/ubuntu.sh" ] \
+    && [ -f "$PX4_ROOT/build/px4_sitl_default/rootfs/gz_env.sh" ]; then
+    PX4_BUILD_READY=1
+fi
+
+PYTHON_ENV_READY=0
+if [ -x "$DRONE_ENV/bin/python" ] \
+    && "$DRONE_ENV/bin/python" - <<'PY' >/dev/null 2>&1
+import cv2
+import grpc
+import httpx
+import mavsdk
+from PIL import Image
+import dotenv
+PY
+then
+    PYTHON_ENV_READY=1
+fi
+
+if [ "$PX4_BUILD_READY" -eq 1 ] && [ "$PYTHON_ENV_READY" -eq 1 ]; then
+    mkdir -p "$DRONE_WORKDIR/video" "$MARKER_DIR"
+    date -Is > "$MARKER_FILE"
     echo "[BOOTSTRAP] Existing drone stack dependencies found"
     exit 0
 fi

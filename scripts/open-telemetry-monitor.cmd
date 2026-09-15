@@ -1,2 +1,2 @@
 @echo off
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$repo=(Resolve-Path (Join-Path '%~dp0' '..')).Path; $wsl=(& wsl.exe -d Ubuntu-24.04 -- wslpath -a $repo).Trim(); Start-Process wsl.exe -ArgumentList '-d','Ubuntu-24.04','--','bash','-lc',\"PROJECT_PATH='$wsl' exec '$wsl/scripts/wsl-telemetry.sh'\""
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$repo=(Resolve-Path (Join-Path '%~dp0' '..')).Path; if($repo -notmatch '^([A-Za-z]):\\(.*)$'){throw \"Cannot convert path: $repo\"}; $wsl='/mnt/'+$Matches[1].ToLowerInvariant()+'/'+($Matches[2] -replace '\\','/'); Start-Process wsl.exe -ArgumentList '-d','Ubuntu-24.04','--','bash','-lc',\"PROJECT_PATH='$wsl' exec '$wsl/scripts/wsl-telemetry.sh'\""

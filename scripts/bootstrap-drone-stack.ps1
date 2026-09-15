@@ -14,6 +14,17 @@ function Test-CommandExists([string]$Name) {
     return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
+function ConvertTo-WslPath([string]$WindowsPath) {
+    $fullPath = (Resolve-Path $WindowsPath).Path
+    if ($fullPath -notmatch "^([A-Za-z]):\\(.*)$") {
+        throw "Cannot convert path to WSL format: $fullPath"
+    }
+
+    $drive = $Matches[1].ToLowerInvariant()
+    $rest = $Matches[2] -replace "\\", "/"
+    return "/mnt/$drive/$rest"
+}
+
 if (-not (Test-CommandExists "wsl.exe")) {
     throw "WSL is not available on this Windows installation. Install WSL first, then run Start Drone Stack again."
 }
@@ -35,7 +46,7 @@ if (-not $hasDistro) {
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$repoRootWsl = (& wsl.exe -d $UbuntuDistro -- wslpath -a "$repoRoot").Trim()
+$repoRootWsl = ConvertTo-WslPath $repoRoot
 $bootstrapWsl = "$repoRootWsl/scripts/wsl-bootstrap-drone-stack.sh"
 
 Write-Step "Checking drone simulation dependencies inside $UbuntuDistro"
