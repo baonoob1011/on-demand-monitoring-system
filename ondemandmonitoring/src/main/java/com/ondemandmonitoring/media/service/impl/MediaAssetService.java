@@ -1,17 +1,18 @@
-package com.ondemandmonitoring.device.service;
+package com.ondemandmonitoring.media.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.device.domain.Device;
-import com.ondemandmonitoring.device.domain.DeviceImage;
 import com.ondemandmonitoring.device.enums.DeviceStatus;
 import com.ondemandmonitoring.device.enums.DeviceType;
+import com.ondemandmonitoring.device.repository.DeviceRepository;
+import com.ondemandmonitoring.media.domain.MediaAsset;
+import com.ondemandmonitoring.media.repository.MediaAssetRepository;
+import com.ondemandmonitoring.media.service.IMediaAssetService;
 import com.ondemandmonitoring.s3.AwsS3Properties;
 import com.ondemandmonitoring.s3.S3ObjectStorageService;
 import com.ondemandmonitoring.s3.S3ObjectStorageService.StoredObject;
 import com.ondemandmonitoring.s3.S3ObjectStorageService.StoredObjectStream;
-import com.ondemandmonitoring.device.repository.DeviceRepository;
-import com.ondemandmonitoring.device.repository.DeviceImageRepository;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -36,7 +37,7 @@ import org.springframework.web.multipart.MultipartFile;
 @Slf4j
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-public class DeviceImageService {
+public class MediaAssetService implements IMediaAssetService {
 
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of("image/png", "image/jpeg", "video/mp4");
     private static final String MEDIA_TYPE_IMAGE = "IMAGE";
@@ -49,20 +50,23 @@ public class DeviceImageService {
     AwsS3Properties awsS3Properties;
     Environment environment;
     DeviceRepository deviceRepository;
-    DeviceImageRepository deviceImageRepository;
+    MediaAssetRepository mediaAssetRepository;
 
     @Transactional
-    public DeviceImage upload(String deviceCode, MultipartFile file) {
+    @Override
+    public MediaAsset upload(String deviceCode, MultipartFile file) {
         return upload("UNASSIGNED", deviceCode, Instant.now(), file, MEDIA_TYPE_IMAGE);
     }
 
     @Transactional
-    public DeviceImage upload(String missionId, String droneId, Instant capturedAt, MultipartFile file) {
+    @Override
+    public MediaAsset upload(String missionId, String droneId, Instant capturedAt, MultipartFile file) {
         return upload(missionId, droneId, capturedAt, file, MEDIA_TYPE_IMAGE);
     }
 
     @Transactional
-    public DeviceImage upload(String missionId, String droneId, Instant capturedAt, MultipartFile file, String requestedMediaType) {
+    @Override
+    public MediaAsset upload(String missionId, String droneId, Instant capturedAt, MultipartFile file, String requestedMediaType) {
         String mediaType = validate(file, requestedMediaType);
         validateRequired("missionId", missionId);
         validateRequired("droneId", droneId);
@@ -101,7 +105,7 @@ public class DeviceImageService {
         }
 
         try {
-            DeviceImage image = new DeviceImage();
+            MediaAsset image = new MediaAsset();
             image.setDeviceCode(droneId);
             image.setDevice(device);
             image.setMissionId(missionId);
@@ -119,7 +123,7 @@ public class DeviceImageService {
             image.setValidatedAt(Instant.now());
             image.setAvailableAt(Instant.now());
 
-            return deviceImageRepository.save(image);
+            return mediaAssetRepository.save(image);
         } catch (RuntimeException exception) {
             cleanupUploadedObject(storedObject.bucket(), storedObject.key());
             throw exception;
@@ -127,8 +131,9 @@ public class DeviceImageService {
     }
 
     @Transactional(readOnly = true)
-    public DeviceImage getById(String mediaId) {
-        DeviceImage media = deviceImageRepository.findById(mediaId)
+    @Override
+    public MediaAsset getById(String mediaId) {
+        MediaAsset media = mediaAssetRepository.findById(mediaId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Media not found"));
         if (media.getMediaStatus() != null && media.getMediaStatus() != MediaStatus.AVAILABLE) {
             throw new ApiException(ErrorCode.MEDIA_UPLOAD_NOT_ALLOWED, "Media is not available yet");
@@ -137,17 +142,50 @@ public class DeviceImageService {
     }
 
     @Transactional(readOnly = true)
-    public List<DeviceImage> listByMission(String missionId, String requestedMediaType) {
+    @Override
+    public List<MediaAsset> listByMission(String missionId, String requestedMediaType) {
         validateRequired("missionId", missionId);
         if (requestedMediaType == null || requestedMediaType.isBlank()) {
-            return availableOnly(deviceImageRepository.findByMissionIdOrderByCapturedAtDesc(missionId));
+            return availableOnly(mediaAssetRepository.findByMissionIdOrderByCapturedAtDesc(missionId));
         }
 
         String mediaType = normalizeMediaType(requestedMediaType);
-        return availableOnly(deviceImageRepository.findByMissionIdAndTypeOrderByCapturedAtDesc(missionId, mediaType));
+        return availableOnly(mediaAssetRepository.findByMissionIdAndTypeOrderByCapturedAtDesc(missionId, mediaType));
     }
 
-    public MediaContent openMedia(DeviceImage image) {
+    @Transactional(readOnly = true)
+    @Override
+    public MediaAsset getByDeviceAndId(String deviceCode, String mediaId) {
+        validateRequired("deviceCode", deviceCode);
+        MediaAsset mediaAsset = getById(mediaId);
+        if (!deviceCode.equals(mediaAsset.getDeviceCode())) {
+            throw new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Media not found for device");
+        }
+        return mediaAsset;
+    }
+
+    @Transactional(readOnly = true)
+    @Override
+    public List<MediaAsset> listByDevice(String deviceCode, String requestedMediaType) {
+        validateRequired("deviceCode", deviceCode);
+        if (requestedMediaType == null || requestedMediaType.isBlank()) {
+            return availableOnly(mediaAssetRepository.findByDeviceCodeOrderByCapturedAtDesc(deviceCode));
+        }
+
+        String mediaType = normalizeMediaType(requestedMediaType);
+        return availableOnly(mediaAssetRepository.findByDeviceCodeAndTypeOrderByCapturedAtDesc(deviceCode, mediaType));
+    }
+
+    @Transactional
+    @Override
+    public void deleteByDeviceAndId(String deviceCode, String mediaId) {
+        MediaAsset mediaAsset = getByDeviceAndId(deviceCode, mediaId);
+        deleteStoredObject(mediaAsset);
+        mediaAssetRepository.delete(mediaAsset);
+    }
+
+    @Override
+    public MediaContent openMedia(MediaAsset image) {
         if (STORAGE_PROVIDER_LOCAL.equalsIgnoreCase(image.getStorageProvider())) {
             Path path = Path.of(image.getS3Url());
             try {
@@ -177,7 +215,8 @@ public class DeviceImageService {
         }
     }
 
-    public String createPresignedGetUrl(DeviceImage image) {
+    @Override
+    public String createPresignedGetUrl(MediaAsset image) {
         if (STORAGE_PROVIDER_LOCAL.equalsIgnoreCase(image.getStorageProvider())) {
             return image.getS3Url();
         }
@@ -185,6 +224,7 @@ public class DeviceImageService {
         return s3ObjectStorageService.createPresignedGetUrl(image.getS3Bucket(), image.getS3Key());
     }
 
+    @Override
     public long presignedUrlExpiresSeconds() {
         return s3ObjectStorageService.presignedUrlExpiresSeconds();
     }
@@ -251,7 +291,29 @@ public class DeviceImageService {
         s3ObjectStorageService.deleteQuietly(bucket, key);
     }
 
-    private DeviceImage saveLocal(
+    private void deleteStoredObject(MediaAsset mediaAsset) {
+        if (STORAGE_PROVIDER_LOCAL.equalsIgnoreCase(mediaAsset.getStorageProvider())) {
+            try {
+                Files.deleteIfExists(Path.of(mediaAsset.getS3Url()));
+            } catch (IOException exception) {
+                throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Cannot delete local media file");
+            }
+            return;
+        }
+
+        try {
+            s3ObjectStorageService.delete(mediaAsset.getS3Bucket(), mediaAsset.getS3Key());
+        } catch (RuntimeException exception) {
+            log.error("Cannot delete media from S3. bucket={}, key={}",
+                    mediaAsset.getS3Bucket(),
+                    mediaAsset.getS3Key(),
+                    exception);
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Cannot delete media from S3: " + rootMessage(exception));
+        }
+    }
+
+    private MediaAsset saveLocal(
             Device device,
             String missionId,
             String droneId,
@@ -281,7 +343,7 @@ public class DeviceImageService {
                     "Cannot store media locally after S3 upload failed");
         }
 
-        DeviceImage image = new DeviceImage();
+        MediaAsset image = new MediaAsset();
         image.setDeviceCode(droneId);
         image.setDevice(device);
         image.setMissionId(missionId);
@@ -299,7 +361,7 @@ public class DeviceImageService {
         image.setValidatedAt(Instant.now());
         image.setAvailableAt(Instant.now());
 
-        return deviceImageRepository.save(image);
+        return mediaAssetRepository.save(image);
     }
 
     private boolean useS3Storage() {
@@ -345,12 +407,10 @@ public class DeviceImageService {
         return mediaType;
     }
 
-    private List<DeviceImage> availableOnly(List<DeviceImage> media) {
+    private List<MediaAsset> availableOnly(List<MediaAsset> media) {
         return media.stream()
                 .filter(item -> item.getMediaStatus() == null
                         || item.getMediaStatus() == MediaStatus.AVAILABLE)
                 .toList();
     }
-
-    public record MediaContent(InputStream inputStream, long contentLength, String contentType, String fileName) {}
 }

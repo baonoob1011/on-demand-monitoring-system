@@ -1,7 +1,9 @@
 $ErrorActionPreference = "Stop"
 
 $distro = "Ubuntu-24.04"
-$scriptRoot = "/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/scripts"
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repoRootWsl = (& wsl.exe -d $distro -- wslpath -a "$repoRoot").Trim()
+$scriptRoot = "$repoRootWsl/scripts"
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing

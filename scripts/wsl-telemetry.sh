@@ -3,9 +3,14 @@ set -euo pipefail
 
 sleep 22
 
-REPO_CONTROLLER="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/drone"
-ENV_FILE="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/ondemandmonitoring/.env"
-cd ~/drone-controller
+PROJECT_PATH="${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+REPO_CONTROLLER="$PROJECT_PATH/drone"
+ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
+DRONE_WORKDIR="${DRONE_WORKDIR:-$HOME/drone-controller}"
+DRONE_ENV="${DRONE_ENV:-$HOME/drone-env}"
+
+mkdir -p "$DRONE_WORKDIR"
+cd "$DRONE_WORKDIR"
 cp "$REPO_CONTROLLER/telemetry_sender.py" telemetry_sender.py
 cp "$REPO_CONTROLLER/sitl_battery_sim.py" sitl_battery_sim.py
 
@@ -16,7 +21,7 @@ if [ -f "$ENV_FILE" ]; then
     set +a
 fi
 
-source ~/drone-env/bin/activate
+source "$DRONE_ENV/bin/activate"
 
 MAVSDK_PORT="${MAVSDK_TELEMETRY_GRPC_PORT:-50052}"
 

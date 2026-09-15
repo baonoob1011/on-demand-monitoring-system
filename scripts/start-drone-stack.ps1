@@ -4,13 +4,21 @@ param(
     [switch]$ShowGazeboGui,
     [switch]$WithTelemetry,
     [switch]$WithCamera,
-    [switch]$WithSensors
+    [switch]$WithSensors,
+    [switch]$SkipBootstrap
 )
 
 $ErrorActionPreference = "Stop"
 
 $ubuntuDistro = "Ubuntu-24.04"
-$scriptRoot = "/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/scripts"
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+
+if (-not $SkipBootstrap) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "bootstrap-drone-stack.ps1") -UbuntuDistro $ubuntuDistro
+}
+
+$repoRootWsl = (& wsl.exe -d $ubuntuDistro -- wslpath -a "$repoRoot").Trim()
+$scriptRoot = "$repoRootWsl/scripts"
 $simArg = $SimWorld
 $webOnly = if ($ShowGazeboGui) { "0" } else { "1" }
 $simCommand = "FOREST3D_WEB_ONLY=${webOnly} SIM_WORLD=${simArg} exec ${scriptRoot}/wsl-sim-pane.sh ${simArg}"

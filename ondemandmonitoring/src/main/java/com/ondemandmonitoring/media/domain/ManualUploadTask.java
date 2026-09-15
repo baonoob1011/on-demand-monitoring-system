@@ -1,7 +1,6 @@
 package com.ondemandmonitoring.media.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.device.domain.DeviceImage;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -22,7 +21,7 @@ public class ManualUploadTask extends BaseEntity {
 
     @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "media_id", nullable = false, unique = true)
-    private DeviceImage media;
+    private MediaAsset media;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)

@@ -99,10 +99,14 @@ public class S3ObjectStorageService {
 
     public void deleteQuietly(String bucket, String key) {
         try {
-            s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
+            delete(bucket, key);
         } catch (RuntimeException exception) {
             log.warn("Failed to cleanup S3 object. bucket={}, key={}", bucket, key, exception);
         }
+    }
+
+    public void delete(String bucket, String key) {
+        s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
     }
 
     public String bucket() {
@@ -111,14 +115,6 @@ public class S3ObjectStorageService {
 
     public long presignedUrlExpiresSeconds() {
         return PRESIGNED_URL_EXPIRES_SECONDS;
-    }
-
-    private String keyPrefix(String key) {
-        int lastSlash = key.lastIndexOf('/');
-        if (lastSlash < 0) {
-            return "";
-        }
-        return key.substring(0, lastSlash + 1);
     }
 
     public record StoredObject(String bucket, String key, String url) {}

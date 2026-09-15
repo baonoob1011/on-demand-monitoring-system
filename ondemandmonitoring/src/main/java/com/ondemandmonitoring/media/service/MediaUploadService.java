@@ -3,11 +3,10 @@ package com.ondemandmonitoring.media.service;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.device.domain.Device;
-import com.ondemandmonitoring.device.domain.DeviceImage;
-import com.ondemandmonitoring.device.repository.DeviceImageRepository;
 import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.media.domain.ManualUploadTask;
 import com.ondemandmonitoring.media.domain.ManualUploadTaskStatus;
+import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.domain.MediaNotificationOutbox;
 import com.ondemandmonitoring.media.domain.MediaStatus;
 import com.ondemandmonitoring.media.domain.MediaUploadAttempt;
@@ -18,6 +17,7 @@ import com.ondemandmonitoring.media.dto.PrepareMediaUploadRequest;
 import com.ondemandmonitoring.media.dto.ReportUploadFailureRequest;
 import com.ondemandmonitoring.media.event.StorageObjectCreatedEvent;
 import com.ondemandmonitoring.media.repository.ManualUploadTaskRepository;
+import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.repository.MediaNotificationOutboxRepository;
 import com.ondemandmonitoring.media.repository.MediaUploadAttemptRepository;
 import com.ondemandmonitoring.media.repository.StorageEventInboxRepository;
@@ -61,7 +61,7 @@ public class MediaUploadService {
 
     private final MissionRepository missionRepository;
     private final DeviceRepository deviceRepository;
-    private final DeviceImageRepository mediaRepository;
+    private final MediaAssetRepository mediaRepository;
     private final MediaUploadAttemptRepository attemptRepository;
     private final ManualUploadTaskRepository manualTaskRepository;
     private final MediaNotificationOutboxRepository notificationOutboxRepository;
@@ -91,7 +91,7 @@ public class MediaUploadService {
 
     @Transactional
     public MediaUploadResponse retry(String mediaId) {
-        DeviceImage media = requireMedia(mediaId);
+        MediaAsset media = requireMedia(mediaId);
         authorize(requireUploadableMission(media.getMissionId()));
         if (media.getMediaStatus() == null || media.getMediaStatus() == MediaStatus.AVAILABLE) {
             throw new ApiException(ErrorCode.MEDIA_UPLOAD_ATTEMPT_INVALID, "Media is already available");
@@ -104,7 +104,7 @@ public class MediaUploadService {
 
     @Transactional
     public MediaUploadResponse prepareManualUpload(String mediaId) {
-        DeviceImage media = requireMedia(mediaId);
+        MediaAsset media = requireMedia(mediaId);
         authorize(requireUploadableMission(media.getMissionId()));
         if (media.getMediaStatus() != MediaStatus.MANUAL_UPLOAD_REQUIRED) {
             throw new ApiException(ErrorCode.MEDIA_UPLOAD_ATTEMPT_INVALID,
@@ -116,7 +116,7 @@ public class MediaUploadService {
     @Transactional
     public MediaUploadResponse reportFailure(
             String mediaId, String attemptId, ReportUploadFailureRequest request) {
-        DeviceImage media = requireMedia(mediaId);
+        MediaAsset media = requireMedia(mediaId);
         authorize(findMission(media.getMissionId()));
         MediaUploadAttempt attempt = requireAttempt(mediaId, attemptId);
         if (attempt.getStatus() == UploadAttemptStatus.SUCCEEDED) {
@@ -139,7 +139,7 @@ public class MediaUploadService {
 
     @Transactional
     public void markUploaded(String mediaId, String attemptId) {
-        DeviceImage media = requireMedia(mediaId);
+        MediaAsset media = requireMedia(mediaId);
         authorize(findMission(media.getMissionId()));
         MediaUploadAttempt attempt = requireAttempt(mediaId, attemptId);
         if (attempt.getStatus() != UploadAttemptStatus.PENDING) {
@@ -154,7 +154,7 @@ public class MediaUploadService {
 
     @Transactional(readOnly = true)
     public MediaUploadResponse getStatus(String mediaId) {
-        DeviceImage media = requireMedia(mediaId);
+        MediaAsset media = requireMedia(mediaId);
         authorize(findMission(media.getMissionId()));
         return new MediaUploadResponse(
                 media.getId(), null, attemptCount(media),
@@ -178,7 +178,7 @@ public class MediaUploadService {
             return;
         }
 
-        DeviceImage media = mediaRepository.findByS3BucketAndS3Key(event.bucket(), event.key())
+        MediaAsset media = mediaRepository.findByS3BucketAndS3Key(event.bucket(), event.key())
                 .orElseThrow(() -> new ApiException(ErrorCode.MEDIA_NOT_FOUND,
                         "No pending media matches the storage object"));
         if (media.getMediaStatus() == null || media.getMediaStatus() == MediaStatus.AVAILABLE) {
@@ -234,7 +234,7 @@ public class MediaUploadService {
             throw new ApiException(ErrorCode.INTERNAL_SERVER_ERROR,
                     "S3 bucket is required for direct media upload");
         }
-        DeviceImage media = new DeviceImage();
+        MediaAsset media = new MediaAsset();
         media.setDeviceCode(device.getDeviceCode());
         media.setDevice(device);
         media.setMissionId(mission.getId());
@@ -261,7 +261,7 @@ public class MediaUploadService {
         return createAttempt(media, false);
     }
 
-    private MediaUploadResponse createAttempt(DeviceImage media, boolean manual) {
+    private MediaUploadResponse createAttempt(MediaAsset media, boolean manual) {
         if (!Objects.equals(media.getS3Bucket(), objectStorage.bucket())) {
             throw new ApiException(ErrorCode.MEDIA_UPLOAD_ATTEMPT_INVALID,
                     "Media was prepared for another S3 bucket; capture it again before uploading");
@@ -288,7 +288,7 @@ public class MediaUploadService {
         return response(media, attempt, upload, expiresAt);
     }
 
-    private MediaUploadResponse idempotentResponse(DeviceImage media, PrepareMediaUploadRequest request) {
+    private MediaUploadResponse idempotentResponse(MediaAsset media, PrepareMediaUploadRequest request) {
         boolean same = media.getType().equals(request.mediaType())
                 && media.getContentType().equals(request.contentType())
                 && media.getFileSize().equals(request.fileSize())
@@ -309,7 +309,7 @@ public class MediaUploadService {
         return getStatus(media.getId());
     }
 
-    private MediaUploadResponse manualUploadRequired(DeviceImage media, String reason) {
+    private MediaUploadResponse manualUploadRequired(MediaAsset media, String reason) {
         media.setMediaStatus(MediaStatus.MANUAL_UPLOAD_REQUIRED);
         media.setValidationError(reason);
         mediaRepository.save(media);
@@ -328,7 +328,7 @@ public class MediaUploadService {
                 media.getMediaStatus(), null, Map.of(), null, task.getId());
     }
 
-    private String validateStoredObject(DeviceImage media, Long eventSize) {
+    private String validateStoredObject(MediaAsset media, Long eventSize) {
         if (eventSize != null && !media.getFileSize().equals(eventSize)) {
             return "Object size does not match prepared metadata";
         }
@@ -360,7 +360,7 @@ public class MediaUploadService {
         }
     }
 
-    private void ensureCustomerNotification(DeviceImage media) {
+    private void ensureCustomerNotification(MediaAsset media) {
         if (notificationOutboxRepository.existsByMediaIdAndEventType(
                 media.getId(), CUSTOMER_MEDIA_AVAILABLE)) {
             return;
@@ -484,7 +484,7 @@ public class MediaUploadService {
         return device;
     }
 
-    private DeviceImage requireMedia(String mediaId) {
+    private MediaAsset requireMedia(String mediaId) {
         return mediaRepository.findById(mediaId)
                 .orElseThrow(() -> new ApiException(ErrorCode.MEDIA_NOT_FOUND));
     }
@@ -494,18 +494,18 @@ public class MediaUploadService {
                 .orElseThrow(() -> new ApiException(ErrorCode.MEDIA_UPLOAD_ATTEMPT_INVALID));
     }
 
-    private MediaUploadAttempt latestAttempt(DeviceImage media) {
+    private MediaUploadAttempt latestAttempt(MediaAsset media) {
         return attemptRepository.findTopByMediaIdOrderByAttemptNumberDesc(media.getId())
                 .orElseThrow(() -> new ApiException(ErrorCode.MEDIA_UPLOAD_ATTEMPT_INVALID));
     }
 
     private MediaUploadResponse response(
-            DeviceImage media, MediaUploadAttempt attempt, PresignedUpload upload, Instant expiresAt) {
+            MediaAsset media, MediaUploadAttempt attempt, PresignedUpload upload, Instant expiresAt) {
         return new MediaUploadResponse(media.getId(), attempt.getId(), attempt.getAttemptNumber(),
                 media.getMediaStatus(), upload.url(), upload.headers(), expiresAt, null);
     }
 
-    private String buildStorageKey(DeviceImage media) {
+    private String buildStorageKey(MediaAsset media) {
         String prefix = s3Properties.getPrefix();
         String root = prefix == null || prefix.isBlank() ? "" : safeSegment(prefix) + "/";
         String extension = switch (media.getContentType()) {
@@ -526,7 +526,7 @@ public class MediaUploadService {
         return value.strip().replaceAll("^/+|/+$", "").replaceAll("[^A-Za-z0-9._/-]", "_");
     }
 
-    private int attemptCount(DeviceImage media) {
+    private int attemptCount(MediaAsset media) {
         return media.getUploadAttemptCount() == null ? 0 : media.getUploadAttemptCount();
     }
 }

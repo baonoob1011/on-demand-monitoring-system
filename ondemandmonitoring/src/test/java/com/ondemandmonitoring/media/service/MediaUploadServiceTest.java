@@ -7,10 +7,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.device.domain.Device;
-import com.ondemandmonitoring.device.domain.DeviceImage;
-import com.ondemandmonitoring.device.repository.DeviceImageRepository;
 import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.media.domain.MediaStatus;
+import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.domain.MediaNotificationOutbox;
 import com.ondemandmonitoring.media.domain.MediaUploadAttempt;
 import com.ondemandmonitoring.media.domain.StorageEventInbox;
@@ -18,6 +17,7 @@ import com.ondemandmonitoring.media.domain.UploadAttemptStatus;
 import com.ondemandmonitoring.media.dto.PrepareMediaUploadRequest;
 import com.ondemandmonitoring.media.event.StorageObjectCreatedEvent;
 import com.ondemandmonitoring.media.repository.ManualUploadTaskRepository;
+import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.repository.MediaNotificationOutboxRepository;
 import com.ondemandmonitoring.media.repository.MediaUploadAttemptRepository;
 import com.ondemandmonitoring.media.repository.StorageEventInboxRepository;
@@ -45,7 +45,7 @@ class MediaUploadServiceTest {
 
     private MissionRepository missionRepository;
     private DeviceRepository deviceRepository;
-    private DeviceImageRepository mediaRepository;
+    private MediaAssetRepository mediaRepository;
     private MediaUploadAttemptRepository attemptRepository;
     private MediaNotificationOutboxRepository notificationOutboxRepository;
     private StorageEventInboxRepository storageEventInboxRepository;
@@ -57,7 +57,7 @@ class MediaUploadServiceTest {
     void setUp() {
         missionRepository = mock(MissionRepository.class);
         deviceRepository = mock(DeviceRepository.class);
-        mediaRepository = mock(DeviceImageRepository.class);
+        mediaRepository = mock(MediaAssetRepository.class);
         attemptRepository = mock(MediaUploadAttemptRepository.class);
         notificationOutboxRepository = mock(MediaNotificationOutboxRepository.class);
         storageEventInboxRepository = mock(StorageEventInboxRepository.class);
@@ -109,8 +109,8 @@ class MediaUploadServiceTest {
         when(storage.createPresignedPutUrl(any(), any(), any(Long.class), any()))
                 .thenReturn(new S3ObjectStorageService.PresignedUpload(
                         "https://upload.example", Map.of("content-type", List.of("image/jpeg")), 900));
-        when(mediaRepository.save(any(DeviceImage.class))).thenAnswer(invocation -> {
-            DeviceImage media = invocation.getArgument(0);
+        when(mediaRepository.save(any(MediaAsset.class))).thenAnswer(invocation -> {
+            MediaAsset media = invocation.getArgument(0);
             if (media.getId() == null) media.setId("media-1");
             return media;
         });
@@ -142,7 +142,7 @@ class MediaUploadServiceTest {
         } catch (java.security.NoSuchAlgorithmException exception) {
             throw new AssertionError(exception);
         }
-        DeviceImage media = new DeviceImage();
+        MediaAsset media = new MediaAsset();
         media.setId("media-1");
         media.setMissionId("mission-1");
         media.setMediaStatus(MediaStatus.VALIDATING);

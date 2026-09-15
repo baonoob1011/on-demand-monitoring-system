@@ -1,7 +1,6 @@
 package com.ondemandmonitoring.media.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.device.domain.DeviceImage;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -24,7 +23,7 @@ public class MediaUploadAttempt extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "media_id", nullable = false)
-    private DeviceImage media;
+    private MediaAsset media;
 
     @Column(name = "attempt_number", nullable = false)
     private Integer attemptNumber;
