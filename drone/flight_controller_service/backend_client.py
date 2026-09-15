@@ -40,8 +40,16 @@ class MediaBackendClient:
         response.raise_for_status()
 
     async def mark_uploaded(self, media_id: str, attempt_id: str) -> None:
-        await self._request(
-            "POST", f"/api/v1/media/{media_id}/upload-attempts/{attempt_id}/uploaded")
+        try:
+            await self._request(
+                "POST", f"/api/v1/media/{media_id}/upload-attempts/{attempt_id}/uploaded")
+        except (BackendContractError, httpx.HTTPError):
+            try:
+                media = await self.status(media_id)
+            except (BackendContractError, httpx.HTTPError):
+                raise
+            if media.get("status") != "AVAILABLE":
+                raise
 
     async def report_failure(
         self, media_id: str, attempt_id: str, code: str, message: str

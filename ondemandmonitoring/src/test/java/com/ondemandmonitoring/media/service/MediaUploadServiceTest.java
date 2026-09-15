@@ -1,8 +1,11 @@
 package com.ondemandmonitoring.media.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -14,8 +17,10 @@ import com.ondemandmonitoring.media.domain.MediaNotificationOutbox;
 import com.ondemandmonitoring.media.domain.MediaUploadAttempt;
 import com.ondemandmonitoring.media.domain.StorageEventInbox;
 import com.ondemandmonitoring.media.domain.UploadAttemptStatus;
+import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.media.dto.PrepareMediaUploadRequest;
 import com.ondemandmonitoring.media.event.StorageObjectCreatedEvent;
+import com.ondemandmonitoring.media.service.impl.MediaUploadServiceImpl;
 import com.ondemandmonitoring.media.repository.ManualUploadTaskRepository;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.repository.MediaNotificationOutboxRepository;
@@ -51,7 +56,7 @@ class MediaUploadServiceTest {
     private StorageEventInboxRepository storageEventInboxRepository;
     private S3ObjectStorageService storage;
     private IUserService userService;
-    private MediaUploadService service;
+    private MediaUploadServiceImpl service;
 
     @BeforeEach
     void setUp() {
@@ -65,7 +70,7 @@ class MediaUploadServiceTest {
         userService = mock(IUserService.class);
         AwsS3Properties properties = new AwsS3Properties();
         properties.setPrefix("monitoring");
-        service = new MediaUploadService(
+        service = new MediaUploadServiceImpl(
                 missionRepository,
                 deviceRepository,
                 mediaRepository,
@@ -135,13 +140,6 @@ class MediaUploadServiceTest {
     @Test
     void objectCreatedMakesMediaAvailableAndPersistsOutboxAndInbox() {
         byte[] jpeg = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 1, 2, 3};
-        String checksum;
-        try {
-            checksum = java.util.HexFormat.of().formatHex(
-                    java.security.MessageDigest.getInstance("SHA-256").digest(jpeg));
-        } catch (java.security.NoSuchAlgorithmException exception) {
-            throw new AssertionError(exception);
-        }
         MediaAsset media = new MediaAsset();
         media.setId("media-1");
         media.setMissionId("mission-1");
@@ -150,10 +148,11 @@ class MediaUploadServiceTest {
         media.setS3Key("drone-media/image.jpg");
         media.setFileSize((long) jpeg.length);
         media.setContentType("image/jpeg");
-        media.setChecksumSha256(checksum);
+        media.setChecksumSha256(sha256(jpeg));
         media.setUploadAttemptCount(1);
         MediaUploadAttempt attempt = new MediaUploadAttempt();
-        attempt.setStatus(UploadAttemptStatus.UPLOADED);
+        attempt.setId("attempt-1");
+        attempt.setStatus(UploadAttemptStatus.PENDING);
 
         when(storageEventInboxRepository.existsByEventKey(any())).thenReturn(false);
         when(mediaRepository.findByS3BucketAndS3Key("media-bucket", "drone-media/image.jpg"))
@@ -172,5 +171,175 @@ class MediaUploadServiceTest {
         assertThat(attempt.getStatus()).isEqualTo(UploadAttemptStatus.SUCCEEDED);
         verify(notificationOutboxRepository).save(any(MediaNotificationOutbox.class));
         verify(storageEventInboxRepository).save(any(StorageEventInbox.class));
+
+        Mission mission = new Mission();
+        mission.setId("mission-1");
+        when(missionRepository.findById("mission-1")).thenReturn(Optional.of(mission));
+        when(mediaRepository.findById("media-1")).thenReturn(Optional.of(media));
+        when(attemptRepository.findByIdAndMediaId("attempt-1", "media-1"))
+                .thenReturn(Optional.of(attempt));
+        authenticateAdmin();
+        clearInvocations(mediaRepository, attemptRepository);
+
+        service.markUploaded("media-1", "attempt-1");
+
+        assertThat(media.getMediaStatus()).isEqualTo(MediaStatus.AVAILABLE);
+        assertThat(attempt.getStatus()).isEqualTo(UploadAttemptStatus.SUCCEEDED);
+        verify(mediaRepository, never()).save(any(MediaAsset.class));
+        verify(attemptRepository, never()).save(any(MediaUploadAttempt.class));
+    }
+
+    @Test
+    void markUploadedBeforeObjectCreatedAlsoEndsInAvailable() {
+        byte[] jpeg = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 1, 2, 3};
+        MediaAsset media = new MediaAsset();
+        media.setId("media-1");
+        media.setMissionId("mission-1");
+        media.setMediaStatus(MediaStatus.UPLOAD_PENDING);
+        media.setS3Bucket("media-bucket");
+        media.setS3Key("drone-media/image.jpg");
+        media.setFileSize((long) jpeg.length);
+        media.setContentType("image/jpeg");
+        media.setChecksumSha256(sha256(jpeg));
+        media.setUploadAttemptCount(1);
+        MediaUploadAttempt attempt = new MediaUploadAttempt();
+        attempt.setId("attempt-1");
+        attempt.setStatus(UploadAttemptStatus.PENDING);
+        arrangeMarkUploaded(media, attempt);
+        when(storageEventInboxRepository.existsByEventKey(any())).thenReturn(false);
+        when(mediaRepository.findByS3BucketAndS3Key("media-bucket", "drone-media/image.jpg"))
+                .thenReturn(Optional.of(media));
+        when(storage.open("media-bucket", "drone-media/image.jpg"))
+                .thenReturn(new S3ObjectStorageService.StoredObjectStream(
+                        new java.io.ByteArrayInputStream(jpeg), (long) jpeg.length, "image/jpeg"));
+        when(attemptRepository.findTopByMediaIdOrderByAttemptNumberDesc("media-1"))
+                .thenReturn(Optional.of(attempt));
+
+        service.markUploaded("media-1", "attempt-1");
+        service.processObjectCreated(new StorageObjectCreatedEvent(
+                "media-bucket", "drone-media/image.jpg", (long) jpeg.length,
+                null, null, "sequencer-2", "ObjectCreated:Put", Instant.now()));
+
+        assertThat(media.getMediaStatus()).isEqualTo(MediaStatus.AVAILABLE);
+        assertThat(attempt.getStatus()).isEqualTo(UploadAttemptStatus.SUCCEEDED);
+    }
+
+    @Test
+    void markUploadedIsIdempotentAfterUploadedAcknowledgement() {
+        MediaAsset media = new MediaAsset();
+        media.setId("media-1");
+        media.setMissionId("mission-1");
+        media.setMediaStatus(MediaStatus.VALIDATING);
+        MediaUploadAttempt attempt = new MediaUploadAttempt();
+        attempt.setId("attempt-1");
+        attempt.setStatus(UploadAttemptStatus.UPLOADED);
+        arrangeMarkUploaded(media, attempt);
+
+        service.markUploaded("media-1", "attempt-1");
+
+        assertThat(media.getMediaStatus()).isEqualTo(MediaStatus.VALIDATING);
+        assertThat(attempt.getStatus()).isEqualTo(UploadAttemptStatus.UPLOADED);
+        verify(mediaRepository, never()).save(any(MediaAsset.class));
+        verify(attemptRepository, never()).save(any(MediaUploadAttempt.class));
+    }
+
+    @Test
+    void markUploadedDoesNotRegressAvailableMediaWithPendingAttempt() {
+        MediaAsset media = new MediaAsset();
+        media.setId("media-1");
+        media.setMissionId("mission-1");
+        media.setMediaStatus(MediaStatus.AVAILABLE);
+        MediaUploadAttempt attempt = new MediaUploadAttempt();
+        attempt.setId("attempt-1");
+        attempt.setStatus(UploadAttemptStatus.PENDING);
+        arrangeMarkUploaded(media, attempt);
+
+        service.markUploaded("media-1", "attempt-1");
+
+        assertThat(media.getMediaStatus()).isEqualTo(MediaStatus.AVAILABLE);
+        assertThat(attempt.getStatus()).isEqualTo(UploadAttemptStatus.PENDING);
+        verify(mediaRepository, never()).save(any(MediaAsset.class));
+        verify(attemptRepository, never()).save(any(MediaUploadAttempt.class));
+    }
+
+    @Test
+    void markUploadedDoesNotRegressSucceededAttemptWhileMediaIsValidating() {
+        MediaAsset media = new MediaAsset();
+        media.setId("media-1");
+        media.setMissionId("mission-1");
+        media.setMediaStatus(MediaStatus.VALIDATING);
+        MediaUploadAttempt attempt = new MediaUploadAttempt();
+        attempt.setId("attempt-1");
+        attempt.setStatus(UploadAttemptStatus.SUCCEEDED);
+        arrangeMarkUploaded(media, attempt);
+
+        service.markUploaded("media-1", "attempt-1");
+
+        assertThat(media.getMediaStatus()).isEqualTo(MediaStatus.VALIDATING);
+        assertThat(attempt.getStatus()).isEqualTo(UploadAttemptStatus.SUCCEEDED);
+        verify(mediaRepository, never()).save(any(MediaAsset.class));
+        verify(attemptRepository, never()).save(any(MediaUploadAttempt.class));
+    }
+
+    @Test
+    void markUploadedTransitionsPendingAttemptOnlyOnce() {
+        MediaAsset media = new MediaAsset();
+        media.setId("media-1");
+        media.setMissionId("mission-1");
+        media.setMediaStatus(MediaStatus.UPLOAD_PENDING);
+        MediaUploadAttempt attempt = new MediaUploadAttempt();
+        attempt.setId("attempt-1");
+        attempt.setStatus(UploadAttemptStatus.PENDING);
+        arrangeMarkUploaded(media, attempt);
+
+        service.markUploaded("media-1", "attempt-1");
+        service.markUploaded("media-1", "attempt-1");
+
+        assertThat(media.getMediaStatus()).isEqualTo(MediaStatus.VALIDATING);
+        assertThat(attempt.getStatus()).isEqualTo(UploadAttemptStatus.UPLOADED);
+        verify(mediaRepository).save(media);
+        verify(attemptRepository).save(attempt);
+    }
+
+    @Test
+    void markUploadedRejectsFailedAttemptWhenMediaIsNotAvailable() {
+        MediaAsset media = new MediaAsset();
+        media.setId("media-1");
+        media.setMissionId("mission-1");
+        media.setMediaStatus(MediaStatus.RETRY_REQUIRED);
+        MediaUploadAttempt attempt = new MediaUploadAttempt();
+        attempt.setId("attempt-1");
+        attempt.setStatus(UploadAttemptStatus.FAILED);
+        arrangeMarkUploaded(media, attempt);
+
+        assertThatThrownBy(() -> service.markUploaded("media-1", "attempt-1"))
+                .isInstanceOf(ApiException.class);
+        verify(mediaRepository, never()).save(any(MediaAsset.class));
+        verify(attemptRepository, never()).save(any(MediaUploadAttempt.class));
+    }
+
+    private void arrangeMarkUploaded(MediaAsset media, MediaUploadAttempt attempt) {
+        Mission mission = new Mission();
+        mission.setId(media.getMissionId());
+        when(missionRepository.findById(media.getMissionId())).thenReturn(Optional.of(mission));
+        when(mediaRepository.findById(media.getId())).thenReturn(Optional.of(media));
+        when(attemptRepository.findByIdAndMediaId(attempt.getId(), media.getId()))
+                .thenReturn(Optional.of(attempt));
+        authenticateAdmin();
+    }
+
+    private void authenticateAdmin() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "cognito-admin", "n/a", List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+    }
+
+    private String sha256(byte[] bytes) {
+        try {
+            return java.util.HexFormat.of().formatHex(
+                    java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (java.security.NoSuchAlgorithmException exception) {
+            throw new AssertionError(exception);
+        }
     }
 }

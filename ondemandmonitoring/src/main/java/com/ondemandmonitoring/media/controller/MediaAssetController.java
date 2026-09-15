@@ -4,6 +4,7 @@ import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.media.dto.response.MediaAssetResponse;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.service.IMediaAssetService;
+import com.ondemandmonitoring.media.service.LegacyMediaUploadPolicy;
 import com.ondemandmonitoring.media.mapper.MediaAssetMapper;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -30,12 +32,15 @@ public class MediaAssetController {
 
     IMediaAssetService mediaAssetService;
     MediaAssetMapper mediaAssetMapper;
+    LegacyMediaUploadPolicy legacyMediaUploadPolicy;
 
     @Operation(summary = "Upload image for device", description = "Uploads a photo captured by a drone to storage")
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<MediaAssetResponse>> upload(
             @PathVariable String deviceCode,
             @RequestPart("file") MultipartFile file) {
+        legacyMediaUploadPolicy.requireEnabled();
         MediaAsset image = mediaAssetService.upload(deviceCode, file);
 
         return ResponseEntity

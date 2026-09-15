@@ -4,14 +4,14 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.ondemandmonitoring.media.event.StorageObjectCreatedEvent;
-import com.ondemandmonitoring.media.service.MediaUploadService;
+import com.ondemandmonitoring.media.service.IMediaUploadService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import tools.jackson.databind.ObjectMapper;
 
 class S3StorageEventMessageProcessorTest {
 
-    private final MediaUploadService service = org.mockito.Mockito.mock(MediaUploadService.class);
+    private final IMediaUploadService service = org.mockito.Mockito.mock(IMediaUploadService.class);
     private final S3StorageEventMessageProcessor processor =
             new S3StorageEventMessageProcessor(new ObjectMapper(), service);
 

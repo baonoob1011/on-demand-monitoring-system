@@ -4,7 +4,7 @@ import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.media.dto.MediaUploadResponse;
 import com.ondemandmonitoring.media.dto.PrepareMediaUploadRequest;
 import com.ondemandmonitoring.media.dto.ReportUploadFailureRequest;
-import com.ondemandmonitoring.media.service.MediaUploadService;
+import com.ondemandmonitoring.media.service.IMediaUploadService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
 public class MediaUploadController {
 
-    private final MediaUploadService mediaUploadService;
+    private final IMediaUploadService mediaUploadService;
 
     @PostMapping("/missions/{missionId}/media-uploads")
     public ResponseEntity<ApiResponse<MediaUploadResponse>> prepare(
@@ -63,7 +63,7 @@ public class MediaUploadController {
             @PathVariable String mediaId,
             @PathVariable String attemptId) {
         mediaUploadService.markUploaded(mediaId, attemptId);
-        return ResponseEntity.ok(ApiResponse.ok("Upload completed; storage validation is pending", null));
+        return ResponseEntity.ok(ApiResponse.ok("Upload acknowledgement recorded", null));
     }
 
     @GetMapping("/media/{mediaId}/upload-status")

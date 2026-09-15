@@ -5,6 +5,7 @@ import com.ondemandmonitoring.media.dto.response.MediaAssetResponse;
 import com.ondemandmonitoring.media.dto.response.MediaResponse;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.service.IMediaAssetService;
+import com.ondemandmonitoring.media.service.LegacyMediaUploadPolicy;
 import com.ondemandmonitoring.media.service.IMediaAssetService.MediaContent;
 import com.ondemandmonitoring.media.mapper.MediaAssetMapper;
 import java.time.Instant;
@@ -25,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -37,14 +39,17 @@ public class MediaController {
 
     IMediaAssetService mediaAssetService;
     MediaAssetMapper mediaAssetMapper;
+    LegacyMediaUploadPolicy legacyMediaUploadPolicy;
 
     @Operation(summary = "Upload image for mission", description = "Uploads a photo captured during a specific mission to S3 storage")
     @PostMapping(path = "/api/missions/{missionId}/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<MediaAssetResponse>> uploadMissionImage(
             @PathVariable String missionId,
             @RequestParam("droneId") String droneId,
             @RequestParam("capturedAt") Instant capturedAt,
             @RequestPart("image") MultipartFile image) {
+        legacyMediaUploadPolicy.requireEnabled();
         MediaAsset uploaded = mediaAssetService.upload(missionId, droneId, capturedAt, image);
 
         return ResponseEntity

@@ -66,6 +66,7 @@ auth:
 
 app:
   media:
+    legacy-multipart-upload-enabled: ${MEDIA_LEGACY_MULTIPART_UPLOAD_ENABLED:false}
     max-image-bytes: ${MEDIA_MAX_IMAGE_BYTES:26214400}
     max-video-bytes: ${MEDIA_MAX_VIDEO_BYTES:1073741824}
     storage-event-secret: ${MEDIA_STORAGE_EVENT_SECRET:}

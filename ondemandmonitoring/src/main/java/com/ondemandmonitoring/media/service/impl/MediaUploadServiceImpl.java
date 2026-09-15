@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.media.service;
+package com.ondemandmonitoring.media.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
@@ -21,6 +21,7 @@ import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.repository.MediaNotificationOutboxRepository;
 import com.ondemandmonitoring.media.repository.MediaUploadAttemptRepository;
 import com.ondemandmonitoring.media.repository.StorageEventInboxRepository;
+import com.ondemandmonitoring.media.service.IMediaUploadService;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
@@ -52,7 +53,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class MediaUploadService {
+public class MediaUploadServiceImpl implements IMediaUploadService {
 
     private static final Set<MissionStatus> UPLOADABLE_MISSION_STATUSES = Set.of(
             MissionStatus.IN_FLIGHT, MissionStatus.IN_PROGRESS, MissionStatus.RETURNING);
@@ -77,6 +78,7 @@ public class MediaUploadService {
     private long maxVideoBytes;
 
     @Transactional
+    @Override
     public MediaUploadResponse prepare(String missionId, PrepareMediaUploadRequest request) {
         Mission mission = requireUploadableMission(missionId);
         authorize(mission);
@@ -90,6 +92,7 @@ public class MediaUploadService {
     }
 
     @Transactional
+    @Override
     public MediaUploadResponse retry(String mediaId) {
         MediaAsset media = requireMedia(mediaId);
         authorize(requireUploadableMission(media.getMissionId()));
@@ -103,6 +106,7 @@ public class MediaUploadService {
     }
 
     @Transactional
+    @Override
     public MediaUploadResponse prepareManualUpload(String mediaId) {
         MediaAsset media = requireMedia(mediaId);
         authorize(requireUploadableMission(media.getMissionId()));
@@ -114,6 +118,7 @@ public class MediaUploadService {
     }
 
     @Transactional
+    @Override
     public MediaUploadResponse reportFailure(
             String mediaId, String attemptId, ReportUploadFailureRequest request) {
         MediaAsset media = requireMedia(mediaId);
@@ -138,10 +143,16 @@ public class MediaUploadService {
     }
 
     @Transactional
+    @Override
     public void markUploaded(String mediaId, String attemptId) {
         MediaAsset media = requireMedia(mediaId);
         authorize(findMission(media.getMissionId()));
         MediaUploadAttempt attempt = requireAttempt(mediaId, attemptId);
+        if (media.getMediaStatus() == MediaStatus.AVAILABLE
+                || attempt.getStatus() == UploadAttemptStatus.SUCCEEDED
+                || attempt.getStatus() == UploadAttemptStatus.UPLOADED) {
+            return;
+        }
         if (attempt.getStatus() != UploadAttemptStatus.PENDING) {
             throw new ApiException(ErrorCode.MEDIA_UPLOAD_ATTEMPT_INVALID,
                     "Only a pending upload attempt can be completed");
@@ -153,6 +164,7 @@ public class MediaUploadService {
     }
 
     @Transactional(readOnly = true)
+    @Override
     public MediaUploadResponse getStatus(String mediaId) {
         MediaAsset media = requireMedia(mediaId);
         authorize(findMission(media.getMissionId()));
@@ -164,12 +176,7 @@ public class MediaUploadService {
     }
 
     @Transactional
-    public void processObjectCreated(String bucket, String key, Long eventSize) {
-        processObjectCreated(new StorageObjectCreatedEvent(
-                bucket, key, eventSize, null, null, null, "ObjectCreated:Manual", null));
-    }
-
-    @Transactional
+    @Override
     public void processObjectCreated(StorageObjectCreatedEvent event) {
         String eventKey = storageEventKey(event);
         if (storageEventInboxRepository.existsByEventKey(eventKey)) {

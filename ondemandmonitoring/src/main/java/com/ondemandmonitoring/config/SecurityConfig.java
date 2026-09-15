@@ -58,8 +58,6 @@ public class SecurityConfig {
             "/api/zones/**",
             "/api/simulation-map",
             "/api/simulation-map/**",
-            "/api/missions/*/images",
-            "/api/missions/*/media",
             "/api/internal/v1/storage-events/s3-object-created",
             "/swagger-ui/**",
             "/swagger-ui.html"

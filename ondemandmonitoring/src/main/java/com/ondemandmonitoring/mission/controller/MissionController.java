@@ -5,6 +5,7 @@ import com.ondemandmonitoring.device.dto.response.PreflightCheckResponse;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.dto.response.MediaAssetResponse;
 import com.ondemandmonitoring.media.mapper.MediaAssetMapper;
+import com.ondemandmonitoring.media.service.LegacyMediaUploadPolicy;
 import com.ondemandmonitoring.mission.dto.request.DroneReplacementRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionFailRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionRejectRequest;
@@ -21,6 +22,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
 
@@ -40,6 +42,7 @@ public class MissionController {
     IMissionService missionService;
     IMissionMediaUploadService missionMediaUploadService;
     MediaAssetMapper mediaAssetMapper;
+    LegacyMediaUploadPolicy legacyMediaUploadPolicy;
 
     // ------------------------------------------------------------------
     // Query
@@ -198,6 +201,7 @@ public class MissionController {
      * POST /api/missions/{id}/media (Multipart)
      */
     @PostMapping(value = "/{id}/media", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<MediaAssetResponse>> uploadMedia(
             @PathVariable String id,
             @RequestParam(required = false) String deviceCode,
@@ -205,6 +209,7 @@ public class MissionController {
             @RequestParam(required = false) String capturedAt,
             @RequestParam(required = false) String mediaType,
             @RequestParam("file") MultipartFile file) {
+        legacyMediaUploadPolicy.requireEnabled();
         String resolvedDeviceCode = deviceCode != null && !deviceCode.isBlank() ? deviceCode : droneId;
         MediaAsset saved = missionMediaUploadService.uploadWithRetry(id, resolvedDeviceCode, file, mediaType);
         return ResponseEntity.status(HttpStatus.CREATED)

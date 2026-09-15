@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.media.messaging;
 
 import com.ondemandmonitoring.media.event.StorageObjectCreatedEvent;
-import com.ondemandmonitoring.media.service.MediaUploadService;
+import com.ondemandmonitoring.media.service.IMediaUploadService;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -17,7 +17,7 @@ import tools.jackson.databind.ObjectMapper;
 public class S3StorageEventMessageProcessor {
 
     private final ObjectMapper objectMapper;
-    private final MediaUploadService mediaUploadService;
+    private final IMediaUploadService mediaUploadService;
 
     public void process(String messageBody) {
         JsonNode root = objectMapper.readTree(messageBody);

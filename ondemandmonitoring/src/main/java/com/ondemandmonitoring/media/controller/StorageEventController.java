@@ -5,7 +5,7 @@ import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.media.dto.S3ObjectCreatedRequest;
 import com.ondemandmonitoring.media.event.StorageObjectCreatedEvent;
-import com.ondemandmonitoring.media.service.MediaUploadService;
+import com.ondemandmonitoring.media.service.IMediaUploadService;
 import jakarta.validation.Valid;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class StorageEventController {
 
-    private final MediaUploadService mediaUploadService;
+    private final IMediaUploadService mediaUploadService;
 
     @Value("${app.media.storage-event-secret:}")
     private String configuredSecret;
