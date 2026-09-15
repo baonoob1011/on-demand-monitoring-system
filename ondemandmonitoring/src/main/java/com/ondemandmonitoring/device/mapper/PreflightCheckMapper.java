@@ -10,6 +10,7 @@ import org.mapstruct.Mapping;
 public interface PreflightCheckMapper {
 
     @Mapping(source = "device.deviceCode", target = "deviceCode")
+    @Mapping(target = "flightToken", ignore = true)
     PreflightCheckResponse toResponse(PreflightCheck preflightCheck);
 
     @Mapping(source = "preflightCheck.device.deviceCode", target = "deviceCode")

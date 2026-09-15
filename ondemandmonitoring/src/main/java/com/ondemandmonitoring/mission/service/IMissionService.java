@@ -3,11 +3,29 @@ package com.ondemandmonitoring.mission.service;
 import com.ondemandmonitoring.device.dto.response.PreflightCheckResponse;
 import com.ondemandmonitoring.device.enums.DeviceStatus;
 import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 
 /**
  * Application service interface for mission lifecycle and assignment orchestration (Flow 3).
+ * Returns DTOs (MissionResponse) to decouple domain entities from presentation/controller layers.
  */
 public interface IMissionService {
+
+    /**
+     * Finds mission by ID and returns its DTO response.
+     *
+     * @param missionId Target mission ID
+     * @return MissionResponse DTO
+     */
+    MissionResponse getByIdResponse(String missionId);
+
+    /**
+     * Finds mission entity by ID (internal service usage).
+     *
+     * @param missionId Target mission ID
+     * @return Mission entity
+     */
+    Mission findById(String missionId);
 
     /**
      * Operator confirms they accept the assigned mission.
@@ -15,9 +33,9 @@ public interface IMissionService {
      *
      * @param missionId  Target mission ID
      * @param operatorId Operator user ID
-     * @return Updated Mission entity
+     * @return MissionResponse DTO
      */
-    Mission acceptMission(String missionId, String operatorId);
+    MissionResponse acceptMission(String missionId, String operatorId);
 
     /**
      * Operator rejects the assigned mission with a mandatory reason.
@@ -26,18 +44,18 @@ public interface IMissionService {
      * @param missionId  Target mission ID
      * @param operatorId Operator user ID
      * @param reason     Mandatory rejection reason
-     * @return Updated Mission entity
+     * @return MissionResponse DTO
      */
-    Mission rejectMission(String missionId, String operatorId, String reason);
+    MissionResponse rejectMission(String missionId, String operatorId, String reason);
 
     /**
      * Confirms telemetry link between GCS App and drone.
      * Transitions: SCHEDULED -> CONNECTED
      *
      * @param missionId Target mission ID
-     * @return Updated Mission entity
+     * @return MissionResponse DTO
      */
-    Mission connectGcs(String missionId);
+    MissionResponse connectGcs(String missionId);
 
     /**
      * Runs digital 6-point preflight checklist (Battery >= 80%, GPS >= 8 sats, Camera/Gimbal, Storage, Weather).
@@ -56,18 +74,18 @@ public interface IMissionService {
      *
      * @param missionId     Target mission ID
      * @param newDeviceCode Replacement drone device code
-     * @return Updated Mission entity
+     * @return MissionResponse DTO
      */
-    Mission replaceDrone(String missionId, String newDeviceCode);
+    MissionResponse replaceDrone(String missionId, String newDeviceCode);
 
     /**
      * Operator formally accepts control of the drone console before takeoff.
      *
      * @param missionId  Target mission ID
      * @param operatorId Operator user ID
-     * @return Updated Mission entity
+     * @return MissionResponse DTO
      */
-    Mission handoverControl(String missionId, String operatorId);
+    MissionResponse handoverControl(String missionId, String operatorId);
 
     /**
      * Validates Flight Access Token and starts mission execution (takeoff).
@@ -75,44 +93,44 @@ public interface IMissionService {
      *
      * @param missionId  Target mission ID
      * @param tokenValue Issued flight access token string
-     * @return Updated Mission entity
+     * @return MissionResponse DTO
      */
-    Mission startMission(String missionId, String tokenValue);
+    MissionResponse startMission(String missionId, String tokenValue);
 
     /**
      * Overload method for startMission without explicit token string.
      *
      * @param missionId Target mission ID
-     * @return Updated Mission entity
+     * @return MissionResponse DTO
      */
-    Mission startMission(String missionId);
+    MissionResponse startMission(String missionId);
 
     /**
      * Drone finishes data capture and heads back to base.
      * Transitions: IN_FLIGHT -> RETURNING
      *
      * @param missionId Target mission ID
-     * @return Updated Mission entity
+     * @return MissionResponse DTO
      */
-    Mission markReturning(String missionId);
+    MissionResponse markReturning(String missionId);
 
     /**
      * Drone lands, operator starts post-flight inspection.
      * Transitions: RETURNING -> POSTFLIGHT_CHECKING
      *
      * @param missionId Target mission ID
-     * @return Updated Mission entity
+     * @return MissionResponse DTO
      */
-    Mission startPostflightChecking(String missionId);
+    MissionResponse startPostflightChecking(String missionId);
 
     /**
      * Operator confirms mission completed successfully.
      * Transitions: POSTFLIGHT_CHECKING -> COMPLETED
      *
      * @param missionId Target mission ID
-     * @return Updated Mission entity
+     * @return MissionResponse DTO
      */
-    Mission completeMission(String missionId);
+    MissionResponse completeMission(String missionId);
 
     /**
      * Operator reports mission failure during flight.
@@ -120,9 +138,9 @@ public interface IMissionService {
      *
      * @param missionId Target mission ID
      * @param reason    Failure description
-     * @return Updated Mission entity
+     * @return MissionResponse DTO
      */
-    Mission failMission(String missionId, String reason);
+    MissionResponse failMission(String missionId, String reason);
 
     /**
      * Updates physical drone health status after landing.
@@ -130,15 +148,7 @@ public interface IMissionService {
      * @param missionId       Target mission ID
      * @param newDeviceStatus New device status (AVAILABLE, MAINTENANCE, etc.)
      * @param notes           Inspection notes
-     * @return Updated Mission entity
+     * @return MissionResponse DTO
      */
-    Mission updatePostFlightStatus(String missionId, DeviceStatus newDeviceStatus, String notes);
-
-    /**
-     * Finds mission by ID or throws exception.
-     *
-     * @param missionId Target mission ID
-     * @return Mission entity
-     */
-    Mission findById(String missionId);
+    MissionResponse updatePostFlightStatus(String missionId, DeviceStatus newDeviceStatus, String notes);
 }

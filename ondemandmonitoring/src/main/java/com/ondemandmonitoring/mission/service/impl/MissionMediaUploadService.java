@@ -2,8 +2,8 @@ package com.ondemandmonitoring.mission.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.device.domain.DeviceImage;
-import com.ondemandmonitoring.device.service.DeviceImageService;
+import com.ondemandmonitoring.media.domain.MediaAsset;
+import com.ondemandmonitoring.media.service.IMediaAssetService;
 import com.ondemandmonitoring.mission.service.IMissionMediaUploadService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -26,16 +26,21 @@ public class MissionMediaUploadService implements IMissionMediaUploadService {
     static final int MAX_ATTEMPTS = 3;
     static final long RETRY_DELAY_MS = 2_000L;
 
-    DeviceImageService deviceImageService;
+    IMediaAssetService mediaAssetService;
 
     @Override
-    public DeviceImage uploadWithRetry(String missionId, String deviceCode, MultipartFile file) {
+    public MediaAsset uploadWithRetry(String missionId, String deviceCode, MultipartFile file) {
+        return uploadWithRetry(missionId, deviceCode, file, null);
+    }
+
+    @Override
+    public MediaAsset uploadWithRetry(String missionId, String deviceCode, MultipartFile file, String mediaType) {
         Exception lastException = null;
 
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {
                 log.info("Mission {} – media upload attempt {}/{}", missionId, attempt, MAX_ATTEMPTS);
-                DeviceImage image = deviceImageService.upload(missionId, deviceCode, Instant.now(), file);
+                MediaAsset image = mediaAssetService.upload(missionId, deviceCode, Instant.now(), file, mediaType);
                 log.info("Mission {} – media uploaded successfully on attempt {}", missionId, attempt);
                 return image;
             } catch (Exception ex) {

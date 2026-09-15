@@ -1,0 +1,7 @@
+mavsdk
+httpx
+python-dotenv
+watchdog
+Pillow
+numpy
+opencv-python

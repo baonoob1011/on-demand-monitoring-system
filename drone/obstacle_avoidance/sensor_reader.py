@@ -7,11 +7,12 @@ import os
 # CONFIG
 # ============================================================
 
-MAX_RANGE_M = float(os.getenv("LIDAR_MAX_RANGE_M", "80.0"))
+MAX_RANGE_M = float(os.getenv("LIDAR_MAX_RANGE_M", "60.0"))
+MIN_VALID_DISTANCE_M = float(os.getenv("LIDAR_MIN_VALID_DISTANCE_M", "1.0"))
 
-WARNING_DISTANCE_M = float(os.getenv("LIDAR_WARNING_DISTANCE_M", "45.0"))
-OBSTACLE_DISTANCE_M = float(os.getenv("LIDAR_OBSTACLE_DISTANCE_M", "30.0"))
-EMERGENCY_DISTANCE_M = float(os.getenv("LIDAR_EMERGENCY_DISTANCE_M", "15.0"))
+WARNING_DISTANCE_M = float(os.getenv("LIDAR_WARNING_DISTANCE_M", "25.0"))
+OBSTACLE_DISTANCE_M = float(os.getenv("LIDAR_OBSTACLE_DISTANCE_M", "15.0"))
+EMERGENCY_DISTANCE_M = float(os.getenv("LIDAR_EMERGENCY_DISTANCE_M", "7.0"))
 
 
 # ============================================================
@@ -62,7 +63,7 @@ def sanitize(value: float) -> float:
     if math.isinf(value) or math.isnan(value):
         return MAX_RANGE_M
 
-    if value < 0:
+    if value < MIN_VALID_DISTANCE_M:
         return MAX_RANGE_M
 
     return min(value, MAX_RANGE_M)

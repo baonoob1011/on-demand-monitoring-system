@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simulation Geometry Viewer</title>
+  <link rel="stylesheet" href="./viewer.css">
+</head>
+<body>
+  <main class="viewer-shell">
+    <header class="topbar">
+      <div>
+        <h1>Simulation Geometry Viewer</h1>
+        <p>PX4/Gazebo local X/Y zones over the current simulation map</p>
+      </div>
+      <div class="status" id="status">Loading...</div>
+    </header>
+
+    <section class="viewer-layout">
+      <div class="map-card">
+        <div class="map-controls" aria-label="Map controls">
+          <button id="zoomIn" title="Zoom in">+</button>
+          <button id="home" title="Reset view">⌂</button>
+          <button id="zoomOut" title="Zoom out">−</button>
+        </div>
+        <label class="debug-toggle">
+          <input id="debugToggle" type="checkbox">
+          Debug
+        </label>
+        <div id="toast" class="toast" role="status" aria-live="polite"></div>
+        <div id="map" class="map-viewport">
+          <div id="mapContent" class="map-content">
+            <img id="basemap" alt="Top-down simulation map">
+            <svg id="overlay" aria-label="Simulation zones"></svg>
+          </div>
+        </div>
+        <div id="mouseReadout" class="mouse-readout">X = -- m | Y = -- m</div>
+      </div>
+
+      <aside class="side-panel">
+        <section>
+          <h2>Zones</h2>
+          <div id="zoneList" class="zone-list"></div>
+        </section>
+        <section>
+          <h2>Selected Zone</h2>
+          <div id="zoneDetails" class="details empty">Click a zone polygon.</div>
+          <div class="editor-actions">
+            <label class="edit-toggle">
+              <input id="editToggle" type="checkbox">
+              Edit zones
+            </label>
+            <button id="saveZone" type="button" disabled>Save DB</button>
+            <button id="createZone" type="button">Create</button>
+            <button id="deleteZone" type="button" disabled>Delete</button>
+            <button id="reloadZones" type="button">Reload DB</button>
+          </div>
+          <div id="saveStatus" class="save-status">Edit off.</div>
+        </section>
+        <section>
+          <h2>Layers</h2>
+          <div class="legend">
+            <span class="legend-chip zone"></span>Database zones
+            <span class="legend-chip feature"></span>Map features
+          </div>
+        </section>
+        <section>
+          <h2>Coordinate Debug</h2>
+          <pre id="metadataBox">Loading metadata...</pre>
+        </section>
+      </aside>
+    </section>
+  </main>
+
+  <script src="./viewer.js"></script>
+</body>
+</html>
