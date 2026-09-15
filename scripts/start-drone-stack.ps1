@@ -10,6 +10,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function ConvertTo-WslPath([string]$WindowsPath) {
+    $fullPath = (Resolve-Path $WindowsPath).Path
+    if ($fullPath -notmatch "^([A-Za-z]):\\(.*)$") {
+        throw "Cannot convert path to WSL format: $fullPath"
+    }
+
+    $drive = $Matches[1].ToLowerInvariant()
+    $rest = $Matches[2] -replace "\\", "/"
+    return "/mnt/$drive/$rest"
+}
+
 $ubuntuDistro = "Ubuntu-24.04"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 
@@ -17,7 +28,7 @@ if (-not $SkipBootstrap) {
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "bootstrap-drone-stack.ps1") -UbuntuDistro $ubuntuDistro
 }
 
-$repoRootWsl = (& wsl.exe -d $ubuntuDistro -- wslpath -a "$repoRoot").Trim()
+$repoRootWsl = ConvertTo-WslPath $repoRoot
 $scriptRoot = "$repoRootWsl/scripts"
 $simArg = $SimWorld
 $webOnly = if ($ShowGazeboGui) { "0" } else { "1" }
