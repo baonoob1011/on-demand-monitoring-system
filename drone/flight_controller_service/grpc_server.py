@@ -59,8 +59,9 @@ class MediaGrpcService(media_pb2_grpc.MediaServiceServicer):
 
     async def ListMedia(self, request, context):
         await self._authorize(context)
+        media = await self._coordinator.refresh_media(request.mission_id)
         return media_pb2.ListMediaResponse(
-            media=[to_proto(item) for item in self._coordinator.list_media(request.mission_id)]
+            media=[to_proto(item) for item in media]
         )
 
     async def DiscardMedia(self, request, context):

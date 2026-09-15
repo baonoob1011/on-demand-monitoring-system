@@ -12,8 +12,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AwsS3Properties {
 
-    String accessKeyBao;
-    String secretKeyBao;
     String bucket;
     String prefix;
 }

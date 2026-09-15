@@ -4,6 +4,7 @@ import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.media.dto.S3ObjectCreatedRequest;
+import com.ondemandmonitoring.media.event.StorageObjectCreatedEvent;
 import com.ondemandmonitoring.media.service.MediaUploadService;
 import jakarta.validation.Valid;
 import java.nio.charset.StandardCharsets;
@@ -36,7 +37,9 @@ public class StorageEventController {
                 suppliedSecret.getBytes(StandardCharsets.UTF_8))) {
             throw new ApiException(ErrorCode.MEDIA_STORAGE_EVENT_UNAUTHORIZED);
         }
-        mediaUploadService.processObjectCreated(request.bucket(), request.key(), request.size());
+        mediaUploadService.processObjectCreated(new StorageObjectCreatedEvent(
+                request.bucket(), request.key(), request.size(), request.eventId(), request.versionId(),
+                request.sequencer(), request.eventName(), null));
         return ResponseEntity.ok(ApiResponse.ok("Storage event processed", null));
     }
 }

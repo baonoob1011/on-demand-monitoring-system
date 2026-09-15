@@ -7,5 +7,7 @@ public record S3ObjectCreatedRequest(
         @NotBlank String key,
         Long size,
         String eventId,
-        String versionId) {
+        String versionId,
+        String sequencer,
+        String eventName) {
 }

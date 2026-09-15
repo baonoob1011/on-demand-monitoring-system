@@ -8,15 +8,19 @@ import com.ondemandmonitoring.device.repository.DeviceImageRepository;
 import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.media.domain.ManualUploadTask;
 import com.ondemandmonitoring.media.domain.ManualUploadTaskStatus;
+import com.ondemandmonitoring.media.domain.MediaNotificationOutbox;
 import com.ondemandmonitoring.media.domain.MediaStatus;
 import com.ondemandmonitoring.media.domain.MediaUploadAttempt;
+import com.ondemandmonitoring.media.domain.StorageEventInbox;
 import com.ondemandmonitoring.media.domain.UploadAttemptStatus;
 import com.ondemandmonitoring.media.dto.MediaUploadResponse;
 import com.ondemandmonitoring.media.dto.PrepareMediaUploadRequest;
 import com.ondemandmonitoring.media.dto.ReportUploadFailureRequest;
-import com.ondemandmonitoring.media.event.CustomerMediaAvailableEvent;
+import com.ondemandmonitoring.media.event.StorageObjectCreatedEvent;
 import com.ondemandmonitoring.media.repository.ManualUploadTaskRepository;
+import com.ondemandmonitoring.media.repository.MediaNotificationOutboxRepository;
 import com.ondemandmonitoring.media.repository.MediaUploadAttemptRepository;
+import com.ondemandmonitoring.media.repository.StorageEventInboxRepository;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
@@ -27,22 +31,23 @@ import com.ondemandmonitoring.user.service.IUserService;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -52,15 +57,17 @@ public class MediaUploadService {
     private static final Set<MissionStatus> UPLOADABLE_MISSION_STATUSES = Set.of(
             MissionStatus.IN_FLIGHT, MissionStatus.IN_PROGRESS, MissionStatus.RETURNING);
     private static final int MAX_UPLOAD_ATTEMPTS = 3;
+    private static final String CUSTOMER_MEDIA_AVAILABLE = "CUSTOMER_MEDIA_AVAILABLE";
 
     private final MissionRepository missionRepository;
     private final DeviceRepository deviceRepository;
     private final DeviceImageRepository mediaRepository;
     private final MediaUploadAttemptRepository attemptRepository;
     private final ManualUploadTaskRepository manualTaskRepository;
+    private final MediaNotificationOutboxRepository notificationOutboxRepository;
+    private final StorageEventInboxRepository storageEventInboxRepository;
     private final S3ObjectStorageService objectStorage;
     private final AwsS3Properties s3Properties;
-    private final ApplicationEventPublisher eventPublisher;
     private final IUserService userService;
 
     @Value("${app.media.max-image-bytes:26214400}")
@@ -158,16 +165,31 @@ public class MediaUploadService {
 
     @Transactional
     public void processObjectCreated(String bucket, String key, Long eventSize) {
-        DeviceImage media = mediaRepository.findByS3BucketAndS3Key(bucket, key)
+        processObjectCreated(new StorageObjectCreatedEvent(
+                bucket, key, eventSize, null, null, null, "ObjectCreated:Manual", null));
+    }
+
+    @Transactional
+    public void processObjectCreated(StorageObjectCreatedEvent event) {
+        String eventKey = storageEventKey(event);
+        if (storageEventInboxRepository.existsByEventKey(eventKey)) {
+            log.info("Duplicate media storage event ignored. eventKey={}, bucket={}, key={}",
+                    eventKey, event.bucket(), event.key());
+            return;
+        }
+
+        DeviceImage media = mediaRepository.findByS3BucketAndS3Key(event.bucket(), event.key())
                 .orElseThrow(() -> new ApiException(ErrorCode.MEDIA_NOT_FOUND,
                         "No pending media matches the storage object"));
         if (media.getMediaStatus() == null || media.getMediaStatus() == MediaStatus.AVAILABLE) {
+            ensureCustomerNotification(media);
+            recordProcessedStorageEvent(eventKey, event);
             return;
         }
 
         media.setMediaStatus(MediaStatus.VALIDATING);
         mediaRepository.save(media);
-        String failure = validateStoredObject(media, eventSize);
+        String failure = validateStoredObject(media, event.size());
         MediaUploadAttempt attempt = latestAttempt(media);
         if (failure == null) {
             Instant now = Instant.now();
@@ -184,7 +206,8 @@ public class MediaUploadService {
                 task.setResolvedAt(now);
                 manualTaskRepository.save(task);
             });
-            eventPublisher.publishEvent(new CustomerMediaAvailableEvent(media.getMissionId(), media.getId()));
+            ensureCustomerNotification(media);
+            recordProcessedStorageEvent(eventKey, event);
             log.info("Media became available. missionId={}, mediaId={}, attempts={}",
                     media.getMissionId(), media.getId(), attemptCount(media));
             return;
@@ -202,6 +225,7 @@ public class MediaUploadService {
             media.setMediaStatus(MediaStatus.RETRY_REQUIRED);
             mediaRepository.save(media);
         }
+        recordProcessedStorageEvent(eventKey, event);
     }
 
     private MediaUploadResponse createMediaAndAttempt(
@@ -238,6 +262,10 @@ public class MediaUploadService {
     }
 
     private MediaUploadResponse createAttempt(DeviceImage media, boolean manual) {
+        if (!Objects.equals(media.getS3Bucket(), objectStorage.bucket())) {
+            throw new ApiException(ErrorCode.MEDIA_UPLOAD_ATTEMPT_INVALID,
+                    "Media was prepared for another S3 bucket; capture it again before uploading");
+        }
         int number = attemptCount(media) + 1;
         PresignedUpload upload = objectStorage.createPresignedPutUrl(
                 media.getS3Key(), media.getContentType(), media.getFileSize(),
@@ -327,9 +355,59 @@ public class MediaUploadService {
                 return "SHA-256 checksum mismatch";
             }
             return null;
-        } catch (IOException | NoSuchAlgorithmException | RuntimeException exception) {
+        } catch (IOException | NoSuchAlgorithmException exception) {
             return "Cannot validate stored object: " + exception.getMessage();
         }
+    }
+
+    private void ensureCustomerNotification(DeviceImage media) {
+        if (notificationOutboxRepository.existsByMediaIdAndEventType(
+                media.getId(), CUSTOMER_MEDIA_AVAILABLE)) {
+            return;
+        }
+        MediaNotificationOutbox outbox = new MediaNotificationOutbox();
+        outbox.setMissionId(media.getMissionId());
+        outbox.setMediaId(media.getId());
+        outbox.setEventType(CUSTOMER_MEDIA_AVAILABLE);
+        outbox.setStatus("PENDING");
+        notificationOutboxRepository.save(outbox);
+        log.info("Customer media notification enqueued. missionId={}, mediaId={}",
+                media.getMissionId(), media.getId());
+    }
+
+    private void recordProcessedStorageEvent(String eventKey, StorageObjectCreatedEvent event) {
+        StorageEventInbox inbox = new StorageEventInbox();
+        inbox.setEventKey(eventKey);
+        inbox.setBucket(event.bucket());
+        inbox.setObjectKey(event.key());
+        inbox.setEventName(event.eventName());
+        inbox.setSourceEventId(event.eventId());
+        inbox.setObjectVersionId(event.versionId());
+        inbox.setSequencer(event.sequencer());
+        inbox.setSourceEventTime(event.eventTime());
+        inbox.setProcessedAt(Instant.now());
+        storageEventInboxRepository.save(inbox);
+    }
+
+    private String storageEventKey(StorageObjectCreatedEvent event) {
+        String sourceIdentity = firstNonBlank(
+                event.eventId(), event.versionId(), event.sequencer(), event.eventName(), "object-created");
+        String material = event.bucket() + "\n" + event.key() + "\n" + sourceIdentity;
+        try {
+            return HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(material.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is not available", exception);
+        }
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        throw new IllegalArgumentException("Storage event identity is required");
     }
 
     private boolean validSignature(String contentType, byte[] bytes) {
