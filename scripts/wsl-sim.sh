@@ -2,8 +2,8 @@
 # wsl-sim.sh - PX4 launches Gazebo + drone (non-standalone)
 set -e
 
-FOREST3D_PATH="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/Forest3D"
-PROJECT_PATH="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system"
+PROJECT_PATH="${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+FOREST3D_PATH="${FOREST3D_PATH:-$PROJECT_PATH/Forest3D}"
 ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
 PX4_ROOT="$HOME/PX4-Autopilot"
 PX4_BUILD="$PX4_ROOT/build/px4_sitl_default"

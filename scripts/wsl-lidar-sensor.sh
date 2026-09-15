@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_PATH="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system"
+PROJECT_PATH="${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 SENSOR_DIR="$PROJECT_PATH/drone/obstacle_avoidance"
 ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
 LIDAR_TOPIC="${LIDAR_TOPIC:-/lidar}"

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
-PROJECT_PATH="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system"
-FOREST3D_PATH="$PROJECT_PATH/Forest3D"
-DRONE_PATH="$PROJECT_PATH/drone"
+PROJECT_PATH="${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+FOREST3D_PATH="${FOREST3D_PATH:-$PROJECT_PATH/Forest3D}"
+DRONE_PATH="${DRONE_PATH:-$PROJECT_PATH/drone}"
 ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
 
 if [ -f "$ENV_FILE" ]; then
@@ -41,7 +41,8 @@ echo
 
 echo "[CAMERA] Waiting for camera stream..."
 
-source ~/drone-env/bin/activate
+DRONE_ENV="${DRONE_ENV:-$HOME/drone-env}"
+source "$DRONE_ENV/bin/activate"
 
 for _ in $(seq 1 60); do
 
