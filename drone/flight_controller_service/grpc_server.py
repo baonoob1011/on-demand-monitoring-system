@@ -18,6 +18,7 @@ TERMINAL_STATES = {
     media_pb2.COMMAND_STATE_SUCCEEDED,
     media_pb2.COMMAND_STATE_FAILED,
 }
+PREVIEW_CHUNK_SIZE = 256 * 1024
 
 
 @dataclass
@@ -32,6 +33,14 @@ class MediaGrpcService(media_pb2_grpc.MediaServiceServicer):
         self._auth_token = auth_token
         self._operations: dict[str, CommandOperation] = {}
         self._lock = asyncio.Lock()
+
+    async def GetHealth(self, request, context):
+        await self._authorize(context)
+        return media_pb2.FlightControllerHealth(
+            ready=True,
+            recording=self._coordinator.is_recording(),
+            status="READY",
+        )
 
     async def CaptureImage(self, request, context):
         await self._authorize(context)
@@ -87,6 +96,36 @@ class MediaGrpcService(media_pb2_grpc.MediaServiceServicer):
         yield operation.update
         while operation.update.state not in TERMINAL_STATES:
             yield await operation.queue.get()
+
+    async def GetMediaPreview(self, request, context):
+        await self._authorize(context)
+        try:
+            media, path, total_size, selected_length = self._coordinator.preview_range(
+                request.local_media_id, request.offset, request.length
+            )
+        except KeyError:
+            await context.abort(grpc.StatusCode.NOT_FOUND, "Local media does not exist")
+        except FileNotFoundError:
+            await context.abort(grpc.StatusCode.NOT_FOUND, "Local media file no longer exists")
+        except (RuntimeError, ValueError) as exc:
+            await context.abort(grpc.StatusCode.FAILED_PRECONDITION, str(exc))
+
+        remaining = selected_length
+        position = request.offset
+        with path.open("rb") as stream:
+            stream.seek(position)
+            while remaining > 0:
+                chunk = stream.read(min(PREVIEW_CHUNK_SIZE, remaining))
+                if not chunk:
+                    break
+                yield media_pb2.MediaPreviewChunk(
+                    data=chunk,
+                    content_type=media.content_type,
+                    total_size=total_size,
+                    offset=position,
+                )
+                position += len(chunk)
+                remaining -= len(chunk)
 
     async def _execute(
         self, command_id: str, action: Callable[[], Awaitable[LocalMedia | None]]

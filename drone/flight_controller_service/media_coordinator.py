@@ -56,6 +56,30 @@ class MediaCoordinator:
     def list_media(self, mission_id: str = "") -> list[LocalMedia]:
         return self._repository.list(mission_id)
 
+    def is_recording(self) -> bool:
+        return self._video_recorder.is_recording()
+
+    def preview_range(
+        self, local_media_id: str, offset: int = 0, length: int = 0
+    ) -> tuple[LocalMedia, Path, int, int]:
+        media = self.get(local_media_id)
+        if media.status == LocalMediaStatus.DISCARDED.value:
+            raise RuntimeError("Discarded media cannot be previewed")
+
+        path = Path(media.local_path)
+        if not path.is_file():
+            raise FileNotFoundError("Local media file no longer exists")
+
+        total_size = path.stat().st_size
+        if offset < 0 or offset > total_size:
+            raise ValueError("Preview offset is outside the media file")
+        if length < 0:
+            raise ValueError("Preview length cannot be negative")
+
+        available = total_size - offset
+        selected_length = available if length == 0 else min(length, available)
+        return media, path, total_size, selected_length
+
     async def refresh_media(self, mission_id: str = "") -> list[LocalMedia]:
         media_items = self._repository.list(mission_id)
         for media in media_items:

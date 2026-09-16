@@ -49,6 +49,45 @@ class MediaCoordinatorTest(unittest.TestCase):
             self.assertEqual(LocalMediaStatus.DISCARDED.value, discarded.status)
             self.assertFalse(Path(discarded.local_path).exists())
 
+    def test_preview_range_is_resolved_by_media_id(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            coordinator = MediaCoordinator(
+                lambda: b"0123456789",
+                Mock(),
+                LocalMediaRepository(root / "state.json"),
+                Mock(),
+                root / "media",
+            )
+            media = asyncio.run(coordinator.capture_image("mission-1", "DRONE-01"))
+
+            resolved, path, total_size, selected_length = coordinator.preview_range(
+                media.local_media_id, offset=2, length=4
+            )
+
+            self.assertEqual(media.local_media_id, resolved.local_media_id)
+            self.assertEqual(10, total_size)
+            self.assertEqual(4, selected_length)
+            with path.open("rb") as stream:
+                stream.seek(2)
+                self.assertEqual(b"2345", stream.read(selected_length))
+
+    def test_discarded_media_cannot_be_previewed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            coordinator = MediaCoordinator(
+                lambda: b"image",
+                Mock(),
+                LocalMediaRepository(root / "state.json"),
+                Mock(),
+                root / "media",
+            )
+            media = asyncio.run(coordinator.capture_image("mission-1", "DRONE-01"))
+            coordinator.discard(media.local_media_id)
+
+            with self.assertRaisesRegex(RuntimeError, "cannot be previewed"):
+                coordinator.preview_range(media.local_media_id)
+
     def test_refresh_media_reconciles_available_status_and_clears_stale_error(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
