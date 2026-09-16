@@ -24,13 +24,43 @@ function ConvertTo-WslPath([string]$WindowsPath) {
 $ubuntuDistro = "Ubuntu-24.04"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 
+$compactModels = @(
+    "compact_terrain",
+    "compact_water",
+    "compact_roads",
+    "compact_bridges",
+    "compact_home",
+    "compact_highrise",
+    "compact_zones",
+    "compact_forest",
+    "compact_environment_props",
+    "compact_mountains",
+    "compact_airport"
+)
+
+$simArg = $SimWorld
+if ($simArg -eq "compact") {
+    $missingCompactModels = @(
+        $compactModels | Where-Object {
+            -not (Test-Path (Join-Path $repoRoot "Forest3D/models/$_/model.config"))
+        }
+    )
+    if ($missingCompactModels.Count -gt 0) {
+        Write-Warning (
+            "Compact Gazebo assets are not available in this checkout. " +
+            "Falling back to the self-contained legacy world. Missing: " +
+            ($missingCompactModels -join ", ")
+        )
+        $simArg = "legacy"
+    }
+}
+
 if (-not $SkipBootstrap) {
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "bootstrap-drone-stack.ps1") -UbuntuDistro $ubuntuDistro
 }
 
 $repoRootWsl = ConvertTo-WslPath $repoRoot
 $scriptRoot = "$repoRootWsl/scripts"
-$simArg = $SimWorld
 $webOnly = if ($ShowGazeboGui) { "0" } else { "1" }
 $simCommand = "FOREST3D_WEB_ONLY=${webOnly} SIM_WORLD=${simArg} exec ${scriptRoot}/wsl-sim-pane.sh ${simArg}"
 
