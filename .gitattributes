@@ -1,1 +1,2 @@
 *.sh text eol=lf
+scripts/wsl-bin/* text eol=lf
