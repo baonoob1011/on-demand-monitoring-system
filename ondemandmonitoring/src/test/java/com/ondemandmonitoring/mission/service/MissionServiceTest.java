@@ -33,6 +33,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.ondemandmonitoring.device.repository.MaintenanceTicketRepository;
+import com.ondemandmonitoring.mission.repository.*;
+
 class MissionServiceTest {
 
     MissionRepository missionRepository;
@@ -42,17 +45,31 @@ class MissionServiceTest {
     MissionMapper missionMapper;
     FlightTokenMapper flightTokenMapper;
     PreflightCheckMapper preflightCheckMapper;
+
+    MissionDroneAssignmentRepository missionDroneAssignmentRepository;
+    MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
+    GcsSessionRepository gcsSessionRepository;
+    ControlHandoverRepository controlHandoverRepository;
+    PostflightCheckRepository postflightCheckRepository;
+    MaintenanceTicketRepository maintenanceTicketRepository;
+
     MissionService missionService;
 
     @BeforeEach
     void setUp() {
-        missionRepository     = mock(MissionRepository.class);
-        deviceRepository      = mock(DeviceRepository.class);
-        flightTokenRepository = mock(FlightTokenRepository.class);
-        preflightCheckService = mock(PreflightCheckService.class);
-        missionMapper         = mock(MissionMapper.class);
-        flightTokenMapper     = mock(FlightTokenMapper.class);
-        preflightCheckMapper  = mock(PreflightCheckMapper.class);
+        missionRepository                     = mock(MissionRepository.class);
+        deviceRepository                      = mock(DeviceRepository.class);
+        flightTokenRepository                 = mock(FlightTokenRepository.class);
+        preflightCheckService                 = mock(PreflightCheckService.class);
+        missionMapper                         = mock(MissionMapper.class);
+        flightTokenMapper                     = mock(FlightTokenMapper.class);
+        preflightCheckMapper                  = mock(PreflightCheckMapper.class);
+        missionDroneAssignmentRepository     = mock(MissionDroneAssignmentRepository.class);
+        missionOperatorAssignmentRepository  = mock(MissionOperatorAssignmentRepository.class);
+        gcsSessionRepository                  = mock(GcsSessionRepository.class);
+        controlHandoverRepository             = mock(ControlHandoverRepository.class);
+        postflightCheckRepository             = mock(PostflightCheckRepository.class);
+        maintenanceTicketRepository          = mock(MaintenanceTicketRepository.class);
 
         missionService = new MissionService(
                 missionRepository,
@@ -61,7 +78,13 @@ class MissionServiceTest {
                 preflightCheckService,
                 missionMapper,
                 flightTokenMapper,
-                preflightCheckMapper
+                preflightCheckMapper,
+                missionDroneAssignmentRepository,
+                missionOperatorAssignmentRepository,
+                gcsSessionRepository,
+                controlHandoverRepository,
+                postflightCheckRepository,
+                maintenanceTicketRepository
         );
 
         when(missionMapper.toResponse(any())).thenAnswer(inv -> {

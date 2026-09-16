@@ -34,6 +34,11 @@ import java.util.UUID;
  * Implementation of {@link IMissionService} for mission lifecycle management.
  * Enterprise pattern: Maps entities to DTOs within @Transactional scope to guarantee safety against LazyInitializationException.
  */
+import com.ondemandmonitoring.device.domain.MaintenanceTicket;
+import com.ondemandmonitoring.device.repository.MaintenanceTicketRepository;
+import com.ondemandmonitoring.mission.domain.*;
+import com.ondemandmonitoring.mission.repository.*;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -49,6 +54,14 @@ public class MissionService implements IMissionService {
     MissionMapper missionMapper;
     FlightTokenMapper flightTokenMapper;
     PreflightCheckMapper preflightCheckMapper;
+
+    // Supporting audit & work order repositories
+    MissionDroneAssignmentRepository missionDroneAssignmentRepository;
+    MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
+    GcsSessionRepository gcsSessionRepository;
+    ControlHandoverRepository controlHandoverRepository;
+    PostflightCheckRepository postflightCheckRepository;
+    MaintenanceTicketRepository maintenanceTicketRepository;
 
     // =========================================================================
     // Query Methods
@@ -78,6 +91,16 @@ public class MissionService implements IMissionService {
 
         mission.setOperatorId(operatorId);
         mission.setStatus(MissionStatus.SCHEDULED);
+
+        // Record MissionOperatorAssignment audit
+        MissionOperatorAssignment assignment = new MissionOperatorAssignment();
+        assignment.setMission(mission);
+        assignment.setOperatorId(operatorId);
+        assignment.setStatus("ACCEPTED");
+        assignment.setIsCurrent(true);
+        assignment.setRespondedAt(Instant.now());
+        missionOperatorAssignmentRepository.save(assignment);
+
         log.info("Mission {} accepted by operator {}", missionId, operatorId);
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
@@ -92,6 +115,18 @@ public class MissionService implements IMissionService {
         mission.setOperatorId(operatorId);
         mission.setRejectionReason(reason);
         mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
+
+        // Record MissionOperatorAssignment rejection audit
+        MissionOperatorAssignment assignment = new MissionOperatorAssignment();
+        assignment.setMission(mission);
+        assignment.setOperatorId(operatorId);
+        assignment.setStatus("REJECTED");
+        assignment.setRejectionReason(reason);
+        assignment.setIsCurrent(false);
+        assignment.setRespondedAt(Instant.now());
+        assignment.setReleasedAt(Instant.now());
+        missionOperatorAssignmentRepository.save(assignment);
+
         log.warn("Mission {} rejected by operator {} – reason: {}", missionId, operatorId, reason);
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
@@ -112,8 +147,32 @@ public class MissionService implements IMissionService {
         mission.setStatus(MissionStatus.CONNECTED);
 
         if (mission.getDevice() != null) {
-            mission.getDevice().setStatus(DeviceStatus.PREFLIGHT);
-            deviceRepository.save(mission.getDevice());
+            Device drone = mission.getDevice();
+            drone.setStatus(DeviceStatus.PREFLIGHT);
+            deviceRepository.save(drone);
+
+            // Record GcsSession flight connection log
+            GcsSession gcsSession = new GcsSession();
+            gcsSession.setMission(mission);
+            gcsSession.setDrone(drone);
+            gcsSession.setOperatorId(mission.getOperatorId());
+            gcsSession.setConnectionStatus("CONNECTED");
+            gcsSession.setTelemetryActive(true);
+            gcsSession.setConnectedAt(Instant.now());
+            gcsSessionRepository.save(gcsSession);
+
+            // Ensure MissionDroneAssignment record exists
+            missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+                    .orElseGet(() -> {
+                        MissionDroneAssignment mda = new MissionDroneAssignment();
+                        mda.setMission(mission);
+                        mda.setDrone(drone);
+                        mda.setAssignmentSource("MANUAL_MANAGER");
+                        mda.setStatus("ACTIVE");
+                        mda.setIsCurrent(true);
+                        mda.setAssignedAt(Instant.now());
+                        return missionDroneAssignmentRepository.save(mda);
+                    });
         }
 
         log.info("Mission {} – powerOnAndPairWithGCSApp confirmed, status CONNECTED", missionId);
@@ -167,6 +226,18 @@ public class MissionService implements IMissionService {
             drone.setStatus(DeviceStatus.MAINTENANCE);
             log.error("SYSTEM OPERATOR ALERT: Drone {} failed pre-flight check due to HARDWARE fault ({}). Status set to MAINTENANCE.",
                     drone.getDeviceCode(), check.getFailureReason());
+
+            // Auto-create MaintenanceTicket for System Operator
+            MaintenanceTicket ticket = new MaintenanceTicket();
+            ticket.setTicketCode("TKT-PREFLIGHT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+            ticket.setDrone(drone);
+            ticket.setReportedBy("AUTOMATED_PREFLIGHT_GATE");
+            ticket.setIssueType("PREFLIGHT_HARDWARE_FAIL");
+            ticket.setSeverity("HIGH");
+            ticket.setDescription("Pre-flight failure on drone " + drone.getDeviceCode() + ": " + check.getFailureReason());
+            ticket.setStatus("OPEN");
+            ticket.setOpenedAt(Instant.now());
+            maintenanceTicketRepository.save(ticket);
         } else if ("BATTERY".equalsIgnoreCase(faultType)) {
             drone.setStatus(DeviceStatus.IDLE_CHARGING);
             log.warn("CHARGING STATION ALERT: Drone {} failed pre-flight check due to BATTERY low ({}%). Status set to IDLE_CHARGING.",
@@ -215,10 +286,30 @@ public class MissionService implements IMissionService {
         if (oldDrone != null) {
             oldDrone.setStatus(DeviceStatus.MAINTENANCE);
             deviceRepository.save(oldDrone);
+
+            // Release old MissionDroneAssignment
+            missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+                    .ifPresent(mda -> {
+                        mda.setIsCurrent(false);
+                        mda.setStatus("RELEASED");
+                        mda.setReleaseReason("PREFLIGHT_FAIL");
+                        mda.setReleasedAt(Instant.now());
+                        missionDroneAssignmentRepository.save(mda);
+                    });
         }
 
         newDrone.setStatus(DeviceStatus.PREFLIGHT);
         deviceRepository.save(newDrone);
+
+        // Record new MissionDroneAssignment
+        MissionDroneAssignment newMda = new MissionDroneAssignment();
+        newMda.setMission(mission);
+        newMda.setDrone(newDrone);
+        newMda.setAssignmentSource("MANUAL_SWAP");
+        newMda.setStatus("ACTIVE");
+        newMda.setIsCurrent(true);
+        newMda.setAssignedAt(Instant.now());
+        missionDroneAssignmentRepository.save(newMda);
 
         mission.setDevice(newDrone);
         mission.setStatus(MissionStatus.CONNECTED);
@@ -233,6 +324,21 @@ public class MissionService implements IMissionService {
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.READY_TO_FLY);
         mission.setOperatorId(operatorId);
+
+        // Record ControlHandover audit log linked to current GcsSession
+        GcsSession activeGcsSession = gcsSessionRepository
+                .findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED")
+                .orElse(null);
+
+        ControlHandover handover = new ControlHandover();
+        handover.setGcsSession(activeGcsSession);
+        handover.setDrone(mission.getDevice());
+        handover.setOperatorId(operatorId);
+        handover.setStatus("CONFIRMED");
+        handover.setAcknowledgementText("Operator confirmed control handover and preflight checks before launch");
+        handover.setConfirmedAt(Instant.now());
+        controlHandoverRepository.save(handover);
+
         log.info("Mission {} – control handed over to operator {} at {}", missionId, operatorId, Instant.now());
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
@@ -356,6 +462,33 @@ public class MissionService implements IMissionService {
         }
         device.setStatus(newDeviceStatus);
         deviceRepository.save(device);
+
+        // Record PostflightCheck physical inspection
+        boolean overallOk = (newDeviceStatus != DeviceStatus.MAINTENANCE);
+        PostflightCheck postflightCheck = new PostflightCheck();
+        postflightCheck.setMission(mission);
+        postflightCheck.setDrone(device);
+        postflightCheck.setCheckedBy(mission.getOperatorId());
+        postflightCheck.setOverallOk(overallOk);
+        postflightCheck.setFaultType(overallOk ? null : "PHYSICAL_DAMAGE");
+        postflightCheck.setNotes(notes);
+        postflightCheck.setCheckedAt(Instant.now());
+        postflightCheckRepository.save(postflightCheck);
+
+        // Auto-create MaintenanceTicket if drone requires maintenance post-flight
+        if (newDeviceStatus == DeviceStatus.MAINTENANCE) {
+            MaintenanceTicket ticket = new MaintenanceTicket();
+            ticket.setTicketCode("TKT-POSTFLIGHT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+            ticket.setDrone(device);
+            ticket.setReportedBy(mission.getOperatorId());
+            ticket.setIssueType("POSTFLIGHT_DAMAGE");
+            ticket.setSeverity("HIGH");
+            ticket.setDescription("Post-flight physical inspection flagged maintenance needed for drone " + device.getDeviceCode() + ". Notes: " + notes);
+            ticket.setStatus("OPEN");
+            ticket.setOpenedAt(Instant.now());
+            maintenanceTicketRepository.save(ticket);
+            log.error("SYSTEM OPERATOR ALERT: Created MaintenanceTicket {} for drone {}", ticket.getTicketCode(), device.getDeviceCode());
+        }
 
         if (mission.getStatus() == MissionStatus.POSTFLIGHT_CHECKING) {
             mission.setStatus(MissionStatus.COMPLETED);
