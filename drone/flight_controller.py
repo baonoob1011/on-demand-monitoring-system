@@ -1818,7 +1818,11 @@ async def main() -> None:
         camera.capture_jpeg,
         video_recorder,
         media_repository,
-        MediaBackendClient(BACKEND_BASE_URL, BACKEND_ACCESS_TOKEN, VIDEO_UPLOAD_TIMEOUT_S),
+        MediaBackendClient(
+            backend_urls.candidates(),
+            BACKEND_ACCESS_TOKEN,
+            VIDEO_UPLOAD_TIMEOUT_S,
+        ),
         LOCAL_MEDIA_DIR,
     )
     media_grpc_server = await start_media_grpc_server(

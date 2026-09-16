@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 import asyncio
@@ -14,10 +15,24 @@ class BackendContractError(RuntimeError):
 
 
 class MediaBackendClient:
-    def __init__(self, base_url: str, bearer_token: str, timeout_seconds: float = 120.0) -> None:
-        self._base_url = base_url.rstrip("/")
+    def __init__(
+        self,
+        base_urls: str | Iterable[str],
+        bearer_token: str,
+        timeout_seconds: float = 120.0,
+    ) -> None:
+        candidates = [base_urls] if isinstance(base_urls, str) else list(base_urls)
+        self._base_urls = list(
+            dict.fromkeys(url.rstrip("/") for url in candidates if url.strip())
+        )
+        if not self._base_urls:
+            raise ValueError("At least one Backend base URL is required")
         self._bearer_token = bearer_token.strip()
         self._timeout = timeout_seconds
+        self._request_timeout = httpx.Timeout(
+            timeout_seconds,
+            connect=min(3.0, max(0.1, timeout_seconds)),
+        )
 
     def _headers(self, bearer_token: str = "") -> dict[str, str]:
         token = bearer_token.strip() or self._bearer_token
@@ -97,12 +112,52 @@ class MediaBackendClient:
     async def _request(
         self, method: str, path: str, bearer_token: str = "", **kwargs: Any
     ) -> dict[str, Any]:
+        response = None
+        last_connection_error: httpx.HTTPError | None = None
+        for base_url in tuple(self._base_urls):
+            try:
+                response = await self._send(
+                    base_url,
+                    method,
+                    path,
+                    bearer_token=bearer_token,
+                    **kwargs,
+                )
+                self._promote(base_url)
+                break
+            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                last_connection_error = exc
+
+        if response is None:
+            if last_connection_error is not None:
+                raise last_connection_error
+            raise RuntimeError("Backend request did not produce a response")
+
+        return self._parse_response(response)
+
+    async def _send(
+        self,
+        base_url: str,
+        method: str,
+        path: str,
+        bearer_token: str = "",
+        **kwargs: Any,
+    ) -> httpx.Response:
         async with httpx.AsyncClient(
-            base_url=self._base_url,
-            timeout=self._timeout,
+            base_url=base_url,
+            timeout=self._request_timeout,
             headers=self._headers(bearer_token),
         ) as client:
-            response = await client.request(method, path, **kwargs)
+            return await client.request(method, path, **kwargs)
+
+    def _promote(self, base_url: str) -> None:
+        if self._base_urls[0] == base_url:
+            return
+        self._base_urls.remove(base_url)
+        self._base_urls.insert(0, base_url)
+
+    @staticmethod
+    def _parse_response(response: httpx.Response) -> dict[str, Any]:
         try:
             body = response.json()
         except ValueError:

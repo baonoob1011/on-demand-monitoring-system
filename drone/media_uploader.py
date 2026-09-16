@@ -16,11 +16,9 @@ class BackendUrlResolver:
         candidates = [configured]
 
         if configured in {"http://localhost:8080", "http://127.0.0.1:8080"}:
-            candidates.append("http://host.docker.internal:8080")
-            candidates.append("http://172.20.176.1:8080")
             try:
                 output = subprocess.check_output(
-                    ["sh", "-lc", "awk '/^nameserver / {print $2; exit}' /etc/resolv.conf"],
+                    ["sh", "-lc", "ip route show default | awk '{print $3; exit}'"],
                     text=True,
                     timeout=1.0,
                 ).strip()
@@ -28,6 +26,7 @@ class BackendUrlResolver:
                     candidates.append(f"http://{output}:8080")
             except (OSError, subprocess.SubprocessError):
                 pass
+            candidates.append("http://host.docker.internal:8080")
 
         deduped = []
         for url in candidates:

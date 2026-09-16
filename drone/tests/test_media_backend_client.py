@@ -1,5 +1,7 @@
 import unittest
 
+import httpx
+
 from flight_controller_service.backend_client import BackendContractError, MediaBackendClient
 
 
@@ -45,6 +47,34 @@ class MediaBackendClientTest(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaises(BackendContractError):
             await client.mark_uploaded("media-1", "attempt-1")
+
+    async def test_request_fails_over_and_reuses_reachable_backend(self) -> None:
+        client = MediaBackendClient(
+            ["http://localhost:8080", "http://172.26.128.1:8080"],
+            "token",
+        )
+        requested_hosts = []
+
+        async def send(base_url, method, path, **_kwargs):
+            requested_hosts.append(base_url)
+            request = httpx.Request(method, f"{base_url}{path}")
+            if base_url == "http://localhost:8080":
+                raise httpx.ConnectError("Connection refused", request=request)
+            return httpx.Response(200, request=request, json={"data": {"ready": True}})
+
+        client._send = send
+
+        self.assertEqual({"ready": True}, await client._request("GET", "/health"))
+        self.assertEqual({"ready": True}, await client._request("GET", "/health"))
+
+        self.assertEqual(
+            [
+                "http://localhost:8080",
+                "http://172.26.128.1:8080",
+                "http://172.26.128.1:8080",
+            ],
+            requested_hosts,
+        )
 
 
 if __name__ == "__main__":
