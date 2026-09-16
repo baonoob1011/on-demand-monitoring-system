@@ -73,10 +73,10 @@ WINDOW_NAME = os.getenv("DOWNWARD_CAMERA_WINDOW_TITLE", "Downward Camera")
 STALE_AFTER_S = float(os.getenv("CAMERA_HUD_TELEMETRY_STALE_AFTER_S", "3.0"))
 CAMERA_TOGGLE_DEBOUNCE_S = float(os.getenv("CAMERA_TOGGLE_DEBOUNCE_S", "0.35"))
 CAMERA_VIEWER_MAX_FPS = float(os.getenv("CAMERA_VIEWER_MAX_FPS", "20"))
-CONTROL_MOVE_SPEED_M_S = float(os.getenv("CONTROL_MOVE_SPEED_M_S", "500.0"))
-CONTROL_VERTICAL_SPEED_M_S = float(os.getenv("CONTROL_VERTICAL_SPEED_M_S", "500.0"))
+CONTROL_MOVE_SPEED_M_S = float(os.getenv("CONTROL_MOVE_SPEED_M_S", "2.0"))
+CONTROL_VERTICAL_SPEED_M_S = float(os.getenv("CONTROL_VERTICAL_SPEED_M_S", "1.0"))
 PX4_SPEED_LIMIT_M_S = float(
-    os.getenv("PX4_SPEED_LIMIT_M_S", str(max(CONTROL_MOVE_SPEED_M_S, CONTROL_VERTICAL_SPEED_M_S)))
+    os.getenv("PX4_SPEED_LIMIT_M_S", "20.0")
 )
 CONTROL_SPEED_STATE_FILE = Path(
     os.getenv("CONTROL_SPEED_STATE_FILE", "/tmp/forest3d_control_speed_state.json")

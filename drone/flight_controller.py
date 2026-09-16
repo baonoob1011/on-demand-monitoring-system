@@ -148,24 +148,29 @@ OFFBOARD_SETPOINT_STATS_ENABLED = (
     in {"1", "true", "yes", "on"}
 )
 
-MOVE_SPEED_M_S = float(
-    os.getenv("CONTROL_MOVE_SPEED_M_S", "500.0")
-)
-VERTICAL_SPEED_M_S = float(
-    os.getenv("CONTROL_VERTICAL_SPEED_M_S", "500.0")
-)
+def bounded_positive_env(name: str, default: float, maximum: float) -> float:
+    raw_value = os.getenv(name, str(default))
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number, got {raw_value!r}") from exc
+
+    if not math.isfinite(value) or value <= 0 or value > maximum:
+        raise ValueError(f"{name} must be > 0 and <= {maximum}, got {raw_value!r}")
+    return value
+
+
+MOVE_SPEED_M_S = bounded_positive_env("CONTROL_MOVE_SPEED_M_S", 2.0, 20.0)
+VERTICAL_SPEED_M_S = bounded_positive_env("CONTROL_VERTICAL_SPEED_M_S", 1.0, 10.0)
 YAW_STEP_DEG = float(
     os.getenv("CONTROL_YAW_STEP_DEG", "30.0")
 )
 
-SPEED_ADJUST_STEP_M_S = float(
-    os.getenv("CONTROL_SPEED_ADJUST_STEP_M_S", "200.0")
+SPEED_ADJUST_STEP_M_S = bounded_positive_env(
+    "CONTROL_SPEED_ADJUST_STEP_M_S", 0.5, 5.0
 )
-PX4_SPEED_LIMIT_M_S = float(
-    os.getenv(
-        "PX4_SPEED_LIMIT_M_S",
-        str(max(MOVE_SPEED_M_S, VERTICAL_SPEED_M_S)),
-    )
+PX4_ACCEL_LIMIT_M_S2 = bounded_positive_env(
+    "PX4_ACCEL_LIMIT_M_S2", 5.0, 15.0
 )
 TAKEOFF_CONFIRM_TIMEOUT_S = float(os.getenv("TAKEOFF_CONFIRM_TIMEOUT_S", "30.0"))
 TAKEOFF_CONFIRM_ALTITUDE_M = float(os.getenv("TAKEOFF_CONFIRM_ALTITUDE_M", "1.0"))
@@ -564,15 +569,15 @@ async def configure_px4_speed_limits(
 ) -> None:
     horizontal = MOVE_SPEED_M_S if horizontal_speed_m_s is None else horizontal_speed_m_s
     vertical = VERTICAL_SPEED_M_S if vertical_speed_m_s is None else vertical_speed_m_s
-    limit = max(PX4_SPEED_LIMIT_M_S, horizontal, vertical)
+    acceleration_limit = PX4_ACCEL_LIMIT_M_S2
     params = {
         "MPC_XY_VEL_MAX": horizontal,
         "MPC_Z_VEL_MAX_UP": vertical,
         "MPC_Z_VEL_MAX_DN": vertical,
         "MPC_TKO_SPEED": vertical,
-        "MPC_ACC_HOR_MAX": limit,
-        "MPC_ACC_UP_MAX": limit,
-        "MPC_ACC_DOWN_MAX": limit,
+        "MPC_ACC_HOR_MAX": acceleration_limit,
+        "MPC_ACC_UP_MAX": acceleration_limit,
+        "MPC_ACC_DOWN_MAX": acceleration_limit,
     }
 
     applied = []
