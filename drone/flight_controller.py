@@ -48,6 +48,7 @@ from flight_controller_service.backend_client import MediaBackendClient
 from flight_controller_service.grpc_server import start_media_grpc_server
 from flight_controller_service.local_media import LocalMediaRepository, LocalMediaStatus
 from flight_controller_service.media_coordinator import MediaCoordinator
+from media_uploader import BackendUrlResolver
 
 ENV_FILE = PROJECT_ROOT / "ondemandmonitoring" / ".env"
 
@@ -1804,6 +1805,7 @@ async def main() -> None:
 
     connection_manager = MavsdkConnectionManager()
     drone = await connection_manager.connect()
+    backend_urls = BackendUrlResolver(BACKEND_BASE_URL)
     video_recorder = VideoRecorder(
         VIDEO_RECORDING_DIR,
         fps=VIDEO_RECORDING_FPS,
