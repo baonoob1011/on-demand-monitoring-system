@@ -18,8 +18,8 @@ public class MissionResponse {
     String missionCode;
     MissionStatus status;
     String operatorId;
-    String deviceId;
-    String deviceCode;
+    String droneId;
+    String droneCode;
     Double latitude;
     Double longitude;
     String address;

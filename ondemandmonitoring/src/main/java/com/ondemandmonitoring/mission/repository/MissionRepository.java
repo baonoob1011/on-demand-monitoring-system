@@ -12,28 +12,27 @@ import java.util.Optional;
 
 public interface MissionRepository extends JpaRepository<Mission, String> {
 
-    @EntityGraph(attributePaths = {"device"})
+    @EntityGraph(attributePaths = {"droneRuntime"})
     @Override
     Optional<Mission> findById(String id);
 
-    @EntityGraph(attributePaths = {"device"})
+    @EntityGraph(attributePaths = {"droneRuntime"})
     Optional<Mission> findByMissionCode(String missionCode);
 
-    @EntityGraph(attributePaths = {"device"})
+    @EntityGraph(attributePaths = {"droneRuntime"})
     List<Mission> findByOperatorIdAndStatusIn(String operatorId, List<MissionStatus> statuses);
 
     /**
-     * Find missions assigned to a device whose scheduled window overlaps [startAt, endAt].
+     * Find missions assigned to a drone whose scheduled window overlaps [startAt, endAt].
      * Used to validate drone replacement availability / schedule conflict.
      */
     @Query("""
             SELECT m FROM Mission m
-            WHERE m.device.id = :deviceId
+            WHERE m.droneRuntime.id = :droneId
               AND m.status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED')
-              AND m.scheduledStartAt < :endAt
               AND m.completedAt IS NULL
             """)
-    List<Mission> findActiveByDeviceId(@Param("deviceId") String deviceId);
+    List<Mission> findActiveByDroneId(@Param("droneId") String droneId);
 }
 
 

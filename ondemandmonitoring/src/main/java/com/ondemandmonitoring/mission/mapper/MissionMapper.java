@@ -7,7 +7,7 @@ import org.mapstruct.Mapping;
 
 @Mapper(componentModel = "spring")
 public interface MissionMapper {
-    @Mapping(source = "device.id", target = "deviceId")
-    @Mapping(source = "device.deviceCode", target = "deviceCode")
+    @Mapping(source = "droneRuntime.id", target = "droneId")
+    @Mapping(source = "droneRuntime.droneCode", target = "droneCode")
     MissionResponse toResponse(Mission mission);
 }

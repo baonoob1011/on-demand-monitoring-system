@@ -1,11 +1,11 @@
 package com.ondemandmonitoring.media.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
+import com.ondemandmonitoring.drone.domain.DroneRuntime;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.device.domain.Device;
-import com.ondemandmonitoring.device.enums.DeviceStatus;
-import com.ondemandmonitoring.device.enums.DeviceType;
-import com.ondemandmonitoring.device.repository.DeviceRepository;
+import com.ondemandmonitoring.drone.enums.DroneOperationalStatus;
+import com.ondemandmonitoring.drone.enums.DroneRuntimeType;
+import com.ondemandmonitoring.drone.repository.DroneRuntimeRepository;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.IMediaAssetService;
@@ -48,13 +48,13 @@ public class MediaAssetService implements IMediaAssetService {
     S3ObjectStorageService s3ObjectStorageService;
     AwsS3Properties awsS3Properties;
     Environment environment;
-    DeviceRepository deviceRepository;
+    DroneRuntimeRepository droneRepository;
     MediaAssetRepository mediaAssetRepository;
 
     @Transactional
     @Override
-    public MediaAsset upload(String deviceCode, MultipartFile file) {
-        return upload("UNASSIGNED", deviceCode, Instant.now(), file, MEDIA_TYPE_IMAGE);
+    public MediaAsset upload(String droneCode, MultipartFile file) {
+        return upload("UNASSIGNED", droneCode, Instant.now(), file, MEDIA_TYPE_IMAGE);
     }
 
     @Transactional
@@ -69,19 +69,19 @@ public class MediaAssetService implements IMediaAssetService {
         String mediaType = validate(file, requestedMediaType);
         validateRequired("missionId", missionId);
         validateRequired("droneId", droneId);
-        Device device = getOrCreateDrone(droneId);
+        DroneRuntime drone = getOrCreateDrone(droneId);
 
         String originalFileName = safeFileName(file.getOriginalFilename());
         String contentType = file.getContentType();
 
         if (!useS3Storage()) {
-            return saveLocal(device, missionId, droneId, capturedAt, file, originalFileName, contentType, mediaType);
+            return saveLocal(drone, missionId, droneId, capturedAt, file, originalFileName, contentType, mediaType);
         }
 
         String bucket = s3ObjectStorageService.bucket();
         if (bucket == null || bucket.isBlank()) {
             log.warn("AWS S3 bucket is not configured; storing image locally");
-            return saveLocal(device, missionId, droneId, capturedAt, file, originalFileName, contentType, mediaType);
+            return saveLocal(drone, missionId, droneId, capturedAt, file, originalFileName, contentType, mediaType);
         }
 
         String key = buildS3Key(missionId, droneId, mediaType);
@@ -105,8 +105,8 @@ public class MediaAssetService implements IMediaAssetService {
 
         try {
             MediaAsset image = new MediaAsset();
-            image.setDeviceCode(droneId);
-            image.setDevice(device);
+            image.setDroneCode(droneId);
+            image.setDroneRuntime(drone);
             image.setMissionId(missionId);
             image.setType(mediaType);
             image.setStorageProvider(STORAGE_PROVIDER_S3);
@@ -146,31 +146,31 @@ public class MediaAssetService implements IMediaAssetService {
 
     @Transactional(readOnly = true)
     @Override
-    public MediaAsset getByDeviceAndId(String deviceCode, String mediaId) {
-        validateRequired("deviceCode", deviceCode);
+    public MediaAsset getByDroneAndId(String droneCode, String mediaId) {
+        validateRequired("droneCode", droneCode);
         MediaAsset mediaAsset = getById(mediaId);
-        if (!deviceCode.equals(mediaAsset.getDeviceCode())) {
-            throw new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Media not found for device");
+        if (!droneCode.equals(mediaAsset.getDroneCode())) {
+            throw new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Media not found for drone");
         }
         return mediaAsset;
     }
 
     @Transactional(readOnly = true)
     @Override
-    public List<MediaAsset> listByDevice(String deviceCode, String requestedMediaType) {
-        validateRequired("deviceCode", deviceCode);
+    public List<MediaAsset> listByDrone(String droneCode, String requestedMediaType) {
+        validateRequired("droneCode", droneCode);
         if (requestedMediaType == null || requestedMediaType.isBlank()) {
-            return mediaAssetRepository.findByDeviceCodeOrderByCapturedAtDesc(deviceCode);
+            return mediaAssetRepository.findByDroneCodeOrderByCapturedAtDesc(droneCode);
         }
 
         String mediaType = normalizeMediaType(requestedMediaType);
-        return mediaAssetRepository.findByDeviceCodeAndTypeOrderByCapturedAtDesc(deviceCode, mediaType);
+        return mediaAssetRepository.findByDroneCodeAndTypeOrderByCapturedAtDesc(droneCode, mediaType);
     }
 
     @Transactional
     @Override
-    public void deleteByDeviceAndId(String deviceCode, String mediaId) {
-        MediaAsset mediaAsset = getByDeviceAndId(deviceCode, mediaId);
+    public void deleteByDroneAndId(String droneCode, String mediaId) {
+        MediaAsset mediaAsset = getByDroneAndId(droneCode, mediaId);
         deleteStoredObject(mediaAsset);
         mediaAssetRepository.delete(mediaAsset);
     }
@@ -305,7 +305,7 @@ public class MediaAssetService implements IMediaAssetService {
     }
 
     private MediaAsset saveLocal(
-            Device device,
+            DroneRuntime drone,
             String missionId,
             String droneId,
             Instant capturedAt,
@@ -335,8 +335,8 @@ public class MediaAssetService implements IMediaAssetService {
         }
 
         MediaAsset image = new MediaAsset();
-        image.setDeviceCode(droneId);
-        image.setDevice(device);
+        image.setDroneCode(droneId);
+        image.setDroneRuntime(drone);
         image.setMissionId(missionId);
         image.setType(mediaType);
         image.setStorageProvider(STORAGE_PROVIDER_LOCAL);
@@ -373,16 +373,16 @@ public class MediaAssetService implements IMediaAssetService {
         return message;
     }
 
-    private Device getOrCreateDrone(String deviceCode) {
-        return deviceRepository.findByDeviceCode(deviceCode)
+    private DroneRuntime getOrCreateDrone(String droneCode) {
+        return droneRepository.findByDroneCode(droneCode)
                 .orElseGet(() -> {
-                    Device device = new Device();
-                    device.setDeviceCode(deviceCode);
-                    device.setDeviceName("PX4 SITL Drone");
-                    device.setDeviceType(DeviceType.DRONE);
-                    device.setStatus(DeviceStatus.AVAILABLE);
-                    device.setLastSeenAt(LocalDateTime.now());
-                    return deviceRepository.save(device);
+                    DroneRuntime drone = new DroneRuntime();
+                    drone.setDroneCode(droneCode);
+                    drone.setDroneName("PX4 SITL Drone");
+                    drone.setDroneType(DroneRuntimeType.DRONE);
+                    drone.setStatus(DroneOperationalStatus.AVAILABLE);
+                    drone.setLastSeenAt(LocalDateTime.now());
+                    return droneRepository.save(drone);
                 });
     }
 

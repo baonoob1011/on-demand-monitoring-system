@@ -1,6 +1,6 @@
-package com.ondemandmonitoring.device.enums;
+package com.ondemandmonitoring.drone.enums;
 
-public enum DeviceStatus {
+public enum DroneOperationalStatus {
     AVAILABLE,
     RESERVED,
     PREFLIGHT,

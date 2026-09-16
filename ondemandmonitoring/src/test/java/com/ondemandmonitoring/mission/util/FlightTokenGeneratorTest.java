@@ -19,7 +19,7 @@ class FlightTokenGeneratorTest {
         assertTrue(token.startsWith("FTK-M001-DRONE01-"), "Token must start with FTK-MISSION-DEVICE prefix");
 
         String[] parts = token.split("-");
-        assertEquals(5, parts.length, "Enterprise token format must contain 5 hyphens-separated segments: FTK, Mission, Device, Timestamp, Signature");
+        assertEquals(5, parts.length, "Enterprise token format must contain 5 hyphens-separated segments: FTK, Mission, DroneRuntime, Timestamp, Signature");
         assertEquals("FTK", parts[0]);
         assertEquals("M001", parts[1]);
         assertEquals("DRONE01", parts[2]);

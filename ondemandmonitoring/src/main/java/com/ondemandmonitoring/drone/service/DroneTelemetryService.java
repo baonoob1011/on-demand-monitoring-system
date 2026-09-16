@@ -1,0 +1,84 @@
+package com.ondemandmonitoring.drone.service;
+
+import com.ondemandmonitoring.drone.dto.request.TelemetryRequest;
+import com.ondemandmonitoring.drone.domain.DroneRuntime;
+import com.ondemandmonitoring.drone.domain.DroneTelemetry;
+import com.ondemandmonitoring.drone.enums.DroneOperationalStatus;
+import com.ondemandmonitoring.drone.enums.DroneRuntimeType;
+import com.ondemandmonitoring.drone.repository.DroneRuntimeRepository;
+import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
+import java.time.LocalDateTime;
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
+import lombok.experimental.FieldDefaults;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@RequiredArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
+public class DroneTelemetryService {
+
+    DroneTelemetryRepository droneTelemetryRepository;
+    DroneRuntimeRepository droneRepository;
+
+    @Transactional
+    public DroneTelemetry save(String droneCode, TelemetryRequest request) {
+        DroneRuntime drone = getOrCreateDrone(droneCode);
+
+        DroneTelemetry telemetry = droneTelemetryRepository.findByDroneCode(droneCode)
+                .orElseGet(DroneTelemetry::new);
+
+        telemetry.setDroneCode(droneCode);
+        telemetry.setDroneRuntime(drone);
+        telemetry.setLatitude(request.getLatitude());
+        telemetry.setLongitude(request.getLongitude());
+        telemetry.setAltitude(request.getAltitude());
+        telemetry.setAbsoluteAltitude(request.getAbsoluteAltitude());
+        telemetry.setRelativeAltitude(request.getRelativeAltitude());
+        telemetry.setBatteryPercent(request.getBatteryPercent());
+        telemetry.setSpeed(request.getSpeed());
+        telemetry.setGpsFixType(request.getGpsFixType());
+        telemetry.setGpsSatelliteCount(request.getGpsSatelliteCount());
+        telemetry.setGyrometerOk(request.getGyrometerOk());
+        telemetry.setAccelerometerOk(request.getAccelerometerOk());
+        telemetry.setMagnetometerOk(request.getMagnetometerOk());
+        telemetry.setLocalPositionOk(request.getLocalPositionOk());
+        telemetry.setGlobalPositionOk(request.getGlobalPositionOk());
+        telemetry.setHomePositionOk(request.getHomePositionOk());
+        telemetry.setArmable(request.getArmable());
+        telemetry.setHeadingDegree(request.getHeadingDegree());
+        telemetry.setVelocityNorth(request.getVelocityNorth());
+        telemetry.setVelocityEast(request.getVelocityEast());
+        telemetry.setVelocityDown(request.getVelocityDown());
+        telemetry.setGroundSpeed(request.getGroundSpeed());
+        telemetry.setFlightMode(request.getFlightMode());
+        telemetry.setArmed(request.getArmed());
+        telemetry.setHomeLatitude(request.getHomeLatitude());
+        telemetry.setHomeLongitude(request.getHomeLongitude());
+        telemetry.setHomeAbsoluteAltitude(request.getHomeAbsoluteAltitude());
+        telemetry.setHomeRelativeAltitude(request.getHomeRelativeAltitude());
+        telemetry.setRollDegree(request.getRollDegree());
+        telemetry.setPitchDegree(request.getPitchDegree());
+        telemetry.setYawDegree(request.getYawDegree());
+        telemetry.setConnected(request.getConnected());
+        telemetry.setInAir(request.getInAir());
+        telemetry.setGeofenceConfigured(request.getGeofenceConfigured());
+        telemetry.setGeofencePassed(request.getGeofencePassed());
+
+        return droneTelemetryRepository.save(telemetry);
+    }
+
+    private DroneRuntime getOrCreateDrone(String droneCode) {
+        return droneRepository.findByDroneCode(droneCode)
+                .orElseGet(() -> {
+                    DroneRuntime drone = new DroneRuntime();
+                    drone.setDroneCode(droneCode);
+                    drone.setDroneName("PX4 SITL Drone");
+                    drone.setDroneType(DroneRuntimeType.DRONE);
+                    drone.setStatus(DroneOperationalStatus.AVAILABLE);
+                    drone.setLastSeenAt(LocalDateTime.now());
+                    return droneRepository.save(drone);
+                });
+    }
+}
