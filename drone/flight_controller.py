@@ -26,7 +26,7 @@ from PIL import Image as PilImage
 from pathlib import Path
 from dotenv import load_dotenv
 from video.video_recorder import RecordingResult, VideoRecorder
-from battery_simulator import BatterySimulator, detect_battery_mode, preflight_battery_check
+from battery_simulator import BatterySimulator, preflight_battery_check
 from media_uploader import BackendUrlResolver, MediaUploader
 
 PROJECT_ROOT = Path(
@@ -1892,6 +1892,7 @@ async def main() -> None:
     current_velocity_east_m_s = 0.0
     current_velocity_down_m_s = 0.0
     current_px4_battery_percent = None
+    current_armed = False
     current_in_air = False
     current_health = None
     current_health_update_s: float | None = None
@@ -1899,7 +1900,8 @@ async def main() -> None:
     local_position_ready = False
     safety_speed_scale = 1.0
     simulated_battery = BatterySimulator(
-        float(os.getenv("SIM_BATTERY_INITIAL_PERCENT", "100.0"))
+        float(os.getenv("SIM_BATTERY_INITIAL_PERCENT", "100.0")),
+        capacity_mAh=float(os.getenv("SIM_BATTERY_CAPACITY_MAH", "5000")),
     )
 
     def fresh(age_s: float | None, max_age_s: float) -> bool:
@@ -2073,6 +2075,10 @@ async def main() -> None:
             "batteryPercent": round(battery_snapshot.battery_percent, 1),
             "batteryState": battery_snapshot.battery_state,
             "batteryDrainMode": battery_snapshot.battery_drain_mode,
+            "batteryCurrentA": round(battery_snapshot.current_draw_a, 2),
+            "batteryCapacityMah": round(battery_snapshot.capacity_mAh, 1),
+            "batteryRemainingMah": round(battery_snapshot.remaining_mAh, 1),
+            "batteryConsumedMah": round(battery_snapshot.consumed_mAh, 1),
             "rawPx4BatteryPercent": current_px4_battery_percent,
             "connection": {
                 "grpcConnected": connection_manager.grpc_connected,
@@ -2188,6 +2194,9 @@ async def main() -> None:
 
     def update_in_air(in_air: bool) -> None:
         nonlocal current_in_air
+        nonlocal current_armed
+        if current_in_air and not in_air:
+            current_armed = False
         current_in_air = bool(in_air)
 
     def update_health(health) -> None:
@@ -2198,13 +2207,13 @@ async def main() -> None:
 
     async def update_simulated_battery_loop() -> None:
         while True:
-            mode = detect_battery_mode(
+            simulated_battery.update(
+                armed=current_armed or current_in_air,
                 in_air=current_in_air,
                 velocity_north_m_s=current_velocity_north_m_s,
                 velocity_east_m_s=current_velocity_east_m_s,
                 velocity_down_m_s=current_velocity_down_m_s,
             )
-            simulated_battery.update(mode)
             await asyncio.sleep(0.5)
 
     def launch_pad_clear() -> bool:
@@ -2460,6 +2469,7 @@ async def main() -> None:
             print("[CMD] arm + takeoff")
             active_drone = await safe_arm(connection_manager)
             if active_drone is not None:
+                current_armed = True
                 if avoidance is not None:
                     avoidance.set_drone(active_drone)
                 try:
