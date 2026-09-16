@@ -16,7 +16,7 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class CategoryServiceResponse {
 
-    Long id;
+    String id;
     String name;
     String description;
 }

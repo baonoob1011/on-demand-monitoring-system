@@ -104,14 +104,15 @@ class OrderServiceTest {
     @Test
     void createOrder_Success() {
         // Arrange
-        CategoryService service = CategoryService.builder().id(1L).name("Land Monitoring").build();
+        CategoryService service = CategoryService.builder().name("Land Monitoring").build();
+        service.setId("cs-1");
         PreferredTime preferredTime = PreferredTime.builder().name("Morning").build();
         preferredTime.setId("pt-1");
 
         Zone zone = new Zone();
         zone.setPolygon(createSquarePolygon(0.0, 0.0, 10.0, 10.0));
 
-        when(categoryServiceRepository.findById(1L)).thenReturn(Optional.of(service));
+        when(categoryServiceRepository.findById("cs-1")).thenReturn(Optional.of(service));
         when(preferredTimeRepository.findById("pt-1")).thenReturn(Optional.of(preferredTime));
         when(zoneRepository.findAll()).thenReturn(List.of(zone));
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
@@ -122,7 +123,7 @@ class OrderServiceTest {
 
         OrderCreateRequest request = OrderCreateRequest.builder()
                 .title("Survey Forest")
-                .serviceId(1L)
+                .serviceId("cs-1")
                 .preferredTimeId("pt-1")
                 .preferredDate(LocalDate.now())
                 .mediaType(MediaTypeSp.IMAGE)
@@ -144,20 +145,21 @@ class OrderServiceTest {
 
     @Test
     void createOrder_ThrowsWhenPointOutsideZone() {
-        CategoryService service = CategoryService.builder().id(1L).name("Land Monitoring").build();
+        CategoryService service = CategoryService.builder().name("Land Monitoring").build();
+        service.setId("cs-1");
         PreferredTime preferredTime = PreferredTime.builder().name("Morning").build();
         preferredTime.setId("pt-1");
 
         Zone zone = new Zone();
         zone.setPolygon(createSquarePolygon(0.0, 0.0, 10.0, 10.0));
 
-        when(categoryServiceRepository.findById(1L)).thenReturn(Optional.of(service));
+        when(categoryServiceRepository.findById("cs-1")).thenReturn(Optional.of(service));
         when(preferredTimeRepository.findById("pt-1")).thenReturn(Optional.of(preferredTime));
         when(zoneRepository.findAll()).thenReturn(List.of(zone));
 
         OrderCreateRequest request = OrderCreateRequest.builder()
                 .title("Outside Point")
-                .serviceId(1L)
+                .serviceId("cs-1")
                 .preferredTimeId("pt-1")
                 .preferredDate(LocalDate.now())
                 .mediaType(MediaTypeSp.IMAGE)
@@ -170,16 +172,17 @@ class OrderServiceTest {
 
     @Test
     void createOrder_ThrowsWhenImageMissingPhotos() {
-        CategoryService service = CategoryService.builder().id(1L).name("Land Monitoring").build();
+        CategoryService service = CategoryService.builder().name("Land Monitoring").build();
+        service.setId("cs-1");
         PreferredTime preferredTime = PreferredTime.builder().name("Morning").build();
         preferredTime.setId("pt-1");
 
-        when(categoryServiceRepository.findById(1L)).thenReturn(Optional.of(service));
+        when(categoryServiceRepository.findById("cs-1")).thenReturn(Optional.of(service));
         when(preferredTimeRepository.findById("pt-1")).thenReturn(Optional.of(preferredTime));
 
         OrderCreateRequest request = OrderCreateRequest.builder()
                 .title("No Photo Count")
-                .serviceId(1L)
+                .serviceId("cs-1")
                 .preferredTimeId("pt-1")
                 .preferredDate(LocalDate.now())
                 .mediaType(MediaTypeSp.IMAGE)

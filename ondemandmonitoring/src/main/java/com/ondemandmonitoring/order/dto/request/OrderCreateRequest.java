@@ -31,9 +31,9 @@ public class OrderCreateRequest {
     @Schema(description = "Purpose of the monitoring order", example = "Wildfire risk detection")
     String purpose;
 
-    @NotNull(message = "Service ID is required")
-    @Schema(description = "Category Service ID", example = "1")
-    Long serviceId;
+    @NotBlank(message = "Service ID is required")
+    @Schema(description = "Category Service ID", example = "550e8400-e29b-41d4-a716-446655440000")
+    String serviceId;
 
     @Schema(description = "Detailed description of the monitoring request")
     String description;

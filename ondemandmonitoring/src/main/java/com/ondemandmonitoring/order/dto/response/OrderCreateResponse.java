@@ -30,7 +30,7 @@ public class OrderCreateResponse {
 
     // General Info
     String title;
-    Long serviceId;
+    String serviceId;
     String serviceName;
     String purpose;
     String description;
