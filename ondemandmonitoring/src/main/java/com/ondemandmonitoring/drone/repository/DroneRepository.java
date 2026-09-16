@@ -9,12 +9,16 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
 @Repository
 public interface DroneRepository extends JpaRepository<Drone, String> {
 
     boolean existsBySerialNumber(String serialNumber);
 
     boolean existsBySerialNumberAndIdNot(String serialNumber, String id);
+
+    Optional<Drone> findByDroneCode(String droneCode);
 
     @Query("SELECT d FROM Drone d WHERE " +
            "(:modelId IS NULL OR d.droneModel.id = :modelId) AND " +

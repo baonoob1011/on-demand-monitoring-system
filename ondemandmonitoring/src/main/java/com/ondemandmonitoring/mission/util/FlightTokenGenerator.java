@@ -35,15 +35,15 @@ public class FlightTokenGenerator {
      */
     public static String generateTokenValue(String missionId, String droneCode, String operatorId, Instant issuedAt) {
         String cleanMission = sanitize(missionId);
-        String cleanDroneRuntime = sanitize(droneCode);
+        String cleanDrone = sanitize(droneCode);
         long epochSecond = issuedAt != null ? issuedAt.getEpochSecond() : Instant.now().getEpochSecond();
         String hexTimestamp = Long.toHexString(epochSecond).toUpperCase();
 
-        String rawPayload = String.format("%s:%s:%s:%d", cleanMission, cleanDroneRuntime,
+        String rawPayload = String.format("%s:%s:%s:%d", cleanMission, cleanDrone,
                 operatorId != null ? operatorId : "OP-SYSTEM", epochSecond);
         String signature = computeHmacSha256(rawPayload, SECRET_KEY).substring(0, 8).toUpperCase();
 
-        return String.format("FTK-%s-%s-%s-%s", cleanMission, cleanDroneRuntime, hexTimestamp, signature);
+        return String.format("FTK-%s-%s-%s-%s", cleanMission, cleanDrone, hexTimestamp, signature);
     }
 
     private static String sanitize(String input) {

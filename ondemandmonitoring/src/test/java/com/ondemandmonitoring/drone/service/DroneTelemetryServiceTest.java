@@ -6,9 +6,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.drone.dto.request.TelemetryRequest;
-import com.ondemandmonitoring.drone.domain.DroneRuntime;
 import com.ondemandmonitoring.drone.domain.DroneTelemetry;
-import com.ondemandmonitoring.drone.repository.DroneRuntimeRepository;
+import com.ondemandmonitoring.drone.domain.Drone;
+import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -25,7 +25,7 @@ class DroneTelemetryServiceTest {
     private DroneTelemetryRepository repository;
 
     @Mock
-    private DroneRuntimeRepository droneRepository;
+    private DroneRepository droneRepository;
 
     @InjectMocks
     private DroneTelemetryService service;
@@ -41,7 +41,7 @@ class DroneTelemetryServiceTest {
         request.setFlightMode("AUTO");
         request.setArmed(true);
 
-        DroneRuntime drone = new DroneRuntime();
+        Drone drone = new Drone();
         drone.setDroneCode("DRONE-01");
         DroneTelemetry persisted = new DroneTelemetry();
         when(droneRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(drone));
@@ -55,7 +55,7 @@ class DroneTelemetryServiceTest {
         verify(repository).save(captor.capture());
         DroneTelemetry captured = captor.getValue();
         assertThat(captured.getDroneCode()).isEqualTo("DRONE-01");
-        assertThat(captured.getDroneRuntime()).isSameAs(drone);
+        assertThat(captured.getDrone()).isSameAs(drone);
         assertThat(captured.getLatitude()).isEqualTo(10.1);
         assertThat(captured.getLongitude()).isEqualTo(106.2);
         assertThat(captured.getAltitude()).isEqualTo(30.0);

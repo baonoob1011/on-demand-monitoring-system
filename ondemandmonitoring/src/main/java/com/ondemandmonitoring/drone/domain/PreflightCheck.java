@@ -17,7 +17,7 @@ import lombok.experimental.FieldDefaults;
 public class PreflightCheck {
 
     String id;
-    DroneRuntime droneRuntime;
+    Drone drone;
 
     /** Mission this pre-flight check was performed for. Nullable for legacy stand-alone checks. */
     String missionId;

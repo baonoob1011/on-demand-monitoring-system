@@ -1,11 +1,10 @@
 package com.ondemandmonitoring.drone.service;
 
+import com.ondemandmonitoring.drone.domain.Drone;
 import com.ondemandmonitoring.drone.dto.request.TelemetryRequest;
-import com.ondemandmonitoring.drone.domain.DroneRuntime;
 import com.ondemandmonitoring.drone.domain.DroneTelemetry;
-import com.ondemandmonitoring.drone.enums.DroneOperationalStatus;
-import com.ondemandmonitoring.drone.enums.DroneRuntimeType;
-import com.ondemandmonitoring.drone.repository.DroneRuntimeRepository;
+import com.ondemandmonitoring.drone.enums.DroneStatus;
+import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
@@ -20,17 +19,17 @@ import org.springframework.transaction.annotation.Transactional;
 public class DroneTelemetryService {
 
     DroneTelemetryRepository droneTelemetryRepository;
-    DroneRuntimeRepository droneRepository;
+    DroneRepository droneRepository;
 
     @Transactional
     public DroneTelemetry save(String droneCode, TelemetryRequest request) {
-        DroneRuntime drone = getOrCreateDrone(droneCode);
+        Drone drone = getOrCreateDrone(droneCode);
 
         DroneTelemetry telemetry = droneTelemetryRepository.findByDroneCode(droneCode)
                 .orElseGet(DroneTelemetry::new);
 
         telemetry.setDroneCode(droneCode);
-        telemetry.setDroneRuntime(drone);
+        telemetry.setDrone(drone);
         telemetry.setLatitude(request.getLatitude());
         telemetry.setLongitude(request.getLongitude());
         telemetry.setAltitude(request.getAltitude());
@@ -69,14 +68,15 @@ public class DroneTelemetryService {
         return droneTelemetryRepository.save(telemetry);
     }
 
-    private DroneRuntime getOrCreateDrone(String droneCode) {
+    private Drone getOrCreateDrone(String droneCode) {
         return droneRepository.findByDroneCode(droneCode)
                 .orElseGet(() -> {
-                    DroneRuntime drone = new DroneRuntime();
+                    Drone drone = new Drone();
                     drone.setDroneCode(droneCode);
+                    drone.setSerialNumber(droneCode);
                     drone.setDroneName("PX4 SITL Drone");
-                    drone.setDroneType(DroneRuntimeType.DRONE);
-                    drone.setStatus(DroneOperationalStatus.AVAILABLE);
+                    
+                    drone.setStatus(DroneStatus.AVAILABLE);
                     drone.setLastSeenAt(LocalDateTime.now());
                     return droneRepository.save(drone);
                 });

@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.mission.service;
 
 import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
-import com.ondemandmonitoring.drone.enums.DroneOperationalStatus;
+import com.ondemandmonitoring.drone.enums.DroneStatus;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 
@@ -146,9 +146,9 @@ public interface IMissionService {
      * Updates physical drone health status after landing.
      *
      * @param missionId       Target mission ID
-     * @param newDroneOperationalStatus New drone status (AVAILABLE, MAINTENANCE, etc.)
+     * @param newDroneStatus New drone status (AVAILABLE, MAINTENANCE, etc.)
      * @param notes           Inspection notes
      * @return MissionResponse DTO
      */
-    MissionResponse updatePostFlightStatus(String missionId, DroneOperationalStatus newDroneOperationalStatus, String notes);
+    MissionResponse updatePostFlightStatus(String missionId, DroneStatus newDroneStatus, String notes);
 }

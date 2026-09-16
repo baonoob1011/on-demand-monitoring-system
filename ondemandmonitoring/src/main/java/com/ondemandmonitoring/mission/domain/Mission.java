@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.mission.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.drone.domain.DroneRuntime;
+import com.ondemandmonitoring.drone.domain.Drone;
 import com.ondemandmonitoring.mission.enums.MediaType;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import jakarta.persistence.*;
@@ -29,7 +29,7 @@ public class Mission extends BaseEntity {
     // === Assignments =====
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "drone_id")
-    DroneRuntime droneRuntime;
+    Drone drone;
 
     /** ID of the Drone Operator user assigned to this mission. */
     @Column(name = "operator_id", length = 100)

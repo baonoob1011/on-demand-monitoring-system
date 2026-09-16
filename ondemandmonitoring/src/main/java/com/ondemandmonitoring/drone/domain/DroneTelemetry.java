@@ -18,7 +18,7 @@ public class DroneTelemetry extends BaseEntity {
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "drone_id", nullable = false, unique = true)
-    private DroneRuntime droneRuntime;
+    private Drone drone;
 
     private Double latitude;
 

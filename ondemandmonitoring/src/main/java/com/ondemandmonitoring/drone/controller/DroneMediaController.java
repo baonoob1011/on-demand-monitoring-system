@@ -37,7 +37,7 @@ public class DroneMediaController {
 
     @Operation(summary = "List drone media", description = "Lists image/video metadata captured by a drone")
     @GetMapping
-    public ResponseEntity<ApiResponse<List<MediaAssetResponse>>> listDroneRuntimeMedia(
+    public ResponseEntity<ApiResponse<List<MediaAssetResponse>>> listDroneMedia(
             @PathVariable String droneCode,
             @RequestParam(required = false) String mediaType) {
         List<MediaAssetResponse> media = mediaAssetService.listByDrone(droneCode, mediaType)
@@ -50,7 +50,7 @@ public class DroneMediaController {
 
     @Operation(summary = "Get drone media by ID", description = "Gets metadata and a presigned S3 URL for a drone image/video")
     @GetMapping("/{mediaId}")
-    public ResponseEntity<ApiResponse<MediaResponse>> getDroneRuntimeMedia(
+    public ResponseEntity<ApiResponse<MediaResponse>> getDroneMedia(
             @PathVariable String droneCode,
             @PathVariable String mediaId) {
         MediaAsset mediaAsset = mediaAssetService.getByDroneAndId(droneCode, mediaId);
@@ -64,7 +64,7 @@ public class DroneMediaController {
 
     @Operation(summary = "Get drone media file", description = "Streams the original image/video file from S3 or local storage")
     @GetMapping("/{mediaId}/file")
-    public ResponseEntity<InputStreamResource> getDroneRuntimeMediaFile(
+    public ResponseEntity<InputStreamResource> getDroneMediaFile(
             @PathVariable String droneCode,
             @PathVariable String mediaId) {
         MediaAsset mediaAsset = mediaAssetService.getByDroneAndId(droneCode, mediaId);
@@ -83,7 +83,7 @@ public class DroneMediaController {
 
     @Operation(summary = "Delete drone media", description = "Deletes image/video metadata and the stored S3 object")
     @DeleteMapping("/{mediaId}")
-    public ResponseEntity<ApiResponse<Void>> deleteDroneRuntimeMedia(
+    public ResponseEntity<ApiResponse<Void>> deleteDroneMedia(
             @PathVariable String droneCode,
             @PathVariable String mediaId) {
         mediaAssetService.deleteByDroneAndId(droneCode, mediaId);

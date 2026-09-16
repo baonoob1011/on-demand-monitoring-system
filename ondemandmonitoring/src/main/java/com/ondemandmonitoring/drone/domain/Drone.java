@@ -10,6 +10,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -22,6 +23,12 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Drone extends BaseEntity {
+
+    @Column(name = "drone_code", unique = true, length = 50)
+    private String droneCode;
+
+    @Column(name = "drone_name", length = 100)
+    private String droneName;
 
     @Column(name = "serial_number", nullable = false, unique = true, length = 100)
     private String serialNumber;
@@ -37,4 +44,7 @@ public class Drone extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
     private DroneStatus status;
+
+    @Column(name = "last_seen_at")
+    private LocalDateTime lastSeenAt;
 }

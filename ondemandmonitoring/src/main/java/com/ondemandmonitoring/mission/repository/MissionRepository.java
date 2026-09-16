@@ -12,14 +12,14 @@ import java.util.Optional;
 
 public interface MissionRepository extends JpaRepository<Mission, String> {
 
-    @EntityGraph(attributePaths = {"droneRuntime"})
+    @EntityGraph(attributePaths = {"drone"})
     @Override
     Optional<Mission> findById(String id);
 
-    @EntityGraph(attributePaths = {"droneRuntime"})
+    @EntityGraph(attributePaths = {"drone"})
     Optional<Mission> findByMissionCode(String missionCode);
 
-    @EntityGraph(attributePaths = {"droneRuntime"})
+    @EntityGraph(attributePaths = {"drone"})
     List<Mission> findByOperatorIdAndStatusIn(String operatorId, List<MissionStatus> statuses);
 
     /**
@@ -28,7 +28,7 @@ public interface MissionRepository extends JpaRepository<Mission, String> {
      */
     @Query("""
             SELECT m FROM Mission m
-            WHERE m.droneRuntime.id = :droneId
+            WHERE m.drone.id = :droneId
               AND m.status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED')
               AND m.completedAt IS NULL
             """)

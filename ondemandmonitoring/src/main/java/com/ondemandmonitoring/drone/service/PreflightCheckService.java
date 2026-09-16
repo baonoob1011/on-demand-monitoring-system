@@ -2,12 +2,11 @@ package com.ondemandmonitoring.drone.service;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.drone.domain.DroneRuntime;
 import com.ondemandmonitoring.drone.domain.DroneTelemetry;
+import com.ondemandmonitoring.drone.domain.Drone;
 import com.ondemandmonitoring.drone.domain.PreflightCheck;
-import com.ondemandmonitoring.drone.enums.DroneOperationalStatus;
-import com.ondemandmonitoring.drone.enums.DroneRuntimeType;
-import com.ondemandmonitoring.drone.repository.DroneRuntimeRepository;
+import com.ondemandmonitoring.drone.enums.DroneStatus;
+import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
 import java.time.Duration;
 import java.time.Instant;
@@ -33,7 +32,7 @@ public class PreflightCheckService {
     /** Minimum storage required on drone for a mission (100 MB). */
     private static final long MIN_STORAGE_MB = 100L;
 
-    DroneRuntimeRepository droneRepository;
+    DroneRepository droneRepository;
     DroneTelemetryRepository droneTelemetryRepository;
 
     public PreflightCheck run(String droneCode) {
@@ -50,7 +49,7 @@ public class PreflightCheckService {
      */
     @Transactional
     public PreflightCheck run(String droneCode, String missionId) {
-        DroneRuntime drone = getOrCreateDrone(droneCode);
+        Drone drone = getOrCreateDrone(droneCode);
         DroneTelemetry telemetry = droneTelemetryRepository.findByDroneCode(droneCode)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.INVALID_REQUEST,
@@ -127,9 +126,9 @@ public class PreflightCheckService {
         return "HARDWARE"; // default: assume hardware fault for any other issue
     }
 
-    private PreflightCheck fromTelemetry(DroneRuntime drone, DroneTelemetry telemetry) {
+    private PreflightCheck fromTelemetry(Drone drone, DroneTelemetry telemetry) {
         PreflightCheck preflightCheck = new PreflightCheck();
-        preflightCheck.setDroneRuntime(drone);
+        preflightCheck.setDrone(drone);
         preflightCheck.setBatteryPercent(telemetry.getBatteryPercent());
         preflightCheck.setLatitude(telemetry.getLatitude());
         preflightCheck.setLongitude(telemetry.getLongitude());
@@ -220,14 +219,15 @@ public class PreflightCheckService {
         }
     }
 
-    private DroneRuntime getOrCreateDrone(String droneCode) {
+    private Drone getOrCreateDrone(String droneCode) {
         return droneRepository.findByDroneCode(droneCode)
                 .orElseGet(() -> {
-                    DroneRuntime drone = new DroneRuntime();
+                    Drone drone = new Drone();
                     drone.setDroneCode(droneCode);
+                    drone.setSerialNumber(droneCode);
                     drone.setDroneName("PX4 SITL Drone");
-                    drone.setDroneType(DroneRuntimeType.DRONE);
-                    drone.setStatus(DroneOperationalStatus.AVAILABLE);
+                    
+                    drone.setStatus(DroneStatus.AVAILABLE);
                     drone.setLastSeenAt(LocalDateTime.now());
                     return droneRepository.save(drone);
                 });

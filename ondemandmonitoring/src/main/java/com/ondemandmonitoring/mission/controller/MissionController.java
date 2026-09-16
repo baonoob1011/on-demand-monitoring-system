@@ -223,7 +223,7 @@ public class MissionController {
             @PathVariable String id,
             @RequestParam String droneCode,
             @Valid @RequestBody PostFlightStatusRequest request) {
-        MissionResponse response = missionService.updatePostFlightStatus(id, request.getNewDroneOperationalStatus(), request.getNotes());
+        MissionResponse response = missionService.updatePostFlightStatus(id, request.getNewDroneStatus(), request.getNotes());
         return ResponseEntity.ok(ApiResponse.ok("Cập nhật trạng thái drone sau bay thành công", response));
     }
 }

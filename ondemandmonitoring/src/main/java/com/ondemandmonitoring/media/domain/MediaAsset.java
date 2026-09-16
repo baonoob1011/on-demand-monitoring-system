@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.media.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.drone.domain.DroneRuntime;
+import com.ondemandmonitoring.drone.domain.Drone;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -22,7 +22,7 @@ public class MediaAsset extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "drone_id", nullable = false)
-    DroneRuntime droneRuntime;
+    Drone drone;
 
     @Column(name = "mission_id", nullable = false, length = 100)
     String missionId;

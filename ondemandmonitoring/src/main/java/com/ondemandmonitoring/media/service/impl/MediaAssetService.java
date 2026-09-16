@@ -1,11 +1,10 @@
 package com.ondemandmonitoring.media.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.drone.domain.DroneRuntime;
+import com.ondemandmonitoring.drone.domain.Drone;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.drone.enums.DroneOperationalStatus;
-import com.ondemandmonitoring.drone.enums.DroneRuntimeType;
-import com.ondemandmonitoring.drone.repository.DroneRuntimeRepository;
+import com.ondemandmonitoring.drone.enums.DroneStatus;
+import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.IMediaAssetService;
@@ -48,7 +47,7 @@ public class MediaAssetService implements IMediaAssetService {
     S3ObjectStorageService s3ObjectStorageService;
     AwsS3Properties awsS3Properties;
     Environment environment;
-    DroneRuntimeRepository droneRepository;
+    DroneRepository droneRepository;
     MediaAssetRepository mediaAssetRepository;
 
     @Transactional
@@ -69,7 +68,7 @@ public class MediaAssetService implements IMediaAssetService {
         String mediaType = validate(file, requestedMediaType);
         validateRequired("missionId", missionId);
         validateRequired("droneId", droneId);
-        DroneRuntime drone = getOrCreateDrone(droneId);
+        Drone drone = getOrCreateDrone(droneId);
 
         String originalFileName = safeFileName(file.getOriginalFilename());
         String contentType = file.getContentType();
@@ -106,7 +105,7 @@ public class MediaAssetService implements IMediaAssetService {
         try {
             MediaAsset image = new MediaAsset();
             image.setDroneCode(droneId);
-            image.setDroneRuntime(drone);
+            image.setDrone(drone);
             image.setMissionId(missionId);
             image.setType(mediaType);
             image.setStorageProvider(STORAGE_PROVIDER_S3);
@@ -305,7 +304,7 @@ public class MediaAssetService implements IMediaAssetService {
     }
 
     private MediaAsset saveLocal(
-            DroneRuntime drone,
+            Drone drone,
             String missionId,
             String droneId,
             Instant capturedAt,
@@ -336,7 +335,7 @@ public class MediaAssetService implements IMediaAssetService {
 
         MediaAsset image = new MediaAsset();
         image.setDroneCode(droneId);
-        image.setDroneRuntime(drone);
+        image.setDrone(drone);
         image.setMissionId(missionId);
         image.setType(mediaType);
         image.setStorageProvider(STORAGE_PROVIDER_LOCAL);
@@ -373,14 +372,15 @@ public class MediaAssetService implements IMediaAssetService {
         return message;
     }
 
-    private DroneRuntime getOrCreateDrone(String droneCode) {
+    private Drone getOrCreateDrone(String droneCode) {
         return droneRepository.findByDroneCode(droneCode)
                 .orElseGet(() -> {
-                    DroneRuntime drone = new DroneRuntime();
+                    Drone drone = new Drone();
                     drone.setDroneCode(droneCode);
+                    drone.setSerialNumber(droneCode);
                     drone.setDroneName("PX4 SITL Drone");
-                    drone.setDroneType(DroneRuntimeType.DRONE);
-                    drone.setStatus(DroneOperationalStatus.AVAILABLE);
+                    
+                    drone.setStatus(DroneStatus.AVAILABLE);
                     drone.setLastSeenAt(LocalDateTime.now());
                     return droneRepository.save(drone);
                 });
