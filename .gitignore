@@ -50,3 +50,5 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+drone/.env.example
+*.example

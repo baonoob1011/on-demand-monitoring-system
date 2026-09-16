@@ -301,6 +301,10 @@ VIDEO_RECORDING_DIR = Path(
 VIDEO_RECORDING_FPS = float(os.getenv("VIDEO_RECORDING_FPS", "15.0"))
 VIDEO_RECORDING_QUEUE_SIZE = int(os.getenv("VIDEO_RECORDING_QUEUE_SIZE", "4"))
 VIDEO_UPLOAD_TIMEOUT_S = float(os.getenv("VIDEO_UPLOAD_TIMEOUT_S", "120.0"))
+CAMERA_STREAM_FPS = float(os.getenv("CAMERA_STREAM_FPS", "15.0"))
+CAMERA_STREAM_MAX_WIDTH = int(os.getenv("CAMERA_STREAM_MAX_WIDTH", "0"))
+CAMERA_STREAM_JPEG_QUALITY = int(os.getenv("CAMERA_STREAM_JPEG_QUALITY", "88"))
+CAMERA_CAPTURE_JPEG_QUALITY = int(os.getenv("CAMERA_CAPTURE_JPEG_QUALITY", "88"))
 
 class MavsdkAckNoiseFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
@@ -357,6 +361,8 @@ class CameraGateway:
     ) -> None:
         self.latest_frames: dict[str, GzImage] = {}
         self.latest_frame_time_s: dict[str, float] = {}
+        self.latest_frame_versions: dict[str, int] = {}
+        self.latest_jpegs: dict[tuple[str, str], tuple[int, bytes]] = {}
         self.current_mode = CAMERA_DEFAULT_VIEW if CAMERA_DEFAULT_VIEW in {"DOWN", "FRONT"} else "FRONT"
         self.lock = threading.Lock()
         self.node = None
@@ -386,6 +392,7 @@ class CameraGateway:
             with self.lock:
                 self.latest_frames[mode] = msg
                 self.latest_frame_time_s[mode] = time.monotonic()
+                self.latest_frame_versions[mode] = self.latest_frame_versions.get(mode, 0) + 1
                 is_active_mode = mode == self.current_mode
             if is_active_mode and self.video_recorder is not None and self.video_recorder.is_recording():
                 self.video_recorder.submit_frame(msg)
@@ -409,11 +416,18 @@ class CameraGateway:
         with self.lock:
             self.current_mode = normalized
 
-    def _latest_jpeg(self) -> bytes | None:
+    def _latest_jpeg(self, *, preview: bool = False) -> bytes | None:
         with self.lock:
-            frame = self.latest_frames.get(self.current_mode)
+            mode = self.current_mode
+            frame = self.latest_frames.get(mode)
             if frame is None:
-                frame = self.latest_frames.get("DOWN") or self.latest_frames.get("FRONT")
+                mode = "DOWN" if "DOWN" in self.latest_frames else "FRONT"
+                frame = self.latest_frames.get(mode)
+            version = self.latest_frame_versions.get(mode, 0)
+            cache_key = (mode, "preview" if preview else "capture")
+            cached = self.latest_jpegs.get(cache_key)
+            if cached is not None and cached[0] == version:
+                return cached[1]
 
         if frame is None:
             return None
@@ -432,9 +446,21 @@ class CameraGateway:
             print(f"[CAMERA] Unsupported frame size: {len(raw)} bytes for {width}x{height}")
             return None
 
+        quality = CAMERA_CAPTURE_JPEG_QUALITY
+        if preview:
+            quality = CAMERA_STREAM_JPEG_QUALITY
+            if CAMERA_STREAM_MAX_WIDTH > 0 and width > CAMERA_STREAM_MAX_WIDTH:
+                preview_height = max(1, round(height * (CAMERA_STREAM_MAX_WIDTH / width)))
+                resample = getattr(getattr(PilImage, "Resampling", PilImage), "BILINEAR")
+                image = image.resize((CAMERA_STREAM_MAX_WIDTH, preview_height), resample)
+
         output = BytesIO()
-        image.save(output, format="JPEG", quality=88)
-        return output.getvalue()
+        image.save(output, format="JPEG", quality=quality, optimize=False)
+        jpeg = output.getvalue()
+        with self.lock:
+            if self.latest_frame_versions.get(mode) == version:
+                self.latest_jpegs[cache_key] = (version, jpeg)
+        return jpeg
 
     async def capture_and_upload(self) -> None:
         print("[CAMERA] Drone camera capture requested")
@@ -732,6 +758,17 @@ class FlightControlApi:
                 self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
                 self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
+            def _write_json(self, status_code: int, payload: dict) -> bool:
+                try:
+                    self.send_response(status_code)
+                    self._cors()
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                    return True
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    return False
+
             def do_OPTIONS(self) -> None:
                 self.send_response(204)
                 self._cors()
@@ -745,11 +782,7 @@ class FlightControlApi:
                             status.update(owner.status_provider())
                         except Exception as exc:
                             status["statusError"] = str(exc)
-                    self.send_response(200)
-                    self._cors()
-                    self.send_header("Content-Type", "application/json")
-                    self.end_headers()
-                    self.wfile.write(json.dumps(status).encode("utf-8"))
+                    self._write_json(200, status)
                     return
 
                 if self.path.startswith("/api/preflight/"):
@@ -760,11 +793,7 @@ class FlightControlApi:
                         self.end_headers()
                         return
                     payload = owner.preflight_provider(check_id, owner.preflight_started_at_s)
-                    self.send_response(200)
-                    self._cors()
-                    self.send_header("Content-Type", "application/json")
-                    self.end_headers()
-                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                    self._write_json(200, payload)
                     return
 
                 if not self.path.startswith("/stream.mjpg"):
@@ -783,7 +812,7 @@ class FlightControlApi:
 
                 while True:
                     try:
-                        frame = owner.camera._latest_jpeg()
+                        frame = owner.camera._latest_jpeg(preview=True)
                         if frame is None:
                             time.sleep(0.15)
                             continue
@@ -792,7 +821,7 @@ class FlightControlApi:
                         self.wfile.write(f"Content-Length: {len(frame)}\r\n\r\n".encode("ascii"))
                         self.wfile.write(frame)
                         self.wfile.write(b"\r\n")
-                        time.sleep(1 / 15)
+                        time.sleep(1 / max(1.0, CAMERA_STREAM_FPS))
                     except (BrokenPipeError, ConnectionResetError, OSError):
                         return
 
@@ -804,11 +833,7 @@ class FlightControlApi:
                         "checkId": owner.preflight_check_id,
                         "status": "CHECKING",
                     }
-                    self.send_response(202)
-                    self._cors()
-                    self.send_header("Content-Type", "application/json")
-                    self.end_headers()
-                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                    self._write_json(202, payload)
                     return
 
                 if not self.path.startswith("/api/control/command"):
@@ -827,19 +852,11 @@ class FlightControlApi:
                 command = str(payload.get("command", "")).strip().lower()
                 key = CONTROL_COMMAND_KEYS.get(command)
                 if key is None:
-                    self.send_response(400)
-                    self._cors()
-                    self.send_header("Content-Type", "application/json")
-                    self.end_headers()
-                    self.wfile.write(json.dumps({"ok": False, "error": "unknown command"}).encode("utf-8"))
+                    self._write_json(400, {"ok": False, "error": "unknown command"})
                     return
 
                 owner.commands.put(key)
-                self.send_response(202)
-                self._cors()
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({"ok": True, "command": command}).encode("utf-8"))
+                self._write_json(202, {"ok": True, "command": command})
 
         try:
             self.server = ThreadingHTTPServer((FLIGHT_CONTROL_API_BIND, FLIGHT_CONTROL_API_PORT), Handler)
@@ -1863,7 +1880,7 @@ async def main() -> None:
     avoidance = None
     lidar = None
     safety_sensor_enabled = (
-    os.getenv("SAFETY_SENSOR_ENABLED", "true").strip().lower()
+    os.getenv("SAFETY_SENSOR_ENABLED", "false").strip().lower()
         in {"1", "true", "yes", "on"}
     )
 
@@ -2111,6 +2128,39 @@ async def main() -> None:
         nonlocal safety_speed_scale
         safety_speed_scale = max(0.0, min(1.0, scale))
 
+    def start_obstacle_safety_if_needed() -> bool:
+        nonlocal avoidance, lidar, safety_task
+        if safety_task is not None and not safety_task.done():
+            return True
+        if LidarGateway is None or AvoidanceController is None:
+            print(f"[LIDAR] Disabled: {LIDAR_IMPORT_ERROR}")
+            print("[LIDAR] Flight control continues without obstacle avoidance.")
+            return False
+
+        if lidar is None:
+            lidar = LidarGateway()
+            lidar.start()
+        if avoidance is None:
+            avoidance = AvoidanceController(drone)
+
+        safety_task = asyncio.create_task(
+            obstacle_safety_loop(
+                avoidance,
+                lidar,
+                connection_manager,
+                lambda: current_yaw_deg,
+                current_saved_motion,
+                lambda: safety_sensor_enabled,
+                get_motion_owner,
+                set_motion_owner,
+                stop_manual_motion,
+                set_safety_speed_scale,
+                launch_pad_clear,
+            ),
+            name="obstacle-safety",
+        )
+        return True
+
     def update_local_position(north_m: float, east_m: float, down_m: float) -> None:
         nonlocal current_local_north_m
         nonlocal current_local_east_m
@@ -2320,32 +2370,9 @@ async def main() -> None:
         )
     )
 
-    if LidarGateway is None or AvoidanceController is None:
-        print(f"[LIDAR] Disabled: {LIDAR_IMPORT_ERROR}")
-        print(
-            "[LIDAR] Flight control continues without obstacle avoidance."
-        )
-    else:
-        lidar = LidarGateway()
-        lidar.start()
-
-        avoidance = AvoidanceController(drone)
-
-        safety_task = asyncio.create_task(
-            obstacle_safety_loop(
-                avoidance,
-                lidar,
-                connection_manager,
-                lambda: current_yaw_deg,
-                current_saved_motion,
-                lambda: safety_sensor_enabled,
-                get_motion_owner,
-                set_motion_owner,
-                stop_manual_motion,
-                set_safety_speed_scale,
-                launch_pad_clear,
-            )
-        )
+    if safety_sensor_enabled:
+        if not start_obstacle_safety_if_needed():
+            safety_sensor_enabled = False
 
     while True:
 
@@ -2606,7 +2633,10 @@ async def main() -> None:
             except grpc.aio.AioRpcError as exc:
                 print_mavsdk_unavailable("stop/hover", exc)
         elif key == "o":
-            safety_sensor_enabled = not safety_sensor_enabled
+            requested_state = not safety_sensor_enabled
+            if requested_state and not start_obstacle_safety_if_needed():
+                requested_state = False
+            safety_sensor_enabled = requested_state
             if not safety_sensor_enabled and motion_owner == MotionOwner.EMERGENCY:
                 force_manual_control()
             state = "ON" if safety_sensor_enabled else "OFF"

@@ -52,7 +52,7 @@
           </clip>
         </camera>
         <always_on>true</always_on>
-        <update_rate>8</update_rate>
+        <update_rate>15</update_rate>
         <visualize>false</visualize>
       </sensor>
       <sensor name="camera_down" type="camera">
@@ -70,7 +70,7 @@
           </clip>
         </camera>
         <always_on>true</always_on>
-        <update_rate>8</update_rate>
+        <update_rate>15</update_rate>
         <visualize>false</visualize>
       </sensor>
       <gravity>true</gravity>
