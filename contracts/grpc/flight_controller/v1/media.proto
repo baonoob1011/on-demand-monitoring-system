@@ -3,6 +3,7 @@ syntax = "proto3";
 package monitoring.flightcontroller.v1;
 
 service MediaService {
+  rpc GetHealth(GetHealthRequest) returns (FlightControllerHealth);
   rpc CaptureImage(CaptureImageRequest) returns (MediaCommandAck);
   rpc StartVideo(StartVideoRequest) returns (MediaCommandAck);
   rpc StopVideo(StopVideoRequest) returns (MediaCommandAck);
@@ -10,6 +11,7 @@ service MediaService {
   rpc DiscardMedia(DiscardMediaRequest) returns (MediaCommandAck);
   rpc UploadMedia(UploadMediaRequest) returns (MediaCommandAck);
   rpc WatchCommand(WatchCommandRequest) returns (stream MediaCommandUpdate);
+  rpc GetMediaPreview(GetMediaPreviewRequest) returns (stream MediaPreviewChunk);
 }
 
 enum MediaType {
@@ -47,6 +49,26 @@ message ListMediaRequest { string mission_id = 1; }
 message DiscardMediaRequest { string command_id = 1; string local_media_id = 2; }
 message UploadMediaRequest { string command_id = 1; string local_media_id = 2; }
 message WatchCommandRequest { string command_id = 1; }
+message GetHealthRequest {}
+
+message FlightControllerHealth {
+  bool ready = 1;
+  bool recording = 2;
+  string status = 3;
+}
+
+message GetMediaPreviewRequest {
+  string local_media_id = 1;
+  int64 offset = 2;
+  int64 length = 3;
+}
+
+message MediaPreviewChunk {
+  bytes data = 1;
+  string content_type = 2;
+  int64 total_size = 3;
+  int64 offset = 4;
+}
 
 message LocalMedia {
   string local_media_id = 1;

@@ -34,6 +34,11 @@ class MediaServiceStub:
         Args:
             channel: A grpc.Channel.
         """
+        self.GetHealth = channel.unary_unary(
+                '/monitoring.flightcontroller.v1.MediaService/GetHealth',
+                request_serializer=flight__controller_dot_v1_dot_media__pb2.GetHealthRequest.SerializeToString,
+                response_deserializer=flight__controller_dot_v1_dot_media__pb2.FlightControllerHealth.FromString,
+                _registered_method=True)
         self.CaptureImage = channel.unary_unary(
                 '/monitoring.flightcontroller.v1.MediaService/CaptureImage',
                 request_serializer=flight__controller_dot_v1_dot_media__pb2.CaptureImageRequest.SerializeToString,
@@ -69,10 +74,21 @@ class MediaServiceStub:
                 request_serializer=flight__controller_dot_v1_dot_media__pb2.WatchCommandRequest.SerializeToString,
                 response_deserializer=flight__controller_dot_v1_dot_media__pb2.MediaCommandUpdate.FromString,
                 _registered_method=True)
+        self.GetMediaPreview = channel.unary_stream(
+                '/monitoring.flightcontroller.v1.MediaService/GetMediaPreview',
+                request_serializer=flight__controller_dot_v1_dot_media__pb2.GetMediaPreviewRequest.SerializeToString,
+                response_deserializer=flight__controller_dot_v1_dot_media__pb2.MediaPreviewChunk.FromString,
+                _registered_method=True)
 
 
 class MediaServiceServicer:
     """Missing associated documentation comment in .proto file."""
+
+    def GetHealth(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
 
     def CaptureImage(self, request, context):
         """Missing associated documentation comment in .proto file."""
@@ -116,9 +132,20 @@ class MediaServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetMediaPreview(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_MediaServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
+            'GetHealth': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetHealth,
+                    request_deserializer=flight__controller_dot_v1_dot_media__pb2.GetHealthRequest.FromString,
+                    response_serializer=flight__controller_dot_v1_dot_media__pb2.FlightControllerHealth.SerializeToString,
+            ),
             'CaptureImage': grpc.unary_unary_rpc_method_handler(
                     servicer.CaptureImage,
                     request_deserializer=flight__controller_dot_v1_dot_media__pb2.CaptureImageRequest.FromString,
@@ -154,6 +181,11 @@ def add_MediaServiceServicer_to_server(servicer, server):
                     request_deserializer=flight__controller_dot_v1_dot_media__pb2.WatchCommandRequest.FromString,
                     response_serializer=flight__controller_dot_v1_dot_media__pb2.MediaCommandUpdate.SerializeToString,
             ),
+            'GetMediaPreview': grpc.unary_stream_rpc_method_handler(
+                    servicer.GetMediaPreview,
+                    request_deserializer=flight__controller_dot_v1_dot_media__pb2.GetMediaPreviewRequest.FromString,
+                    response_serializer=flight__controller_dot_v1_dot_media__pb2.MediaPreviewChunk.SerializeToString,
+            ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
             'monitoring.flightcontroller.v1.MediaService', rpc_method_handlers)
@@ -164,6 +196,33 @@ def add_MediaServiceServicer_to_server(servicer, server):
  # This class is part of an EXPERIMENTAL API.
 class MediaService:
     """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def GetHealth(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/monitoring.flightcontroller.v1.MediaService/GetHealth',
+            flight__controller_dot_v1_dot_media__pb2.GetHealthRequest.SerializeToString,
+            flight__controller_dot_v1_dot_media__pb2.FlightControllerHealth.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def CaptureImage(request,
@@ -344,6 +403,33 @@ class MediaService:
             '/monitoring.flightcontroller.v1.MediaService/WatchCommand',
             flight__controller_dot_v1_dot_media__pb2.WatchCommandRequest.SerializeToString,
             flight__controller_dot_v1_dot_media__pb2.MediaCommandUpdate.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetMediaPreview(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/monitoring.flightcontroller.v1.MediaService/GetMediaPreview',
+            flight__controller_dot_v1_dot_media__pb2.GetMediaPreviewRequest.SerializeToString,
+            flight__controller_dot_v1_dot_media__pb2.MediaPreviewChunk.FromString,
             options,
             channel_credentials,
             insecure,
