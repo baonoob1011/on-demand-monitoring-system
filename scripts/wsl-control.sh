@@ -10,6 +10,11 @@ ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
 DRONE_WORKDIR="${DRONE_WORKDIR:-$HOME/drone-controller}"
 DRONE_ENV="${DRONE_ENV:-$HOME/drone-env}"
 
+# The runtime entrypoint is copied to DRONE_WORKDIR, while its service packages
+# remain versioned under the repository's drone directory.
+export PROJECT_PATH
+export PYTHONPATH="$REPO_CONTROLLER${PYTHONPATH:+:$PYTHONPATH}"
+
 mkdir -p "$DRONE_WORKDIR"
 cd "$DRONE_WORKDIR" || exit 1
 cp "$REPO_CONTROLLER/flight_controller.py" flight_controller.py
