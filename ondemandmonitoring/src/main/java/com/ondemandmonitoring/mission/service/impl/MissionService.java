@@ -135,6 +135,15 @@ public class MissionService implements IMissionService {
         PreflightCheck check = preflightCheckService.run(deviceCode, missionId);
         FlightTokenResponse tokenResponse = null;
 
+        // Store preflight check diagnostics inline on Mission entity (per DB design)
+        mission.setPreflightPassed(check.getOverallPassed());
+        mission.setPreflightFaultType(check.getFaultType());
+        mission.setPreflightFailureReason(check.getFailureReason());
+        mission.setPreflightCheckedAt(Instant.now());
+        mission.setPreflightRetryCount(
+                (mission.getPreflightRetryCount() == null ? 0 : mission.getPreflightRetryCount()) + 1
+        );
+
         if (Boolean.TRUE.equals(check.getOverallPassed())) {
             mission.setStatus(MissionStatus.READY_TO_FLY);
             drone.setStatus(DeviceStatus.PREFLIGHT);

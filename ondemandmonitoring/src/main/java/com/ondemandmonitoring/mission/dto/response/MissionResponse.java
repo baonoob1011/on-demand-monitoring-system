@@ -1,6 +1,5 @@
 package com.ondemandmonitoring.mission.dto.response;
 
-import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.enums.MediaType;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import lombok.AccessLevel;
@@ -31,5 +30,12 @@ public class MissionResponse {
     String failureReason;
     String rejectionReason;
     MediaType mediaType;
+
+    // Preflight Inline Fields
+    Integer preflightRetryCount;
+    Boolean preflightPassed;
+    String preflightFaultType;
+    String preflightFailureReason;
+    Instant preflightCheckedAt;
 }
 
