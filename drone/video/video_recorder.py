@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from queue import Full, Empty, Queue
+import shutil
+import subprocess
 import threading
 import time
 from typing import Any
@@ -34,10 +36,12 @@ class VideoRecorder:
         output_dir: Path,
         fps: float = 15.0,
         queue_size: int = 4,
+        ffmpeg_binary: str = "ffmpeg",
     ) -> None:
         self.output_dir = output_dir
         self.fps = max(1.0, fps)
         self.queue_size = max(2, queue_size)
+        self.ffmpeg_binary = ffmpeg_binary
         self._lock = threading.Lock()
         self._queue: Queue[Any] | None = None
         self._stop_event: threading.Event | None = None
@@ -148,7 +152,57 @@ class VideoRecorder:
             self._stop_event = None
             self._worker = None
             self._path = None
-            return result
+
+        if result.frames_written > 0:
+            self._make_browser_compatible(result.path)
+        return result
+
+    def _make_browser_compatible(self, source: Path) -> None:
+        """Transcode OpenCV's mp4v output to browser-compatible H.264."""
+        ffmpeg = shutil.which(self.ffmpeg_binary)
+        if ffmpeg is None:
+            raise RuntimeError(
+                "FFmpeg is required to finalize browser-compatible MP4 video"
+            )
+
+        encoded = source.with_name(f"{source.stem}.browser{source.suffix}")
+        command = [
+            ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(source),
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "23",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            str(encoded),
+        ]
+        try:
+            subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if not encoded.is_file() or encoded.stat().st_size == 0:
+                raise RuntimeError("FFmpeg did not create a playable MP4 file")
+            encoded.replace(source)
+        except (OSError, subprocess.SubprocessError) as exc:
+            detail = getattr(exc, "stderr", "") or str(exc)
+            raise RuntimeError(f"Unable to finalize MP4 video: {detail.strip()}") from exc
+        finally:
+            encoded.unlink(missing_ok=True)
 
     def _worker_loop(self) -> None:
         while True:
