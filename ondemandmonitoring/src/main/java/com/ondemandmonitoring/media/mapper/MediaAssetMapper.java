@@ -12,7 +12,7 @@ public interface MediaAssetMapper {
     MediaAssetResponse toResponse(MediaAsset mediaAsset);
 
     @Mapping(source = "mediaAsset.id", target = "id")
-    @Mapping(source = "mediaAsset.deviceCode", target = "droneId")
+    @Mapping(source = "mediaAsset.droneCode", target = "droneId")
     @Mapping(source = "presignedUrl", target = "url")
     @Mapping(source = "expiresInSeconds", target = "expiresIn")
     MediaResponse toMediaResponse(MediaAsset mediaAsset, String presignedUrl, long expiresInSeconds);

@@ -29,18 +29,18 @@ public class MissionMediaUploadService implements IMissionMediaUploadService {
     IMediaAssetService mediaAssetService;
 
     @Override
-    public MediaAsset uploadWithRetry(String missionId, String deviceCode, MultipartFile file) {
-        return uploadWithRetry(missionId, deviceCode, file, null);
+    public MediaAsset uploadWithRetry(String missionId, String droneCode, MultipartFile file) {
+        return uploadWithRetry(missionId, droneCode, file, null);
     }
 
     @Override
-    public MediaAsset uploadWithRetry(String missionId, String deviceCode, MultipartFile file, String mediaType) {
+    public MediaAsset uploadWithRetry(String missionId, String droneCode, MultipartFile file, String mediaType) {
         Exception lastException = null;
 
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {
                 log.info("Mission {} – media upload attempt {}/{}", missionId, attempt, MAX_ATTEMPTS);
-                MediaAsset image = mediaAssetService.upload(missionId, deviceCode, Instant.now(), file, mediaType);
+                MediaAsset image = mediaAssetService.upload(missionId, droneCode, Instant.now(), file, mediaType);
                 log.info("Mission {} – media uploaded successfully on attempt {}", missionId, attempt);
                 return image;
             } catch (Exception ex) {
@@ -52,15 +52,15 @@ public class MissionMediaUploadService implements IMissionMediaUploadService {
             }
         }
 
-        createManualUploadNotification(missionId, deviceCode);
+        createManualUploadNotification(missionId, droneCode);
         throw new ApiException(ErrorCode.MEDIA_UPLOAD_FAILED,
                 "Upload thất bại sau " + MAX_ATTEMPTS + " lần thử cho mission " + missionId
                         + ". Nguyên nhân: " + (lastException != null ? lastException.getMessage() : "unknown"));
     }
 
-    protected void createManualUploadNotification(String missionId, String deviceCode) {
+    protected void createManualUploadNotification(String missionId, String droneCode) {
         log.error("[MANUAL UPLOAD REQUIRED] Mission {} – drone {} – upload failed after {} attempts. "
-                + "Operator must upload media manually.", missionId, deviceCode, MAX_ATTEMPTS);
+                + "Operator must upload media manually.", missionId, droneCode, MAX_ATTEMPTS);
     }
 
     private void sleepQuietly(long millis) {

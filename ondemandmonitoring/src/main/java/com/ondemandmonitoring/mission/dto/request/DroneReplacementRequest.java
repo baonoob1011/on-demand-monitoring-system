@@ -13,6 +13,6 @@ import lombok.experimental.FieldDefaults;
 public class DroneReplacementRequest {
 
     @NotBlank(message = "Drone replacement code cannot blank!")
-    String newDeviceCode;
+    String newDroneCode;
 }
 
