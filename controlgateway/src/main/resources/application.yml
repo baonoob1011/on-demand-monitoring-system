@@ -1,0 +1,22 @@
+server:
+  port: ${CONTROL_GATEWAY_PORT:8081}
+
+spring:
+  application:
+    name: control-gateway
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+app:
+  control-gateway:
+    command-timeout: ${CONTROL_GATEWAY_COMMAND_TIMEOUT:15s}
+    stream-timeout: ${CONTROL_GATEWAY_STREAM_TIMEOUT:15m}
+    flight-controller:
+      host: ${FLIGHT_CONTROLLER_GRPC_HOST:127.0.0.1}
+      port: ${FLIGHT_CONTROLLER_GRPC_PORT:50051}
+      tls: ${FLIGHT_CONTROLLER_GRPC_TLS:false}
+      token: ${FLIGHT_CONTROLLER_GRPC_TOKEN:}
