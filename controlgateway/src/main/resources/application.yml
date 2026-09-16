@@ -12,6 +12,13 @@ management:
         include: health,info
 
 app:
+  security:
+    issuer-uri: ${COGNITO_ISSUER_URI:}
+    client-id: ${AWS_COGNITO_CLIENT_ID:}
+    allowed-origins: ${CONTROL_GATEWAY_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+  backend:
+    base-url: ${BACKEND_BASE_URL:http://localhost:8080}
+    timeout: ${BACKEND_TIMEOUT:10s}
   control-gateway:
     command-timeout: ${CONTROL_GATEWAY_COMMAND_TIMEOUT:15s}
     stream-timeout: ${CONTROL_GATEWAY_STREAM_TIMEOUT:15m}

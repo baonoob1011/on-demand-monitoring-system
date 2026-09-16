@@ -14,7 +14,8 @@ public interface FlightControllerClient {
     Media.MediaCommandAck startVideo(String commandId, String missionId, String droneId,
                                     String operatorAccessToken);
 
-    Media.MediaCommandAck stopVideo(String commandId, String operatorAccessToken);
+    Media.MediaCommandAck stopVideo(String commandId, String missionId, String droneId,
+                                    String operatorAccessToken);
 
     List<Media.LocalMedia> listMedia(String missionId, String operatorAccessToken);
 

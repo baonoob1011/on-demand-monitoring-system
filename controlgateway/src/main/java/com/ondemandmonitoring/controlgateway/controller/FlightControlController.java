@@ -50,7 +50,8 @@ public class FlightControlController {
     @PostMapping("/missions/{missionId}/videos/stop")
     CommandResponse stopVideo(@PathVariable String missionId, @Valid @RequestBody CommandRequest request,
                               @RequestHeader(value = "Authorization", required = false) String authorization) {
-        return flightControlService.stopVideo(request.commandId(), bearer(authorization));
+        return flightControlService.stopVideo(
+                request.commandId(), missionId, request.droneId(), bearer(authorization));
     }
 
     @PostMapping("/media/{localMediaId}/discard")

@@ -17,7 +17,8 @@ public interface FlightControlService {
     CommandResponse startVideo(String commandId, String missionId, String droneId,
                                String operatorAccessToken);
 
-    CommandResponse stopVideo(String commandId, String operatorAccessToken);
+    CommandResponse stopVideo(String commandId, String missionId, String droneId,
+                              String operatorAccessToken);
 
     List<LocalMediaResponse> listMedia(String missionId, String operatorAccessToken);
 

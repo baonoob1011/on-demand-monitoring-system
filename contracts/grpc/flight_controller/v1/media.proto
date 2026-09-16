@@ -44,7 +44,11 @@ enum CommandState {
 
 message CaptureImageRequest { string command_id = 1; string mission_id = 2; string drone_id = 3; }
 message StartVideoRequest { string command_id = 1; string mission_id = 2; string drone_id = 3; }
-message StopVideoRequest { string command_id = 1; }
+message StopVideoRequest {
+  string command_id = 1;
+  string mission_id = 2;
+  string drone_id = 3;
+}
 message ListMediaRequest { string mission_id = 1; }
 message DiscardMediaRequest { string command_id = 1; string local_media_id = 2; }
 message UploadMediaRequest { string command_id = 1; string local_media_id = 2; }

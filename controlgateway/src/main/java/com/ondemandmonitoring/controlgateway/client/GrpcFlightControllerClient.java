@@ -53,9 +53,11 @@ public class GrpcFlightControllerClient implements FlightControllerClient {
     }
 
     @Override
-    public Media.MediaCommandAck stopVideo(String commandId, String operatorAccessToken) {
+    public Media.MediaCommandAck stopVideo(String commandId, String missionId, String droneId,
+                                           String operatorAccessToken) {
         return invoke(() -> stub(operatorAccessToken).stopVideo(
-                Media.StopVideoRequest.newBuilder().setCommandId(commandId).build()));
+                Media.StopVideoRequest.newBuilder()
+                        .setCommandId(commandId).setMissionId(missionId).setDroneId(droneId).build()));
     }
 
     @Override

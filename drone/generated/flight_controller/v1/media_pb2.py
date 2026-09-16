@@ -24,49 +24,49 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n flight_controller/v1/media.proto\x12\x1emonitoring.flightcontroller.v1\"O\n\x13\x43\x61ptureImageRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x12\n\nmission_id\x18\x02 \x01(\t\x12\x10\n\x08\x64rone_id\x18\x03 \x01(\t\"M\n\x11StartVideoRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x12\n\nmission_id\x18\x02 \x01(\t\x12\x10\n\x08\x64rone_id\x18\x03 \x01(\t\"&\n\x10StopVideoRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\"&\n\x10ListMediaRequest\x12\x12\n\nmission_id\x18\x01 \x01(\t\"A\n\x13\x44iscardMediaRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x16\n\x0elocal_media_id\x18\x02 \x01(\t\"@\n\x12UploadMediaRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x16\n\x0elocal_media_id\x18\x02 \x01(\t\")\n\x13WatchCommandRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\"\x12\n\x10GetHealthRequest\"J\n\x16\x46lightControllerHealth\x12\r\n\x05ready\x18\x01 \x01(\x08\x12\x11\n\trecording\x18\x02 \x01(\x08\x12\x0e\n\x06status\x18\x03 \x01(\t\"P\n\x16GetMediaPreviewRequest\x12\x16\n\x0elocal_media_id\x18\x01 \x01(\t\x12\x0e\n\x06offset\x18\x02 \x01(\x03\x12\x0e\n\x06length\x18\x03 \x01(\x03\"[\n\x11MediaPreviewChunk\x12\x0c\n\x04\x64\x61ta\x18\x01 \x01(\x0c\x12\x14\n\x0c\x63ontent_type\x18\x02 \x01(\t\x12\x12\n\ntotal_size\x18\x03 \x01(\x03\x12\x0e\n\x06offset\x18\x04 \x01(\x03\"\x8e\x03\n\nLocalMedia\x12\x16\n\x0elocal_media_id\x18\x01 \x01(\t\x12\x12\n\nmission_id\x18\x02 \x01(\t\x12\x10\n\x08\x64rone_id\x18\x03 \x01(\t\x12=\n\nmedia_type\x18\x04 \x01(\x0e\x32).monitoring.flightcontroller.v1.MediaType\x12@\n\x06status\x18\x05 \x01(\x0e\x32\x30.monitoring.flightcontroller.v1.LocalMediaStatus\x12\x11\n\tfile_name\x18\x06 \x01(\t\x12\x12\n\nlocal_path\x18\x07 \x01(\t\x12\x14\n\x0c\x63ontent_type\x18\x08 \x01(\t\x12\x11\n\tfile_size\x18\t \x01(\x03\x12\x17\n\x0f\x63hecksum_sha256\x18\n \x01(\t\x12\x13\n\x0b\x63\x61ptured_at\x18\x0b \x01(\t\x12\x18\n\x10\x62\x61\x63kend_media_id\x18\x0c \x01(\t\x12\x12\n\nerror_code\x18\r \x01(\t\x12\x15\n\rerror_message\x18\x0e \x01(\t\"\xc8\x01\n\x0fMediaCommandAck\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12;\n\x05state\x18\x02 \x01(\x0e\x32,.monitoring.flightcontroller.v1.CommandState\x12\x39\n\x05media\x18\x03 \x01(\x0b\x32*.monitoring.flightcontroller.v1.LocalMedia\x12\x12\n\nerror_code\x18\x04 \x01(\t\x12\x15\n\rerror_message\x18\x05 \x01(\t\"\xcb\x01\n\x12MediaCommandUpdate\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12;\n\x05state\x18\x02 \x01(\x0e\x32,.monitoring.flightcontroller.v1.CommandState\x12\x39\n\x05media\x18\x03 \x01(\x0b\x32*.monitoring.flightcontroller.v1.LocalMedia\x12\x12\n\nerror_code\x18\x04 \x01(\t\x12\x15\n\rerror_message\x18\x05 \x01(\t\"N\n\x11ListMediaResponse\x12\x39\n\x05media\x18\x01 \x03(\x0b\x32*.monitoring.flightcontroller.v1.LocalMedia*S\n\tMediaType\x12\x1a\n\x16MEDIA_TYPE_UNSPECIFIED\x10\x00\x12\x14\n\x10MEDIA_TYPE_IMAGE\x10\x01\x12\x14\n\x10MEDIA_TYPE_VIDEO\x10\x02*\xa4\x03\n\x10LocalMediaStatus\x12\"\n\x1eLOCAL_MEDIA_STATUS_UNSPECIFIED\x10\x00\x12 \n\x1cLOCAL_MEDIA_STATUS_CAPTURING\x10\x01\x12%\n!LOCAL_MEDIA_STATUS_REVIEW_PENDING\x10\x02\x12%\n!LOCAL_MEDIA_STATUS_UPLOAD_PENDING\x10\x03\x12 \n\x1cLOCAL_MEDIA_STATUS_UPLOADING\x10\x04\x12!\n\x1dLOCAL_MEDIA_STATUS_VALIDATING\x10\x05\x12 \n\x1cLOCAL_MEDIA_STATUS_AVAILABLE\x10\x06\x12%\n!LOCAL_MEDIA_STATUS_RETRY_REQUIRED\x10\x07\x12-\n)LOCAL_MEDIA_STATUS_MANUAL_UPLOAD_REQUIRED\x10\x08\x12 \n\x1cLOCAL_MEDIA_STATUS_DISCARDED\x10\t\x12\x1d\n\x19LOCAL_MEDIA_STATUS_FAILED\x10\n*\x9b\x01\n\x0c\x43ommandState\x12\x1d\n\x19\x43OMMAND_STATE_UNSPECIFIED\x10\x00\x12\x1a\n\x16\x43OMMAND_STATE_ACCEPTED\x10\x01\x12\x19\n\x15\x43OMMAND_STATE_RUNNING\x10\x02\x12\x1b\n\x17\x43OMMAND_STATE_SUCCEEDED\x10\x03\x12\x18\n\x14\x43OMMAND_STATE_FAILED\x10\x04\x32\xb4\x08\n\x0cMediaService\x12u\n\tGetHealth\x12\x30.monitoring.flightcontroller.v1.GetHealthRequest\x1a\x36.monitoring.flightcontroller.v1.FlightControllerHealth\x12t\n\x0c\x43\x61ptureImage\x12\x33.monitoring.flightcontroller.v1.CaptureImageRequest\x1a/.monitoring.flightcontroller.v1.MediaCommandAck\x12p\n\nStartVideo\x12\x31.monitoring.flightcontroller.v1.StartVideoRequest\x1a/.monitoring.flightcontroller.v1.MediaCommandAck\x12n\n\tStopVideo\x12\x30.monitoring.flightcontroller.v1.StopVideoRequest\x1a/.monitoring.flightcontroller.v1.MediaCommandAck\x12p\n\tListMedia\x12\x30.monitoring.flightcontroller.v1.ListMediaRequest\x1a\x31.monitoring.flightcontroller.v1.ListMediaResponse\x12t\n\x0c\x44iscardMedia\x12\x33.monitoring.flightcontroller.v1.DiscardMediaRequest\x1a/.monitoring.flightcontroller.v1.MediaCommandAck\x12r\n\x0bUploadMedia\x12\x32.monitoring.flightcontroller.v1.UploadMediaRequest\x1a/.monitoring.flightcontroller.v1.MediaCommandAck\x12y\n\x0cWatchCommand\x12\x33.monitoring.flightcontroller.v1.WatchCommandRequest\x1a\x32.monitoring.flightcontroller.v1.MediaCommandUpdate0\x01\x12~\n\x0fGetMediaPreview\x12\x36.monitoring.flightcontroller.v1.GetMediaPreviewRequest\x1a\x31.monitoring.flightcontroller.v1.MediaPreviewChunk0\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n flight_controller/v1/media.proto\x12\x1emonitoring.flightcontroller.v1\"O\n\x13\x43\x61ptureImageRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x12\n\nmission_id\x18\x02 \x01(\t\x12\x10\n\x08\x64rone_id\x18\x03 \x01(\t\"M\n\x11StartVideoRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x12\n\nmission_id\x18\x02 \x01(\t\x12\x10\n\x08\x64rone_id\x18\x03 \x01(\t\"L\n\x10StopVideoRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x12\n\nmission_id\x18\x02 \x01(\t\x12\x10\n\x08\x64rone_id\x18\x03 \x01(\t\"&\n\x10ListMediaRequest\x12\x12\n\nmission_id\x18\x01 \x01(\t\"A\n\x13\x44iscardMediaRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x16\n\x0elocal_media_id\x18\x02 \x01(\t\"@\n\x12UploadMediaRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x16\n\x0elocal_media_id\x18\x02 \x01(\t\")\n\x13WatchCommandRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\"\x12\n\x10GetHealthRequest\"J\n\x16\x46lightControllerHealth\x12\r\n\x05ready\x18\x01 \x01(\x08\x12\x11\n\trecording\x18\x02 \x01(\x08\x12\x0e\n\x06status\x18\x03 \x01(\t\"P\n\x16GetMediaPreviewRequest\x12\x16\n\x0elocal_media_id\x18\x01 \x01(\t\x12\x0e\n\x06offset\x18\x02 \x01(\x03\x12\x0e\n\x06length\x18\x03 \x01(\x03\"[\n\x11MediaPreviewChunk\x12\x0c\n\x04\x64\x61ta\x18\x01 \x01(\x0c\x12\x14\n\x0c\x63ontent_type\x18\x02 \x01(\t\x12\x12\n\ntotal_size\x18\x03 \x01(\x03\x12\x0e\n\x06offset\x18\x04 \x01(\x03\"\x8e\x03\n\nLocalMedia\x12\x16\n\x0elocal_media_id\x18\x01 \x01(\t\x12\x12\n\nmission_id\x18\x02 \x01(\t\x12\x10\n\x08\x64rone_id\x18\x03 \x01(\t\x12=\n\nmedia_type\x18\x04 \x01(\x0e\x32).monitoring.flightcontroller.v1.MediaType\x12@\n\x06status\x18\x05 \x01(\x0e\x32\x30.monitoring.flightcontroller.v1.LocalMediaStatus\x12\x11\n\tfile_name\x18\x06 \x01(\t\x12\x12\n\nlocal_path\x18\x07 \x01(\t\x12\x14\n\x0c\x63ontent_type\x18\x08 \x01(\t\x12\x11\n\tfile_size\x18\t \x01(\x03\x12\x17\n\x0f\x63hecksum_sha256\x18\n \x01(\t\x12\x13\n\x0b\x63\x61ptured_at\x18\x0b \x01(\t\x12\x18\n\x10\x62\x61\x63kend_media_id\x18\x0c \x01(\t\x12\x12\n\nerror_code\x18\r \x01(\t\x12\x15\n\rerror_message\x18\x0e \x01(\t\"\xc8\x01\n\x0fMediaCommandAck\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12;\n\x05state\x18\x02 \x01(\x0e\x32,.monitoring.flightcontroller.v1.CommandState\x12\x39\n\x05media\x18\x03 \x01(\x0b\x32*.monitoring.flightcontroller.v1.LocalMedia\x12\x12\n\nerror_code\x18\x04 \x01(\t\x12\x15\n\rerror_message\x18\x05 \x01(\t\"\xcb\x01\n\x12MediaCommandUpdate\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12;\n\x05state\x18\x02 \x01(\x0e\x32,.monitoring.flightcontroller.v1.CommandState\x12\x39\n\x05media\x18\x03 \x01(\x0b\x32*.monitoring.flightcontroller.v1.LocalMedia\x12\x12\n\nerror_code\x18\x04 \x01(\t\x12\x15\n\rerror_message\x18\x05 \x01(\t\"N\n\x11ListMediaResponse\x12\x39\n\x05media\x18\x01 \x03(\x0b\x32*.monitoring.flightcontroller.v1.LocalMedia*S\n\tMediaType\x12\x1a\n\x16MEDIA_TYPE_UNSPECIFIED\x10\x00\x12\x14\n\x10MEDIA_TYPE_IMAGE\x10\x01\x12\x14\n\x10MEDIA_TYPE_VIDEO\x10\x02*\xa4\x03\n\x10LocalMediaStatus\x12\"\n\x1eLOCAL_MEDIA_STATUS_UNSPECIFIED\x10\x00\x12 \n\x1cLOCAL_MEDIA_STATUS_CAPTURING\x10\x01\x12%\n!LOCAL_MEDIA_STATUS_REVIEW_PENDING\x10\x02\x12%\n!LOCAL_MEDIA_STATUS_UPLOAD_PENDING\x10\x03\x12 \n\x1cLOCAL_MEDIA_STATUS_UPLOADING\x10\x04\x12!\n\x1dLOCAL_MEDIA_STATUS_VALIDATING\x10\x05\x12 \n\x1cLOCAL_MEDIA_STATUS_AVAILABLE\x10\x06\x12%\n!LOCAL_MEDIA_STATUS_RETRY_REQUIRED\x10\x07\x12-\n)LOCAL_MEDIA_STATUS_MANUAL_UPLOAD_REQUIRED\x10\x08\x12 \n\x1cLOCAL_MEDIA_STATUS_DISCARDED\x10\t\x12\x1d\n\x19LOCAL_MEDIA_STATUS_FAILED\x10\n*\x9b\x01\n\x0c\x43ommandState\x12\x1d\n\x19\x43OMMAND_STATE_UNSPECIFIED\x10\x00\x12\x1a\n\x16\x43OMMAND_STATE_ACCEPTED\x10\x01\x12\x19\n\x15\x43OMMAND_STATE_RUNNING\x10\x02\x12\x1b\n\x17\x43OMMAND_STATE_SUCCEEDED\x10\x03\x12\x18\n\x14\x43OMMAND_STATE_FAILED\x10\x04\x32\xb4\x08\n\x0cMediaService\x12u\n\tGetHealth\x12\x30.monitoring.flightcontroller.v1.GetHealthRequest\x1a\x36.monitoring.flightcontroller.v1.FlightControllerHealth\x12t\n\x0c\x43\x61ptureImage\x12\x33.monitoring.flightcontroller.v1.CaptureImageRequest\x1a/.monitoring.flightcontroller.v1.MediaCommandAck\x12p\n\nStartVideo\x12\x31.monitoring.flightcontroller.v1.StartVideoRequest\x1a/.monitoring.flightcontroller.v1.MediaCommandAck\x12n\n\tStopVideo\x12\x30.monitoring.flightcontroller.v1.StopVideoRequest\x1a/.monitoring.flightcontroller.v1.MediaCommandAck\x12p\n\tListMedia\x12\x30.monitoring.flightcontroller.v1.ListMediaRequest\x1a\x31.monitoring.flightcontroller.v1.ListMediaResponse\x12t\n\x0c\x44iscardMedia\x12\x33.monitoring.flightcontroller.v1.DiscardMediaRequest\x1a/.monitoring.flightcontroller.v1.MediaCommandAck\x12r\n\x0bUploadMedia\x12\x32.monitoring.flightcontroller.v1.UploadMediaRequest\x1a/.monitoring.flightcontroller.v1.MediaCommandAck\x12y\n\x0cWatchCommand\x12\x33.monitoring.flightcontroller.v1.WatchCommandRequest\x1a\x32.monitoring.flightcontroller.v1.MediaCommandUpdate0\x01\x12~\n\x0fGetMediaPreview\x12\x36.monitoring.flightcontroller.v1.GetMediaPreviewRequest\x1a\x31.monitoring.flightcontroller.v1.MediaPreviewChunk0\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'flight_controller.v1.media_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_MEDIATYPE']._serialized_start=1645
-  _globals['_MEDIATYPE']._serialized_end=1728
-  _globals['_LOCALMEDIASTATUS']._serialized_start=1731
-  _globals['_LOCALMEDIASTATUS']._serialized_end=2151
-  _globals['_COMMANDSTATE']._serialized_start=2154
-  _globals['_COMMANDSTATE']._serialized_end=2309
+  _globals['_MEDIATYPE']._serialized_start=1683
+  _globals['_MEDIATYPE']._serialized_end=1766
+  _globals['_LOCALMEDIASTATUS']._serialized_start=1769
+  _globals['_LOCALMEDIASTATUS']._serialized_end=2189
+  _globals['_COMMANDSTATE']._serialized_start=2192
+  _globals['_COMMANDSTATE']._serialized_end=2347
   _globals['_CAPTUREIMAGEREQUEST']._serialized_start=68
   _globals['_CAPTUREIMAGEREQUEST']._serialized_end=147
   _globals['_STARTVIDEOREQUEST']._serialized_start=149
   _globals['_STARTVIDEOREQUEST']._serialized_end=226
   _globals['_STOPVIDEOREQUEST']._serialized_start=228
-  _globals['_STOPVIDEOREQUEST']._serialized_end=266
-  _globals['_LISTMEDIAREQUEST']._serialized_start=268
-  _globals['_LISTMEDIAREQUEST']._serialized_end=306
-  _globals['_DISCARDMEDIAREQUEST']._serialized_start=308
-  _globals['_DISCARDMEDIAREQUEST']._serialized_end=373
-  _globals['_UPLOADMEDIAREQUEST']._serialized_start=375
-  _globals['_UPLOADMEDIAREQUEST']._serialized_end=439
-  _globals['_WATCHCOMMANDREQUEST']._serialized_start=441
-  _globals['_WATCHCOMMANDREQUEST']._serialized_end=482
-  _globals['_GETHEALTHREQUEST']._serialized_start=484
-  _globals['_GETHEALTHREQUEST']._serialized_end=502
-  _globals['_FLIGHTCONTROLLERHEALTH']._serialized_start=504
-  _globals['_FLIGHTCONTROLLERHEALTH']._serialized_end=578
-  _globals['_GETMEDIAPREVIEWREQUEST']._serialized_start=580
-  _globals['_GETMEDIAPREVIEWREQUEST']._serialized_end=660
-  _globals['_MEDIAPREVIEWCHUNK']._serialized_start=662
-  _globals['_MEDIAPREVIEWCHUNK']._serialized_end=753
-  _globals['_LOCALMEDIA']._serialized_start=756
-  _globals['_LOCALMEDIA']._serialized_end=1154
-  _globals['_MEDIACOMMANDACK']._serialized_start=1157
-  _globals['_MEDIACOMMANDACK']._serialized_end=1357
-  _globals['_MEDIACOMMANDUPDATE']._serialized_start=1360
-  _globals['_MEDIACOMMANDUPDATE']._serialized_end=1563
-  _globals['_LISTMEDIARESPONSE']._serialized_start=1565
-  _globals['_LISTMEDIARESPONSE']._serialized_end=1643
-  _globals['_MEDIASERVICE']._serialized_start=2312
-  _globals['_MEDIASERVICE']._serialized_end=3388
+  _globals['_STOPVIDEOREQUEST']._serialized_end=304
+  _globals['_LISTMEDIAREQUEST']._serialized_start=306
+  _globals['_LISTMEDIAREQUEST']._serialized_end=344
+  _globals['_DISCARDMEDIAREQUEST']._serialized_start=346
+  _globals['_DISCARDMEDIAREQUEST']._serialized_end=411
+  _globals['_UPLOADMEDIAREQUEST']._serialized_start=413
+  _globals['_UPLOADMEDIAREQUEST']._serialized_end=477
+  _globals['_WATCHCOMMANDREQUEST']._serialized_start=479
+  _globals['_WATCHCOMMANDREQUEST']._serialized_end=520
+  _globals['_GETHEALTHREQUEST']._serialized_start=522
+  _globals['_GETHEALTHREQUEST']._serialized_end=540
+  _globals['_FLIGHTCONTROLLERHEALTH']._serialized_start=542
+  _globals['_FLIGHTCONTROLLERHEALTH']._serialized_end=616
+  _globals['_GETMEDIAPREVIEWREQUEST']._serialized_start=618
+  _globals['_GETMEDIAPREVIEWREQUEST']._serialized_end=698
+  _globals['_MEDIAPREVIEWCHUNK']._serialized_start=700
+  _globals['_MEDIAPREVIEWCHUNK']._serialized_end=791
+  _globals['_LOCALMEDIA']._serialized_start=794
+  _globals['_LOCALMEDIA']._serialized_end=1192
+  _globals['_MEDIACOMMANDACK']._serialized_start=1195
+  _globals['_MEDIACOMMANDACK']._serialized_end=1395
+  _globals['_MEDIACOMMANDUPDATE']._serialized_start=1398
+  _globals['_MEDIACOMMANDUPDATE']._serialized_end=1601
+  _globals['_LISTMEDIARESPONSE']._serialized_start=1603
+  _globals['_LISTMEDIARESPONSE']._serialized_end=1681
+  _globals['_MEDIASERVICE']._serialized_start=2350
+  _globals['_MEDIASERVICE']._serialized_end=3426
 # @@protoc_insertion_point(module_scope)
