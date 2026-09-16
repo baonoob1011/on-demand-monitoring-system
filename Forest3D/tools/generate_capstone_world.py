@@ -176,7 +176,9 @@ def hazard_cone(world: ET.Element, name: str, pose: str) -> None:
     cylinder(world, name, pose, 0.28, 0.65, "0.95 0.32 0.03 1", "1.0 0.45 0.06 1")
 
 def add_base(world: ET.Element) -> None:
-    cylinder(world, "drone_landing_pad", "0 0 0.035 0 0 0", 6.0, 0.07, "0.05 0.05 0.05 1", "0.08 0.08 0.08 1")
+    # Keep the thin pad visual-only. Otherwise the vehicle can settle through
+    # it and become trapped below the collision surface before takeoff.
+    cylinder(world, "drone_landing_pad", "0 0 0.035 0 0 0", 6.0, 0.07, "0.05 0.05 0.05 1", "0.08 0.08 0.08 1", False)
     cylinder(world, "landing_pad_inner_ring", "0 0 0.085 0 0 0", 4.0, 0.025, "0.9 0.9 0.82 1", "0.95 0.95 0.84 1", False)
     box(world, "landing_pad_h_mark_v", "0 0 0.11 0 0 0", "0.7 4.6 0.025", "0.04 0.04 0.04 1", "0.04 0.04 0.04 1", False, roughness="0.8")
     box(world, "landing_pad_h_mark_l", "-1.25 0 0.115 0 0 0", "0.7 2.6 0.025", "0.04 0.04 0.04 1", "0.04 0.04 0.04 1", False, roughness="0.8")
