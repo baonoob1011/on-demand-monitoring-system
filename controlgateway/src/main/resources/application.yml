@@ -2,6 +2,10 @@ server:
   port: ${CONTROL_GATEWAY_PORT:8081}
 
 spring:
+  config:
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:controlgateway/.env[.properties]
   application:
     name: control-gateway
 
