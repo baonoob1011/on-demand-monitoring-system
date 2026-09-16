@@ -3,6 +3,13 @@ set -e
 
 REAL_GZ="/usr/bin/gz"
 
+run_gui() {
+    if [ "${GAZEBO_GUI_SOFTWARE_RENDERING:-1}" = "1" ]; then
+        exec env LIBGL_ALWAYS_SOFTWARE=1 "$REAL_GZ" sim "$@"
+    fi
+    exec "$REAL_GZ" sim "$@"
+}
+
 if [ "${1:-}" = "sim" ] && [ -n "${FOREST3D_GZ_GUI_CONFIG:-}" ]; then
     shift
 
@@ -26,10 +33,10 @@ if [ "${1:-}" = "sim" ] && [ -n "${FOREST3D_GZ_GUI_CONFIG:-}" ]; then
     fi
 
     if [ "$has_gui_config" -eq 0 ]; then
-        exec "$REAL_GZ" sim --gui-config "$FOREST3D_GZ_GUI_CONFIG" "$@"
+        run_gui --gui-config "$FOREST3D_GZ_GUI_CONFIG" "$@"
     fi
 
-    exec "$REAL_GZ" sim "$@"
+    run_gui "$@"
 fi
 
 exec "$REAL_GZ" "$@"
