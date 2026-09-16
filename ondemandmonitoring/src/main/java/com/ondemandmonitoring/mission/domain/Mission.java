@@ -72,4 +72,21 @@ public class Mission extends BaseEntity {
     @Column(name = "media_type", length = 30)
     MediaType mediaType;
 
+    // ===== Inline Preflight Diagnostics (No separate preflight_checks table) =====
+
+    @Column(name = "preflight_retry_count")
+    Integer preflightRetryCount = 0;
+
+    @Column(name = "preflight_passed")
+    Boolean preflightPassed;
+
+    @Column(name = "preflight_fault_type", length = 50)
+    String preflightFaultType;
+
+    @Column(name = "preflight_failure_reason", length = 1000)
+    String preflightFailureReason;
+
+    @Column(name = "preflight_checked_at")
+    Instant preflightCheckedAt;
+
 }

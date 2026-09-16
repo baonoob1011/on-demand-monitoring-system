@@ -9,7 +9,6 @@ import com.ondemandmonitoring.device.enums.DeviceStatus;
 import com.ondemandmonitoring.device.enums.DeviceType;
 import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.device.repository.DeviceTelemetryRepository;
-import com.ondemandmonitoring.device.repository.PreflightCheckRepository;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -36,17 +35,15 @@ public class PreflightCheckService {
 
     DeviceRepository deviceRepository;
     DeviceTelemetryRepository deviceTelemetryRepository;
-    PreflightCheckRepository preflightCheckRepository;
 
-    @Transactional
     public PreflightCheck run(String deviceCode) {
         return run(deviceCode, null);
     }
 
     /**
-     * Run pre-flight check and link the resulting record to the given mission.
+     * Run pre-flight check in-memory for the given device and mission.
      * Reads live telemetry sent by the drone via MQTT/telemetry_sender.py,
-     * validates all sensor fields, and persists a {@link PreflightCheck} snapshot.
+     * validates all sensor fields, and returns an in-memory {@link PreflightCheck} snapshot.
      *
      * @param deviceCode drone device code
      * @param missionId  mission this check belongs to (nullable for stand-alone checks)
@@ -70,7 +67,7 @@ public class PreflightCheckService {
         preflightCheck.setFaultType(faultType);
         preflightCheck.setCheckedAt(Instant.now());
 
-        return preflightCheckRepository.save(preflightCheck);
+        return preflightCheck;
     }
 
 
