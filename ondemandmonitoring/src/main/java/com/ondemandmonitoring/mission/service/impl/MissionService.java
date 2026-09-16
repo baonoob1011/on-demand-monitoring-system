@@ -362,6 +362,73 @@ public class MissionService implements IMissionService {
     }
 
     // =========================================================================
+    // Flow 2 implementations
+    // =========================================================================
+
+    @Override
+    @Transactional
+    public MissionResponse createMissionForOrder(String orderId) {
+        Mission mission = new Mission();
+        mission.setMissionCode("MS-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+        mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
+        // Default coordinates
+        mission.setLatitude(0.0);
+        mission.setLongitude(0.0);
+        
+        Mission saved = missionRepository.save(mission);
+        log.info("Mission created for order {}: {}", orderId, saved.getMissionCode());
+        return missionMapper.toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public MissionResponse assignDrone(String missionId, String deviceId) {
+        Mission mission = getOrThrow(missionId);
+        requireStatus(mission, MissionStatus.RESOURCE_ASSIGNING);
+        
+        Device drone = deviceRepository.findById(deviceId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Device not found"));
+                
+        if (drone.getStatus() != DeviceStatus.AVAILABLE) {
+            throw new ApiException(ErrorCode.DRONE_NOT_AVAILABLE, "Drone is not available");
+        }
+        
+        // If there was an old device, release it back to AVAILABLE
+        if (mission.getDevice() != null) {
+            Device oldDrone = mission.getDevice();
+            oldDrone.setStatus(DeviceStatus.AVAILABLE);
+            deviceRepository.save(oldDrone);
+        }
+
+        mission.setDevice(drone);
+        
+        drone.setStatus(DeviceStatus.RESERVED);
+        deviceRepository.save(drone);
+        
+        log.info("Mission {} assigned to drone {}", missionId, deviceId);
+        Mission saved = missionRepository.save(mission);
+        return missionMapper.toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public MissionResponse assignOperator(String missionId, String operatorId) {
+        Mission mission = getOrThrow(missionId);
+        requireStatus(mission, MissionStatus.RESOURCE_ASSIGNING);
+
+        if (mission.getDevice() == null) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Must assign a drone before assigning an operator.");
+        }
+
+        mission.setOperatorId(operatorId);
+        mission.setStatus(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+        
+        log.info("Mission {} assigned to operator {}", missionId, operatorId);
+        Mission saved = missionRepository.save(mission);
+        return missionMapper.toResponse(saved);
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 

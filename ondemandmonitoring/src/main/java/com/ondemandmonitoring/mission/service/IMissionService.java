@@ -11,13 +11,36 @@ import com.ondemandmonitoring.mission.dto.response.MissionResponse;
  */
 public interface IMissionService {
 
+    MissionResponse getByIdResponse(String missionId);
+
     /**
-     * Finds mission by ID and returns its DTO response.
+     * Creates a new mission from an approved order.
+     * Transitions: None -> RESOURCE_ASSIGNING
      *
-     * @param missionId Target mission ID
+     * @param orderId Target order ID
      * @return MissionResponse DTO
      */
-    MissionResponse getByIdResponse(String missionId);
+    MissionResponse createMissionForOrder(String orderId);
+
+    /**
+     * Manager assigns a drone to the mission.
+     * Transitions: RESOURCE_ASSIGNING (updates device)
+     *
+     * @param missionId Target mission ID
+     * @param deviceId Drone device ID
+     * @return MissionResponse DTO
+     */
+    MissionResponse assignDrone(String missionId, String deviceId);
+
+    /**
+     * Manager assigns an operator to the mission.
+     * Transitions: RESOURCE_ASSIGNING -> WAITING_OPERATOR_ACCEPTANCE
+     *
+     * @param missionId Target mission ID
+     * @param operatorId Operator user ID
+     * @return MissionResponse DTO
+     */
+    MissionResponse assignOperator(String missionId, String operatorId);
 
     /**
      * Finds mission entity by ID (internal service usage).
