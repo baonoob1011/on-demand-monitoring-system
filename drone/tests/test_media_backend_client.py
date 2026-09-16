@@ -4,6 +4,18 @@ from flight_controller_service.backend_client import BackendContractError, Media
 
 
 class MediaBackendClientTest(unittest.IsolatedAsyncioTestCase):
+    async def test_operator_token_overrides_static_fallback(self) -> None:
+        client = MediaBackendClient("http://backend.example", "fallback-token")
+
+        self.assertEqual(
+            {"Authorization": "Bearer operator-token"},
+            client._headers("operator-token"),
+        )
+        self.assertEqual(
+            {"Authorization": "Bearer fallback-token"},
+            client._headers(),
+        )
+
     async def test_mark_uploaded_reconciles_available_media_after_acknowledgement_error(self) -> None:
         client = MediaBackendClient("http://backend.example", "token")
         requests = []

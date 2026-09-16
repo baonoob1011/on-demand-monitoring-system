@@ -80,13 +80,15 @@ class MediaCoordinator:
         selected_length = available if length == 0 else min(length, available)
         return media, path, total_size, selected_length
 
-    async def refresh_media(self, mission_id: str = "") -> list[LocalMedia]:
+    async def refresh_media(
+        self, mission_id: str = "", operator_token: str = ""
+    ) -> list[LocalMedia]:
         media_items = self._repository.list(mission_id)
         for media in media_items:
             if not media.backend_media_id or media.status == LocalMediaStatus.DISCARDED.value:
                 continue
             try:
-                response = await self._backend.status(media.backend_media_id)
+                response = await self._backend.status(media.backend_media_id, operator_token)
             except (httpx.HTTPError, OSError, BackendContractError):
                 continue
             media.status = response.get("status", media.status)
@@ -112,7 +114,10 @@ class MediaCoordinator:
         return self._repository.save(media)
 
     async def upload(
-        self, local_media_id: str, on_update: Callable[[LocalMedia], Awaitable[None]]
+        self,
+        local_media_id: str,
+        on_update: Callable[[LocalMedia], Awaitable[None]],
+        operator_token: str = "",
     ) -> LocalMedia:
         media = self.get(local_media_id)
         if media.status == LocalMediaStatus.DISCARDED.value:
@@ -121,7 +126,9 @@ class MediaCoordinator:
         if not path.is_file():
             raise RuntimeError("Local media file no longer exists")
 
-        prepared = await self._backend.prepare(media.mission_id, self._metadata(media))
+        prepared = await self._backend.prepare(
+            media.mission_id, self._metadata(media), operator_token
+        )
         media.backend_media_id = prepared["mediaId"]
         media.error_code = ""
         media.error_message = ""
@@ -137,7 +144,9 @@ class MediaCoordinator:
             prepared.get("status") == LocalMediaStatus.MANUAL_UPLOAD_REQUIRED.value
             and not prepared.get("uploadUrl")
         ):
-            prepared = await self._backend.prepare_manual_upload(media.backend_media_id)
+            prepared = await self._backend.prepare_manual_upload(
+                media.backend_media_id, operator_token
+            )
         media.status = LocalMediaStatus.UPLOAD_PENDING.value
         self._repository.save(media)
         await on_update(media)
@@ -149,13 +158,17 @@ class MediaCoordinator:
                 self._repository.save(media)
                 await on_update(media)
                 await self._backend.upload(prepared["uploadUrl"], prepared.get("requiredHeaders", {}), path)
-                await self._backend.mark_uploaded(media.backend_media_id, attempt_id)
+                await self._backend.mark_uploaded(
+                    media.backend_media_id, attempt_id, operator_token
+                )
                 media.status = LocalMediaStatus.VALIDATING.value
                 self._repository.save(media)
                 await on_update(media)
                 for _ in range(30):
                     await asyncio.sleep(2.0)
-                    status = await self._backend.status(media.backend_media_id)
+                    status = await self._backend.status(
+                        media.backend_media_id, operator_token
+                    )
                     media.status = status.get("status", media.status)
                     self._repository.save(media)
                     await on_update(media)
@@ -165,7 +178,9 @@ class MediaCoordinator:
                         self._repository.save(media)
                         return media
                     if media.status == LocalMediaStatus.RETRY_REQUIRED.value:
-                        prepared = await self._backend.retry(media.backend_media_id)
+                        prepared = await self._backend.retry(
+                            media.backend_media_id, operator_token
+                        )
                         break
                     if media.status == LocalMediaStatus.MANUAL_UPLOAD_REQUIRED.value:
                         return media
@@ -174,7 +189,11 @@ class MediaCoordinator:
             except (httpx.HTTPError, OSError, BackendContractError) as exc:
                 code = getattr(exc, "code", "UPLOAD_FAILED")
                 prepared = await self._backend.report_failure(
-                    media.backend_media_id, attempt_id, code, str(exc)
+                    media.backend_media_id,
+                    attempt_id,
+                    code,
+                    str(exc),
+                    operator_token,
                 )
                 media.status = prepared.get("status", LocalMediaStatus.RETRY_REQUIRED.value)
                 media.error_code = code

@@ -113,7 +113,7 @@ class MediaCoordinatorTest(unittest.TestCase):
             self.assertEqual(LocalMediaStatus.AVAILABLE.value, refreshed[0].status)
             self.assertEqual("", refreshed[0].error_code)
             self.assertEqual("", refreshed[0].error_message)
-            backend.status.assert_awaited_once_with("backend-media-1")
+            backend.status.assert_awaited_once_with("backend-media-1", "")
 
 
 if __name__ == "__main__":

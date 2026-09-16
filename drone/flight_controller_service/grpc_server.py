@@ -68,7 +68,9 @@ class MediaGrpcService(media_pb2_grpc.MediaServiceServicer):
 
     async def ListMedia(self, request, context):
         await self._authorize(context)
-        media = await self._coordinator.refresh_media(request.mission_id)
+        media = await self._coordinator.refresh_media(
+            request.mission_id, self._operator_token(context)
+        )
         return media_pb2.ListMediaResponse(
             media=[to_proto(item) for item in media]
         )
@@ -83,9 +85,14 @@ class MediaGrpcService(media_pb2_grpc.MediaServiceServicer):
 
     async def UploadMedia(self, request, context):
         await self._authorize(context)
+        operator_token = self._operator_token(context)
         operation, created = await self._accept(request.command_id)
         if created:
-            asyncio.create_task(self._run_upload(request.command_id, request.local_media_id))
+            asyncio.create_task(
+                self._run_upload(
+                    request.command_id, request.local_media_id, operator_token
+                )
+            )
         return ack_from_update(operation.update)
 
     async def WatchCommand(self, request, context):
@@ -146,14 +153,18 @@ class MediaGrpcService(media_pb2_grpc.MediaServiceServicer):
             )
         return ack_from_update(self._operations[command_id].update)
 
-    async def _run_upload(self, command_id: str, local_media_id: str) -> None:
+    async def _run_upload(
+        self, command_id: str, local_media_id: str, operator_token: str
+    ) -> None:
         await self._publish(command_id, media_pb2.COMMAND_STATE_RUNNING)
 
         async def on_update(media: LocalMedia) -> None:
             await self._publish(command_id, media_pb2.COMMAND_STATE_RUNNING, media)
 
         try:
-            media = await self._coordinator.upload(local_media_id, on_update)
+            media = await self._coordinator.upload(
+                local_media_id, on_update, operator_token
+            )
             state = (
                 media_pb2.COMMAND_STATE_FAILED
                 if media.status in {"FAILED", "MANUAL_UPLOAD_REQUIRED"}
@@ -217,6 +228,14 @@ class MediaGrpcService(media_pb2_grpc.MediaServiceServicer):
             metadata.get("authorization", ""), f"Bearer {self._auth_token}"
         ):
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Invalid Flight Controller token")
+
+    @staticmethod
+    def _operator_token(context) -> str:
+        metadata = dict(context.invocation_metadata())
+        authorization = metadata.get("x-operator-authorization", "")
+        if authorization.lower().startswith("bearer "):
+            return authorization[7:].strip()
+        return ""
 
 
 async def start_media_grpc_server(

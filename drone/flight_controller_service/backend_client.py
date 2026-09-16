@@ -19,11 +19,19 @@ class MediaBackendClient:
         self._bearer_token = bearer_token.strip()
         self._timeout = timeout_seconds
 
-    def _headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self._bearer_token}"} if self._bearer_token else {}
+    def _headers(self, bearer_token: str = "") -> dict[str, str]:
+        token = bearer_token.strip() or self._bearer_token
+        return {"Authorization": f"Bearer {token}"} if token else {}
 
-    async def prepare(self, mission_id: str, metadata: dict[str, Any]) -> dict[str, Any]:
-        return await self._request("POST", f"/api/v1/missions/{mission_id}/media-uploads", json=metadata)
+    async def prepare(
+        self, mission_id: str, metadata: dict[str, Any], bearer_token: str = ""
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/api/v1/missions/{mission_id}/media-uploads",
+            bearer_token=bearer_token,
+            json=metadata,
+        )
 
     async def upload(self, url: str, required_headers: dict[str, list[str]], path: Path) -> None:
         headers = {
@@ -39,39 +47,60 @@ class MediaBackendClient:
                 response = client.put(url, headers=headers, content=stream)
         response.raise_for_status()
 
-    async def mark_uploaded(self, media_id: str, attempt_id: str) -> None:
+    async def mark_uploaded(
+        self, media_id: str, attempt_id: str, bearer_token: str = ""
+    ) -> None:
         try:
             await self._request(
-                "POST", f"/api/v1/media/{media_id}/upload-attempts/{attempt_id}/uploaded")
+                "POST",
+                f"/api/v1/media/{media_id}/upload-attempts/{attempt_id}/uploaded",
+                bearer_token=bearer_token,
+            )
         except (BackendContractError, httpx.HTTPError):
             try:
-                media = await self.status(media_id)
+                media = await self.status(media_id, bearer_token)
             except (BackendContractError, httpx.HTTPError):
                 raise
             if media.get("status") != "AVAILABLE":
                 raise
 
     async def report_failure(
-        self, media_id: str, attempt_id: str, code: str, message: str
+        self, media_id: str, attempt_id: str, code: str, message: str,
+        bearer_token: str = "",
     ) -> dict[str, Any]:
         return await self._request(
             "POST",
             f"/api/v1/media/{media_id}/upload-attempts/{attempt_id}/failures",
+            bearer_token=bearer_token,
             json={"code": code, "message": message[:1000]},
         )
 
-    async def status(self, media_id: str) -> dict[str, Any]:
-        return await self._request("GET", f"/api/v1/media/{media_id}/upload-status")
+    async def status(self, media_id: str, bearer_token: str = "") -> dict[str, Any]:
+        return await self._request(
+            "GET", f"/api/v1/media/{media_id}/upload-status", bearer_token=bearer_token
+        )
 
-    async def retry(self, media_id: str) -> dict[str, Any]:
-        return await self._request("POST", f"/api/v1/media/{media_id}/upload-attempts")
+    async def retry(self, media_id: str, bearer_token: str = "") -> dict[str, Any]:
+        return await self._request(
+            "POST", f"/api/v1/media/{media_id}/upload-attempts", bearer_token=bearer_token
+        )
 
-    async def prepare_manual_upload(self, media_id: str) -> dict[str, Any]:
-        return await self._request("POST", f"/api/v1/media/{media_id}/manual-upload-attempts")
+    async def prepare_manual_upload(
+        self, media_id: str, bearer_token: str = ""
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/api/v1/media/{media_id}/manual-upload-attempts",
+            bearer_token=bearer_token,
+        )
 
-    async def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+    async def _request(
+        self, method: str, path: str, bearer_token: str = "", **kwargs: Any
+    ) -> dict[str, Any]:
         async with httpx.AsyncClient(
-            base_url=self._base_url, timeout=self._timeout, headers=self._headers()
+            base_url=self._base_url,
+            timeout=self._timeout,
+            headers=self._headers(bearer_token),
         ) as client:
             response = await client.request(method, path, **kwargs)
         try:
