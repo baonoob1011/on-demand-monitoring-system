@@ -9,8 +9,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.ondemandmonitoring.device.domain.Device;
-import com.ondemandmonitoring.device.repository.DeviceRepository;
+import com.ondemandmonitoring.drone.domain.Drone;
+import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.media.domain.MediaStatus;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.domain.MediaNotificationOutbox;
@@ -49,7 +49,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 class MediaUploadServiceTest {
 
     private MissionRepository missionRepository;
-    private DeviceRepository deviceRepository;
+    private DroneRepository droneRepository;
     private MediaAssetRepository mediaRepository;
     private MediaUploadAttemptRepository attemptRepository;
     private MediaNotificationOutboxRepository notificationOutboxRepository;
@@ -61,7 +61,7 @@ class MediaUploadServiceTest {
     @BeforeEach
     void setUp() {
         missionRepository = mock(MissionRepository.class);
-        deviceRepository = mock(DeviceRepository.class);
+        droneRepository = mock(DroneRepository.class);
         mediaRepository = mock(MediaAssetRepository.class);
         attemptRepository = mock(MediaUploadAttemptRepository.class);
         notificationOutboxRepository = mock(MediaNotificationOutboxRepository.class);
@@ -72,7 +72,7 @@ class MediaUploadServiceTest {
         properties.setPrefix("monitoring");
         service = new MediaUploadServiceImpl(
                 missionRepository,
-                deviceRepository,
+                droneRepository,
                 mediaRepository,
                 attemptRepository,
                 mock(ManualUploadTaskRepository.class),
@@ -95,20 +95,20 @@ class MediaUploadServiceTest {
 
     @Test
     void prepareCreatesPendingMediaAndPresignedAttempt() {
-        Device drone = new Device();
-        drone.setId("device-1");
-        drone.setDeviceCode("DRONE-01");
+        Drone drone = new Drone();
+        drone.setId("drone-1");
+        drone.setDroneCode("DRONE-01");
         Mission mission = new Mission();
         mission.setId("mission-1");
         mission.setStatus(MissionStatus.IN_FLIGHT);
         UUID operatorId = UUID.fromString("00000000-0000-0000-0000-000000000003");
         mission.setOperatorId(operatorId.toString());
-        mission.setDevice(drone);
+        mission.setDrone(drone);
         User operator = User.builder().id(operatorId).build();
         when(userService.findByCognitoSub("cognito-sub-1")).thenReturn(operator);
         when(missionRepository.findById("mission-1")).thenReturn(Optional.of(mission));
-        when(deviceRepository.findByDeviceCode("DRONE-01")).thenReturn(Optional.of(drone));
-        when(mediaRepository.findByMissionIdAndDeviceIdAndLocalMediaId(any(), any(), any()))
+        when(droneRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(drone));
+        when(mediaRepository.findByMissionIdAndDroneIdAndLocalMediaId(any(), any(), any()))
                 .thenReturn(Optional.empty());
         when(storage.bucket()).thenReturn("media-bucket");
         when(storage.createPresignedPutUrl(any(), any(), any(Long.class), any()))

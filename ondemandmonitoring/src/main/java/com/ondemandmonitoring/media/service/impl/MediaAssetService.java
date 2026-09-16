@@ -1,11 +1,10 @@
 package com.ondemandmonitoring.media.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
+import com.ondemandmonitoring.drone.domain.Drone;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.device.domain.Device;
-import com.ondemandmonitoring.device.enums.DeviceStatus;
-import com.ondemandmonitoring.device.enums.DeviceType;
-import com.ondemandmonitoring.device.repository.DeviceRepository;
+import com.ondemandmonitoring.drone.enums.DroneStatus;
+import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.IMediaAssetService;
@@ -22,7 +21,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import com.ondemandmonitoring.media.domain.MediaStatus;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,13 +47,13 @@ public class MediaAssetService implements IMediaAssetService {
     S3ObjectStorageService s3ObjectStorageService;
     AwsS3Properties awsS3Properties;
     Environment environment;
-    DeviceRepository deviceRepository;
+    DroneRepository droneRepository;
     MediaAssetRepository mediaAssetRepository;
 
     @Transactional
     @Override
-    public MediaAsset upload(String deviceCode, MultipartFile file) {
-        return upload("UNASSIGNED", deviceCode, Instant.now(), file, MEDIA_TYPE_IMAGE);
+    public MediaAsset upload(String droneCode, MultipartFile file) {
+        return upload("UNASSIGNED", droneCode, Instant.now(), file, MEDIA_TYPE_IMAGE);
     }
 
     @Transactional
@@ -70,19 +68,19 @@ public class MediaAssetService implements IMediaAssetService {
         String mediaType = validate(file, requestedMediaType);
         validateRequired("missionId", missionId);
         validateRequired("droneId", droneId);
-        Device device = getOrCreateDrone(droneId);
+        Drone drone = getOrCreateDrone(droneId);
 
         String originalFileName = safeFileName(file.getOriginalFilename());
         String contentType = file.getContentType();
 
         if (!useS3Storage()) {
-            return saveLocal(device, missionId, droneId, capturedAt, file, originalFileName, contentType, mediaType);
+            return saveLocal(drone, missionId, droneId, capturedAt, file, originalFileName, contentType, mediaType);
         }
 
         String bucket = s3ObjectStorageService.bucket();
         if (bucket == null || bucket.isBlank()) {
             log.warn("AWS S3 bucket is not configured; storing image locally");
-            return saveLocal(device, missionId, droneId, capturedAt, file, originalFileName, contentType, mediaType);
+            return saveLocal(drone, missionId, droneId, capturedAt, file, originalFileName, contentType, mediaType);
         }
 
         String key = buildS3Key(missionId, droneId, mediaType);
@@ -106,8 +104,8 @@ public class MediaAssetService implements IMediaAssetService {
 
         try {
             MediaAsset image = new MediaAsset();
-            image.setDeviceCode(droneId);
-            image.setDevice(device);
+            image.setDroneCode(droneId);
+            image.setDrone(drone);
             image.setMissionId(missionId);
             image.setType(mediaType);
             image.setStorageProvider(STORAGE_PROVIDER_S3);
@@ -118,10 +116,6 @@ public class MediaAssetService implements IMediaAssetService {
             image.setS3Key(storedObject.key());
             image.setS3Url(storedObject.url());
             image.setCapturedAt(capturedAt == null ? Instant.now() : capturedAt);
-            image.setMediaStatus(MediaStatus.AVAILABLE);
-            image.setUploadAttemptCount(1);
-            image.setValidatedAt(Instant.now());
-            image.setAvailableAt(Instant.now());
 
             return mediaAssetRepository.save(image);
         } catch (RuntimeException exception) {
@@ -133,12 +127,8 @@ public class MediaAssetService implements IMediaAssetService {
     @Transactional(readOnly = true)
     @Override
     public MediaAsset getById(String mediaId) {
-        MediaAsset media = mediaAssetRepository.findById(mediaId)
+        return mediaAssetRepository.findById(mediaId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Media not found"));
-        if (media.getMediaStatus() != null && media.getMediaStatus() != MediaStatus.AVAILABLE) {
-            throw new ApiException(ErrorCode.MEDIA_UPLOAD_NOT_ALLOWED, "Media is not available yet");
-        }
-        return media;
     }
 
     @Transactional(readOnly = true)
@@ -146,40 +136,40 @@ public class MediaAssetService implements IMediaAssetService {
     public List<MediaAsset> listByMission(String missionId, String requestedMediaType) {
         validateRequired("missionId", missionId);
         if (requestedMediaType == null || requestedMediaType.isBlank()) {
-            return availableOnly(mediaAssetRepository.findByMissionIdOrderByCapturedAtDesc(missionId));
+            return mediaAssetRepository.findByMissionIdOrderByCapturedAtDesc(missionId);
         }
 
         String mediaType = normalizeMediaType(requestedMediaType);
-        return availableOnly(mediaAssetRepository.findByMissionIdAndTypeOrderByCapturedAtDesc(missionId, mediaType));
+        return mediaAssetRepository.findByMissionIdAndTypeOrderByCapturedAtDesc(missionId, mediaType);
     }
 
     @Transactional(readOnly = true)
     @Override
-    public MediaAsset getByDeviceAndId(String deviceCode, String mediaId) {
-        validateRequired("deviceCode", deviceCode);
+    public MediaAsset getByDroneAndId(String droneCode, String mediaId) {
+        validateRequired("droneCode", droneCode);
         MediaAsset mediaAsset = getById(mediaId);
-        if (!deviceCode.equals(mediaAsset.getDeviceCode())) {
-            throw new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Media not found for device");
+        if (!droneCode.equals(mediaAsset.getDroneCode())) {
+            throw new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Media not found for drone");
         }
         return mediaAsset;
     }
 
     @Transactional(readOnly = true)
     @Override
-    public List<MediaAsset> listByDevice(String deviceCode, String requestedMediaType) {
-        validateRequired("deviceCode", deviceCode);
+    public List<MediaAsset> listByDrone(String droneCode, String requestedMediaType) {
+        validateRequired("droneCode", droneCode);
         if (requestedMediaType == null || requestedMediaType.isBlank()) {
-            return availableOnly(mediaAssetRepository.findByDeviceCodeOrderByCapturedAtDesc(deviceCode));
+            return mediaAssetRepository.findByDroneCodeOrderByCapturedAtDesc(droneCode);
         }
 
         String mediaType = normalizeMediaType(requestedMediaType);
-        return availableOnly(mediaAssetRepository.findByDeviceCodeAndTypeOrderByCapturedAtDesc(deviceCode, mediaType));
+        return mediaAssetRepository.findByDroneCodeAndTypeOrderByCapturedAtDesc(droneCode, mediaType);
     }
 
     @Transactional
     @Override
-    public void deleteByDeviceAndId(String deviceCode, String mediaId) {
-        MediaAsset mediaAsset = getByDeviceAndId(deviceCode, mediaId);
+    public void deleteByDroneAndId(String droneCode, String mediaId) {
+        MediaAsset mediaAsset = getByDroneAndId(droneCode, mediaId);
         deleteStoredObject(mediaAsset);
         mediaAssetRepository.delete(mediaAsset);
     }
@@ -314,7 +304,7 @@ public class MediaAssetService implements IMediaAssetService {
     }
 
     private MediaAsset saveLocal(
-            Device device,
+            Drone drone,
             String missionId,
             String droneId,
             Instant capturedAt,
@@ -344,8 +334,8 @@ public class MediaAssetService implements IMediaAssetService {
         }
 
         MediaAsset image = new MediaAsset();
-        image.setDeviceCode(droneId);
-        image.setDevice(device);
+        image.setDroneCode(droneId);
+        image.setDrone(drone);
         image.setMissionId(missionId);
         image.setType(mediaType);
         image.setStorageProvider(STORAGE_PROVIDER_LOCAL);
@@ -356,10 +346,6 @@ public class MediaAssetService implements IMediaAssetService {
         image.setS3Key(relativePath.toString().replace('\\', '/'));
         image.setS3Url(relativePath.toAbsolutePath().toString());
         image.setCapturedAt(capturedAt == null ? Instant.now() : capturedAt);
-        image.setMediaStatus(MediaStatus.AVAILABLE);
-        image.setUploadAttemptCount(1);
-        image.setValidatedAt(Instant.now());
-        image.setAvailableAt(Instant.now());
 
         return mediaAssetRepository.save(image);
     }
@@ -386,16 +372,17 @@ public class MediaAssetService implements IMediaAssetService {
         return message;
     }
 
-    private Device getOrCreateDrone(String deviceCode) {
-        return deviceRepository.findByDeviceCode(deviceCode)
+    private Drone getOrCreateDrone(String droneCode) {
+        return droneRepository.findByDroneCode(droneCode)
                 .orElseGet(() -> {
-                    Device device = new Device();
-                    device.setDeviceCode(deviceCode);
-                    device.setDeviceName("PX4 SITL Drone");
-                    device.setDeviceType(DeviceType.DRONE);
-                    device.setStatus(DeviceStatus.AVAILABLE);
-                    device.setLastSeenAt(LocalDateTime.now());
-                    return deviceRepository.save(device);
+                    Drone drone = new Drone();
+                    drone.setDroneCode(droneCode);
+                    drone.setSerialNumber(droneCode);
+                    drone.setDroneName("PX4 SITL Drone");
+                    
+                    drone.setStatus(DroneStatus.AVAILABLE);
+                    drone.setLastSeenAt(LocalDateTime.now());
+                    return droneRepository.save(drone);
                 });
     }
 
@@ -407,10 +394,4 @@ public class MediaAssetService implements IMediaAssetService {
         return mediaType;
     }
 
-    private List<MediaAsset> availableOnly(List<MediaAsset> media) {
-        return media.stream()
-                .filter(item -> item.getMediaStatus() == null
-                        || item.getMediaStatus() == MediaStatus.AVAILABLE)
-                .toList();
-    }
 }

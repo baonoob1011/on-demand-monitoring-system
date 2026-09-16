@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 
 
-MAX_POINTS = int(os.getenv("SENSOR_VIS_POINTCLOUD_MAX_POINTS", "30000"))
+MAX_POINTS = int(os.getenv("SENSOR_VIS_POINTCLOUD_MAX_POINTS", "3000"))
 
 
 def _put(img, text: str, origin: tuple[int, int], scale: float = 0.55, color=(235, 235, 235)) -> None:

@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.mission.service;
 
-import com.ondemandmonitoring.device.dto.response.PreflightCheckResponse;
-import com.ondemandmonitoring.device.enums.DeviceStatus;
+import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
+import com.ondemandmonitoring.drone.enums.DroneStatus;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 
@@ -63,20 +63,20 @@ public interface IMissionService {
      * If failed, classifies fault and routes order -> PENDING_APPROVAL.
      *
      * @param missionId  Target mission ID
-     * @param deviceCode Drone device code
+     * @param droneCode Drone drone code
      * @return PreflightCheckResponse containing result and optional FlightToken
      */
-    PreflightCheckResponse runPreflightCheck(String missionId, String deviceCode);
+    PreflightCheckResponse runPreflightCheck(String missionId, String droneCode);
 
     /**
      * Replaces assigned drone with a new available drone when preflight check fails.
      * Resets mission status to CONNECTED so preflight can be re-run.
      *
      * @param missionId     Target mission ID
-     * @param newDeviceCode Replacement drone device code
+     * @param newDroneCode Replacement drone drone code
      * @return MissionResponse DTO
      */
-    MissionResponse replaceDrone(String missionId, String newDeviceCode);
+    MissionResponse replaceDrone(String missionId, String newDroneCode);
 
     /**
      * Operator formally accepts control of the drone console before takeoff.
@@ -146,9 +146,9 @@ public interface IMissionService {
      * Updates physical drone health status after landing.
      *
      * @param missionId       Target mission ID
-     * @param newDeviceStatus New device status (AVAILABLE, MAINTENANCE, etc.)
+     * @param newDroneStatus New drone status (AVAILABLE, MAINTENANCE, etc.)
      * @param notes           Inspection notes
      * @return MissionResponse DTO
      */
-    MissionResponse updatePostFlightStatus(String missionId, DeviceStatus newDeviceStatus, String notes);
+    MissionResponse updatePostFlightStatus(String missionId, DroneStatus newDroneStatus, String notes);
 }

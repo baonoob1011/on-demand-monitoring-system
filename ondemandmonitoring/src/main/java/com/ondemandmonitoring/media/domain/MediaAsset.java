@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.media.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.drone.domain.Drone;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -14,18 +14,16 @@ import com.ondemandmonitoring.media.domain.MediaStatus;
 @Getter
 @Setter
 @Entity
-@Table(name = "device_images", uniqueConstraints = @UniqueConstraint(
-        name = "uk_device_images_mission_device_local_media",
-        columnNames = {"mission_id", "device_id", "local_media_id"}))
+@Table(name = "drone_media")
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class MediaAsset extends BaseEntity {
 
-    @Column(name = "device_code", nullable = false, length = 50)
-    String deviceCode;
+    @Column(name = "drone_code", nullable = false, length = 50)
+    String droneCode;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "device_id", nullable = false)
-    Device device;
+    @JoinColumn(name = "drone_id", nullable = false)
+    Drone drone;
 
     @Column(name = "mission_id", nullable = false, length = 100)
     String missionId;

@@ -73,8 +73,8 @@ def main() -> int:
     last_3d_draw = 0.0
     fps_2d = 0.0
     fps_3d = 0.0
-    target_2d = 1.0 / max(float(os.getenv("SENSOR_VIS_LIDAR_2D_FPS", "15")), 1.0)
-    target_3d = 1.0 / max(float(os.getenv("SENSOR_VIS_LIDAR_3D_FPS", "8")), 1.0)
+    target_2d = 1.0 / max(float(os.getenv("SENSOR_VIS_LIDAR_2D_FPS", "8")), 1.0)
+    target_3d = 1.0 / max(float(os.getenv("SENSOR_VIS_LIDAR_3D_FPS", "5")), 1.0)
 
     try:
         while True:
@@ -110,4 +110,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

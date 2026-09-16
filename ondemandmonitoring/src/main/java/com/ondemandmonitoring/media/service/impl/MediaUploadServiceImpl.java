@@ -2,8 +2,8 @@ package com.ondemandmonitoring.media.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.device.domain.Device;
-import com.ondemandmonitoring.device.repository.DeviceRepository;
+import com.ondemandmonitoring.drone.domain.Drone;
+import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.media.domain.ManualUploadTask;
 import com.ondemandmonitoring.media.domain.ManualUploadTaskStatus;
 import com.ondemandmonitoring.media.domain.MediaAsset;
@@ -61,7 +61,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     private static final String CUSTOMER_MEDIA_AVAILABLE = "CUSTOMER_MEDIA_AVAILABLE";
 
     private final MissionRepository missionRepository;
-    private final DeviceRepository deviceRepository;
+    private final DroneRepository droneRepository;
     private final MediaAssetRepository mediaRepository;
     private final MediaUploadAttemptRepository attemptRepository;
     private final ManualUploadTaskRepository manualTaskRepository;
@@ -82,13 +82,13 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     public MediaUploadResponse prepare(String missionId, PrepareMediaUploadRequest request) {
         Mission mission = requireUploadableMission(missionId);
         authorize(mission);
-        Device device = requireAssignedDrone(mission, request.droneId());
+        Drone drone = requireAssignedDrone(mission, request.droneId());
         validateMetadata(request);
 
-        return mediaRepository.findByMissionIdAndDeviceIdAndLocalMediaId(
-                        mission.getId(), device.getId(), request.localMediaId())
+        return mediaRepository.findByMissionIdAndDroneIdAndLocalMediaId(
+                        mission.getId(), drone.getId(), request.localMediaId())
                 .map(existing -> idempotentResponse(existing, request))
-                .orElseGet(() -> createMediaAndAttempt(mission, device, request));
+                .orElseGet(() -> createMediaAndAttempt(mission, drone, request));
     }
 
     @Transactional
@@ -236,14 +236,14 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     }
 
     private MediaUploadResponse createMediaAndAttempt(
-            Mission mission, Device device, PrepareMediaUploadRequest request) {
+            Mission mission, Drone drone, PrepareMediaUploadRequest request) {
         if (objectStorage.bucket() == null || objectStorage.bucket().isBlank()) {
             throw new ApiException(ErrorCode.INTERNAL_SERVER_ERROR,
                     "S3 bucket is required for direct media upload");
         }
         MediaAsset media = new MediaAsset();
-        media.setDeviceCode(device.getDeviceCode());
-        media.setDevice(device);
+        media.setDroneCode(drone.getDroneCode());
+        media.setDrone(drone);
         media.setMissionId(mission.getId());
         media.setLocalMediaId(request.localMediaId());
         media.setType(request.mediaType());
@@ -482,13 +482,13 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
         return authentication == null ? "storage-event" : authentication.getName();
     }
 
-    private Device requireAssignedDrone(Mission mission, String droneId) {
-        Device device = deviceRepository.findByDeviceCode(droneId)
+    private Drone requireAssignedDrone(Mission mission, String droneId) {
+        Drone drone = droneRepository.findByDroneCode(droneId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Drone not found"));
-        if (mission.getDevice() == null || !mission.getDevice().getId().equals(device.getId())) {
+        if (mission.getDrone() == null || !mission.getDrone().getId().equals(drone.getId())) {
             throw new ApiException(ErrorCode.ACCESS_DENIED, "Drone is not assigned to this mission");
         }
-        return device;
+        return drone;
     }
 
     private MediaAsset requireMedia(String mediaId) {
@@ -521,7 +521,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
             default -> ".jpg";
         };
         return root + "missions/" + safeSegment(media.getMissionId()) + "/drones/"
-                + safeSegment(media.getDeviceCode()) + "/" + media.getType().toLowerCase() + "s/"
+                + safeSegment(media.getDroneCode()) + "/" + media.getType().toLowerCase() + "s/"
                 + media.getId() + extension;
     }
 

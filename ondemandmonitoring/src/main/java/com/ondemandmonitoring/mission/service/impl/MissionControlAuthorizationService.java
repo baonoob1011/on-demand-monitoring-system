@@ -60,11 +60,11 @@ public class MissionControlAuthorizationService implements IMissionControlAuthor
                 || !mission.getOperatorId().equals(actorId))) {
             throw new ApiException(ErrorCode.ACCESS_DENIED, "Operator is not assigned to this mission");
         }
-        if (mission.getDevice() == null) {
+        if (mission.getDrone() == null) {
             throw new ApiException(ErrorCode.DRONE_NOT_AVAILABLE, "Mission has no assigned drone");
         }
 
-        String assignedDrone = mission.getDevice().getDeviceCode();
+        String assignedDrone = mission.getDrone().getDroneCode();
         if (droneId != null && !droneId.isBlank() && !assignedDrone.equals(droneId)) {
             throw new ApiException(ErrorCode.ACCESS_DENIED, "Drone is not assigned to this mission");
         }

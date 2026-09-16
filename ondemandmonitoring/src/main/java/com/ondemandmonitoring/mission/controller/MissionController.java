@@ -1,11 +1,10 @@
 package com.ondemandmonitoring.mission.controller;
 
 import com.ondemandmonitoring.common.api.ApiResponse;
-import com.ondemandmonitoring.device.dto.response.PreflightCheckResponse;
+import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.dto.response.MediaAssetResponse;
 import com.ondemandmonitoring.media.mapper.MediaAssetMapper;
-import com.ondemandmonitoring.media.service.LegacyMediaUploadPolicy;
 import com.ondemandmonitoring.mission.dto.request.DroneReplacementRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionFailRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionRejectRequest;
@@ -22,7 +21,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.security.access.prepost.PreAuthorize;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
 
@@ -42,7 +40,6 @@ public class MissionController {
     IMissionService missionService;
     IMissionMediaUploadService missionMediaUploadService;
     MediaAssetMapper mediaAssetMapper;
-    LegacyMediaUploadPolicy legacyMediaUploadPolicy;
 
     // ------------------------------------------------------------------
     // Query
@@ -102,14 +99,14 @@ public class MissionController {
     }
 
     /**
-     * POST /api/missions/{id}/preflight-check?deviceCode=DRONE-01
+     * POST /api/missions/{id}/preflight-check?droneCode=DRONE-01
      * Runs digital preflight checklist (Battery >= 80%, GPS >= 8 sats, Camera/Gimbal, Storage, Weather).
      */
     @PostMapping("/{id}/preflight-check")
     public ResponseEntity<ApiResponse<PreflightCheckResponse>> runPreflightCheck(
             @PathVariable String id,
-            @RequestParam String deviceCode) {
-        PreflightCheckResponse response = missionService.runPreflightCheck(id, deviceCode);
+            @RequestParam String droneCode) {
+        PreflightCheckResponse response = missionService.runPreflightCheck(id, droneCode);
         boolean passed = Boolean.TRUE.equals(response.getOverallPassed());
         return ResponseEntity
                 .status(passed ? HttpStatus.OK : HttpStatus.UNPROCESSABLE_ENTITY)
@@ -127,7 +124,7 @@ public class MissionController {
     public ResponseEntity<ApiResponse<MissionResponse>> replaceDrone(
             @PathVariable String id,
             @Valid @RequestBody DroneReplacementRequest request) {
-        MissionResponse response = missionService.replaceDrone(id, request.getNewDeviceCode());
+        MissionResponse response = missionService.replaceDrone(id, request.getNewDroneCode());
         return ResponseEntity.ok(ApiResponse.ok("Drone successfully replaced", response));
     }
 
@@ -201,17 +198,15 @@ public class MissionController {
      * POST /api/missions/{id}/media (Multipart)
      */
     @PostMapping(value = "/{id}/media", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<MediaAssetResponse>> uploadMedia(
             @PathVariable String id,
-            @RequestParam(required = false) String deviceCode,
+            @RequestParam(required = false) String droneCode,
             @RequestParam(required = false) String droneId,
             @RequestParam(required = false) String capturedAt,
             @RequestParam(required = false) String mediaType,
             @RequestParam("file") MultipartFile file) {
-        legacyMediaUploadPolicy.requireEnabled();
-        String resolvedDeviceCode = deviceCode != null && !deviceCode.isBlank() ? deviceCode : droneId;
-        MediaAsset saved = missionMediaUploadService.uploadWithRetry(id, resolvedDeviceCode, file, mediaType);
+        String resolvedDroneCode = droneCode != null && !droneCode.isBlank() ? droneCode : droneId;
+        MediaAsset saved = missionMediaUploadService.uploadWithRetry(id, resolvedDroneCode, file, mediaType);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok("Tải media thành công", mediaAssetMapper.toResponse(saved)));
     }
@@ -226,9 +221,9 @@ public class MissionController {
     @PatchMapping("/{id}/postflight-status")
     public ResponseEntity<ApiResponse<MissionResponse>> updatePostFlightStatus(
             @PathVariable String id,
-            @RequestParam String deviceCode,
+            @RequestParam String droneCode,
             @Valid @RequestBody PostFlightStatusRequest request) {
-        MissionResponse response = missionService.updatePostFlightStatus(id, request.getNewDeviceStatus(), request.getNotes());
+        MissionResponse response = missionService.updatePostFlightStatus(id, request.getNewDroneStatus(), request.getNotes());
         return ResponseEntity.ok(ApiResponse.ok("Cập nhật trạng thái drone sau bay thành công", response));
     }
 }
