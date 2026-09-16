@@ -1,6 +1,5 @@
 package com.ondemandmonitoring.controlgateway.client;
 
-import com.ondemandmonitoring.controlgateway.config.BackendProperties;
 import com.ondemandmonitoring.controlgateway.exception.ControlGatewayException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
@@ -12,8 +11,8 @@ public class BackendControlAuthorizationClient implements ControlAuthorizationCl
 
     private final RestClient restClient;
 
-    public BackendControlAuthorizationClient(RestClient.Builder builder, BackendProperties properties) {
-        this.restClient = builder.baseUrl(properties.baseUrl()).build();
+    public BackendControlAuthorizationClient(RestClient backendRestClient) {
+        this.restClient = backendRestClient;
     }
 
     @Override
