@@ -26,7 +26,7 @@ public class OrderController {
 
     IOrderService orderService;
 
-    @Operation(summary = "Create a new order", description = "Creates a new monitoring order after validating category service")
+    @Operation(summary = "Create a new order", description = "Creates a new monitoring order after validating customer login, service existence, preferred time existence, media attributes, and location point inside zone polygon")
     @PostMapping
     public ResponseEntity<ApiResponse<OrderCreateResponse>> createOrder(@Valid @RequestBody OrderCreateRequest request) {
         OrderCreateResponse response = orderService.createOrder(request);
