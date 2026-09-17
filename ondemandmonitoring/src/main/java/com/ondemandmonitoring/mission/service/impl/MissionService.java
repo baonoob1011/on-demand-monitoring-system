@@ -62,6 +62,7 @@ public class MissionService implements IMissionService {
     ControlHandoverRepository controlHandoverRepository;
     PostflightCheckRepository postflightCheckRepository;
     MaintenanceTicketRepository maintenanceTicketRepository;
+    com.ondemandmonitoring.order.repository.OrderRepository orderRepository;
 
     // =========================================================================
     // Query Methods
@@ -86,12 +87,13 @@ public class MissionService implements IMissionService {
     @Override
     @Transactional
     public MissionResponse createMissionForOrder(String orderId) {
+        com.ondemandmonitoring.order.domain.Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found with id: " + orderId));
+
         Mission mission = new Mission();
         mission.setMissionCode("MS-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
         mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
-        // Default coordinates
-        mission.setLatitude(0.0);
-        mission.setLongitude(0.0);
+        mission.setOrder(order);
         
         Mission saved = missionRepository.save(mission);
         log.info("Mission created for order {}: {}", orderId, saved.getMissionCode());

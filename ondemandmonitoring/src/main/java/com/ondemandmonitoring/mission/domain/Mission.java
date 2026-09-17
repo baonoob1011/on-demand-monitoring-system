@@ -35,16 +35,10 @@ public class Mission extends BaseEntity {
     @Column(name = "operator_id", length = 100)
     String operatorId;
 
-    // ===== Location =====
-
-    @Column(name = "latitude", nullable = false)
-    Double latitude;
-
-    @Column(name = "longitude", nullable = false)
-    Double longitude;
-
-    @Column(name = "address", length = 500)
-    String address;
+    // ===== Relationship to Order =====
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_id")
+    com.ondemandmonitoring.order.domain.Order order;
 
     // ===== Schedule =====
 
@@ -67,10 +61,6 @@ public class Mission extends BaseEntity {
 
     @Column(name = "rejection_reason", length = 1000)
     String rejectionReason;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "media_type", length = 30)
-    MediaType mediaType;
 
     // ===== Inline Preflight Diagnostics (No separate preflight_checks table) =====
 
