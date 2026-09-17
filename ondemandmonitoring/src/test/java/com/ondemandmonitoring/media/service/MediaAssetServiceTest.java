@@ -8,12 +8,13 @@ import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.s3.AwsS3Properties;
 import com.ondemandmonitoring.s3.S3ObjectStorageService;
-import com.ondemandmonitoring.device.domain.Device;
-import com.ondemandmonitoring.device.repository.DeviceRepository;
+import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.impl.MediaAssetService;
 import com.ondemandmonitoring.common.exception.ApiException;
+import com.ondemandmonitoring.drone.domain.Drone;
+
 import java.io.InputStream;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -28,7 +29,7 @@ class MediaAssetServiceTest {
                 mock(S3ObjectStorageService.class),
                 new AwsS3Properties(),
                 mock(Environment.class),
-                mock(DeviceRepository.class),
+                mock(DroneRepository.class),
                 mock(MediaAssetRepository.class));
 
         assertThatThrownBy(() -> service.upload("DRONE-01", null))
@@ -42,7 +43,7 @@ class MediaAssetServiceTest {
                 mock(S3ObjectStorageService.class),
                 new AwsS3Properties(),
                 mock(Environment.class),
-                mock(DeviceRepository.class),
+                mock(DroneRepository.class),
                 mock(MediaAssetRepository.class));
         MultipartFile file = new org.springframework.mock.web.MockMultipartFile(
                 "file", "capture.txt", "text/plain", "not-an-image".getBytes());
@@ -58,7 +59,7 @@ class MediaAssetServiceTest {
                 mock(S3ObjectStorageService.class),
                 new AwsS3Properties(),
                 mock(Environment.class),
-                mock(DeviceRepository.class),
+                mock(DroneRepository.class),
                 mock(MediaAssetRepository.class));
         MultipartFile file = new org.springframework.mock.web.MockMultipartFile(
                 "file", "clip.mp4", "video/mp4", "fake-mp4".getBytes());
@@ -71,19 +72,19 @@ class MediaAssetServiceTest {
     @Test
     void upload_acceptsVideoMp4AsLocalMedia() {
         Environment environment = mock(Environment.class);
-        DeviceRepository deviceRepository = mock(DeviceRepository.class);
+        DroneRepository droneRepository = mock(DroneRepository.class);
         MediaAssetRepository mediaAssetRepository = mock(MediaAssetRepository.class);
-        Device device = new Device();
-        device.setDeviceCode("DRONE-01");
+        Drone drone = new Drone();
+        drone.setDroneCode("DRONE-01");
         when(environment.getProperty("DRONE_IMAGE_STORAGE", "local")).thenReturn("local");
-        when(deviceRepository.findByDeviceCode("DRONE-01")).thenReturn(Optional.of(device));
+        when(droneRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(drone));
         when(mediaAssetRepository.save(org.mockito.ArgumentMatchers.any(MediaAsset.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         MediaAssetService service = new MediaAssetService(
                 mock(S3ObjectStorageService.class),
                 new AwsS3Properties(),
                 environment,
-                deviceRepository,
+                droneRepository,
                 mediaAssetRepository);
         MultipartFile file = new org.springframework.mock.web.MockMultipartFile(
                 "file", "clip.mp4", "video/mp4", "fake-mp4".getBytes());
@@ -98,15 +99,15 @@ class MediaAssetServiceTest {
     @Test
     void upload_storesImagesAndVideosInSeparateS3Folders() {
         Environment environment = mock(Environment.class);
-        DeviceRepository deviceRepository = mock(DeviceRepository.class);
+        DroneRepository droneRepository = mock(DroneRepository.class);
         MediaAssetRepository mediaAssetRepository = mock(MediaAssetRepository.class);
         S3ObjectStorageService s3ObjectStorageService = mock(S3ObjectStorageService.class);
         AwsS3Properties properties = new AwsS3Properties();
         properties.setBucket("bucket");
-        Device device = new Device();
-        device.setDeviceCode("DRONE-01");
+        Drone drone = new Drone();
+        drone.setDroneCode("DRONE-01");
         when(environment.getProperty("DRONE_IMAGE_STORAGE", "local")).thenReturn("s3");
-        when(deviceRepository.findByDeviceCode("DRONE-01")).thenReturn(Optional.of(device));
+        when(droneRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(drone));
         when(s3ObjectStorageService.bucket()).thenReturn("bucket");
         when(s3ObjectStorageService.put(any(), any(), eq(8L), any(InputStream.class), any()))
                 .thenAnswer(invocation -> new S3ObjectStorageService.StoredObject(
@@ -119,7 +120,7 @@ class MediaAssetServiceTest {
                 s3ObjectStorageService,
                 properties,
                 environment,
-                deviceRepository,
+                droneRepository,
                 mediaAssetRepository);
         MultipartFile imageFile = new org.springframework.mock.web.MockMultipartFile(
                 "file", "capture.jpg", "image/jpeg", "fake-jpg".getBytes());

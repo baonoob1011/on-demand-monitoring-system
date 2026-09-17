@@ -35,6 +35,7 @@ public class OrderController {
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.created("Order created successfully", response));
     }
+
     @Operation(summary = "Approve an order", description = "Manager approves an order and creates a mission")
     @PostMapping("/{orderId}/approve")
     public ResponseEntity<ApiResponse<Void>> approveOrder(@PathVariable String orderId) {

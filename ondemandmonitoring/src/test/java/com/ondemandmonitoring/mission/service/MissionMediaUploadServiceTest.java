@@ -28,7 +28,7 @@ class MissionMediaUploadServiceTest {
         }
 
         @Override
-        protected void createManualUploadNotification(String missionId, String deviceCode) {
+        protected void createManualUploadNotification(String missionId, String droneCode) {
             notificationCount++;
         }
     }

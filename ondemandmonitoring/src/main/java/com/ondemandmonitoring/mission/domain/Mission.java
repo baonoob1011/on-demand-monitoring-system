@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.mission.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.drone.domain.Drone;
 import com.ondemandmonitoring.mission.enums.MediaType;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import jakarta.persistence.*;
@@ -28,8 +28,8 @@ public class Mission extends BaseEntity {
 
     // === Assignments =====
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "device_id")
-    Device device;
+    @JoinColumn(name = "drone_id")
+    Drone drone;
 
     /** ID of the Drone Operator user assigned to this mission. */
     @Column(name = "operator_id", length = 100)
@@ -71,5 +71,22 @@ public class Mission extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "media_type", length = 30)
     MediaType mediaType;
+
+    // ===== Inline Preflight Diagnostics (No separate preflight_checks table) =====
+
+    @Column(name = "preflight_retry_count")
+    Integer preflightRetryCount = 0;
+
+    @Column(name = "preflight_passed")
+    Boolean preflightPassed;
+
+    @Column(name = "preflight_fault_type", length = 50)
+    String preflightFaultType;
+
+    @Column(name = "preflight_failure_reason", length = 1000)
+    String preflightFailureReason;
+
+    @Column(name = "preflight_checked_at")
+    Instant preflightCheckedAt;
 
 }

@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.mission.controller;
 
 import com.ondemandmonitoring.common.api.ApiResponse;
-import com.ondemandmonitoring.device.dto.response.PreflightCheckResponse;
+import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.dto.response.MediaAssetResponse;
 import com.ondemandmonitoring.media.mapper.MediaAssetMapper;
@@ -63,9 +63,9 @@ public class MissionController {
     @PostMapping("/{id}/assign-drone")
     public ResponseEntity<ApiResponse<MissionResponse>> assignDrone(
             @PathVariable String id,
-            @RequestParam String deviceId) {
-        MissionResponse response = missionService.assignDrone(id, deviceId);
-        return ResponseEntity.ok(ApiResponse.ok("Drone assigned successfully", response));
+            @RequestParam String droneId) {
+        MissionResponse response = missionService.assignDrone(id, droneId);
+        return ResponseEntity.ok(ApiResponse.ok("Đã gán Drone thành công", response));
     }
 
     /**
@@ -77,7 +77,7 @@ public class MissionController {
             @PathVariable String id,
             @RequestParam String operatorId) {
         MissionResponse response = missionService.assignOperator(id, operatorId);
-        return ResponseEntity.ok(ApiResponse.ok("Operator assigned successfully", response));
+        return ResponseEntity.ok(ApiResponse.ok("Đã gán Operator thành công", response));
     }
 
     // ------------------------------------------------------------------
@@ -94,7 +94,7 @@ public class MissionController {
             @PathVariable String id,
             @RequestHeader("X-Operator-Id") String operatorId) {
         MissionResponse response = missionService.acceptMission(id, operatorId);
-        return ResponseEntity.ok(ApiResponse.ok("Mission accepted successfully", response));
+        return ResponseEntity.ok(ApiResponse.ok("Mission đã được chấp nhận", response));
     }
 
     /**
@@ -108,7 +108,7 @@ public class MissionController {
             @RequestHeader("X-Operator-Id") String operatorId,
             @Valid @RequestBody MissionRejectRequest request) {
         MissionResponse response = missionService.rejectMission(id, operatorId, request.getReason());
-        return ResponseEntity.ok(ApiResponse.ok("Mission rejected, system will re-assign", response));
+        return ResponseEntity.ok(ApiResponse.ok("Mission đã bị từ chối, hệ thống sẽ phân công lại", response));
     }
 
     // ------------------------------------------------------------------
@@ -127,14 +127,14 @@ public class MissionController {
     }
 
     /**
-     * POST /api/missions/{id}/preflight-check?deviceCode=DRONE-01
+     * POST /api/missions/{id}/preflight-check?droneCode=DRONE-01
      * Runs digital preflight checklist (Battery >= 80%, GPS >= 8 sats, Camera/Gimbal, Storage, Weather).
      */
     @PostMapping("/{id}/preflight-check")
     public ResponseEntity<ApiResponse<PreflightCheckResponse>> runPreflightCheck(
             @PathVariable String id,
-            @RequestParam String deviceCode) {
-        PreflightCheckResponse response = missionService.runPreflightCheck(id, deviceCode);
+            @RequestParam String droneCode) {
+        PreflightCheckResponse response = missionService.runPreflightCheck(id, droneCode);
         boolean passed = Boolean.TRUE.equals(response.getOverallPassed());
         return ResponseEntity
                 .status(passed ? HttpStatus.OK : HttpStatus.UNPROCESSABLE_ENTITY)
@@ -152,7 +152,7 @@ public class MissionController {
     public ResponseEntity<ApiResponse<MissionResponse>> replaceDrone(
             @PathVariable String id,
             @Valid @RequestBody DroneReplacementRequest request) {
-        MissionResponse response = missionService.replaceDrone(id, request.getNewDeviceCode());
+        MissionResponse response = missionService.replaceDrone(id, request.getNewDroneCode());
         return ResponseEntity.ok(ApiResponse.ok("Drone successfully replaced", response));
     }
 
@@ -192,21 +192,21 @@ public class MissionController {
     @PostMapping("/{id}/return")
     public ResponseEntity<ApiResponse<MissionResponse>> markReturning(@PathVariable String id) {
         MissionResponse response = missionService.markReturning(id);
-        return ResponseEntity.ok(ApiResponse.ok("Drone is returning", response));
+        return ResponseEntity.ok(ApiResponse.ok("Drone đang quay trở về", response));
     }
 
     /** POST /api/missions/{id}/postflight – drone landed, POSTFLIGHT_CHECKING */
     @PostMapping("/{id}/postflight")
     public ResponseEntity<ApiResponse<MissionResponse>> startPostflight(@PathVariable String id) {
         MissionResponse response = missionService.startPostflightChecking(id);
-        return ResponseEntity.ok(ApiResponse.ok("Started post-flight checking", response));
+        return ResponseEntity.ok(ApiResponse.ok("Bắt đầu kiểm tra sau bay", response));
     }
 
     /** POST /api/missions/{id}/complete – operator confirms complete */
     @PostMapping("/{id}/complete")
     public ResponseEntity<ApiResponse<MissionResponse>> complete(@PathVariable String id) {
         MissionResponse response = missionService.completeMission(id);
-        return ResponseEntity.ok(ApiResponse.ok("Mission completed successfully", response));
+        return ResponseEntity.ok(ApiResponse.ok("Mission đã hoàn thành", response));
     }
 
     /** POST /api/missions/{id}/fail – operator reports mission failure */
@@ -215,7 +215,7 @@ public class MissionController {
             @PathVariable String id,
             @Valid @RequestBody MissionFailRequest request) {
         MissionResponse response = missionService.failMission(id, request.getReason());
-        return ResponseEntity.ok(ApiResponse.ok("Mission reported as failed", response));
+        return ResponseEntity.ok(ApiResponse.ok("Mission đã báo lỗi thất bại", response));
     }
 
     // ------------------------------------------------------------------
@@ -228,15 +228,15 @@ public class MissionController {
     @PostMapping(value = "/{id}/media", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<MediaAssetResponse>> uploadMedia(
             @PathVariable String id,
-            @RequestParam(required = false) String deviceCode,
+            @RequestParam(required = false) String droneCode,
             @RequestParam(required = false) String droneId,
             @RequestParam(required = false) String capturedAt,
             @RequestParam(required = false) String mediaType,
             @RequestParam("file") MultipartFile file) {
-        String resolvedDeviceCode = deviceCode != null && !deviceCode.isBlank() ? deviceCode : droneId;
-        MediaAsset saved = missionMediaUploadService.uploadWithRetry(id, resolvedDeviceCode, file, mediaType);
+        String resolvedDroneCode = droneCode != null && !droneCode.isBlank() ? droneCode : droneId;
+        MediaAsset saved = missionMediaUploadService.uploadWithRetry(id, resolvedDroneCode, file, mediaType);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.ok("Media uploaded successfully", mediaAssetMapper.toResponse(saved)));
+                .body(ApiResponse.ok("Tải media thành công", mediaAssetMapper.toResponse(saved)));
     }
 
     // ------------------------------------------------------------------
@@ -249,9 +249,9 @@ public class MissionController {
     @PatchMapping("/{id}/postflight-status")
     public ResponseEntity<ApiResponse<MissionResponse>> updatePostFlightStatus(
             @PathVariable String id,
-            @RequestParam String deviceCode,
+            @RequestParam String droneCode,
             @Valid @RequestBody PostFlightStatusRequest request) {
-        MissionResponse response = missionService.updatePostFlightStatus(id, request.getNewDeviceStatus(), request.getNotes());
-        return ResponseEntity.ok(ApiResponse.ok("Post-flight drone status updated successfully", response));
+        MissionResponse response = missionService.updatePostFlightStatus(id, request.getNewDroneStatus(), request.getNotes());
+        return ResponseEntity.ok(ApiResponse.ok("Cập nhật trạng thái drone sau bay thành công", response));
     }
 }
