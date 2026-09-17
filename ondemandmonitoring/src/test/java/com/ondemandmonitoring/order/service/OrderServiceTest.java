@@ -20,6 +20,7 @@ import com.ondemandmonitoring.order.mapper.OrderMapper;
 import com.ondemandmonitoring.order.mapper.OrderMapperImpl;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.impl.OrderService;
+import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.repository.UserRepository;
 import com.ondemandmonitoring.user.service.UserIdentityService;
@@ -62,6 +63,7 @@ class OrderServiceTest {
         zoneRepository = mock(ZoneRepository.class);
         userRepository = mock(UserRepository.class);
         userIdentityService = mock(UserIdentityService.class);
+        IMissionService missionService = mock(IMissionService.class);
         orderMapper = new OrderMapperImpl();
         geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
 
@@ -72,6 +74,7 @@ class OrderServiceTest {
                 zoneRepository,
                 userRepository,
                 userIdentityService,
+                missionService,
                 orderMapper
         );
 

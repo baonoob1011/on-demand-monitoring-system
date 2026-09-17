@@ -53,6 +53,34 @@ public class MissionController {
     }
 
     // ------------------------------------------------------------------
+    // F2 – Manager Assignment (Flow 2)
+    // ------------------------------------------------------------------
+
+    /**
+     * POST /api/missions/{id}/assign-drone
+     * Manager assigns Drone to the mission.
+     */
+    @PostMapping("/{id}/assign-drone")
+    public ResponseEntity<ApiResponse<MissionResponse>> assignDrone(
+            @PathVariable String id,
+            @RequestParam String droneId) {
+        MissionResponse response = missionService.assignDrone(id, droneId);
+        return ResponseEntity.ok(ApiResponse.ok("Đã gán Drone thành công", response));
+    }
+
+    /**
+     * POST /api/missions/{id}/assign-operator
+     * Manager assigns Operator to the mission.
+     */
+    @PostMapping("/{id}/assign-operator")
+    public ResponseEntity<ApiResponse<MissionResponse>> assignOperator(
+            @PathVariable String id,
+            @RequestParam String operatorId) {
+        MissionResponse response = missionService.assignOperator(id, operatorId);
+        return ResponseEntity.ok(ApiResponse.ok("Đã gán Operator thành công", response));
+    }
+
+    // ------------------------------------------------------------------
     // F3.1 – Operator acceptance
     // ------------------------------------------------------------------
 
@@ -109,7 +137,7 @@ public class MissionController {
         PreflightCheckResponse response = missionService.runPreflightCheck(id, droneCode);
         boolean passed = Boolean.TRUE.equals(response.getOverallPassed());
         return ResponseEntity
-                .status(passed ? HttpStatus.OK : HttpStatus.UNPROCESSABLE_ENTITY)
+                .status(passed ? HttpStatus.OK.value() : 422)
                 .body(ApiResponse.ok(
                         passed ? "Digital preflight check PASSED – Flight Access Token issued"
                                 : "Digital preflight check FAILED – fault classified: " + response.getFaultType(),

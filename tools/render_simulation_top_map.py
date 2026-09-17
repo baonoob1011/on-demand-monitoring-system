@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -85,6 +86,9 @@ def colorize_for_top_map():
         "airport": material("MAT_TopMap_Airport", (0.86, 0.82, 0.65, 1.0)),
         "home": material("MAT_TopMap_Home", (0.95, 0.84, 0.24, 1.0)),
         "forest": material("MAT_TopMap_Forest", (0.05, 0.36, 0.14, 1.0)),
+        "fire": material("MAT_TopMap_Fire", (0.95, 0.16, 0.02, 1.0)),
+        "burnt": material("MAT_TopMap_Burnt", (0.12, 0.07, 0.04, 1.0)),
+        "smoke": material("MAT_TopMap_Smoke", (0.28, 0.28, 0.28, 1.0)),
         "building": material("MAT_TopMap_Building", (0.80, 0.83, 0.84, 1.0)),
         "zone": material("MAT_TopMap_Zone", (0.95, 0.56, 0.12, 1.0)),
         "prop": material("MAT_TopMap_Prop", (0.65, 0.57, 0.48, 1.0)),
@@ -95,7 +99,13 @@ def colorize_for_top_map():
             continue
 
         group = object_groups(obj)
-        if "water" in group or "river" in group or "reservoir" in group:
+        if "smoke" in group:
+            assign_material(obj, mats["smoke"])
+        elif "fire_flame" in group or "fire_hotspot" in group or "ember" in group:
+            assign_material(obj, mats["fire"])
+        elif "burnt_ground" in group or "dry_ground" in group:
+            assign_material(obj, mats["burnt"])
+        elif "water" in group or "river" in group or "reservoir" in group:
             assign_material(obj, mats["water"])
         elif "road" in group or "asphalt" in group or "street" in group:
             assign_material(obj, mats["road"])
@@ -122,9 +132,11 @@ def main():
     report, min_x, max_x, min_y, max_y = read_bounds()
     configure_scene(min_x, max_x, min_y, max_y)
     bpy.ops.render.render(write_still=True)
+    image_version = hashlib.sha256(OUT_IMAGE.read_bytes()).hexdigest()[:12]
 
     metadata = {
         "image": "/simulation-viewer/simulation_map_top.png",
+        "imageVersion": image_version,
         "sourceBlender": report["source"],
         "sourceWorld": str(ROOT / "Forest3D" / "worlds" / "forest_monitoring_compact.sdf"),
         "worldName": "forest_monitoring_compact",

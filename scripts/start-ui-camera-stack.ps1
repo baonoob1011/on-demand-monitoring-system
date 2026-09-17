@@ -3,10 +3,7 @@ param(
     [switch]$SkipBootstrap,
     [switch]$SkipBackend,
     [switch]$SkipFrontend,
-    [switch]$NoBrowser,
-    [switch]$AllowNonPackagedWorld,
-    [ValidateSet("compact", "legacy")]
-    [string]$SimWorld = "compact"
+    [switch]$NoBrowser
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,10 +18,33 @@ function ConvertTo-WslPath([string]$WindowsPath) {
     if ($fullPath -notmatch "^([A-Za-z]):\\(.*)$") {
         throw "Cannot convert path to WSL format: $fullPath"
     }
-
     $drive = $Matches[1].ToLowerInvariant()
     $rest = $Matches[2] -replace "\\", "/"
     return "/mnt/$drive/$rest"
+}
+
+function Set-EnvValue([string]$Path, [string]$Name, [string]$Value) {
+    if (-not (Test-Path $Path)) {
+        New-Item -ItemType File -Path $Path -Force | Out-Null
+    }
+
+    $lines = @(Get-Content -Path $Path -ErrorAction SilentlyContinue)
+    $entry = "$Name=$Value"
+    $found = $false
+    $nextLines = foreach ($line in $lines) {
+        if ($line -match "^\s*#") {
+            $line
+        } elseif ($line -match "^\s*$([regex]::Escape($Name))\s*=") {
+            $found = $true
+            $entry
+        } else {
+            $line
+        }
+    }
+    if (-not $found) {
+        $nextLines += $entry
+    }
+    Set-Content -Path $Path -Value $nextLines -Encoding UTF8
 }
 
 function Start-TerminalTab([string]$Title, [string]$Command, [string]$WorkingDirectory) {
@@ -33,20 +53,15 @@ function Start-TerminalTab([string]$Title, [string]$Command, [string]$WorkingDir
 
     if (Get-Command wt.exe -ErrorAction SilentlyContinue) {
         Start-Process wt.exe -ArgumentList @(
-            "new-tab",
-            "--title", $Title,
-            "--startingDirectory", $WorkingDirectory,
-            "powershell.exe",
-            "-NoExit",
-            "-ExecutionPolicy", "Bypass",
+            "new-tab", "--title", $Title, "--startingDirectory", $WorkingDirectory,
+            "powershell.exe", "-NoExit", "-ExecutionPolicy", "Bypass",
             "-Command", "Set-Location `"$escapedDirectory`"; $escapedCommand"
         )
         return
     }
 
     Start-Process powershell.exe -ArgumentList @(
-        "-NoExit",
-        "-ExecutionPolicy", "Bypass",
+        "-NoExit", "-ExecutionPolicy", "Bypass",
         "-Command", "Set-Location `"$escapedDirectory`"; $escapedCommand"
     )
 }
@@ -54,19 +69,19 @@ function Start-TerminalTab([string]$Title, [string]$Command, [string]$WorkingDir
 function Start-WslTab([string]$Title, [string]$Command) {
     if (Get-Command wt.exe -ErrorAction SilentlyContinue) {
         Start-Process wt.exe -ArgumentList @(
-            "new-tab",
-            "--title", $Title,
-            "wsl.exe",
-            "-d", $UbuntuDistro,
-            "--",
-            "bash",
-            "-lc",
-            $Command
+            "new-tab", "--title", $Title,
+            "wsl.exe", "-d", $UbuntuDistro, "--", "bash", "-lc", $Command
         )
         return
     }
 
     Start-Process wsl.exe -ArgumentList @("-d", $UbuntuDistro, "--", "bash", "-lc", $Command)
+}
+
+function Start-WslWindow([string]$Title, [string]$Command) {
+    $escapedCommand = $Command.Replace('"', '\"')
+    $cmdLine = "title $Title && wsl.exe -d $UbuntuDistro -- bash -lc `"$escapedCommand`""
+    Start-Process cmd.exe -ArgumentList @("/k", $cmdLine) -WindowStyle Normal
 }
 
 function Wait-HttpOk([string]$Url, [int]$TimeoutSeconds = 90) {
@@ -84,50 +99,14 @@ function Wait-HttpOk([string]$Url, [int]$TimeoutSeconds = 90) {
     return $false
 }
 
-function Set-EnvValue([string]$Path, [string]$Name, [string]$Value) {
-    if (-not (Test-Path $Path)) {
-        New-Item -ItemType File -Path $Path -Force | Out-Null
-    }
-
-    $lines = @(Get-Content -Path $Path -ErrorAction SilentlyContinue)
-    $entry = "$Name=$Value"
-    $found = $false
-
-    $nextLines = foreach ($line in $lines) {
-        if ($line -match "^\s*#") {
-            $line
-            continue
-        }
-
-        if ($line -match "^\s*$([regex]::Escape($Name))\s*=") {
-            $found = $true
-            $entry
-        } else {
-            $line
-        }
-    }
-
-    if (-not $found) {
-        $nextLines += $entry
-    }
-
-    Set-Content -Path $Path -Value $nextLines -Encoding UTF8
-}
-
 function Assert-CompactMapAssets([string]$Root) {
     $worldFile = Join-Path $Root "Forest3D\worlds\forest_monitoring_compact.sdf"
     $mapImage = Join-Path $Root "ondemandmonitoring\src\main\resources\static\simulation-viewer\simulation_map_top.png"
     $mapMeta = Join-Path $Root "ondemandmonitoring\src\main\resources\static\simulation-viewer\simulation-map.json"
 
-    if (-not (Test-Path $worldFile)) {
-        throw "Full compact world is missing: $worldFile"
-    }
-    if (-not (Test-Path $mapImage)) {
-        throw "Full simulation map image is missing: $mapImage"
-    }
-    if (-not (Test-Path $mapMeta)) {
-        throw "Simulation map metadata is missing: $mapMeta"
-    }
+    if (-not (Test-Path $worldFile)) { throw "Full compact world is missing: $worldFile" }
+    if (-not (Test-Path $mapImage)) { throw "Full simulation map image is missing: $mapImage" }
+    if (-not (Test-Path $mapMeta)) { throw "Simulation map metadata is missing: $mapMeta" }
 
     $meta = Get-Content -Raw -Path $mapMeta | ConvertFrom-Json
     if ($meta.worldName -ne "forest_monitoring_compact") {
@@ -139,31 +118,21 @@ $systemRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $workspaceRoot = (Resolve-Path (Join-Path $systemRoot "..")).Path
 $backendRoot = Join-Path $systemRoot "ondemandmonitoring"
 $webRoot = Join-Path $workspaceRoot "ondemand-monitoring-web"
+$packagedWorld = "compact"
+$packagedWorldName = "forest_monitoring_compact"
+$downTopic = "/world/forest_monitoring_compact/model/x500_mono_cam_down_0/link/camera_link/sensor/camera_down/image"
+$frontTopic = "/world/forest_monitoring_compact/model/x500_mono_cam_down_0/link/camera_link/sensor/camera_front/image"
 
-if (-not (Test-Path $backendRoot)) {
-    throw "Backend folder not found: $backendRoot"
-}
-
-if (-not (Test-Path $webRoot)) {
-    throw "Frontend folder not found: $webRoot"
-}
-
-if ($SimWorld -ne "compact" -and -not $AllowNonPackagedWorld) {
-    throw "This packaged UI camera demo is compact-map only. Run scripts\start-ui-camera-stack.cmd with no -SimWorld argument. If you really need legacy, add -AllowNonPackagedWorld."
-}
-
+if (-not (Test-Path $backendRoot)) { throw "Backend folder not found: $backendRoot" }
+if (-not (Test-Path $webRoot)) { throw "Frontend folder not found: $webRoot" }
 Assert-CompactMapAssets $systemRoot
 
 $backendEnvFile = Join-Path $backendRoot ".env"
-$packagedWorld = "compact"
-$packagedWorldName = "forest_monitoring_compact"
-$packagedDownTopic = "/world/forest_monitoring_compact/model/x500_mono_cam_down_0/link/camera_link/sensor/camera_down/image"
-$packagedFrontTopic = "/world/forest_monitoring_compact/model/x500_mono_cam_down_0/link/camera_link/sensor/camera_front/image"
-
 Set-EnvValue $backendEnvFile "SIM_WORLD" $packagedWorld
-Set-EnvValue $backendEnvFile "GAZEBO_CAMERA_TOPIC" $packagedDownTopic
-Set-EnvValue $backendEnvFile "GAZEBO_CAMERA_DOWN_TOPIC" $packagedDownTopic
-Set-EnvValue $backendEnvFile "GAZEBO_CAMERA_FRONT_TOPIC" $packagedFrontTopic
+Set-EnvValue $backendEnvFile "FOREST3D_WEB_ONLY" "1"
+Set-EnvValue $backendEnvFile "GAZEBO_CAMERA_TOPIC" $downTopic
+Set-EnvValue $backendEnvFile "GAZEBO_CAMERA_DOWN_TOPIC" $downTopic
+Set-EnvValue $backendEnvFile "GAZEBO_CAMERA_FRONT_TOPIC" $frontTopic
 Set-EnvValue $backendEnvFile "CAMERA_DEFAULT_VIEW" "DOWN"
 
 Write-Host "========================================" -ForegroundColor Green
@@ -173,73 +142,46 @@ Write-Host "Backend : http://localhost:8080"
 Write-Host "Frontend: http://localhost:5173/#portal/drone-operator"
 Write-Host "Control : http://localhost:8090/stream.mjpg"
 Write-Host "World   : $packagedWorldName"
-Write-Host "Map     : full compact simulation map"
+Write-Host "Weather : separate WEATHER - Controls window"
 Write-Host "Mode    : Web UI camera only, no separate Gazebo camera window"
 
 if (-not $SkipBackend) {
     Write-Step "Starting Backend API"
-    Start-TerminalTab `
-        -Title "BE - OMSS API" `
-        -WorkingDirectory $backendRoot `
-        -Command ".\mvnw.cmd spring-boot:run"
-} else {
-    Write-Step "Skipping Backend API"
+    Start-TerminalTab -Title "BE - OMSS API" -WorkingDirectory $backendRoot -Command ".\mvnw.cmd spring-boot:run"
 }
 
 if (-not $SkipFrontend) {
     Write-Step "Preparing and starting Frontend UI"
     $envFile = Join-Path $webRoot ".env.local"
-    $envContent = @"
-VITE_API_BASE_URL=http://localhost:8080
-VITE_FLIGHT_CONTROL_API_URL=http://localhost:8090
-"@
-    Set-Content -Path $envFile -Value $envContent -Encoding UTF8
-
-    $installCommand = "if (-not (Test-Path node_modules)) { npm install }; npm run dev -- --host 0.0.0.0 --port 5173"
-    Start-TerminalTab `
-        -Title "FE - OMSS UI" `
-        -WorkingDirectory $webRoot `
-        -Command $installCommand
-} else {
-    Write-Step "Skipping Frontend UI"
+    Set-Content -Path $envFile -Value "VITE_API_BASE_URL=http://localhost:8080`nVITE_FLIGHT_CONTROL_API_URL=http://localhost:8090`n" -Encoding UTF8
+    Start-TerminalTab -Title "FE - OMSS UI" -WorkingDirectory $webRoot -Command "if (-not (Test-Path node_modules)) { npm install }; npm run dev -- --host 0.0.0.0 --port 5173"
 }
 
 if (-not $SkipBootstrap) {
     Write-Step "Checking WSL/PX4/Gazebo dependencies"
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "bootstrap-drone-stack.ps1") -UbuntuDistro $UbuntuDistro
-    if ($LASTEXITCODE -ne 0) {
-        throw "Drone dependency bootstrap failed."
-    }
+    if ($LASTEXITCODE -ne 0) { throw "Drone dependency bootstrap failed." }
 }
 
-Write-Step "Cleaning old PX4/Gazebo/MAVSDK processes"
 $systemRootWsl = ConvertTo-WslPath $systemRoot
 $scriptRootWsl = "$systemRootWsl/scripts"
+
+Write-Step "Cleaning old PX4/Gazebo/MAVSDK processes"
 & wsl.exe -d $UbuntuDistro -- bash -lc "PROJECT_PATH='$systemRootWsl' exec '$scriptRootWsl/wsl-clean-drone-stack.sh'" | Out-Null
 
-Write-Step "Starting PX4 + Gazebo headless for UI camera stream"
-$webOnly = "1"
-$simCommand = "PROJECT_PATH='$systemRootWsl' FOREST3D_WEB_ONLY=$webOnly SIM_WORLD=$packagedWorld exec '$scriptRootWsl/wsl-sim-pane.sh' '$packagedWorld'"
-$controlCommand = "PROJECT_PATH='$systemRootWsl' FOREST3D_WEB_ONLY=$webOnly SIM_WORLD=$packagedWorld exec '$scriptRootWsl/wsl-control.sh'"
+Write-Step "Starting PX4/Gazebo, Flight Control, and Weather Controls"
+$simCommand = "PROJECT_PATH='$systemRootWsl' FOREST3D_WEB_ONLY=1 SIM_WORLD=$packagedWorld exec '$scriptRootWsl/wsl-sim-pane.sh' '$packagedWorld'"
+$controlCommand = "PROJECT_PATH='$systemRootWsl' FOREST3D_WEB_ONLY=1 SIM_WORLD=$packagedWorld exec '$scriptRootWsl/wsl-control.sh'"
+$weatherCommand = "PROJECT_PATH='$systemRootWsl' SIM_WORLD=$packagedWorld exec '$scriptRootWsl/wsl-weather-control.sh'"
 
 Start-WslTab -Title "SIM - PX4 + Gazebo Headless" -Command $simCommand
 Start-Sleep -Seconds 3
 Start-WslTab -Title "CTRL - Flight Control Stream" -Command $controlCommand
+Start-Sleep -Seconds 1
+Start-WslWindow -Title "WEATHER - Controls" -Command $weatherCommand
 
 if (-not $NoBrowser) {
     Write-Step "Waiting for UI, then opening Mission Control"
-    if (Wait-HttpOk "http://localhost:8080/simulation-viewer/simulation-map.json" 60) {
-        try {
-            $servedMeta = Invoke-RestMethod -Uri "http://localhost:8080/simulation-viewer/simulation-map.json" -TimeoutSec 5
-            if ($servedMeta.worldName -ne $packagedWorldName) {
-                Write-Host "Backend is serving map '$($servedMeta.worldName)' instead of '$packagedWorldName'." -ForegroundColor Red
-                Write-Host "Stop old backend processes and run this script again." -ForegroundColor Red
-            }
-        } catch {
-            Write-Host "Could not verify served simulation map metadata yet." -ForegroundColor Yellow
-        }
-    }
-
     if (Wait-HttpOk "http://localhost:5173" 90) {
         Start-Process "http://localhost:5173/#portal/drone-operator"
     } else {
@@ -248,5 +190,5 @@ if (-not $NoBrowser) {
 }
 
 Write-Step "Started"
-Write-Host "Keep the opened terminal tabs running." -ForegroundColor Yellow
-Write-Host "Use the UI Mission control page. The camera stream comes from http://localhost:8090/stream.mjpg."
+Write-Host "Weather works in Flight Control with one key: u clear, y sunset, i night, g cloudy, j foggy, m windy, b light, z heavy." -ForegroundColor Yellow
+Write-Host "The separate WEATHER - Controls window supports the same one-key controls." -ForegroundColor Yellow

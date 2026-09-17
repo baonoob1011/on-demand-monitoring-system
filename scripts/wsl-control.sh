@@ -15,14 +15,16 @@ cd "$DRONE_WORKDIR" || exit 1
 cp "$REPO_CONTROLLER/flight_controller.py" flight_controller.py
 cp "$REPO_CONTROLLER/media_uploader.py" media_uploader.py
 cp "$REPO_CONTROLLER/battery_simulator.py" battery_simulator.py
+cp "$REPO_CONTROLLER/geofence_monitor.py" geofence_monitor.py
+cp "$REPO_CONTROLLER/thermal_camera_gateway.py" thermal_camera_gateway.py
 mkdir -p video
 cp "$REPO_CONTROLLER/video/__init__.py" video/__init__.py
 cp "$REPO_CONTROLLER/video/video_recorder.py" video/video_recorder.py
 
 if [ -f "$ENV_FILE" ]; then
     set -a
-    # shellcheck disable=SC1090
-    source "$ENV_FILE"
+    # Strip Windows CRLF endings while keeping the source .env unchanged.
+    source <(sed 's/\r$//' "$ENV_FILE")
     set +a
 fi
 

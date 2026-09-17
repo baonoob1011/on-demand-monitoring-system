@@ -1,6 +1,5 @@
 package com.ondemandmonitoring.drone.dto.response;
 
-import com.ondemandmonitoring.drone.domain.PreflightCheck;
 import com.ondemandmonitoring.mission.dto.response.FlightTokenResponse;
 import java.time.Instant;
 import lombok.AccessLevel;
@@ -46,5 +45,3 @@ public class PreflightCheckResponse {
 
     Instant checkedAt;
 }
-
-
