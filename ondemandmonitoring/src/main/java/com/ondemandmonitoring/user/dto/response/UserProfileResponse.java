@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.user.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.ondemandmonitoring.user.enumeration.UserRole;
+import com.ondemandmonitoring.role.domain.RoleCode;
 import lombok.*;
 
 import java.util.List;
@@ -20,7 +20,7 @@ public class UserProfileResponse {
 
     private Boolean emailVerified;
 
-    private UserRole role;
+    private RoleCode role;
 
     private List<String> linkedProviders;
 

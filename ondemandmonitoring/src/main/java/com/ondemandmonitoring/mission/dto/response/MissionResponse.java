@@ -1,6 +1,5 @@
 package com.ondemandmonitoring.mission.dto.response;
 
-import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.enums.MediaType;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import lombok.AccessLevel;
@@ -16,11 +15,12 @@ import java.time.Instant;
 public class MissionResponse {
 
     String id;
+    String orderId;
     String missionCode;
     MissionStatus status;
     String operatorId;
-    String deviceId;
-    String deviceCode;
+    String droneId;
+    String droneCode;
     Double latitude;
     Double longitude;
     String address;
@@ -31,5 +31,12 @@ public class MissionResponse {
     String failureReason;
     String rejectionReason;
     MediaType mediaType;
+
+    // Preflight Inline Fields
+    Integer preflightRetryCount;
+    Boolean preflightPassed;
+    String preflightFaultType;
+    String preflightFailureReason;
+    Instant preflightCheckedAt;
 }
 

@@ -43,6 +43,8 @@ server:
 aws:
   region: ${AWS_REGION}
   s3:
+    access-key-bao: ${AWS_ACCESS_KEY_ID_BAO}
+    secret-key-bao: ${AWS_SECRET_ACCESS_KEY_BAO}
     bucket: ${AWS_S3_BUCKET}
     prefix: ${AWS_S3_PREFIX}
   cognito:

@@ -6,6 +6,7 @@ import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.user.service.IUserService;
+import com.ondemandmonitoring.user.enumeration.IdentityProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.CodeMismatchException;
@@ -26,11 +27,13 @@ public class PasswordService {
 
     public void forgotPassword(ForgotPasswordRequest request) {
         String email = normalizeEmail(request.getEmail());
-        if (userService.findOptionalByEmail(email).isEmpty()) {
+        var user = userService.findOptionalByEmail(email);
+        if (user.isEmpty()) {
             return;
         }
         try {
-            identityProvider.forgotPassword(email);
+            identityProvider.forgotPassword(
+                    userService.getCognitoUsername(email, IdentityProvider.LOCAL));
         } catch (UserNotFoundException exception) {
             throw new ApiException(ErrorCode.USER_NOT_FOUND);
         } catch (InvalidParameterException exception) {
@@ -44,8 +47,9 @@ public class PasswordService {
 
     public void resetPassword(ResetPasswordRequest request) {
         String email = normalizeEmail(request.getEmail());
+        String username = userService.getCognitoUsername(email, IdentityProvider.LOCAL);
         try {
-            identityProvider.resetPassword(email, request.getOtpCode(), request.getNewPassword());
+            identityProvider.resetPassword(username, request.getOtpCode(), request.getNewPassword());
         } catch (CodeMismatchException exception) {
             throw new ApiException(ErrorCode.OTP_INVALID);
         } catch (ExpiredCodeException exception) {

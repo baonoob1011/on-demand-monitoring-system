@@ -58,10 +58,21 @@
           <div id="saveStatus" class="save-status">Edit off.</div>
         </section>
         <section>
+          <h2>Thermal Sources</h2>
+          <div id="thermalList" class="thermal-list"></div>
+          <div id="thermalDetails" class="details empty">Click a thermal area.</div>
+          <div class="editor-actions">
+            <button id="createThermal" type="button">Create Thermal</button>
+            <button id="editThermal" type="button" disabled>Edit Thermal</button>
+            <button id="deleteThermal" type="button" disabled>Delete Thermal</button>
+          </div>
+        </section>
+        <section>
           <h2>Layers</h2>
           <div class="legend">
             <span class="legend-chip zone"></span>Database zones
             <span class="legend-chip feature"></span>Map features
+            <span class="legend-chip thermal"></span>Thermal sources
           </div>
         </section>
         <section>

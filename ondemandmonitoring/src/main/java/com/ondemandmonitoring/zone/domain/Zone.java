@@ -26,6 +26,9 @@ public class Zone extends BaseEntity {
     @Column(name = "purpose", length = 500)
     private String purpose;
 
+    @Column(name = "restricted", nullable = false)
+    private boolean restricted = false;
+
     @Column(name = "center_x_m", nullable = false)
     private Double centerXM;
 

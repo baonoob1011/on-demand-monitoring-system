@@ -32,7 +32,7 @@ services:
     container_name: ondemand-postgres
     restart: unless-stopped
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-ondemand}
       POSTGRES_USER: ${POSTGRES_USER:-ondemand}

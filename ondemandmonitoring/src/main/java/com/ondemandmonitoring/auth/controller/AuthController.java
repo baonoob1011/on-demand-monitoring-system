@@ -14,6 +14,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -60,6 +62,21 @@ public class AuthController {
             @Valid @RequestBody SocialSyncRequest request, HttpServletResponse response) {
         return ResponseEntity.ok(ApiResponse.ok("Social login successful.",
                 authService.socialSync(request, response)));
+    }
+
+    @PostMapping("/social/link-local")
+    public ResponseEntity<ApiResponse<Void>> linkLocalIdentity(
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody LinkLocalIdentityRequest request) {
+        String cognitoUsername = jwt.getClaimAsString("cognito:username");
+        if (cognitoUsername == null || cognitoUsername.isBlank()) {
+            cognitoUsername = jwt.getSubject();
+        }
+        authService.linkLocalIdentity(
+                jwt.getSubject(),
+                cognitoUsername,
+                request);
+        return ResponseEntity.ok(ApiResponse.ok("Local login linked successfully.", null));
     }
 
     @PostMapping("/refresh")

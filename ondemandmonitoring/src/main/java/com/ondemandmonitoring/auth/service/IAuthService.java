@@ -21,7 +21,7 @@ public interface IAuthService {
 
     AuthResponse socialSync(SocialSyncRequest request, HttpServletResponse response);
 
-    void createLocalPassword(CreateLocalPasswordRequest request);
+    void linkLocalIdentity(String cognitoSub, String cognitoUsername, LinkLocalIdentityRequest request);
 
     AuthResponse refresh(HttpServletRequest request);
 

@@ -1,7 +1,20 @@
 $ErrorActionPreference = "Stop"
 
+function ConvertTo-WslPath([string]$WindowsPath) {
+    $fullPath = (Resolve-Path $WindowsPath).Path
+    if ($fullPath -notmatch "^([A-Za-z]):\\(.*)$") {
+        throw "Cannot convert path to WSL format: $fullPath"
+    }
+
+    $drive = $Matches[1].ToLowerInvariant()
+    $rest = $Matches[2] -replace "\\", "/"
+    return "/mnt/$drive/$rest"
+}
+
 $distro = "Ubuntu-24.04"
-$scriptRoot = "/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/scripts"
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repoRootWsl = ConvertTo-WslPath $repoRoot
+$scriptRoot = "$repoRootWsl/scripts"
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -14,7 +27,7 @@ function Start-WslMonitor {
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Drone Monitor"
 $form.StartPosition = "CenterScreen"
-$form.Size = New-Object System.Drawing.Size(360, 230)
+$form.Size = New-Object System.Drawing.Size(360, 275)
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
 
@@ -42,10 +55,19 @@ $sensor.Add_Click({
 })
 $form.Controls.Add($sensor)
 
+$thermal = New-Object System.Windows.Forms.Button
+$thermal.Text = "Open Thermal Camera"
+$thermal.Size = New-Object System.Drawing.Size(280, 34)
+$thermal.Location = New-Object System.Drawing.Point(28, 145)
+$thermal.Add_Click({
+    Start-WslMonitor "SIM_WORLD=compact exec $scriptRoot/wsl-thermal-view.sh"
+})
+$form.Controls.Add($thermal)
+
 $telemetry = New-Object System.Windows.Forms.Button
 $telemetry.Text = "Open Telemetry"
 $telemetry.Size = New-Object System.Drawing.Size(280, 34)
-$telemetry.Location = New-Object System.Drawing.Point(28, 145)
+$telemetry.Location = New-Object System.Drawing.Point(28, 190)
 $telemetry.Add_Click({
     Start-WslMonitor "exec $scriptRoot/wsl-telemetry.sh"
 })

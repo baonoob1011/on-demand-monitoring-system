@@ -44,6 +44,9 @@ models/
 !/models/x500_mono_cam_down/
 !/models/x500_mono_cam_down/model.config
 !/models/x500_mono_cam_down/model.sdf
+!/models/compact_thermal_sources/
+!/models/compact_thermal_sources/model.config
+!/models/compact_thermal_sources/model.sdf
 worlds/
 !worlds/
 !worlds/forest_monitoring.sdf

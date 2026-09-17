@@ -1,9 +1,13 @@
 package com.ondemandmonitoring.user.service.impl;
 
 import com.ondemandmonitoring.user.domain.User;
-import com.ondemandmonitoring.user.enumeration.UserRole;
+import com.ondemandmonitoring.user.enumeration.IdentityProvider;
+import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.domain.Role;
+import com.ondemandmonitoring.role.service.RoleService;
 import com.ondemandmonitoring.user.repository.UserRepository;
 import com.ondemandmonitoring.user.service.IUserService;
+import com.ondemandmonitoring.user.service.UserIdentityService;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +26,8 @@ import java.util.UUID;
 public class UserServiceImpl implements IUserService {
 
     private final UserRepository userRepository;
+    private final RoleService roleService;
+    private final UserIdentityService userIdentityService;
 
     @Override
     public User findByEmail(String email) {
@@ -31,39 +37,58 @@ public class UserServiceImpl implements IUserService {
 
     @Override
     @Transactional
-    public User createLocalUser(String email, String fullName, UserRole role,
+    public User createLocalUser(String email, String fullName, RoleCode role,
                                 String cognitoUsername, String cognitoSub) {
-        return createUser(email, fullName, role, cognitoUsername, cognitoSub, false);
+        return createUser(email, fullName, role, IdentityProvider.LOCAL,
+                cognitoUsername, cognitoSub, false);
     }
 
     @Override
     @Transactional
-    public User createManagedUser(String email, String fullName, UserRole role,
-                                  String cognitoUsername, String cognitoSub) {
-        return createUser(email, fullName, role, cognitoUsername, cognitoSub, true);
+    public User createSocialUser(String email, String fullName, RoleCode role,
+                                 String cognitoUsername, String cognitoSub) {
+        return createUser(email, fullName, role, IdentityProvider.GOOGLE,
+                cognitoUsername, cognitoSub, true);
     }
 
-    private User createUser(String email, String fullName, UserRole role,
-                            String cognitoUsername, String cognitoSub, boolean emailVerified) {
+    @Override
+    @Transactional
+    public User createManagedUser(String email, String fullName, RoleCode role,
+                                  String cognitoUsername, String cognitoSub) {
+        return createUser(email, fullName, role, IdentityProvider.LOCAL,
+                cognitoUsername, cognitoSub, true);
+    }
+
+    private User createUser(String email, String fullName, RoleCode role,
+                            IdentityProvider provider, String cognitoUsername,
+                            String cognitoSub, boolean emailVerified) {
         String normalizedEmail = normalizeEmail(email);
         if (userRepository.existsByEmailIgnoreCase(normalizedEmail)) {
             throw new ApiException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
-        return userRepository.save(User.builder()
+        Role roleEntity = roleService.getActiveRole(role);
+        User user = userRepository.save(User.builder()
                 .email(normalizedEmail)
                 .fullName(fullName.trim())
-                .role(role)
-                .cognitoUsername(cognitoUsername)
-                .cognitoSub(cognitoSub)
+                .role(roleEntity)
                 .emailVerified(emailVerified)
                 .isActive(true)
                 .build());
+        userIdentityService.create(user, provider, cognitoUsername, cognitoSub);
+        return user;
     }
 
     @Override
     public Optional<User> findOptionalByEmail(String email) {
         return userRepository.findByEmailIgnoreCase(normalizeEmail(email));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String getCognitoUsername(String email, IdentityProvider provider) {
+        User user = findByEmail(email);
+        return userIdentityService.getUsername(user.getId(), provider);
     }
 
     @Override
@@ -85,22 +110,33 @@ public class UserServiceImpl implements IUserService {
 
     @Override
     @Transactional
-    public User syncExternalIdentity(User user, String cognitoUsername, String cognitoSub,
-                                     String fullName, boolean emailVerified) {
-        userRepository.findByCognitoSub(cognitoSub)
-                .filter(existing -> !existing.getId().equals(user.getId()))
-                .ifPresent(existing -> {
-                    throw new ApiException(ErrorCode.RESOURCE_ALREADY_EXISTS,
-                            "Cognito identity is already linked to another account");
-                });
-        user.setCognitoUsername(cognitoUsername);
-        user.setCognitoSub(cognitoSub);
+    public User syncSocialIdentity(User user, String cognitoUsername, String cognitoSub,
+                                   String fullName, boolean emailVerified) {
+        userIdentityService.link(user, IdentityProvider.GOOGLE, cognitoUsername, cognitoSub);
         user.setEmailVerified(Boolean.TRUE.equals(user.getEmailVerified()) || emailVerified);
         if ((user.getFullName() == null || user.getFullName().isBlank())
                 && fullName != null && !fullName.isBlank()) {
             user.setFullName(fullName.trim());
         }
         return userRepository.save(user);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean hasIdentity(UUID userId, IdentityProvider provider) {
+        return userIdentityService.hasIdentity(userId, provider);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public User findByCognitoSub(String cognitoSub) {
+        return userIdentityService.findUserByCognitoSub(cognitoSub);
+    }
+
+    @Override
+    @Transactional
+    public void linkLocalIdentity(User user, String cognitoUsername, String cognitoSub) {
+        userIdentityService.link(user, IdentityProvider.LOCAL, cognitoUsername, cognitoSub);
     }
 
     private String normalizeEmail(String email) {

@@ -62,6 +62,8 @@ public class CognitoConfig {
             @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuerUri) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withIssuerLocation(issuerUri).build();
         OAuth2TokenValidator<Jwt> issuerValidator = JwtValidators.createDefaultWithIssuer(issuerUri);
+        OAuth2TokenValidator<Jwt> tokenUseValidator = claimEqualsValidator(
+                "token_use", "id", "The token is not a Cognito ID token");
         OAuth2TokenValidator<Jwt> audienceValidator = jwt -> {
             Object audienceClaim = jwt.getClaims().get("aud");
             boolean matches = audienceClaim instanceof Collection<?> audienceValues
@@ -77,8 +79,41 @@ public class CognitoConfig {
                     "The ID token audience does not match the Cognito app client",
                     null));
         };
-        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(issuerValidator, audienceValidator));
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                issuerValidator,
+                tokenUseValidator,
+                audienceValidator));
         return decoder;
+    }
+
+    @Bean("cognitoAccessTokenDecoder")
+    JwtDecoder cognitoAccessTokenDecoder(
+            CognitoProperties properties,
+            @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuerUri) {
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withIssuerLocation(issuerUri).build();
+        OAuth2TokenValidator<Jwt> issuerValidator = JwtValidators.createDefaultWithIssuer(issuerUri);
+        OAuth2TokenValidator<Jwt> tokenUseValidator = claimEqualsValidator(
+                "token_use", "access", "The token is not a Cognito access token");
+        OAuth2TokenValidator<Jwt> clientIdValidator = claimEqualsValidator(
+                "client_id",
+                properties.clientId(),
+                "The access token client_id does not match the Cognito app client");
+
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                issuerValidator,
+                tokenUseValidator,
+                clientIdValidator));
+        return decoder;
+    }
+
+    private OAuth2TokenValidator<Jwt> claimEqualsValidator(
+            String claimName, String expectedValue, String errorDescription) {
+        return jwt -> expectedValue.equals(jwt.getClaimAsString(claimName))
+                ? OAuth2TokenValidatorResult.success()
+                : OAuth2TokenValidatorResult.failure(new OAuth2Error(
+                        "invalid_token",
+                        errorDescription,
+                        null));
     }
 
 }

@@ -31,7 +31,6 @@ public enum ErrorCode {
     PASSWORD_POLICY_VIOLATED("Mật khẩu không đáp ứng chính sách bảo mật", HttpStatus.BAD_REQUEST),
     REFRESH_TOKEN_INVALID("Refresh token không hợp lệ hoặc đã hết hạn", HttpStatus.UNAUTHORIZED),
     AUTH_PROVIDER_ERROR("Không thể kết nối nhà cung cấp xác thực", HttpStatus.BAD_GATEWAY),
-    SOCIAL_AUTH_NOT_CONFIGURED("Social authentication chưa được cấu hình", HttpStatus.NOT_IMPLEMENTED),
     SOCIAL_EMAIL_NOT_VERIFIED("Email social chưa được xác thực", HttpStatus.UNAUTHORIZED),
     SOCIAL_PROVIDER_UNSUPPORTED("Nhà cung cấp social chưa được hỗ trợ", HttpStatus.BAD_REQUEST),
 
@@ -47,7 +46,10 @@ public enum ErrorCode {
     DRONE_NOT_AVAILABLE("Drone is not available", HttpStatus.CONFLICT),
     SCHEDULE_CONFLICT("The drone is already scheduled for another mission during this time period",
                       HttpStatus.CONFLICT),
-    MEDIA_UPLOAD_FAILED("File upload failed after 3 attempts", HttpStatus.BAD_GATEWAY);
+    MEDIA_UPLOAD_FAILED("File upload failed after 3 attempts", HttpStatus.BAD_GATEWAY),
+    DRONE_MODEL_NOT_FOUND("Drone model not found", HttpStatus.NOT_FOUND),
+    DRONE_PAYLOAD_NOT_FOUND("Drone payload not found", HttpStatus.NOT_FOUND),
+    DRONE_NOT_FOUND("Drone not found", HttpStatus.NOT_FOUND);
 
 
 

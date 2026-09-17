@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.user.domain;
 
-import com.ondemandmonitoring.user.enumeration.UserRole;
+import com.ondemandmonitoring.role.domain.Role;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -10,7 +10,9 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "users")
+@Table(name = "users", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_users_email", columnNames = "email")
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -25,17 +27,11 @@ public class User {
     @Column(name = "full_name", nullable = false, length = 100)
     private String fullName;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "role", nullable = false, length = 30)
-    private UserRole role;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "role_id", nullable = false)
+    private Role role;
 
-    @Column(name = "cognito_username", length = 128, unique = true)
-    private String cognitoUsername;
-
-    @Column(name = "cognito_sub", length = 64, unique = true)
-    private String cognitoSub;
-
-    @Column(name = "email", length = 150, unique = true)
+    @Column(name = "email", length = 150)
     private String email;
 
     @Column(name = "email_verified", nullable = false)

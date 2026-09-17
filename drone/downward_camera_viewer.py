@@ -19,6 +19,16 @@ import numpy as np
 from dotenv import load_dotenv
 from mavsdk import System
 
+from geofence_monitor import (
+    GeofenceLevel,
+    GeofenceMonitor,
+    GeofenceState,
+    PX4_HOME_SIM_X_M,
+    PX4_HOME_SIM_Y_M,
+    RestrictedZoneCache,
+    px4_ned_to_sim_xy,
+    zone_refresh_loop,
+)
 from sitl_battery_sim import (
     SitlBatterySimulator,
     battery_level,
@@ -74,6 +84,12 @@ CONTROL_SPEED_STATE_FILE = Path(
 CAMERA_VIEW_STATE_FILE = Path(
     os.getenv("CAMERA_VIEW_STATE_FILE", "/tmp/forest3d_camera_view_state.json")
 )
+BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8080").rstrip("/")
+GEOFENCE_ZONE_REFRESH_SECONDS = float(os.getenv("GEOFENCE_ZONE_REFRESH_SECONDS", "5"))
+GEOFENCE_CAUTION_DISTANCE_M = float(os.getenv("GEOFENCE_CAUTION_DISTANCE_M", "50"))
+GEOFENCE_DANGER_DISTANCE_M = float(os.getenv("GEOFENCE_DANGER_DISTANCE_M", "20"))
+GEOFENCE_EVALUATION_HZ = float(os.getenv("GEOFENCE_EVALUATION_HZ", "5"))
+GEOFENCE_ENABLED = os.getenv("GEOFENCE_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 battery_sim = SitlBatterySimulator()
 
 
@@ -116,6 +132,11 @@ class DroneTelemetryState:
     velocity_north_m_s: float | None = None
     velocity_east_m_s: float | None = None
     velocity_down_m_s: float | None = None
+    local_north_m: float | None = None
+    local_east_m: float | None = None
+    local_down_m: float | None = None
+    geofence_state: GeofenceState = field(default_factory=lambda: GeofenceState(GeofenceLevel.UNKNOWN))
+    geofence_zone_count: int = 0
     satellites: int | None = None
     flight_mode: str | None = None
     armed: bool | None = None
@@ -129,6 +150,12 @@ class DroneTelemetryState:
             for key, value in values.items():
                 setattr(self, key, value)
             self.last_update_s = time.monotonic()
+
+    def update_geofence(self, geofence_state: GeofenceState, zone_count: int | None = None) -> None:
+        with self.lock:
+            self.geofence_state = geofence_state
+            if zone_count is not None:
+                self.geofence_zone_count = zone_count
 
     def snapshot(self) -> "DroneTelemetryState":
         with self.lock:
@@ -149,6 +176,11 @@ class DroneTelemetryState:
                 velocity_north_m_s=self.velocity_north_m_s,
                 velocity_east_m_s=self.velocity_east_m_s,
                 velocity_down_m_s=self.velocity_down_m_s,
+                local_north_m=self.local_north_m,
+                local_east_m=self.local_east_m,
+                local_down_m=self.local_down_m,
+                geofence_state=self.geofence_state,
+                geofence_zone_count=self.geofence_zone_count,
                 satellites=self.satellites,
                 flight_mode=self.flight_mode,
                 armed=self.armed,
@@ -284,6 +316,27 @@ def read_control_speed_state() -> dict[str, float]:
     return result
 
 
+def backend_url_candidates() -> list[str]:
+    candidates = [BACKEND_BASE_URL, "http://localhost:8080", "http://127.0.0.1:8080"]
+    try:
+        output = subprocess.check_output(
+            ["sh", "-lc", "ip route | awk '/default/ {print $3; exit}'"],
+            text=True,
+            timeout=1.0,
+        ).strip()
+        if output:
+            candidates.append(f"http://{output}:8080")
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+    deduped = []
+    for url in candidates:
+        normalized = url.rstrip("/")
+        if normalized and normalized not in deduped:
+            deduped.append(normalized)
+    return deduped
+
+
 def format_bool(value: bool | None) -> str:
     if value is None:
         return "--"
@@ -294,6 +347,13 @@ def format_gps(state: DroneTelemetryState) -> str:
     if state.latitude_deg is None or state.longitude_deg is None:
         return "--"
     return f"{state.latitude_deg:.6f}, {state.longitude_deg:.6f}"
+
+
+def format_sim_xy(state: DroneTelemetryState) -> str:
+    if state.local_north_m is None or state.local_east_m is None:
+        return "--"
+    sim_x, sim_y = px4_ned_to_sim_xy(state.local_north_m, state.local_east_m)
+    return f"{sim_x:.1f}, {sim_y:.1f}"
 
 
 def normalize_yaw(value: float | None) -> float | None:
@@ -418,6 +478,15 @@ async def telemetry_supervisor(state: DroneTelemetryState) -> None:
                     ),
                 ),
                 run_stream(
+                    "local_position",
+                    drone.telemetry.position_velocity_ned,
+                    lambda sample: state.update(
+                        local_north_m=number_or_none(sample.position.north_m),
+                        local_east_m=number_or_none(sample.position.east_m),
+                        local_down_m=number_or_none(sample.position.down_m),
+                    ),
+                ),
+                run_stream(
                     "attitude",
                     drone.telemetry.attitude_euler,
                     lambda attitude: state.update(
@@ -495,7 +564,31 @@ async def sitl_battery_loop(state: DroneTelemetryState) -> None:
         await asyncio.sleep(0.5)
 
 
-def draw_hud(frame: np.ndarray, state: DroneTelemetryState, topic: str, fps: float, pixel_format: str) -> np.ndarray:
+async def geofence_evaluation_loop(state: DroneTelemetryState, monitor: GeofenceMonitor) -> None:
+    interval_s = 1.0 / max(GEOFENCE_EVALUATION_HZ, 0.5)
+    while True:
+        snapshot = state.snapshot()
+        zone_count = len(await monitor.cache.snapshot())
+        if snapshot.local_north_m is not None and snapshot.local_east_m is not None:
+            geofence_state = await monitor.evaluate_px4_ned(
+                snapshot.local_north_m,
+                snapshot.local_east_m,
+            )
+            state.update_geofence(geofence_state, zone_count)
+        else:
+            state.update_geofence(GeofenceState(GeofenceLevel.UNKNOWN), zone_count)
+        await asyncio.sleep(interval_s)
+
+
+def draw_hud(
+    frame: np.ndarray,
+    state: DroneTelemetryState,
+    topic: str,
+    fps: float,
+    pixel_format: str,
+    *,
+    show_telemetry: bool,
+) -> np.ndarray:
     output = frame.copy()
     height, width = output.shape[:2]
     scale = max(0.55, min(width, height) / 720.0)
@@ -506,7 +599,7 @@ def draw_hud(frame: np.ndarray, state: DroneTelemetryState, topic: str, fps: flo
     hud_w = min(width - margin * 2, max(int(330 * scale), 290))
 
     stale = (time.monotonic() - state.last_update_s) > STALE_AFTER_S if state.last_update_s else True
-    telemetry_lost = stale or not state.connected
+    telemetry_lost = (not show_telemetry) or stale or not state.connected
 
     if telemetry_lost:
         rows = [
@@ -531,6 +624,7 @@ def draw_hud(frame: np.ndarray, state: DroneTelemetryState, topic: str, fps: flo
         rows = [
             ("DRONE TELEMETRY", ""),
             ("GPS", format_gps(state)),
+            ("SIM XY", format_sim_xy(state)),
             ("ALT", format_float(state.relative_altitude_m, " m", 1)),
             ("", ""),
             ("ROLL", format_float(state.roll_deg, " deg", 1)),
@@ -657,6 +751,129 @@ def draw_hud(frame: np.ndarray, state: DroneTelemetryState, topic: str, fps: flo
         cv2.LINE_AA,
     )
 
+    output = draw_geofence_status(output, state, margin, pad, line_h, scale)
+    output = draw_geofence_warning(output, state.geofence_state, margin, pad, line_h, scale)
+
+    return output
+
+
+def geofence_status_text(state: DroneTelemetryState) -> tuple[str, tuple[int, int, int]]:
+    geofence = state.geofence_state
+    if state.local_north_m is None or state.local_east_m is None:
+        return "GEOFENCE: WAITING PX4 POSITION", (0, 190, 255)
+    if state.geofence_zone_count <= 0:
+        return "GEOFENCE: NO RESTRICTED ZONES", (0, 190, 255)
+    zone_label = geofence.zone_name or geofence.zone_code or "restricted zone"
+    if geofence.level == GeofenceLevel.UNKNOWN:
+        return "GEOFENCE: UNKNOWN", (0, 190, 255)
+    if geofence.level == GeofenceLevel.SAFE and geofence.distance_m is not None:
+        return f"GEOFENCE: SAFE {geofence.distance_m:.1f}m from {zone_label}", (80, 230, 120)
+    if geofence.level == GeofenceLevel.SAFE:
+        return "GEOFENCE: SAFE", (80, 230, 120)
+    if geofence.level == GeofenceLevel.CAUTION and geofence.distance_m is not None:
+        return f"GEOFENCE: CAUTION {geofence.distance_m:.1f}m from {zone_label}", (0, 190, 255)
+    if geofence.level == GeofenceLevel.DANGER and geofence.distance_m is not None:
+        return f"GEOFENCE: DANGER {geofence.distance_m:.1f}m from {zone_label}", (0, 120, 255)
+    return f"GEOFENCE: VIOLATION {zone_label}", (40, 40, 230)
+
+
+def draw_geofence_status(
+    frame: np.ndarray,
+    state: DroneTelemetryState,
+    margin: int,
+    pad: int,
+    line_h: int,
+    scale: float,
+) -> np.ndarray:
+    output = frame.copy()
+    height, width = output.shape[:2]
+    text, color = geofence_status_text(state)
+    font_scale = 0.48 * scale
+    thickness = max(1, int(2 * scale))
+    (text_w, text_h), _baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+    panel_w = min(width - margin * 2, text_w + pad * 2)
+    panel_h = pad * 2 + max(line_h, text_h)
+    x1 = margin
+    y1 = margin
+    x2 = x1 + panel_w
+    y2 = y1 + panel_h
+
+    overlay = output.copy()
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), (18, 18, 18), -1)
+    output = cv2.addWeighted(overlay, 0.62, output, 0.38, 0)
+    cv2.rectangle(output, (x1, y1), (x2, y2), color, 1)
+    cv2.putText(
+        output,
+        text,
+        (x1 + pad, y1 + pad + max(text_h, line_h - 4)),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        font_scale,
+        color,
+        thickness,
+        cv2.LINE_AA,
+    )
+    return output
+
+
+def draw_geofence_warning(
+    frame: np.ndarray,
+    state: GeofenceState,
+    margin: int,
+    pad: int,
+    line_h: int,
+    scale: float,
+) -> np.ndarray:
+    if state.level not in {GeofenceLevel.CAUTION, GeofenceLevel.DANGER, GeofenceLevel.VIOLATION}:
+        return frame
+
+    output = frame.copy()
+    height, width = output.shape[:2]
+    zone_label = state.zone_name or state.zone_code or "RESTRICTED AREA"
+    if state.level == GeofenceLevel.CAUTION:
+        title = "RESTRICTED AREA NEARBY"
+        color = (0, 190, 255)
+    elif state.level == GeofenceLevel.DANGER:
+        title = "NO-FLY ZONE AHEAD"
+        color = (0, 120, 255)
+    else:
+        title = "RESTRICTED AIRSPACE"
+        color = (40, 40, 230)
+
+    lines = [title, zone_label]
+    if state.level != GeofenceLevel.VIOLATION and state.distance_m is not None:
+        lines.append(f"Distance: {state.distance_m:.1f} m")
+
+    font_scale = 0.68 * scale
+    thickness = max(1, int(2 * scale))
+    text_sizes = [
+        cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)[0]
+        for line in lines
+    ]
+    panel_w = min(width - margin * 2, max(size[0] for size in text_sizes) + pad * 2)
+    panel_h = pad * 2 + line_h * len(lines)
+    x1 = max(margin, (width - panel_w) // 2)
+    y1 = margin
+    x2 = x1 + panel_w
+    y2 = min(height - margin, y1 + panel_h)
+
+    overlay = output.copy()
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), (18, 18, 18), -1)
+    output = cv2.addWeighted(overlay, 0.70, output, 0.30, 0)
+    cv2.rectangle(output, (x1, y1), (x2, y2), color, max(2, int(3 * scale)))
+
+    y = y1 + pad + line_h
+    for index, line in enumerate(lines):
+        cv2.putText(
+            output,
+            line,
+            (x1 + pad, y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            font_scale if index == 0 else font_scale * 0.86,
+            color if index == 0 else (255, 255, 255),
+            thickness,
+            cv2.LINE_AA,
+        )
+        y += line_h
     return output
 
 
@@ -679,9 +896,38 @@ def read_camera_view_state() -> str | None:
 
 
 async def run_telemetry_tasks(state: DroneTelemetryState) -> None:
-    await asyncio.gather(
+    tasks = [
         telemetry_supervisor(state),
         sitl_battery_loop(state),
+    ]
+    if GEOFENCE_ENABLED:
+        cache = RestrictedZoneCache()
+        monitor = GeofenceMonitor(
+            cache,
+            caution_distance_m=GEOFENCE_CAUTION_DISTANCE_M,
+            danger_distance_m=GEOFENCE_DANGER_DISTANCE_M,
+            logger=lambda message: print(message, flush=True),
+        )
+        print(
+            "[GEOFENCE] PX4 NED mapping: "
+            f"sim_x={PX4_HOME_SIM_X_M:.1f}+east_m, "
+            f"sim_y={PX4_HOME_SIM_Y_M:.1f}+north_m "
+            "(LOCAL_SIMULATION_METERS_GAZEBO_XY)",
+            flush=True,
+        )
+        tasks.extend(
+            [
+                zone_refresh_loop(
+                    cache,
+                    backend_url_candidates(),
+                    refresh_seconds=GEOFENCE_ZONE_REFRESH_SECONDS,
+                    logger=lambda message: print(message, flush=True),
+                ),
+                geofence_evaluation_loop(state, monitor),
+            ]
+        )
+    await asyncio.gather(
+        *tasks,
     )
 
 
@@ -704,7 +950,8 @@ def main() -> int:
     if not all(subscriber.start() for subscriber in subscribers):
         return 1
 
-    if CAMERA_HUD_MAVSDK_TELEMETRY:
+    telemetry_required = CAMERA_HUD_MAVSDK_TELEMETRY or GEOFENCE_ENABLED
+    if telemetry_required:
         telemetry_thread = threading.Thread(
             target=run_telemetry_thread,
             args=(telemetry_state,),
@@ -720,6 +967,8 @@ def main() -> int:
         print(f"[HUD] Reading telemetry from shared MAVSDK gRPC localhost:{MAVSDK_GRPC_PORT}", flush=True)
     else:
         print("[HUD] MAVSDK telemetry overlay disabled for control stability", flush=True)
+    if GEOFENCE_ENABLED:
+        print(f"[GEOFENCE] Dynamic restricted-zone HUD enabled; refreshing /api/zones every {GEOFENCE_ZONE_REFRESH_SECONDS:.1f}s", flush=True)
     print("[HUD] Read-only display mode; no flight commands are sent.", flush=True)
     camera_controller.set_mode(camera_controller.current_mode)
     telemetry_state.update(camera_mode=camera_controller.current_mode)
@@ -769,7 +1018,14 @@ def main() -> int:
                 state_snapshot.command_speed_m_s = speed_state.get("horizontalSpeedMps")
                 state_snapshot.effective_command_speed_m_s = speed_state.get("effectiveHorizontalSpeedMps")
                 state_snapshot.max_speed_m_s = speed_state.get("px4SpeedLimitMps")
-            output = draw_hud(frame, state_snapshot, active_topic, fps, pixel_format)
+            output = draw_hud(
+                frame,
+                state_snapshot,
+                active_topic,
+                fps,
+                pixel_format,
+                show_telemetry=CAMERA_HUD_MAVSDK_TELEMETRY,
+            )
             cv2.imshow(WINDOW_NAME, output)
 
             key = cv2.waitKeyEx(1)

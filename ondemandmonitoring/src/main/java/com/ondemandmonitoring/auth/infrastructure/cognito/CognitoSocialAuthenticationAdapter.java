@@ -20,12 +20,17 @@ import org.springframework.web.client.RestTemplate;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /** Exchanges an OAuth authorization code and validates the resulting Cognito ID token. */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class CognitoSocialAuthenticationAdapter implements SocialIdentityProviderPort {
+
+    private static final Pattern PROVIDER_SUB_PATTERN = Pattern.compile(
+            "\\\"userId\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
 
     private final RestTemplate restTemplate;
     private final CognitoProperties properties;
@@ -64,6 +69,10 @@ public class CognitoSocialAuthenticationAdapter implements SocialIdentityProvide
             String email = jwt.getClaimAsString("email");
             String subject = jwt.getSubject();
             String username = valueOrDefault(jwt.getClaimAsString("cognito:username"), subject);
+            String providerSubject = socialProviderSubject(jwt);
+            if (providerSubject == null) {
+                providerSubject = googleProviderSubject(username);
+            }
             String fullName = valueOrDefault(jwt.getClaimAsString("name"), email);
             boolean emailVerified = Boolean.parseBoolean(
                     String.valueOf(jwt.getClaims().getOrDefault("email_verified", false)));
@@ -75,6 +84,7 @@ public class CognitoSocialAuthenticationAdapter implements SocialIdentityProvide
                     ((Number) tokenResponse.getOrDefault("expires_in", 0)).intValue(),
                     username,
                     subject,
+                    providerSubject,
                     email,
                     fullName,
                     emailVerified);
@@ -91,6 +101,40 @@ public class CognitoSocialAuthenticationAdapter implements SocialIdentityProvide
 
     private String valueOrDefault(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private String googleProviderSubject(String username) {
+        if (username == null) {
+            return null;
+        }
+        int separator = username.indexOf('_');
+        if (separator > 0 && separator < username.length() - 1
+                && "google".equalsIgnoreCase(username.substring(0, separator))) {
+            return username.substring(separator + 1);
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private String socialProviderSubject(Jwt jwt) {
+        Object identities = jwt.getClaims().get("identities");
+        if (identities instanceof Iterable<?> entries) {
+            for (Object entry : entries) {
+                if (entry instanceof Map<?, ?> identity) {
+                    Object userId = identity.get("userId");
+                    if (userId != null && !userId.toString().isBlank()) {
+                        return userId.toString();
+                    }
+                }
+            }
+        }
+        if (identities instanceof String identitiesJson) {
+            Matcher matcher = PROVIDER_SUB_PATTERN.matcher(identitiesJson);
+            if (matcher.find()) {
+                return matcher.group(1);
+            }
+        }
+        return null;
     }
 
 }

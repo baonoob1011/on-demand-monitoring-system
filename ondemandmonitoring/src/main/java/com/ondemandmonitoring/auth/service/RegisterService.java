@@ -9,7 +9,8 @@ import com.ondemandmonitoring.auth.infrastructure.outbox.AuthOutboxService;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.user.service.IUserService;
-import com.ondemandmonitoring.user.enumeration.UserRole;
+import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.user.enumeration.IdentityProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,12 +47,12 @@ public class RegisterService {
                 userService.createLocalUser(
                         email,
                         request.getFullName(),
-                        UserRole.CUSTOMER,
-                        email,
+                        RoleCode.CUSTOMER,
+                        cognitoSub,
                         cognitoSub);
-                identityProvider.addUserToGroup(email, UserRole.CUSTOMER.name());
+                identityProvider.addUserToGroup(cognitoSub, RoleCode.CUSTOMER.name());
             } catch (RuntimeException exception) {
-                outboxService.scheduleCognitoCleanup(email, cognitoSub);
+                outboxService.scheduleCognitoCleanup(cognitoSub, cognitoSub);
                 throw exception;
             }
             return RegisterResponse.builder().otpRequired(true).build();
@@ -66,8 +67,9 @@ public class RegisterService {
 
     public void verifyOtp(VerifyOtpRequest request) {
         String email = normalizeEmail(request.getEmail());
+        String username = userService.getCognitoUsername(email, IdentityProvider.LOCAL);
         try {
-            identityProvider.confirmSignUp(email, request.getOtpCode());
+            identityProvider.confirmSignUp(username, request.getOtpCode());
             userService.markEmailVerified(email);
         } catch (CodeMismatchException exception) {
             throw new ApiException(ErrorCode.OTP_INVALID);
@@ -84,8 +86,9 @@ public class RegisterService {
 
     public void resendOtp(ResendOtpRequest request) {
         String email = normalizeEmail(request.getEmail());
+        String username = userService.getCognitoUsername(email, IdentityProvider.LOCAL);
         try {
-            identityProvider.resendConfirmationCode(email);
+            identityProvider.resendConfirmationCode(username);
         } catch (UserNotFoundException exception) {
             throw new ApiException(ErrorCode.USER_NOT_FOUND);
         } catch (NotAuthorizedException exception) {

@@ -45,7 +45,7 @@ public class SwaggerConfig {
                         RESTful API specification for the On-Demand Monitoring System (OMSS).
 
                         OMSS provides an end-to-end platform for managing on-demand
-                        monitoring missions using UAV/drone devices equipped with
+                        monitoring missions using UAV/drone drones equipped with
                         camera and telemetry capabilities.
 
                         ## API Design

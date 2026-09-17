@@ -7,6 +7,7 @@ public record SocialAuthenticationResult(
         Integer expiresIn,
         String username,
         String subject,
+        String providerSubject,
         String email,
         String fullName,
         boolean emailVerified) {

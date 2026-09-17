@@ -1,2 +1,2 @@
 @echo off
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process wsl.exe -ArgumentList '-d','Ubuntu-24.04','--','bash','-lc','SIM_WORLD=compact exec /mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/scripts/wsl-sensor-monitor.sh'"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$repo=(Resolve-Path (Join-Path '%~dp0' '..')).Path; if($repo -notmatch '^([A-Za-z]):\\(.*)$'){throw \"Cannot convert path: $repo\"}; $wsl='/mnt/'+$Matches[1].ToLowerInvariant()+'/'+($Matches[2] -replace '\\','/'); Start-Process wsl.exe -ArgumentList '-d','Ubuntu-24.04','--','bash','-lc',\"PROJECT_PATH='$wsl' SIM_WORLD=compact exec '$wsl/scripts/wsl-sensor-monitor.sh'\""

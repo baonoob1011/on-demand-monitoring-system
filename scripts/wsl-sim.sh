@@ -2,8 +2,8 @@
 # wsl-sim.sh - PX4 launches Gazebo + drone (non-standalone)
 set -e
 
-FOREST3D_PATH="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/Forest3D"
-PROJECT_PATH="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system"
+PROJECT_PATH="${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+FOREST3D_PATH="${FOREST3D_PATH:-$PROJECT_PATH/Forest3D}"
 ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
 PX4_ROOT="$HOME/PX4-Autopilot"
 PX4_BUILD="$PX4_ROOT/build/px4_sitl_default"
@@ -14,12 +14,13 @@ PX4_MAVLINK_RC="$PX4_ROOT/ROMFS/px4fmu_common/init.d-posix/px4-rc.mavlink"
 
 if [ -f "$ENV_FILE" ]; then
     set -a
-    # shellcheck disable=SC1090
-    source "$ENV_FILE"
+    # Strip Windows CRLF endings while keeping the source .env unchanged.
+    source <(sed 's/\r$//' "$ENV_FILE")
     set +a
 fi
 
 PX4_ONBOARD_MAVLINK_RATE_B_S="${PX4_ONBOARD_MAVLINK_RATE_B_S:-100000}"
+FOREST3D_WEB_ONLY="${FOREST3D_WEB_ONLY:-1}"
 
 case "$SIM_WORLD" in
     compact)
@@ -46,6 +47,22 @@ export FOREST3D_GZ_GUI_CONFIG
 export GZ_SIM_RESOURCE_PATH="${FOREST3D_PATH}:${FOREST3D_PATH}/models:$PX4_ROOT/Tools/simulation/gz/models:$PX4_ROOT/Tools/simulation/gz/worlds:${GZ_SIM_RESOURCE_PATH:-}"
 export GZ_SIM_SYSTEM_PLUGIN_PATH="${PX4_GZ_PLUGIN_PATH}:${GZ_SIM_SYSTEM_PLUGIN_PATH:-}"
 export LD_LIBRARY_PATH="${PX4_GZ_PLUGIN_PATH}:${LD_LIBRARY_PATH:-}"
+
+if [ "$SIM_WORLD" = "compact" ]; then
+    backend_candidates=("${BACKEND_BASE_URL:-http://localhost:8080}")
+    windows_host="$(awk '/^nameserver / {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)"
+    if [ -n "$windows_host" ]; then
+        backend_candidates+=("http://${windows_host}:8080")
+    fi
+    sync_args=()
+    for backend_url in "${backend_candidates[@]}"; do
+        sync_args+=(--backend-base-url "$backend_url")
+    done
+    python3 "$PROJECT_PATH/tools/sync_thermal_scene.py" \
+        "${sync_args[@]}" \
+        --output "$FOREST3D_PATH/models/compact_thermal_sources/model.sdf" \
+        || echo "[THERMAL] Backend sync unavailable; using last generated heat geometry"
+fi
 
 # Sync selected Forest3D world to PX4.
 cp "$FOREST3D_WORLD_FILE" "$PX4_GZ_WORLD_PATH"
@@ -103,7 +120,13 @@ echo ' Starting PX4 + Gazebo + Drone'
 echo " World : $WORLD_NAME"
 echo ' Drone : x500_mono_cam_down'
 echo " Pose  : $PX4_SPAWN_POSE"
-echo " GUI   : $FOREST3D_GZ_GUI_CONFIG"
+if [ "$FOREST3D_WEB_ONLY" = "1" ]; then
+    export HEADLESS=1
+    echo " GUI   : disabled (web UI live view)"
+else
+    unset HEADLESS
+    echo " GUI   : $FOREST3D_GZ_GUI_CONFIG"
+fi
 echo '========================================'
 
 (

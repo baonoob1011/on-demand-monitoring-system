@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.mission.service;
 
-import com.ondemandmonitoring.device.domain.DeviceImage;
+import com.ondemandmonitoring.media.domain.MediaAsset;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
@@ -12,9 +12,11 @@ public interface IMissionMediaUploadService {
      * Upload media for a mission with automatic retry (up to 3 attempts).
      *
      * @param missionId  Target mission ID
-     * @param deviceCode Drone device code
+     * @param droneCode Drone drone code
      * @param file       Multipart media file (image / video)
-     * @return Saved DeviceImage record
+     * @return Saved MediaAsset record
      */
-    DeviceImage uploadWithRetry(String missionId, String deviceCode, MultipartFile file);
+    MediaAsset uploadWithRetry(String missionId, String droneCode, MultipartFile file);
+
+    MediaAsset uploadWithRetry(String missionId, String droneCode, MultipartFile file, String mediaType);
 }

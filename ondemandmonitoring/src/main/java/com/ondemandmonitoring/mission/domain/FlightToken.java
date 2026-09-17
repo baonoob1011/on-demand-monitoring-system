@@ -28,8 +28,8 @@ public class FlightToken extends BaseEntity {
     @Column(name = "mission_id", nullable = false, length = 100)
     String missionId;
 
-    @Column(name = "device_code", nullable = false, length = 50)
-    String deviceCode;
+    @Column(name = "drone_code", nullable = false, length = 50)
+    String droneCode;
 
     @Column(name = "operator_id", length = 100)
     String operatorId;

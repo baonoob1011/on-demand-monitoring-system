@@ -12,6 +12,10 @@
   --restricted-fill: rgba(220, 38, 38, 0.28);
   --restricted-selected: rgba(220, 38, 38, 0.42);
   --feature: rgba(21, 116, 73, 0.2);
+  --thermal: #f97316;
+  --thermal-fill: rgba(249, 115, 22, 0.28);
+  --thermal-hot: #ef4444;
+  --thermal-fire: #dc2626;
 }
 
 * {
@@ -236,12 +240,14 @@ body {
   border-top: 1px solid #e1e7ef;
 }
 
-.zone-list {
+.zone-list,
+.thermal-list {
   display: grid;
   gap: 6px;
 }
 
-.zone-list button {
+.zone-list button,
+.thermal-list button {
   width: 100%;
   min-height: 34px;
   padding: 7px 9px;
@@ -255,9 +261,22 @@ body {
 }
 
 .zone-list button:hover,
-.zone-list button.selected {
+.zone-list button.selected,
+.thermal-list button:hover,
+.thermal-list button.selected {
   border-color: var(--blue);
   background: #eef6ff;
+}
+
+.thermal-list button {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #7c2d12;
+}
+
+.thermal-list button.selected {
+  border-color: var(--thermal-fire);
+  background: #fee2e2;
 }
 
 .zone-list button.restricted-zone-button {
@@ -281,6 +300,15 @@ body {
 .details {
   font-size: 13px;
   line-height: 1.55;
+}
+
+.restricted-editor {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 0 10px;
+  color: var(--restricted);
+  font-weight: 700;
 }
 
 .editor-actions {
@@ -315,6 +343,10 @@ body {
 .editor-actions button:hover {
   border-color: var(--blue);
   background: #eef6ff;
+}
+
+.readonly-viewer .editor-actions {
+  display: none;
 }
 
 .save-status {
@@ -380,6 +412,12 @@ pre {
   background: var(--feature);
 }
 
+.legend-chip.thermal {
+  border-color: var(--thermal);
+  background: var(--thermal-fill);
+  border-radius: 999px;
+}
+
 .zone-polygon {
   fill: var(--blue-fill);
   stroke: var(--blue);
@@ -425,6 +463,84 @@ pre {
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
+}
+
+.thermal-source {
+  stroke-width: 4;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.thermal-source.selected {
+  stroke-width: 7;
+  filter: drop-shadow(0 0 10px rgba(220, 38, 38, 0.35));
+}
+
+.thermal-ambient {
+  fill: rgba(251, 191, 36, 0.12);
+  stroke: rgba(245, 158, 11, 0.78);
+}
+
+.thermal-warm {
+  fill: rgba(249, 115, 22, 0.2);
+  stroke: rgba(249, 115, 22, 0.9);
+}
+
+.thermal-hotspot {
+  fill: rgba(239, 68, 68, 0.26);
+  stroke: rgba(239, 68, 68, 0.96);
+}
+
+.thermal-fire {
+  fill: rgba(220, 38, 38, 0.34);
+  stroke: rgba(185, 28, 28, 0.98);
+}
+
+.thermal-core {
+  fill: #ffffff;
+  stroke: var(--thermal-fire);
+  stroke-width: 5;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.thermal-resize-handle {
+  fill: #ffffff;
+  stroke: #ea580c;
+  stroke-width: 5;
+  vector-effect: non-scaling-stroke;
+  cursor: ew-resize;
+}
+
+.thermal-label {
+  font-size: 15px;
+  font-weight: 900;
+  fill: #991b1b;
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.96);
+  stroke-width: 4px;
+  pointer-events: none;
+}
+
+.thermal-detail-list {
+  display: grid;
+  gap: 5px;
+  margin: 6px 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.thermal-detail-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid #fed7aa;
+  border-radius: 6px;
+  background: #fff7ed;
+  color: #7c2d12;
 }
 
 .zone-label {
