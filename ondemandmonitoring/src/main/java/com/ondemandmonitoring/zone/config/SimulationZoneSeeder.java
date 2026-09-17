@@ -2,9 +2,13 @@ package com.ondemandmonitoring.zone.config;
 
 import com.ondemandmonitoring.zone.domain.Zone;
 import com.ondemandmonitoring.zone.domain.SimulationMapFeature;
+import com.ondemandmonitoring.zone.domain.ThermalSource;
+import com.ondemandmonitoring.zone.enums.ThermalType;
 import com.ondemandmonitoring.zone.repository.SimulationMapFeatureRepository;
+import com.ondemandmonitoring.zone.repository.ThermalSourceRepository;
 import com.ondemandmonitoring.zone.repository.ZoneRepository;
 import java.util.List;
+import java.util.Optional;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -27,13 +31,14 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 public class SimulationZoneSeeder implements CommandLineRunner {
 
-    static final String SOURCE_WORLD = "forest_monitoring_compact";
-    static final String COORDINATE_SYSTEM = "LOCAL_SIMULATION_METERS_GAZEBO_XY";
+    public static final String SOURCE_WORLD = "forest_monitoring_compact";
+    public static final String COORDINATE_SYSTEM = "LOCAL_SIMULATION_METERS_GAZEBO_XY";
     static final int SRID = 0;
     static final GeometryFactory GEOMETRY_FACTORY = new GeometryFactory(new PrecisionModel(), SRID);
 
     ZoneRepository zoneRepository;
     SimulationMapFeatureRepository simulationMapFeatureRepository;
+    ThermalSourceRepository thermalSourceRepository;
     JdbcTemplate jdbcTemplate;
     Environment environment;
 
@@ -44,29 +49,31 @@ public class SimulationZoneSeeder implements CommandLineRunner {
         List<SimulationZone> zones = simulationZones();
 
         int createdZones = 0;
-        if (zoneRepository.count() == 0) {
-            for (SimulationZone zone : zones) {
-                Zone entity = new Zone();
-                entity.setCode(zone.code());
-                entity.setName(zone.name());
-                entity.setZoneType(zone.type());
-                entity.setPurpose(zone.purpose());
-                entity.setRestricted(zone.restricted());
-                entity.setCenterXM(zone.x());
-                entity.setCenterYM(zone.y());
-                entity.setRadiusM(zone.radius());
-                entity.setSourceWorld(SOURCE_WORLD);
-                entity.setCoordinateSystem(COORDINATE_SYSTEM);
-                entity.setPolygon(zone.polygon());
-                zoneRepository.save(entity);
-                createdZones++;
+        for (SimulationZone zone : zones) {
+            if (zoneRepository.findByCode(zone.code()).isPresent()) {
+                continue;
             }
+
+            Zone entity = new Zone();
+            entity.setCode(zone.code());
+            entity.setName(zone.name());
+            entity.setZoneType(zone.type());
+            entity.setPurpose(zone.purpose());
+            entity.setRestricted(zone.restricted());
+            entity.setCenterXM(zone.x());
+            entity.setCenterYM(zone.y());
+            entity.setRadiusM(zone.radius());
+            entity.setSourceWorld(SOURCE_WORLD);
+            entity.setCoordinateSystem(COORDINATE_SYSTEM);
+            entity.setPolygon(zone.polygon());
+            zoneRepository.save(entity);
+            createdZones++;
         }
 
-        if (createdZones > 0) {
-            log.info("Seeded {} simulation zones from {}", createdZones, SOURCE_WORLD);
-        }
+        log.info("Seeded missing simulation zones from {} (created={}, existing={})",
+                SOURCE_WORLD, createdZones, zones.size() - createdZones);
         markAirportRestricted();
+        seedThermalSources();
 
         int createdMapFeatures = 0;
         for (MapFeature feature : simulationMapFeatures()) {
@@ -92,6 +99,94 @@ public class SimulationZoneSeeder implements CommandLineRunner {
 
         createPgAdminGeometryViewerViews();
         logSimulationViewerUrls();
+    }
+
+    void seedThermalSources() {
+        long existingThermalCount = thermalSourceRepository.count();
+        if (existingThermalCount > 0) {
+            log.info("Skipping simulation thermal seed because DB already has {} thermal sources", existingThermalCount);
+            return;
+        }
+
+        int created = 0;
+        for (ThermalSeed seed : thermalSources()) {
+            Zone zone = zoneRepository.findByCode(seed.zoneCode()).orElse(null);
+            if (zone == null) {
+                log.warn("Skipping thermal source {} because zone {} does not exist", seed.code(), seed.zoneCode());
+                continue;
+            }
+
+            ThermalSource source = new ThermalSource();
+            source.setZone(zone);
+            source.setCode(seed.code());
+            source.setName(seed.name());
+            source.setThermalType(seed.type());
+            source.setTemperatureC(seed.temperatureC());
+            source.setCenterXM(seed.x());
+            source.setCenterYM(seed.y());
+            source.setRadiusM(seed.radius());
+            source.setActive(seed.active());
+            source.setSourceWorld(SOURCE_WORLD);
+            source.setCoordinateSystem(COORDINATE_SYSTEM);
+            thermalSourceRepository.save(source);
+            created++;
+        }
+
+        log.info("Seeded missing simulation thermal sources from {} (created={})", SOURCE_WORLD, created);
+    }
+
+    List<ThermalSeed> thermalSources() {
+        return List.of(
+                new ThermalSeed(
+                        "FOREST_AMBIENT",
+                        "Forest Ambient",
+                        "FOREST_MONITORING_AREA",
+                        ThermalType.AMBIENT,
+                        28.0,
+                        -200.0,
+                        93.0,
+                        42.0,
+                        true),
+                new ThermalSeed(
+                        "FOREST_BURNT_GROUND_01",
+                        "Forest Burnt Ground",
+                        "FOREST_MONITORING_AREA",
+                        ThermalType.WARM_AREA,
+                        50.0,
+                        -210.0,
+                        150.0,
+                        18.0,
+                        true),
+                new ThermalSeed(
+                        "FOREST_HOTSPOT_01",
+                        "Forest Hotspot 01",
+                        "FOREST_MONITORING_AREA",
+                        ThermalType.HOTSPOT,
+                        110.0,
+                        -178.0,
+                        120.0,
+                        5.0,
+                        true),
+                new ThermalSeed(
+                        "FOREST_HOTSPOT_02",
+                        "Forest Hotspot 02",
+                        "FOREST_MONITORING_AREA",
+                        ThermalType.HOTSPOT,
+                        145.0,
+                        -160.0,
+                        80.0,
+                        4.0,
+                        true),
+                new ThermalSeed(
+                        "FOREST_FIRE_CORE_01",
+                        "Forest Fire Core 01",
+                        "FOREST_MONITORING_AREA",
+                        ThermalType.FIRE,
+                        250.0,
+                        -185.0,
+                        95.0,
+                        2.0,
+                        true));
     }
 
     private void logSimulationViewerUrls() {
@@ -126,6 +221,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
     private void createPgAdminGeometryViewerViews() {
         jdbcTemplate.execute("DROP VIEW IF EXISTS public.simulation_pgadmin_map");
         jdbcTemplate.execute("DROP VIEW IF EXISTS public.zones_pgadmin_map");
+        jdbcTemplate.execute("DROP VIEW IF EXISTS public.thermal_sources_wgs84");
         jdbcTemplate.execute("DROP VIEW IF EXISTS public.simulation_map_features_wgs84");
         jdbcTemplate.execute("DROP VIEW IF EXISTS public.zones_wgs84");
 
@@ -176,6 +272,36 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                 """);
 
         jdbcTemplate.execute("""
+                CREATE OR REPLACE VIEW public.thermal_sources_wgs84 AS
+                SELECT
+                    id,
+                    code,
+                    name,
+                    zone_id,
+                    thermal_type,
+                    temperature_c,
+                    center_x_m,
+                    center_y_m,
+                    radius_m,
+                    active,
+                    source_world,
+                    coordinate_system,
+                    ST_SetSRID(
+                        ST_Translate(
+                            ST_Scale(
+                                ST_Buffer(ST_SetSRID(ST_MakePoint(center_x_m, center_y_m), 0), radius_m),
+                                0.000009236,
+                                0.000008983
+                            ),
+                            106.660172,
+                            10.762622
+                        ),
+                        4326
+                    )::geometry(Polygon,4326) AS geometry
+                FROM public.thermal_sources
+                """);
+
+        jdbcTemplate.execute("""
                 CREATE OR REPLACE VIEW public.zones_pgadmin_map AS
                 SELECT
                     id,
@@ -220,6 +346,19 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                     coordinate_system,
                     geometry::geometry(Geometry,4326) AS geom
                 FROM public.simulation_map_features_wgs84
+                UNION ALL
+                SELECT
+                    id,
+                    code,
+                    name,
+                    'THERMAL' AS layer,
+                    thermal_type AS feature_type,
+                    false AS restricted,
+                    2000 AS display_order,
+                    source_world,
+                    coordinate_system,
+                    geometry::geometry(Geometry,4326) AS geom
+                FROM public.thermal_sources_wgs84
                 """);
     }
 
@@ -274,156 +413,176 @@ public class SimulationZoneSeeder implements CommandLineRunner {
         return lineString;
     }
 
-    private List<SimulationZone> simulationZones() {
+    List<SimulationZone> simulationZones() {
         return List.of(
                 new SimulationZone(
                         "DRONE_BASE",
                         "Helipad / Drone Base",
                         "HOME",
                         false,
-                        -31.0,
-                        -296.7,
-                        68.0,
+                        -22.801571199988913,
+                        -273.47150118759254,
+                        82.49875532933,
                         "Takeoff, landing, return-to-launch, operations staging",
-                        rectangle(-105.0, -356.0, 43.0, -237.0)),
+                        polygon(
+                                new Coordinate(-63.86, -337.19),
+                                new Coordinate(28.33, -312.75),
+                                new Coordinate(43.00, -238.31),
+                                new Coordinate(-81.01, -215.01))),
                 new SimulationZone(
                         "AIRPORT",
                         "Airport",
                         "AIRPORT",
                         true,
-                        -236.7,
-                        -246.0,
-                        110.0,
+                        -201.12662040136175,
+                        -245.2981690787902,
+                        165.58532543676694,
                         "Runway and aircraft operating area inspection",
                         polygon(
-                                new Coordinate(-348.0, -368.0),
-                                new Coordinate(-123.0, -368.0),
-                                new Coordinate(-123.0, -125.0),
-                                new Coordinate(-348.0, -125.0))),
+                                new Coordinate(-313.63, -366.80),
+                                new Coordinate(-88.63, -366.80),
+                                new Coordinate(-88.63, -123.80),
+                                new Coordinate(-313.63, -123.80))),
                 new SimulationZone(
                         "DAM",
                         "Dam",
                         "DAM",
                         false,
-                        0.0,
-                        149.5,
-                        88.0,
+                        10.332541095611454,
+                        299.89813291970745,
+                        177.88706685847177,
                         "Dam wall, spillway and water discharge inspection",
                         polygon(
-                                new Coordinate(-112.0, -32.0),
-                                new Coordinate(112.0, -32.0),
-                                new Coordinate(112.0, 330.0),
-                                new Coordinate(72.0, 330.0),
-                                new Coordinate(72.0, 95.0),
-                                new Coordinate(-72.0, 95.0),
-                                new Coordinate(-72.0, 330.0),
-                                new Coordinate(-112.0, 330.0))),
+                                new Coordinate(-46.85, 152.57),
+                                new Coordinate(88.66, 160.96),
+                                new Coordinate(149.54, 397.19),
+                                new Coordinate(71.59, 417.89),
+                                new Coordinate(40.43, 416.10),
+                                new Coordinate(-17.79, 413.65),
+                                new Coordinate(-72.41, 417.89),
+                                new Coordinate(-140.13, 394.79))),
                 new SimulationZone(
                         "CONSTRUCTION_SITE",
                         "Construction Site",
                         "CONSTRUCTION",
                         false,
-                        218.0,
-                        -50.0,
-                        58.0,
+                        181.08429258099966,
+                        -48.57152098713513,
+                        81.50111952863544,
                         "Construction progress and restricted area inspection",
                         polygon(
-                                new Coordinate(132.0, -112.0),
-                                new Coordinate(298.0, -112.0),
-                                new Coordinate(298.0, 12.0),
-                                new Coordinate(132.0, 12.0))),
+                                new Coordinate(132.00, -113.63),
+                                new Coordinate(232.21, -92.63),
+                                new Coordinate(238.24, -0.29),
+                                new Coordinate(132.00, 10.37))),
                 new SimulationZone(
                         "AGRICULTURAL_FIELD",
                         "Agricultural Field",
                         "AGRICULTURE",
                         false,
-                        268.0,
-                        -203.0,
-                        46.0,
+                        214.3248698788421,
+                        -172.621925726457,
+                        101.12841417775034,
                         "Crop health survey and dry-area detection",
                         polygon(
-                                new Coordinate(214.0, -236.0),
-                                new Coordinate(322.0, -236.0),
-                                new Coordinate(322.0, -170.0),
-                                new Coordinate(214.0, -170.0))),
+                                new Coordinate(128.78, -215.17),
+                                new Coordinate(273.15, -229.37),
+                                new Coordinate(303.94, -125.76),
+                                new Coordinate(144.86, -122.42))),
                 new SimulationZone(
                         "INDUSTRIAL_WAREHOUSE",
                         "Industrial Warehouse",
                         "INDUSTRIAL",
                         false,
-                        -206.9,
-                        -65.1,
-                        54.0,
+                        -171.3394256943739,
+                        -60.8064074628538,
+                        89.62293078564005,
                         "Warehouse, tank, roof and yard monitoring",
                         polygon(
-                                new Coordinate(-286.0, -114.0),
-                                new Coordinate(-128.0, -114.0),
-                                new Coordinate(-128.0, 4.0),
-                                new Coordinate(-286.0, 4.0))),
+                                new Coordinate(-234.28, -115.36),
+                                new Coordinate(-107.49, -123.70),
+                                new Coordinate(-113.83, -5.78),
+                                new Coordinate(-228.43, 5.53))),
                 new SimulationZone(
                         "LOGISTICS_YARD",
                         "Logistics Yard",
                         "LOGISTICS",
                         false,
-                        175.9,
-                        -295.1,
-                        88.0,
+                        142.76432355969126,
+                        -285.09449405832765,
+                        116.52158569083771,
                         "Container, loading and storage yard monitoring",
                         polygon(
-                                new Coordinate(84.0, -380.0),
-                                new Coordinate(267.0, -380.0),
-                                new Coordinate(267.0, -209.0),
-                                new Coordinate(84.0, -209.0))),
+                                new Coordinate(67.54, -359.30),
+                                new Coordinate(210.54, -352.20),
+                                new Coordinate(245.10, -229.37),
+                                new Coordinate(55.95, -212.76))),
                 new SimulationZone(
                         "TELECOM_TOWER",
                         "Telecom Tower",
                         "TELECOM",
                         false,
-                        260.0,
-                        280.0,
-                        26.0,
+                        202.05069075251456,
+                        270.40852675750807,
+                        57.097851942937574,
                         "Communication tower inspection",
-                        octagon(260.0, 280.0, 26.0)),
+                        polygon(
+                                new Coordinate(224.28, 294.40),
+                                new Coordinate(210.21, 308.47),
+                                new Coordinate(190.31, 308.47),
+                                new Coordinate(176.24, 294.40),
+                                new Coordinate(145.60, 265.71),
+                                new Coordinate(177.06, 240.09),
+                                new Coordinate(231.78, 241.21),
+                                new Coordinate(259.14, 269.61))),
                 new SimulationZone(
                         "LANDSLIDE_FLOOD_AREA",
                         "Landslide / Flood Area",
                         "ENVIRONMENTAL_HAZARD",
                         false,
-                        -259.3,
-                        282.2,
-                        72.0,
+                        -244.70538550726846,
+                        257.7900376484977,
+                        222.7743598873677,
                         "Landslide, blocked trail and flood inspection",
                         polygon(
-                                new Coordinate(-336.0, 222.0),
-                                new Coordinate(-196.0, 222.0),
-                                new Coordinate(-176.0, 338.0),
-                                new Coordinate(-322.0, 338.0))),
+                                new Coordinate(-326.26, 360.78),
+                                new Coordinate(-327.00, 50.77),
+                                new Coordinate(-134.46, 284.08),
+                                new Coordinate(-105.67, 371.74))),
                 new SimulationZone(
                         "FOREST_MONITORING_AREA",
                         "Forest Monitoring Area",
                         "FOREST",
                         false,
-                        -185.0,
-                        38.0,
-                        82.0,
+                        -200.152292424777,
+                        92.7099200393152,
+                        214.002215488247,
                         "Forest survey, vegetation monitoring and search-area inspection",
                         polygon(
-                                new Coordinate(-292.0, -82.0),
-                                new Coordinate(-128.0, -96.0),
-                                new Coordinate(-58.0, 18.0),
-                                new Coordinate(-82.0, 138.0),
-                                new Coordinate(-222.0, 168.0),
-                                new Coordinate(-304.0, 62.0))),
+                                new Coordinate(-115.78, 2.55),
+                                new Coordinate(-113.83, 91.88),
+                                new Coordinate(-187.95, 135.36),
+                                new Coordinate(-122.12, 291.98),
+                                new Coordinate(-206.97, 187.17),
+                                new Coordinate(-324.50, 38.28))),
                 new SimulationZone(
                         "REMOTE_MONITORING_TARGET",
                         "Remote Monitoring Target",
                         "REMOTE_TARGET",
                         false,
-                        250.0,
-                        45.0,
-                        42.0,
+                        191.7830168189289,
+                        103.83556383076377,
+                        41.99624864199183,
                         "Longer-distance waypoint target and orbit inspection",
-                        octagon(250.0, 45.0, 42.0)));
+                        polygon(
+                                new Coordinate(230.58, 119.91),
+                                new Coordinate(207.85, 142.64),
+                                new Coordinate(175.71, 142.64),
+                                new Coordinate(152.98, 119.91),
+                                new Coordinate(152.98, 87.77),
+                                new Coordinate(175.71, 65.04),
+                                new Coordinate(207.85, 65.04),
+                                new Coordinate(230.58, 87.77))));
     }
 
     private List<MapFeature> simulationMapFeatures() {
@@ -529,7 +688,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                         rectangle(210.0, 5.0, 292.0, 87.0)));
     }
 
-    private record SimulationZone(
+    record SimulationZone(
             String code,
             String name,
             String type,
@@ -547,5 +706,17 @@ public class SimulationZoneSeeder implements CommandLineRunner {
             String type,
             int displayOrder,
             org.locationtech.jts.geom.Geometry geometry) {
+    }
+
+    record ThermalSeed(
+            String code,
+            String name,
+            String zoneCode,
+            ThermalType type,
+            double temperatureC,
+            double x,
+            double y,
+            double radius,
+            boolean active) {
     }
 }

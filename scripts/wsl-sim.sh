@@ -14,8 +14,8 @@ PX4_MAVLINK_RC="$PX4_ROOT/ROMFS/px4fmu_common/init.d-posix/px4-rc.mavlink"
 
 if [ -f "$ENV_FILE" ]; then
     set -a
-    # shellcheck disable=SC1090
-    source "$ENV_FILE"
+    # Strip Windows CRLF endings while keeping the source .env unchanged.
+    source <(sed 's/\r$//' "$ENV_FILE")
     set +a
 fi
 
@@ -47,6 +47,22 @@ export FOREST3D_GZ_GUI_CONFIG
 export GZ_SIM_RESOURCE_PATH="${FOREST3D_PATH}:${FOREST3D_PATH}/models:$PX4_ROOT/Tools/simulation/gz/models:$PX4_ROOT/Tools/simulation/gz/worlds:${GZ_SIM_RESOURCE_PATH:-}"
 export GZ_SIM_SYSTEM_PLUGIN_PATH="${PX4_GZ_PLUGIN_PATH}:${GZ_SIM_SYSTEM_PLUGIN_PATH:-}"
 export LD_LIBRARY_PATH="${PX4_GZ_PLUGIN_PATH}:${LD_LIBRARY_PATH:-}"
+
+if [ "$SIM_WORLD" = "compact" ]; then
+    backend_candidates=("${BACKEND_BASE_URL:-http://localhost:8080}")
+    windows_host="$(awk '/^nameserver / {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)"
+    if [ -n "$windows_host" ]; then
+        backend_candidates+=("http://${windows_host}:8080")
+    fi
+    sync_args=()
+    for backend_url in "${backend_candidates[@]}"; do
+        sync_args+=(--backend-base-url "$backend_url")
+    done
+    python3 "$PROJECT_PATH/tools/sync_thermal_scene.py" \
+        "${sync_args[@]}" \
+        --output "$FOREST3D_PATH/models/compact_thermal_sources/model.sdf" \
+        || echo "[THERMAL] Backend sync unavailable; using last generated heat geometry"
+fi
 
 # Sync selected Forest3D world to PX4.
 cp "$FOREST3D_WORLD_FILE" "$PX4_GZ_WORLD_PATH"

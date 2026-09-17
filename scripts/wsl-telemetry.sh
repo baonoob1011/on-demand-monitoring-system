@@ -16,8 +16,8 @@ cp "$REPO_CONTROLLER/sitl_battery_sim.py" sitl_battery_sim.py
 
 if [ -f "$ENV_FILE" ]; then
     set -a
-    # shellcheck disable=SC1090
-    source "$ENV_FILE"
+    # Strip Windows CRLF endings while keeping the source .env unchanged.
+    source <(sed 's/\r$//' "$ENV_FILE")
     set +a
 fi
 

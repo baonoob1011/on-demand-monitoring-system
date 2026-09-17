@@ -8,8 +8,8 @@ LIDAR_TOPIC="${LIDAR_TOPIC:-/lidar}"
 
 if [ -f "$ENV_FILE" ]; then
     set -a
-    # shellcheck disable=SC1090
-    source "$ENV_FILE"
+    # Strip Windows CRLF endings while keeping the source .env unchanged.
+    source <(sed 's/\r$//' "$ENV_FILE")
     set +a
 fi
 
