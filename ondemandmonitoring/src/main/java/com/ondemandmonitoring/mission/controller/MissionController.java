@@ -137,7 +137,7 @@ public class MissionController {
         PreflightCheckResponse response = missionService.runPreflightCheck(id, droneCode);
         boolean passed = Boolean.TRUE.equals(response.getOverallPassed());
         return ResponseEntity
-                .status(passed ? HttpStatus.OK : HttpStatus.UNPROCESSABLE_ENTITY)
+                .status(passed ? HttpStatus.OK.value() : 422)
                 .body(ApiResponse.ok(
                         passed ? "Digital preflight check PASSED – Flight Access Token issued"
                                 : "Digital preflight check FAILED – fault classified: " + response.getFaultType(),

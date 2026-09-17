@@ -1,8 +1,6 @@
 package com.ondemandmonitoring.mission.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.drone.domain.Drone;
-import com.ondemandmonitoring.mission.enums.MediaType;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -25,8 +23,6 @@ public class Mission extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
     MissionStatus status;
-
-
 
     // ===== Relationship to Order =====
     @ManyToOne(fetch = FetchType.LAZY)
