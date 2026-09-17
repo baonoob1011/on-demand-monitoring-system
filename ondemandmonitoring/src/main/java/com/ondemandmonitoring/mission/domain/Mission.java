@@ -26,14 +26,7 @@ public class Mission extends BaseEntity {
     @Column(name = "status", nullable = false, length = 50)
     MissionStatus status;
 
-    // === Assignments =====
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "drone_id")
-    Drone drone;
 
-    /** ID of the Drone Operator user assigned to this mission. */
-    @Column(name = "operator_id", length = 100)
-    String operatorId;
 
     // ===== Relationship to Order =====
     @ManyToOne(fetch = FetchType.LAZY)

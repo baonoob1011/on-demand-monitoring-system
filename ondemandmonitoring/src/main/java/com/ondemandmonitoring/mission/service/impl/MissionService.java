@@ -114,8 +114,8 @@ public class MissionService implements IMissionService {
         }
         
         // If there was an old device, release it back to AVAILABLE
-        if (mission.getDrone() != null) {
-            Drone oldDrone = mission.getDrone();
+        Drone oldDrone = getCurrentDrone(missionId);
+        if (oldDrone != null) {
             oldDrone.setStatus(DroneStatus.AVAILABLE);
             droneRepository.save(oldDrone);
             
@@ -130,8 +130,6 @@ public class MissionService implements IMissionService {
                     });
         }
 
-        mission.setDrone(drone);
-        
         drone.setStatus(DroneStatus.RESERVED);
         droneRepository.save(drone);
         
@@ -156,12 +154,13 @@ public class MissionService implements IMissionService {
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.RESOURCE_ASSIGNING);
 
-        if (mission.getDrone() == null) {
+        if (getCurrentDrone(missionId) == null) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Must assign a drone before assigning an operator.");
         }
         
         // If there was an old operator, release them
-        if (mission.getOperatorId() != null && !mission.getOperatorId().equals(operatorId)) {
+        String currentOp = getCurrentOperatorId(missionId);
+        if (currentOp != null && !currentOp.equals(operatorId)) {
             missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
                     .ifPresent(moa -> {
                         moa.setIsCurrent(false);
@@ -171,7 +170,6 @@ public class MissionService implements IMissionService {
                     });
         }
 
-        mission.setOperatorId(operatorId);
         mission.setStatus(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
         
         // Record new MissionOperatorAssignment in PENDING state
@@ -198,7 +196,6 @@ public class MissionService implements IMissionService {
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
 
-        mission.setOperatorId(operatorId);
         mission.setStatus(MissionStatus.SCHEDULED);
 
         // Update MissionOperatorAssignment audit
@@ -229,7 +226,6 @@ public class MissionService implements IMissionService {
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
 
-        mission.setOperatorId(operatorId);
         mission.setRejectionReason(reason);
         mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
 
@@ -273,8 +269,8 @@ public class MissionService implements IMissionService {
         }
         mission.setStatus(MissionStatus.CONNECTED);
 
-        if (mission.getDrone() != null) {
-            Drone drone = mission.getDrone();
+        Drone drone = getCurrentDrone(missionId);
+        if (drone != null) {
             drone.setStatus(DroneStatus.PREFLIGHT);
             droneRepository.save(drone);
 
@@ -282,7 +278,7 @@ public class MissionService implements IMissionService {
             GcsSession gcsSession = new GcsSession();
             gcsSession.setMission(mission);
             gcsSession.setDrone(drone);
-            gcsSession.setOperatorId(mission.getOperatorId());
+            gcsSession.setOperatorId(getCurrentOperatorId(missionId));
             gcsSession.setConnectionStatus("CONNECTED");
             gcsSession.setTelemetryActive(true);
             gcsSession.setConnectedAt(Instant.now());
@@ -335,7 +331,7 @@ public class MissionService implements IMissionService {
             drone.setStatus(DroneStatus.PREFLIGHT);
             droneRepository.save(drone);
 
-            FlightToken token = issueFlightToken(missionId, droneCode, mission.getOperatorId());
+            FlightToken token = issueFlightToken(missionId, droneCode, getCurrentOperatorId(missionId));
             tokenResponse = flightTokenMapper.toResponse(token);
             log.info("Mission {} digital preflight PASSED – issued FlightToken {}", missionId, token.getTokenValue());
         } else {
@@ -409,7 +405,7 @@ public class MissionService implements IMissionService {
             throw new ApiException(ErrorCode.SCHEDULE_CONFLICT, "Drone " + newDroneCode + " đang được lên lịch cho chuyến bay khác");
         }
 
-        Drone oldDrone = mission.getDrone();
+        Drone oldDrone = getCurrentDrone(missionId);
         if (oldDrone != null) {
             oldDrone.setStatus(DroneStatus.MAINTENANCE);
             droneRepository.save(oldDrone);
@@ -438,7 +434,6 @@ public class MissionService implements IMissionService {
         newMda.setAssignedAt(Instant.now());
         missionDroneAssignmentRepository.save(newMda);
 
-        mission.setDrone(newDrone);
         mission.setStatus(MissionStatus.CONNECTED);
         log.info("Mission {} – replaced drone with {}, status reset to CONNECTED", missionId, newDroneCode);
         Mission saved = missionRepository.save(mission);
@@ -450,8 +445,7 @@ public class MissionService implements IMissionService {
     public MissionResponse handoverControl(String missionId, String operatorId) {
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.READY_TO_FLY);
-        mission.setOperatorId(operatorId);
-
+        
         // Record ControlHandover audit log linked to current GcsSession
         GcsSession activeGcsSession = gcsSessionRepository
                 .findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED")
@@ -459,7 +453,7 @@ public class MissionService implements IMissionService {
 
         ControlHandover handover = new ControlHandover();
         handover.setGcsSession(activeGcsSession);
-        handover.setDrone(mission.getDrone());
+        handover.setDrone(getCurrentDrone(missionId));
         handover.setOperatorId(operatorId);
         handover.setStatus("CONFIRMED");
         handover.setAcknowledgementText("Operator confirmed control handover and preflight checks before launch");
@@ -583,7 +577,7 @@ public class MissionService implements IMissionService {
     @Transactional
     public MissionResponse updatePostFlightStatus(String missionId, DroneStatus newDroneStatus, String notes) {
         Mission mission = getOrThrow(missionId);
-        Drone drone = mission.getDrone();
+        Drone drone = getCurrentDrone(mission.getId());
         if (drone == null) {
             throw new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission " + missionId + " has no assigned drone");
         }
@@ -595,7 +589,7 @@ public class MissionService implements IMissionService {
         PostflightCheck postflightCheck = new PostflightCheck();
         postflightCheck.setMission(mission);
         postflightCheck.setDrone(drone);
-        postflightCheck.setCheckedBy(mission.getOperatorId());
+        postflightCheck.setCheckedBy(getCurrentOperatorId(missionId));
         postflightCheck.setOverallOk(overallOk);
         postflightCheck.setFaultType(overallOk ? null : "PHYSICAL_DAMAGE");
         postflightCheck.setNotes(notes);
@@ -607,7 +601,7 @@ public class MissionService implements IMissionService {
             MaintenanceTicket ticket = new MaintenanceTicket();
             ticket.setTicketCode("TKT-POSTFLIGHT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
             ticket.setDrone(drone);
-            ticket.setReportedBy(mission.getOperatorId());
+            ticket.setReportedBy(getCurrentOperatorId(missionId));
             ticket.setIssueType("POSTFLIGHT_DAMAGE");
             ticket.setSeverity("HIGH");
             ticket.setDescription("Post-flight physical inspection flagged maintenance needed for drone " + drone.getDroneCode() + ". Notes: " + notes);
@@ -648,10 +642,22 @@ public class MissionService implements IMissionService {
     }
 
     private void updateDroneStatus(Mission mission, DroneStatus newStatus) {
-        Drone drone = mission.getDrone();
+        Drone drone = getCurrentDrone(mission.getId());
         if (drone != null) {
             drone.setStatus(newStatus);
             droneRepository.save(drone);
         }
+    }
+
+    private Drone getCurrentDrone(String missionId) {
+        return missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+                .map(MissionDroneAssignment::getDrone)
+                .orElse(null);
+    }
+
+    private String getCurrentOperatorId(String missionId) {
+        return missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+                .map(MissionOperatorAssignment::getOperatorId)
+                .orElse(null);
     }
 }
