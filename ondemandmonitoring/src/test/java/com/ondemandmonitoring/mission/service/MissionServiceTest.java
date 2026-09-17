@@ -51,8 +51,9 @@ class MissionServiceTest {
     GcsSessionRepository gcsSessionRepository;
     ControlHandoverRepository controlHandoverRepository;
     PostflightCheckRepository postflightCheckRepository;
-    MaintenanceTicketRepository maintenanceTicketRepository;
-    com.ondemandmonitoring.order.repository.OrderRepository orderRepository;
+    private MaintenanceTicketRepository maintenanceTicketRepository;
+    private com.ondemandmonitoring.order.repository.OrderRepository orderRepository;
+    private com.ondemandmonitoring.user.repository.UserRepository userRepository;
 
     MissionService missionService;
 
@@ -72,6 +73,7 @@ class MissionServiceTest {
         postflightCheckRepository             = mock(PostflightCheckRepository.class);
         maintenanceTicketRepository          = mock(MaintenanceTicketRepository.class);
         orderRepository                      = mock(com.ondemandmonitoring.order.repository.OrderRepository.class);
+        userRepository                       = mock(com.ondemandmonitoring.user.repository.UserRepository.class);
 
         missionService = new MissionService(
                 missionRepository,
@@ -87,7 +89,8 @@ class MissionServiceTest {
                 controlHandoverRepository,
                 postflightCheckRepository,
                 maintenanceTicketRepository,
-                orderRepository
+                orderRepository,
+                userRepository
         );
 
         when(missionMapper.toResponse(any())).thenAnswer(inv -> {
@@ -139,7 +142,7 @@ class MissionServiceTest {
             when(missionRepository.findById("m-1")).thenReturn(Optional.of(mission));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            MissionResponse result = missionService.acceptMission("m-1", "op-01");
+            MissionResponse result = missionService.acceptMission("m-1", "00000000-0000-0000-0000-000000000001");
 
             assertThat(result.getStatus()).isEqualTo(MissionStatus.SCHEDULED);
             verify(missionOperatorAssignmentRepository, atLeastOnce()).save(any());
@@ -150,7 +153,7 @@ class MissionServiceTest {
         void acceptMission_notFound_throws() {
             when(missionRepository.findById("m-missing")).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> missionService.acceptMission("m-missing", "op-01"))
+            assertThatThrownBy(() -> missionService.acceptMission("m-missing", "00000000-0000-0000-0000-000000000001"))
                     .isInstanceOf(ApiException.class)
                     .hasMessageContaining("Mission not found");
         }
@@ -161,7 +164,7 @@ class MissionServiceTest {
             Mission mission = buildMission("m-1", MissionStatus.SCHEDULED);
             when(missionRepository.findById("m-1")).thenReturn(Optional.of(mission));
 
-            assertThatThrownBy(() -> missionService.acceptMission("m-1", "op-01"))
+            assertThatThrownBy(() -> missionService.acceptMission("m-1", "00000000-0000-0000-0000-000000000001"))
                     .isInstanceOf(ApiException.class)
                     .hasMessageContaining("must be WAITING_OPERATOR_ACCEPTANCE");
         }
@@ -173,7 +176,7 @@ class MissionServiceTest {
             when(missionRepository.findById("m-2")).thenReturn(Optional.of(mission));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            MissionResponse result = missionService.rejectMission("m-2", "op-01", "Trùng lịch cá nhân");
+            MissionResponse result = missionService.rejectMission("m-2", "00000000-0000-0000-0000-000000000001", "Trùng lịch cá nhân");
 
             assertThat(result.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
             assertThat(result.getRejectionReason()).isEqualTo("Trùng lịch cá nhân");
@@ -185,7 +188,7 @@ class MissionServiceTest {
         void rejectMission_notFound_throws() {
             when(missionRepository.findById("m-missing")).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> missionService.rejectMission("m-missing", "op-01", "Bận"))
+            assertThatThrownBy(() -> missionService.rejectMission("m-missing", "00000000-0000-0000-0000-000000000001", "Bận"))
                     .isInstanceOf(ApiException.class)
                     .hasMessageContaining("Mission not found");
         }
@@ -196,7 +199,7 @@ class MissionServiceTest {
             Mission mission = buildMission("m-2", MissionStatus.IN_FLIGHT);
             when(missionRepository.findById("m-2")).thenReturn(Optional.of(mission));
 
-            assertThatThrownBy(() -> missionService.rejectMission("m-2", "op-01", "Trùng lịch"))
+            assertThatThrownBy(() -> missionService.rejectMission("m-2", "00000000-0000-0000-0000-000000000001", "Trùng lịch"))
                     .isInstanceOf(ApiException.class)
                     .hasMessageContaining("must be WAITING_OPERATOR_ACCEPTANCE");
         }
@@ -412,7 +415,7 @@ class MissionServiceTest {
             when(missionRepository.findById("m-5")).thenReturn(Optional.of(mission));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            MissionResponse result = missionService.handoverControl("m-5", "op-new");
+            MissionResponse result = missionService.handoverControl("m-5", "00000000-0000-0000-0000-000000000002");
 
             verify(controlHandoverRepository, atLeastOnce()).save(any());
         }
@@ -423,7 +426,7 @@ class MissionServiceTest {
             Mission mission = buildMission("m-5", MissionStatus.SCHEDULED);
             when(missionRepository.findById("m-5")).thenReturn(Optional.of(mission));
 
-            assertThatThrownBy(() -> missionService.handoverControl("m-5", "op-new"))
+            assertThatThrownBy(() -> missionService.handoverControl("m-5", "00000000-0000-0000-0000-000000000002"))
                     .isInstanceOf(ApiException.class)
                     .hasMessageContaining("must be READY_TO_FLY");
         }

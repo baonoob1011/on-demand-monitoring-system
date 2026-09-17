@@ -9,13 +9,24 @@ import lombok.Setter;
 import lombok.experimental.FieldDefaults;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import com.ondemandmonitoring.warehouse.domain.PreferredTime;
 
 @Getter
 @Setter
 @Entity
-@Table(name = "mission_drone_assignments")
+@Table(name = "mission_drone_assignments", uniqueConstraints = {
+    @UniqueConstraint(columnNames = {"drone_id", "preferred_date", "preferred_time_id", "is_current"})
+})
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class MissionDroneAssignment extends BaseEntity {
+
+    @Column(name = "preferred_date")
+    LocalDate preferredDate;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "preferred_time_id")
+    PreferredTime preferredTime;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "mission_id", nullable = false)

@@ -34,10 +34,46 @@ public interface MissionRepository extends JpaRepository<Mission, String> {
             JOIN MissionDroneAssignment mda ON mda.mission = m
             WHERE mda.drone.id = :droneId
               AND mda.isCurrent = true
-              AND m.status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED')
+              AND m.status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED', 'FAILED_PREFLIGHT')
               AND m.completedAt IS NULL
             """)
     List<Mission> findActiveByDroneId(@Param("droneId") String droneId);
+
+    @Query("""
+            SELECT CASE WHEN COUNT(m) > 0 THEN true ELSE false END
+            FROM Mission m
+            JOIN MissionDroneAssignment mda ON mda.mission = m
+            WHERE mda.drone.id = :droneId
+              AND mda.isCurrent = true
+              AND m.status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED', 'FAILED_PREFLIGHT')
+              AND m.order.preferredDate = :date
+              AND m.order.preferredTime.startTime < :endTime
+              AND m.order.preferredTime.endTime > :startTime
+              AND m.id != :excludeMissionId
+            """)
+    boolean isDroneLockedForTime(@Param("droneId") String droneId,
+                                 @Param("date") java.time.LocalDate date,
+                                 @Param("startTime") java.time.LocalTime startTime,
+                                 @Param("endTime") java.time.LocalTime endTime,
+                                 @Param("excludeMissionId") String excludeMissionId);
+
+    @Query("""
+            SELECT CASE WHEN COUNT(m) > 0 THEN true ELSE false END
+            FROM Mission m
+            JOIN MissionOperatorAssignment moa ON moa.mission = m
+            WHERE moa.operatorId = :operatorId
+              AND moa.isCurrent = true
+              AND m.status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED', 'FAILED_PREFLIGHT')
+              AND m.order.preferredDate = :date
+              AND m.order.preferredTime.startTime < :endTime
+              AND m.order.preferredTime.endTime > :startTime
+              AND m.id != :excludeMissionId
+            """)
+    boolean isOperatorLockedForTime(@Param("operatorId") String operatorId,
+                                    @Param("date") java.time.LocalDate date,
+                                    @Param("startTime") java.time.LocalTime startTime,
+                                    @Param("endTime") java.time.LocalTime endTime,
+                                    @Param("excludeMissionId") String excludeMissionId);
 }
 
 

@@ -63,6 +63,7 @@ public class MissionService implements IMissionService {
     PostflightCheckRepository postflightCheckRepository;
     MaintenanceTicketRepository maintenanceTicketRepository;
     com.ondemandmonitoring.order.repository.OrderRepository orderRepository;
+    com.ondemandmonitoring.user.repository.UserRepository userRepository;
 
     // =========================================================================
     // Query Methods
@@ -113,6 +114,21 @@ public class MissionService implements IMissionService {
             throw new ApiException(ErrorCode.DRONE_NOT_AVAILABLE, "Drone is not available");
         }
         
+        // Time Lock Check
+        com.ondemandmonitoring.order.domain.Order order = mission.getOrder();
+        if (order != null && order.getPreferredTime() != null) {
+            boolean isLocked = missionRepository.isDroneLockedForTime(
+                    droneId,
+                    order.getPreferredDate(),
+                    order.getPreferredTime().getStartTime(),
+                    order.getPreferredTime().getEndTime(),
+                    missionId
+            );
+            if (isLocked) {
+                throw new ApiException(ErrorCode.SCHEDULE_CONFLICT, "Drone is already locked for another mission during this time slot.");
+            }
+        }
+        
         // If there was an old device, release it back to AVAILABLE
         Drone oldDrone = getCurrentDrone(missionId);
         if (oldDrone != null) {
@@ -140,6 +156,10 @@ public class MissionService implements IMissionService {
         newMda.setAssignmentSource("MANUAL_MANAGER");
         newMda.setStatus("ACTIVE");
         newMda.setIsCurrent(true);
+        if (order != null) {
+            newMda.setPreferredDate(order.getPreferredDate());
+            newMda.setPreferredTime(order.getPreferredTime());
+        }
         newMda.setAssignedAt(Instant.now());
         missionDroneAssignmentRepository.save(newMda);
         
@@ -156,6 +176,24 @@ public class MissionService implements IMissionService {
 
         if (getCurrentDrone(missionId) == null) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Must assign a drone before assigning an operator.");
+        }
+        
+        com.ondemandmonitoring.user.domain.User operator = userRepository.findById(java.util.UUID.fromString(operatorId))
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Operator not found"));
+        
+        // Time Lock Check
+        com.ondemandmonitoring.order.domain.Order order = mission.getOrder();
+        if (order != null && order.getPreferredTime() != null) {
+            boolean isLocked = missionRepository.isOperatorLockedForTime(
+                    operatorId,
+                    order.getPreferredDate(),
+                    order.getPreferredTime().getStartTime(),
+                    order.getPreferredTime().getEndTime(),
+                    missionId
+            );
+            if (isLocked) {
+                throw new ApiException(ErrorCode.SCHEDULE_CONFLICT, "Operator is already locked for another mission during this time slot.");
+            }
         }
         
         // If there was an old operator, release them
@@ -178,6 +216,10 @@ public class MissionService implements IMissionService {
         newMoa.setOperatorId(operatorId);
         newMoa.setStatus("PENDING");
         newMoa.setIsCurrent(true);
+        if (order != null) {
+            newMoa.setPreferredDate(order.getPreferredDate());
+            newMoa.setPreferredTime(order.getPreferredTime());
+        }
         newMoa.setAssignedAt(Instant.now());
         missionOperatorAssignmentRepository.save(newMoa);
         
@@ -399,6 +441,21 @@ public class MissionService implements IMissionService {
             throw new ApiException(ErrorCode.DRONE_NOT_AVAILABLE, "Drone " + newDroneCode + " is not AVAILABLE (status: " + newDrone.getStatus() + ")");
         }
 
+        // Time Lock Check
+        com.ondemandmonitoring.order.domain.Order order = mission.getOrder();
+        if (order != null && order.getPreferredTime() != null) {
+            boolean isLocked = missionRepository.isDroneLockedForTime(
+                    newDrone.getId(),
+                    order.getPreferredDate(),
+                    order.getPreferredTime().getStartTime(),
+                    order.getPreferredTime().getEndTime(),
+                    missionId
+            );
+            if (isLocked) {
+                throw new ApiException(ErrorCode.SCHEDULE_CONFLICT, "Drone " + newDroneCode + " is already locked for another mission during this time slot.");
+            }
+        }
+        
         List<Mission> activeMissions = missionRepository.findActiveByDroneId(newDrone.getId());
         boolean hasConflict = activeMissions.stream().anyMatch(m -> !m.getId().equals(missionId));
         if (hasConflict) {
@@ -431,6 +488,10 @@ public class MissionService implements IMissionService {
         newMda.setAssignmentSource("MANUAL_SWAP");
         newMda.setStatus("ACTIVE");
         newMda.setIsCurrent(true);
+        if (order != null) {
+            newMda.setPreferredDate(order.getPreferredDate());
+            newMda.setPreferredTime(order.getPreferredTime());
+        }
         newMda.setAssignedAt(Instant.now());
         missionDroneAssignmentRepository.save(newMda);
 

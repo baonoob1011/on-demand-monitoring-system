@@ -17,7 +17,7 @@ import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
 import com.ondemandmonitoring.order.enums.MediaTypeSp;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.mapper.OrderMapper;
-import com.ondemandmonitoring.order.mapper.OrderMapperImpl;
+import org.mapstruct.factory.Mappers;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.impl.OrderService;
 import com.ondemandmonitoring.mission.service.IMissionService;
@@ -64,7 +64,7 @@ class OrderServiceTest {
         userRepository = mock(UserRepository.class);
         userIdentityService = mock(UserIdentityService.class);
         IMissionService missionService = mock(IMissionService.class);
-        orderMapper = new OrderMapperImpl();
+        orderMapper = Mappers.getMapper(OrderMapper.class);
         geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
 
         orderService = new OrderService(
