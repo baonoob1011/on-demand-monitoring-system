@@ -116,12 +116,32 @@ public class MissionService implements IMissionService {
             Drone oldDrone = mission.getDrone();
             oldDrone.setStatus(DroneStatus.AVAILABLE);
             droneRepository.save(oldDrone);
+            
+            // Release old MissionDroneAssignment
+            missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+                    .ifPresent(mda -> {
+                        mda.setIsCurrent(false);
+                        mda.setStatus("RELEASED");
+                        mda.setReleaseReason("MANAGER_REASSIGNED");
+                        mda.setReleasedAt(Instant.now());
+                        missionDroneAssignmentRepository.save(mda);
+                    });
         }
 
         mission.setDrone(drone);
         
         drone.setStatus(DroneStatus.RESERVED);
         droneRepository.save(drone);
+        
+        // Record new MissionDroneAssignment
+        MissionDroneAssignment newMda = new MissionDroneAssignment();
+        newMda.setMission(mission);
+        newMda.setDrone(drone);
+        newMda.setAssignmentSource("MANUAL_MANAGER");
+        newMda.setStatus("ACTIVE");
+        newMda.setIsCurrent(true);
+        newMda.setAssignedAt(Instant.now());
+        missionDroneAssignmentRepository.save(newMda);
         
         log.info("Mission {} assigned to drone {}", missionId, droneId);
         Mission saved = missionRepository.save(mission);
@@ -137,9 +157,29 @@ public class MissionService implements IMissionService {
         if (mission.getDrone() == null) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Must assign a drone before assigning an operator.");
         }
+        
+        // If there was an old operator, release them
+        if (mission.getOperatorId() != null && !mission.getOperatorId().equals(operatorId)) {
+            missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+                    .ifPresent(moa -> {
+                        moa.setIsCurrent(false);
+                        moa.setStatus("RELEASED");
+                        moa.setReleasedAt(Instant.now());
+                        missionOperatorAssignmentRepository.save(moa);
+                    });
+        }
 
         mission.setOperatorId(operatorId);
         mission.setStatus(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+        
+        // Record new MissionOperatorAssignment in PENDING state
+        MissionOperatorAssignment newMoa = new MissionOperatorAssignment();
+        newMoa.setMission(mission);
+        newMoa.setOperatorId(operatorId);
+        newMoa.setStatus("PENDING");
+        newMoa.setIsCurrent(true);
+        newMoa.setAssignedAt(Instant.now());
+        missionOperatorAssignmentRepository.save(newMoa);
         
         log.info("Mission {} assigned to operator {}", missionId, operatorId);
         Mission saved = missionRepository.save(mission);
@@ -159,14 +199,22 @@ public class MissionService implements IMissionService {
         mission.setOperatorId(operatorId);
         mission.setStatus(MissionStatus.SCHEDULED);
 
-        // Record MissionOperatorAssignment audit
-        MissionOperatorAssignment assignment = new MissionOperatorAssignment();
-        assignment.setMission(mission);
-        assignment.setOperatorId(operatorId);
-        assignment.setStatus("ACCEPTED");
-        assignment.setIsCurrent(true);
-        assignment.setRespondedAt(Instant.now());
-        missionOperatorAssignmentRepository.save(assignment);
+        // Update MissionOperatorAssignment audit
+        missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+                .ifPresentOrElse(assignment -> {
+                    assignment.setStatus("ACCEPTED");
+                    assignment.setRespondedAt(Instant.now());
+                    missionOperatorAssignmentRepository.save(assignment);
+                }, () -> {
+                    // Fallback in case there is no existing record
+                    MissionOperatorAssignment assignment = new MissionOperatorAssignment();
+                    assignment.setMission(mission);
+                    assignment.setOperatorId(operatorId);
+                    assignment.setStatus("ACCEPTED");
+                    assignment.setIsCurrent(true);
+                    assignment.setRespondedAt(Instant.now());
+                    missionOperatorAssignmentRepository.save(assignment);
+                });
 
         log.info("Mission {} accepted by operator {}", missionId, operatorId);
         Mission saved = missionRepository.save(mission);
@@ -183,16 +231,26 @@ public class MissionService implements IMissionService {
         mission.setRejectionReason(reason);
         mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
 
-        // Record MissionOperatorAssignment rejection audit
-        MissionOperatorAssignment assignment = new MissionOperatorAssignment();
-        assignment.setMission(mission);
-        assignment.setOperatorId(operatorId);
-        assignment.setStatus("REJECTED");
-        assignment.setRejectionReason(reason);
-        assignment.setIsCurrent(false);
-        assignment.setRespondedAt(Instant.now());
-        assignment.setReleasedAt(Instant.now());
-        missionOperatorAssignmentRepository.save(assignment);
+        // Update MissionOperatorAssignment rejection audit
+        missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+                .ifPresentOrElse(assignment -> {
+                    assignment.setStatus("REJECTED");
+                    assignment.setRejectionReason(reason);
+                    assignment.setIsCurrent(false);
+                    assignment.setRespondedAt(Instant.now());
+                    assignment.setReleasedAt(Instant.now());
+                    missionOperatorAssignmentRepository.save(assignment);
+                }, () -> {
+                    MissionOperatorAssignment assignment = new MissionOperatorAssignment();
+                    assignment.setMission(mission);
+                    assignment.setOperatorId(operatorId);
+                    assignment.setStatus("REJECTED");
+                    assignment.setRejectionReason(reason);
+                    assignment.setIsCurrent(false);
+                    assignment.setRespondedAt(Instant.now());
+                    assignment.setReleasedAt(Instant.now());
+                    missionOperatorAssignmentRepository.save(assignment);
+                });
 
         log.warn("Mission {} rejected by operator {} – reason: {}", missionId, operatorId, reason);
         Mission saved = missionRepository.save(mission);
