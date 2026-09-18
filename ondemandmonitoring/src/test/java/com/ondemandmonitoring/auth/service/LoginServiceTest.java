@@ -1,0 +1,150 @@
+package com.ondemandmonitoring.auth.service;
+
+import com.ondemandmonitoring.auth.dto.request.LoginRequest;
+import com.ondemandmonitoring.auth.dto.request.FirstLoginPasswordChangeRequest;
+import com.ondemandmonitoring.auth.port.out.AuthenticationTokens;
+import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
+import com.ondemandmonitoring.common.exception.ApiException;
+import com.ondemandmonitoring.common.exception.ErrorCode;
+import com.ondemandmonitoring.role.domain.Role;
+import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.user.domain.User;
+import com.ondemandmonitoring.user.enumeration.IdentityProvider;
+import com.ondemandmonitoring.user.service.IUserService;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+class LoginServiceTest {
+    private IUserService users;
+    private IdentityProviderPort identityProvider;
+    private RefreshTokenCookieService cookies;
+    private LoginService service;
+
+    @BeforeEach
+    void setUp() {
+        users = mock(IUserService.class);
+        identityProvider = mock(IdentityProviderPort.class);
+        cookies = mock(RefreshTokenCookieService.class);
+        service = new LoginService(users, identityProvider, cookies);
+    }
+
+    @Test
+    void loginReturnsProfileAndWritesRefreshCookieWithCognitoUsername() {
+        User user = activeUser();
+        LoginRequest request = loginRequest();
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        when(users.findByEmail("user@example.com")).thenReturn(user);
+        when(users.getCognitoUsername("user@example.com", IdentityProvider.LOCAL)).thenReturn("uuid-user");
+        when(identityProvider.authenticate("uuid-user", "Password1!"))
+                .thenReturn(new AuthenticationTokens("access", "refresh", 3600, "uuid-user"));
+
+        var result = service.login(request, response);
+
+        assertEquals("AUTHENTICATED", result.getStatus());
+        assertEquals(RoleCode.CUSTOMER, result.getUser().getRole());
+        verify(cookies).write(response, "refresh", "uuid-user");
+        verify(users).recordLogin(user.getId());
+    }
+
+    @Test
+    void loginReturnsPasswordChangeChallengeWithoutCookie() {
+        User user = activeUser();
+        when(users.findByEmail(anyString())).thenReturn(user);
+        when(users.getCognitoUsername(anyString(), any())).thenReturn("uuid-user");
+        when(identityProvider.authenticate(anyString(), anyString()))
+                .thenReturn(AuthenticationTokens.challenge("uuid-user", "NEW_PASSWORD_REQUIRED", "session"));
+
+        var result = service.login(loginRequest(), mock(HttpServletResponse.class));
+
+        assertEquals("PASSWORD_CHANGE_REQUIRED", result.getStatus());
+        assertEquals("session", result.getSession());
+        verifyNoInteractions(cookies);
+        verify(users, never()).recordLogin(any());
+    }
+
+    @Test
+    void disabledUserCannotLogin() {
+        User user = activeUser();
+        user.setIsActive(false);
+        when(users.findByEmail(anyString())).thenReturn(user);
+
+        ApiException exception = assertThrows(ApiException.class,
+                () -> service.login(loginRequest(), mock(HttpServletResponse.class)));
+        assertEquals(ErrorCode.ACCOUNT_DISABLED, exception.getErrorCode());
+        verifyNoInteractions(identityProvider);
+    }
+
+    @Test
+    void completeFirstLoginRespondsToChallengeAndWritesCookie() {
+        User user = activeUser();
+        FirstLoginPasswordChangeRequest request = new FirstLoginPasswordChangeRequest();
+        request.setEmail("user@example.com");
+        request.setSession("challenge-session");
+        request.setNewPassword("NewPassword1!");
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        when(users.findByEmail("user@example.com")).thenReturn(user);
+        when(users.getCognitoUsername("user@example.com", IdentityProvider.LOCAL)).thenReturn("uuid-user");
+        when(identityProvider.respondToNewPasswordChallenge("uuid-user", "challenge-session", "NewPassword1!"))
+                .thenReturn(new AuthenticationTokens("access", "refresh", 3600, "uuid-user"));
+
+        var result = service.completeFirstLogin(request, response);
+
+        assertEquals("AUTHENTICATED", result.getStatus());
+        verify(cookies).write(response, "refresh", "uuid-user");
+        verify(users).recordLogin(user.getId());
+    }
+
+    @Test
+    void refreshUsesTokenAndCognitoUsernameFromCookie() {
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        when(cookies.read(request)).thenReturn(Optional.of(
+                new RefreshTokenCookieService.RefreshToken("refresh", "uuid-user")));
+        when(identityProvider.refresh("refresh", "uuid-user"))
+                .thenReturn(new AuthenticationTokens("new-access", null, 3600, "uuid-user"));
+
+        var result = service.refresh(request);
+
+        assertEquals("new-access", result.getAccessToken());
+        verify(identityProvider).refresh("refresh", "uuid-user");
+    }
+
+    @Test
+    void logoutRevokesBothTokenTypesAndClearsCookie() {
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        when(cookies.read(request)).thenReturn(Optional.of(
+                new RefreshTokenCookieService.RefreshToken("refresh", "uuid-user")));
+
+        service.logout("access", request, response);
+
+        verify(identityProvider).revoke("refresh");
+        verify(identityProvider).globalSignOut("access");
+        verify(cookies).clear(response);
+    }
+
+    private LoginRequest loginRequest() {
+        LoginRequest request = new LoginRequest();
+        request.setEmail(" User@Example.com ");
+        request.setPassword("Password1!");
+        return request;
+    }
+
+    private User activeUser() {
+        return User.builder()
+                .id(UUID.randomUUID())
+                .email("user@example.com")
+                .fullName("User")
+                .emailVerified(true)
+                .isActive(true)
+                .role(Role.builder().code(RoleCode.CUSTOMER).build())
+                .build();
+    }
+}
