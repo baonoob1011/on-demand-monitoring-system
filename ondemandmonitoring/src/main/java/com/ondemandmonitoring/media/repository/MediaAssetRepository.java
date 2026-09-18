@@ -10,7 +10,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, String> 
 
     List<MediaAsset> findByMissionIdAndTypeOrderByCapturedAtDesc(String missionId, String type);
 
-    List<MediaAsset> findByDeviceCodeOrderByCapturedAtDesc(String deviceCode);
+    List<MediaAsset> findByDroneCodeOrderByCapturedAtDesc(String droneCode);
 
-    List<MediaAsset> findByDeviceCodeAndTypeOrderByCapturedAtDesc(String deviceCode, String type);
+    List<MediaAsset> findByDroneCodeAndTypeOrderByCapturedAtDesc(String droneCode, String type);
 }

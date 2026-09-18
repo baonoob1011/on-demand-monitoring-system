@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.mission.dto.request;
 
-import com.ondemandmonitoring.device.enums.DeviceStatus;
+import com.ondemandmonitoring.drone.enums.DroneStatus;
 import jakarta.validation.constraints.NotNull;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -14,7 +14,7 @@ import lombok.experimental.FieldDefaults;
 public class PostFlightStatusRequest {
 
     @NotNull(message = "Drone status after flight cannot be null")
-    DeviceStatus newDeviceStatus;
+    DroneStatus newDroneStatus;
 
     String notes;
 }

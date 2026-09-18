@@ -15,6 +15,11 @@ REPORT = ROOT / "Forest3D" / "compact_export_report.json"
 MANIFEST = ROOT / "Forest3D" / "compact_export_manifest.json"
 WORLD = ROOT / "Forest3D" / "worlds" / "forest_monitoring_compact.sdf"
 
+# Stable simulation extent shared by Gazebo, the backend and browser overlays.
+# Scene decoration may move or be removed without changing this coordinate frame.
+MAP_MIN_XY = (-452.0, -415.0)
+MAP_MAX_XY = (450.0, 686.497)
+
 GROUPS = [
     "compact_terrain",
     "compact_mountains",
@@ -41,6 +46,13 @@ def classify(obj):
     name = obj.name.lower()
     cols = " ".join(c.name.lower() for c in obj.users_collection)
     text = f"{name} {cols}"
+    # Wildfire visuals are decorative and must never inherit terrain collision.
+    if any(k in text for k in [
+        "col_ff_", "fire_", "smoke_", "burnt_ground", "dry_ground", "ember_",
+    ]):
+        if any(k in text for k in ["tree", "forest"]):
+            return "compact_forest"
+        return "compact_environment_props"
     if any(k in text for k in ["env_mountainrange", "mountain_", "foothill_", "mr_tree_", "mr_base_rock_"]):
         return "compact_mountains"
     if any(k in text for k in ["airport", "runway", "taxiway", "apron", "hangar"]):
@@ -286,11 +298,18 @@ def main():
         write_model_files(group, has_mesh=True)
     write_world()
 
+    map_mins = (MAP_MIN_XY[0], MAP_MIN_XY[1], mins.z)
+    map_maxs = (MAP_MAX_XY[0], MAP_MAX_XY[1], maxs.z)
     report = {
         "source": str(SRC),
         "format": "GLB",
         "sdf_version": "1.9",
         "bounds": {
+            "min": [round(v, 3) for v in map_mins],
+            "max": [round(v, 3) for v in map_maxs],
+            "size": [round(map_maxs[i] - map_mins[i], 3) for i in range(3)],
+        },
+        "content_bounds": {
             "min": [round(v, 3) for v in mins],
             "max": [round(v, 3) for v in maxs],
             "size": [round(maxs[i] - mins[i], 3) for i in range(3)],

@@ -8,10 +8,18 @@ import cv2
 from drone.visualization.gazebo_streams import GazeboLaserScanStream, topic_list
 from drone.visualization.lidar_2d_viewer import draw_lidar_2d
 from drone.visualization.pointcloud_3d_viewer import draw_pointcloud_3d
+from drone.visualization.thermal_debug_viewer import (
+    THERMAL_TOPIC,
+    ThermalMjpegStream,
+    ThermalStatusPoller,
+    draw_thermal_debug,
+    send_thermal_command,
+)
 
 
 WINDOW_2D = "2. Man hinh LiDAR 2D (Radar / Laser Scan)"
 WINDOW_3D = "3. Man hinh LiDAR 3D (Point Cloud)"
+WINDOW_THERMAL = "4. Man hinh Thermal Camera"
 
 
 def _env_bool(name: str, default: str = "true") -> bool:
@@ -45,6 +53,7 @@ def main() -> int:
 
     lidar_2d_enabled = _env_bool("SENSOR_VIS_LIDAR_2D_ENABLED")
     lidar_3d_enabled = _env_bool("SENSOR_VIS_LIDAR_3D_ENABLED")
+    thermal_enabled = _env_bool("SENSOR_VIS_THERMAL_ENABLED")
     lidar_2d_topic, lidar_3d_topic = _resolve_topics()
 
     print("========================================", flush=True)
@@ -52,11 +61,15 @@ def main() -> int:
     print("========================================", flush=True)
     print(f"LiDAR 2D: {lidar_2d_topic} enabled={lidar_2d_enabled}", flush=True)
     print(f"LiDAR 3D: {lidar_3d_topic} enabled={lidar_3d_enabled}", flush=True)
+    print(f"Thermal : {THERMAL_TOPIC} enabled={thermal_enabled}", flush=True)
     print("Camera view is opened by scripts/wsl-camera-view.sh", flush=True)
+    print(f"[THERMAL-VIEWER] Topic: {THERMAL_TOPIC}", flush=True)
 
     errors: list[str] = []
     stream_2d = GazeboLaserScanStream(lidar_2d_topic, 360, "LiDAR 2D", errors.append)
     stream_3d = GazeboLaserScanStream(lidar_3d_topic, 7200, "LiDAR 3D", errors.append)
+    thermal_status = ThermalStatusPoller()
+    thermal_stream = ThermalMjpegStream()
 
     if lidar_2d_enabled:
         stream_2d.start()
@@ -68,13 +81,22 @@ def main() -> int:
         cv2.namedWindow(WINDOW_3D, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(WINDOW_3D, 900, 520)
         cv2.moveWindow(WINDOW_3D, 760, 560)
+    if thermal_enabled:
+        thermal_status.start()
+        thermal_stream.start()
+        cv2.namedWindow(WINDOW_THERMAL, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(WINDOW_THERMAL, 900, 520)
+        cv2.moveWindow(WINDOW_THERMAL, 1520, 560)
 
     last_2d_draw = 0.0
     last_3d_draw = 0.0
+    last_thermal_draw = 0.0
     fps_2d = 0.0
     fps_3d = 0.0
+    fps_thermal = 0.0
     target_2d = 1.0 / max(float(os.getenv("SENSOR_VIS_LIDAR_2D_FPS", "8")), 1.0)
     target_3d = 1.0 / max(float(os.getenv("SENSOR_VIS_LIDAR_3D_FPS", "5")), 1.0)
+    target_thermal = 1.0 / max(float(os.getenv("SENSOR_VIS_THERMAL_FPS", "6")), 1.0)
 
     try:
         while True:
@@ -94,15 +116,38 @@ def main() -> int:
                 last_3d_draw = now
                 cv2.imshow(WINDOW_3D, draw_pointcloud_3d(points, fps_3d, lidar_3d_topic, raw_count))
 
+            if thermal_enabled and now - last_thermal_draw >= target_thermal:
+                status = thermal_status.snapshot()
+                if not status.enabled:
+                    thermal_stream.clear()
+                frame, _frame_time_s, stream_error = thermal_stream.snapshot()
+                if status.enabled and status.sensor_online:
+                    print("[THERMAL-VIEWER] Sensor ONLINE", flush=True) if fps_thermal == 0.0 else None
+                elif status.enabled:
+                    print("[THERMAL-VIEWER] Waiting for thermal sensor...", flush=True) if fps_thermal == 0.0 else None
+                fps_thermal = _fps(last_thermal_draw, now, fps_thermal)
+                last_thermal_draw = now
+                cv2.imshow(WINDOW_THERMAL, draw_thermal_debug(frame, status, fps_thermal, THERMAL_TOPIC, stream_error))
+
             if errors:
                 print(f"[SENSOR-VIS] {errors.pop(0)}", flush=True)
 
             key = cv2.waitKey(10) & 0xFF
             if key in (27, ord("q")):
                 break
+            if thermal_enabled and key == ord("p"):
+                send_thermal_command("thermal_palette_next")
+            elif thermal_enabled and key == ord("i"):
+                send_thermal_command("thermal_isotherm_toggle")
+            elif thermal_enabled and key == ord("d"):
+                send_thermal_command("thermal_debug_toggle")
+            elif thermal_enabled and key == ord("a"):
+                send_thermal_command("thermal_range_toggle")
     finally:
         stream_2d.stop()
         stream_3d.stop()
+        thermal_status.stop()
+        thermal_stream.stop()
         cv2.destroyAllWindows()
 
     return 0

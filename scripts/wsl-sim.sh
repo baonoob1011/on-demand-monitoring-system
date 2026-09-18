@@ -4,6 +4,8 @@ set -e
 
 PROJECT_PATH="${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 FOREST3D_PATH="${FOREST3D_PATH:-$PROJECT_PATH/Forest3D}"
+FOREST3D_MODELS_PATH="${FOREST3D_MODELS_PATH:-$FOREST3D_PATH/models}"
+FOREST3D_DRONE_MODEL_PATH="${FOREST3D_DRONE_MODEL_PATH:-$FOREST3D_PATH/models/x500_mono_cam_down}"
 ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
 PX4_ROOT="$HOME/PX4-Autopilot"
 PX4_BUILD="$PX4_ROOT/build/px4_sitl_default"
@@ -14,9 +16,23 @@ PX4_MAVLINK_RC="$PX4_ROOT/ROMFS/px4fmu_common/init.d-posix/px4-rc.mavlink"
 
 if [ -f "$ENV_FILE" ]; then
     set -a
-    # shellcheck disable=SC1090
-    source "$ENV_FILE"
+    # Strip Windows CRLF endings while keeping the source .env unchanged.
+    source <(sed 's/\r$//' "$ENV_FILE")
     set +a
+fi
+
+FOREST3D_MODELS_PATH="${FOREST3D_MODELS_PATH:-$FOREST3D_PATH/models}"
+if [ ! -f "$FOREST3D_MODELS_PATH/compact_terrain/model.config" ] \
+    && [ -f "$PROJECT_PATH/Forest3D/models/compact_terrain/model.config" ]; then
+    FOREST3D_MODELS_PATH="$PROJECT_PATH/Forest3D/models"
+elif [ ! -f "$FOREST3D_MODELS_PATH/compact_terrain/model.config" ] \
+    && [ -f "$PROJECT_PATH/drone/Forest3D/models/compact_terrain/model.config" ]; then
+    FOREST3D_MODELS_PATH="$PROJECT_PATH/drone/Forest3D/models"
+fi
+FOREST3D_DRONE_MODEL_PATH="${FOREST3D_DRONE_MODEL_PATH:-$FOREST3D_PATH/models/x500_mono_cam_down}"
+if [ ! -f "$FOREST3D_DRONE_MODEL_PATH/model.sdf" ] \
+    && [ -f "$PROJECT_PATH/Forest3D/models/x500_mono_cam_down/model.sdf" ]; then
+    FOREST3D_DRONE_MODEL_PATH="$PROJECT_PATH/Forest3D/models/x500_mono_cam_down"
 fi
 
 PX4_ONBOARD_MAVLINK_RATE_B_S="${PX4_ONBOARD_MAVLINK_RATE_B_S:-100000}"
@@ -44,17 +60,73 @@ esac
 source "$PX4_BUILD/rootfs/gz_env.sh"
 export PATH="$PROJECT_PATH/scripts/wsl-bin:$PATH"
 export FOREST3D_GZ_GUI_CONFIG
-export GZ_SIM_RESOURCE_PATH="${FOREST3D_PATH}:${FOREST3D_PATH}/models:$PX4_ROOT/Tools/simulation/gz/models:$PX4_ROOT/Tools/simulation/gz/worlds:${GZ_SIM_RESOURCE_PATH:-}"
+export GZ_SIM_RESOURCE_PATH="${FOREST3D_PATH}:${FOREST3D_MODELS_PATH}:$PX4_ROOT/Tools/simulation/gz/models:$PX4_ROOT/Tools/simulation/gz/worlds:${GZ_SIM_RESOURCE_PATH:-}"
 export GZ_SIM_SYSTEM_PLUGIN_PATH="${PX4_GZ_PLUGIN_PATH}:${GZ_SIM_SYSTEM_PLUGIN_PATH:-}"
 export LD_LIBRARY_PATH="${PX4_GZ_PLUGIN_PATH}:${LD_LIBRARY_PATH:-}"
+
+if [ "$SIM_WORLD" = "compact" ]; then
+    backend_candidates=("${BACKEND_BASE_URL:-http://localhost:8080}")
+    windows_host="$(awk '/^nameserver / {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)"
+    if [ -n "$windows_host" ]; then
+        backend_candidates+=("http://${windows_host}:8080")
+    fi
+    sync_args=()
+    for backend_url in "${backend_candidates[@]}"; do
+        sync_args+=(--backend-base-url "$backend_url")
+    done
+    set +e
+    python3 "$PROJECT_PATH/tools/sync_thermal_scene.py" \
+        "${sync_args[@]}" \
+        --output "$FOREST3D_MODELS_PATH/compact_thermal_sources/model.sdf"
+    thermal_sync_status=$?
+    set -e
+    if [ "$thermal_sync_status" -ne 0 ]; then
+        echo "[THERMAL] Using last generated heat geometry"
+    fi
+fi
 
 # Sync selected Forest3D world to PX4.
 cp "$FOREST3D_WORLD_FILE" "$PX4_GZ_WORLD_PATH"
 mkdir -p "$PX4_ROOT/Tools/simulation/gz/models/x500_mono_cam_down"
-cp "$FOREST3D_PATH/models/x500_mono_cam_down/model.sdf" \
+if [ ! -f "$FOREST3D_DRONE_MODEL_PATH/model.sdf" ]; then
+    echo "[SIM] ERROR: drone model missing: $FOREST3D_DRONE_MODEL_PATH/model.sdf" >&2
+    exit 1
+fi
+cp "$FOREST3D_DRONE_MODEL_PATH/model.sdf" \
     "$PX4_ROOT/Tools/simulation/gz/models/x500_mono_cam_down/model.sdf"
-cp "$FOREST3D_PATH/models/x500_mono_cam_down/model.config" \
+cp "$FOREST3D_DRONE_MODEL_PATH/model.config" \
     "$PX4_ROOT/Tools/simulation/gz/models/x500_mono_cam_down/model.config"
+
+if [ "$SIM_WORLD" = "compact" ]; then
+    required_models=(
+        compact_terrain
+        compact_water
+        compact_roads
+        compact_bridges
+        compact_home
+        compact_highrise
+        compact_zones
+        compact_forest
+        compact_thermal_sources
+        compact_environment_props
+        compact_mountains
+        compact_airport
+    )
+    missing_models=()
+    for model in "${required_models[@]}"; do
+        if [ -d "$FOREST3D_MODELS_PATH/$model" ]; then
+            rm -rf "$PX4_ROOT/Tools/simulation/gz/models/$model"
+            cp -R "$FOREST3D_MODELS_PATH/$model" "$PX4_ROOT/Tools/simulation/gz/models/$model"
+        else
+            missing_models+=("$model")
+        fi
+    done
+    if [ "${#missing_models[@]}" -gt 0 ]; then
+        echo "[SIM] ERROR: compact world models missing from $FOREST3D_MODELS_PATH:" >&2
+        printf '  - %s\n' "${missing_models[@]}" >&2
+        exit 1
+    fi
+fi
 
 # MAVSDK uses PX4's onboard-payload MAVLink endpoint at UDP 14030.
 # Gazebo can run at a low real-time factor on this machine. PX4 schedules

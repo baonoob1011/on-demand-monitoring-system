@@ -26,8 +26,9 @@ from PIL import Image as PilImage
 from pathlib import Path
 from dotenv import load_dotenv
 from video.video_recorder import RecordingResult, VideoRecorder
-from battery_simulator import BatterySimulator, detect_battery_mode, preflight_battery_check
+from battery_simulator import BatterySimulator, preflight_battery_check
 from media_uploader import BackendUrlResolver, MediaUploader
+from thermal_camera_gateway import ThermalCameraGateway
 
 PROJECT_ROOT = Path(
     os.getenv(
@@ -97,10 +98,11 @@ except ImportError:
         return east_m, north_m
 
 try:
-    from gz.msgs10.image_pb2 import Image as GzImage
+    from gz.msgs10.image_pb2 import Image as GzImage, PixelFormatType
     from gz.transport13 import Node
 except ImportError:
     GzImage = None
+    PixelFormatType = None
     Node = None
 
 
@@ -286,8 +288,10 @@ CAMERA_DEFAULT_VIEW = os.getenv("CAMERA_DEFAULT_VIEW", "FRONT").strip().upper()
 CAMERA_TOGGLE_DEBOUNCE_S = float(os.getenv("CAMERA_TOGGLE_DEBOUNCE_S", "0.35"))
 GAZEBO_CAMERA_PITCH_TOPIC = os.getenv(
     "GAZEBO_CAMERA_PITCH_TOPIC",
-    f"/model/{GZ_MODEL_NAME}/command/camera_pitch",
+    f"/model/{GZ_MODEL_NAME}/joint/CameraJoint/0/cmd_pos",
 )
+GAZEBO_CAMERA_JOINT_TOPIC = f"/model/{GZ_MODEL_NAME}/joint/CameraJoint/0/cmd_pos"
+CAMERA_PITCH_STEP_DEG = float(os.getenv("CAMERA_PITCH_STEP_DEG", "30"))
 CAMERA_DOWN_JOINT_POSITION_RAD = float(os.getenv("CAMERA_DOWN_JOINT_POSITION_RAD", "-1.57079632679"))
 CAMERA_FRONT_JOINT_POSITION_RAD = float(
     os.getenv("CAMERA_FRONT_JOINT_POSITION_RAD", "0.0")
@@ -303,8 +307,96 @@ VIDEO_RECORDING_QUEUE_SIZE = int(os.getenv("VIDEO_RECORDING_QUEUE_SIZE", "4"))
 VIDEO_UPLOAD_TIMEOUT_S = float(os.getenv("VIDEO_UPLOAD_TIMEOUT_S", "120.0"))
 CAMERA_STREAM_FPS = float(os.getenv("CAMERA_STREAM_FPS", "15.0"))
 CAMERA_STREAM_MAX_WIDTH = int(os.getenv("CAMERA_STREAM_MAX_WIDTH", "0"))
+CAMERA_LEGACY_DOWN_SENSOR_ENABLED = (
+    os.getenv("CAMERA_LEGACY_DOWN_SENSOR_ENABLED", "false").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
 CAMERA_STREAM_JPEG_QUALITY = int(os.getenv("CAMERA_STREAM_JPEG_QUALITY", "88"))
 CAMERA_CAPTURE_JPEG_QUALITY = int(os.getenv("CAMERA_CAPTURE_JPEG_QUALITY", "88"))
+GAZEBO_THERMAL_CAMERA_TOPIC = os.getenv(
+    "GAZEBO_THERMAL_CAMERA_TOPIC",
+    "/thermal_camera",
+)
+GAZEBO_LIGHT_SERVICE = f"/world/{DEFAULT_GAZEBO_WORLD}/light_config"
+GAZEBO_WIND_TOPIC = f"/world/{DEFAULT_GAZEBO_WORLD}/wind"
+
+WEATHER_KEY_PRESETS = {
+    "u": "CLEAR_DAY",
+    "y": "SUNSET",
+    "i": "NIGHT",
+    "g": "CLOUDY",
+    "j": "FOGGY",
+    "m": "WINDY",
+    "b": "LIGHT_RAIN",
+    "z": "HEAVY_RAIN",
+}
+
+WEATHER_PRESETS = {
+    "CLEAR_DAY": {
+        "label": "Clear Day",
+        "intensity": "1.2",
+        "direction": "x: -0.5 y: 0.5 z: -0.8",
+        "diffuse": "r: 0.95 g: 0.93 b: 0.88 a: 1",
+        "specular": "r: 0.3 g: 0.3 b: 0.25 a: 1",
+        "wind": None,
+    },
+    "SUNSET": {
+        "label": "Sunset",
+        "intensity": "0.75",
+        "direction": "x: -0.9 y: 0.15 z: -0.25",
+        "diffuse": "r: 1.0 g: 0.48 b: 0.22 a: 1",
+        "specular": "r: 0.55 g: 0.25 b: 0.12 a: 1",
+        "wind": None,
+    },
+    "NIGHT": {
+        "label": "Night",
+        "intensity": "0.12",
+        "direction": "x: -0.25 y: 0.35 z: -0.9",
+        "diffuse": "r: 0.08 g: 0.1 b: 0.18 a: 1",
+        "specular": "r: 0.02 g: 0.03 b: 0.06 a: 1",
+        "wind": None,
+    },
+    "CLOUDY": {
+        "label": "Cloudy",
+        "intensity": "0.45",
+        "direction": "x: -0.35 y: 0.4 z: -0.85",
+        "diffuse": "r: 0.45 g: 0.5 b: 0.58 a: 1",
+        "specular": "r: 0.12 g: 0.13 b: 0.15 a: 1",
+        "wind": None,
+    },
+    "FOGGY": {
+        "label": "Foggy",
+        "intensity": "0.35",
+        "direction": "x: -0.25 y: 0.25 z: -0.9",
+        "diffuse": "r: 0.55 g: 0.58 b: 0.6 a: 1",
+        "specular": "r: 0.08 g: 0.08 b: 0.08 a: 1",
+        "wind": None,
+    },
+    "WINDY": {
+        "label": "Windy",
+        "intensity": "0.9",
+        "direction": "x: -0.5 y: 0.5 z: -0.8",
+        "diffuse": "r: 0.8 g: 0.82 b: 0.78 a: 1",
+        "specular": "r: 0.2 g: 0.22 b: 0.2 a: 1",
+        "wind": "x: 12 y: 4 z: 0",
+    },
+    "LIGHT_RAIN": {
+        "label": "Light Rain",
+        "intensity": "0.35",
+        "direction": "x: -0.35 y: 0.4 z: -0.85",
+        "diffuse": "r: 0.32 g: 0.36 b: 0.42 a: 1",
+        "specular": "r: 0.08 g: 0.08 b: 0.1 a: 1",
+        "wind": "x: 5 y: 2 z: 0",
+    },
+    "HEAVY_RAIN": {
+        "label": "Heavy Rain",
+        "intensity": "0.22",
+        "direction": "x: -0.35 y: 0.4 z: -0.85",
+        "diffuse": "r: 0.22 g: 0.25 b: 0.3 a: 1",
+        "specular": "r: 0.04 g: 0.04 b: 0.05 a: 1",
+        "wind": "x: 14 y: 5 z: 0",
+    },
+}
 
 class MavsdkAckNoiseFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
@@ -353,6 +445,127 @@ def read_key_timeout(timeout_s: float) -> str | None:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
+def gz_service_exists(service_name: str) -> bool:
+    try:
+        result = subprocess.run(
+            ["gz", "service", "-l"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if result.returncode != 0:
+        return False
+    return service_name in {line.strip() for line in result.stdout.splitlines()}
+
+
+def gz_topic_exists(topic_name: str) -> bool:
+    try:
+        result = subprocess.run(
+            ["gz", "topic", "-l"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if result.returncode != 0:
+        return False
+    return topic_name in {line.strip() for line in result.stdout.splitlines()}
+
+
+def set_gazebo_light(preset: dict[str, str | None]) -> bool:
+    if not gz_service_exists(GAZEBO_LIGHT_SERVICE):
+        print(f"[WEATHER][WARN] Light service not ready: {GAZEBO_LIGHT_SERVICE}", flush=True)
+        return False
+
+    request = (
+        f"name: \"sunUTC\" type: DIRECTIONAL cast_shadows: true "
+        f"intensity: {preset['intensity']} "
+        f"direction {{ {preset['direction']} }} "
+        f"diffuse {{ {preset['diffuse']} }} "
+        f"specular {{ {preset['specular']} }}"
+    )
+    try:
+        result = subprocess.run(
+            [
+                "gz",
+                "service",
+                "-s",
+                GAZEBO_LIGHT_SERVICE,
+                "--reqtype",
+                "gz.msgs.Light",
+                "--reptype",
+                "gz.msgs.Boolean",
+                "--timeout",
+                "2000",
+                "--req",
+                request,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def set_gazebo_wind(linear_velocity: str | None) -> bool:
+    if not gz_topic_exists(GAZEBO_WIND_TOPIC):
+        return False
+
+    if linear_velocity is None:
+        payload = "enable_wind: false linear_velocity { x: 0 y: 0 z: 0 }"
+    else:
+        payload = f"enable_wind: true linear_velocity {{ {linear_velocity} }}"
+
+    try:
+        result = subprocess.run(
+            [
+                "gz",
+                "topic",
+                "-t",
+                GAZEBO_WIND_TOPIC,
+                "-m",
+                "gz.msgs.Wind",
+                "-d",
+                "0.2",
+                "-p",
+                payload,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def apply_weather_key(key: str) -> bool:
+    preset_name = WEATHER_KEY_PRESETS[key]
+    preset = WEATHER_PRESETS[preset_name]
+    print(f"[WEATHER] {key} -> {preset['label']}", flush=True)
+
+    light_ok = set_gazebo_light(preset)
+    wind_ok = set_gazebo_wind(preset["wind"])
+
+    if not light_ok:
+        print("[WEATHER][ERROR] Gazebo light service was not ready.", flush=True)
+        return False
+    if preset["wind"] is not None and not wind_ok:
+        print(f"[WEATHER] Applied {preset['label']} (lighting only)", flush=True)
+    else:
+        print(f"[WEATHER] Applied {preset['label']}", flush=True)
+    return True
+
+
 class CameraGateway:
     def __init__(
         self,
@@ -376,14 +589,13 @@ class CameraGateway:
             return
 
         self.node = Node()
-        topics = {
-            "DOWN": CAMERA_DOWN_TOPIC,
-            "FRONT": CAMERA_FRONT_TOPIC,
-        }
+        topics = {"FRONT": CAMERA_FRONT_TOPIC}
+        if CAMERA_LEGACY_DOWN_SENSOR_ENABLED:
+            topics["DOWN"] = CAMERA_DOWN_TOPIC
         for mode, topic in topics.items():
             self.node.subscribe(GzImage, topic, self._make_frame_handler(mode))
             print(f"[CAMERA] Listening to {mode.lower()} sensor: {topic}")
-        if CAMERA_TOPIC not in topics.values():
+        if CAMERA_LEGACY_DOWN_SENSOR_ENABLED and CAMERA_TOPIC not in topics.values():
             self.node.subscribe(GzImage, CAMERA_TOPIC, self._make_frame_handler(self.current_mode))
             print(f"[CAMERA] Listening to fallback sensor: {CAMERA_TOPIC}")
 
@@ -486,6 +698,8 @@ class CameraGateway:
 class CameraOrientationController:
     def __init__(self, on_mode_change=None) -> None:
         self.current_mode = CAMERA_DEFAULT_VIEW if CAMERA_DEFAULT_VIEW in {"DOWN", "FRONT"} else "FRONT"
+        self.current_pitch_deg = -90.0 if self.current_mode == "DOWN" else 0.0
+        self._pitch_direction = 1.0 if self.current_pitch_deg <= -90.0 else -1.0
         self._last_toggle_s = 0.0
         self.on_mode_change = on_mode_change
 
@@ -495,23 +709,38 @@ class CameraOrientationController:
             return
         self._last_toggle_s = now
 
-        next_mode = "FRONT" if self.current_mode == "DOWN" else "DOWN"
-        self.set_mode(next_mode)
+        next_pitch = self.current_pitch_deg + self._pitch_direction * CAMERA_PITCH_STEP_DEG
+        if next_pitch <= -90.0:
+            next_pitch = -90.0
+            self._pitch_direction = 1.0
+        elif next_pitch >= 0.0:
+            next_pitch = 0.0
+            self._pitch_direction = -1.0
+        self.set_pitch(next_pitch)
 
     def set_mode(self, mode: str) -> None:
         normalized = mode.strip().upper()
         if normalized not in {"DOWN", "FRONT"}:
             return
-        self.request_mode(normalized)
-        if self.on_mode_change is not None:
-            self.on_mode_change(normalized)
-        self.current_mode = normalized
-        self._write_state(normalized)
-        print(f"[CAMERA] View -> {normalized} (press c to switch)", flush=True)
+        self.set_pitch(-90.0 if normalized == "DOWN" else 0.0)
 
-    def _write_state(self, mode: str) -> None:
+    def set_pitch(self, pitch_deg: float) -> None:
+        clamped_pitch = max(-90.0, min(0.0, pitch_deg))
+        if not self.request_pitch(clamped_pitch):
+            return
+        normalized = "DOWN" if clamped_pitch <= -89.5 else "FRONT"
+        if self.on_mode_change is not None:
+            # The movable front sensor supplies every intermediate angle.
+            self.on_mode_change("FRONT")
+        self.current_mode = normalized
+        self.current_pitch_deg = clamped_pitch
+        self._write_state(normalized, clamped_pitch)
+        print(f"[CAMERA] Pitch -> {clamped_pitch:.0f} deg (press c for next 30 deg step)", flush=True)
+
+    def _write_state(self, mode: str, pitch_deg: float) -> None:
         payload = {
             "mode": mode,
+            "pitchDeg": pitch_deg,
             "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
         try:
@@ -519,40 +748,46 @@ class CameraOrientationController:
         except OSError as exc:
             print(f"[CAMERA] State write failed: {exc}", flush=True)
 
-    def request_mode(self, mode: str) -> bool:
-        joint_position = (
-            CAMERA_FRONT_JOINT_POSITION_RAD
-            if mode == "FRONT"
-            else CAMERA_DOWN_JOINT_POSITION_RAD
-        )
-        command = [
-            "gz",
-            "topic",
-            "-t",
-            GAZEBO_CAMERA_PITCH_TOPIC,
-            "-m",
-            "gz.msgs.Double",
-            "-p",
-            f"data: {joint_position:.12f}",
-        ]
+    def request_pitch(self, pitch_deg: float) -> bool:
+        # UI pitch is expressed as 0..-90 degrees, while this Gazebo joint
+        # rotates in the positive Y direction to look downward.
+        joint_position = math.radians(-pitch_deg)
+        topics = tuple(dict.fromkeys((GAZEBO_CAMERA_PITCH_TOPIC, GAZEBO_CAMERA_JOINT_TOPIC)))
+        sent = False
+        errors: list[str] = []
+        for topic in topics:
+            command = [
+                "gz",
+                "topic",
+                "-t",
+                topic,
+                "-m",
+                "gz.msgs.Double",
+                "-p",
+                f"data: {joint_position:.12f}",
+            ]
+            try:
+                result = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    timeout=1.5,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                errors.append(f"{topic}: {exc}")
+                continue
 
-        try:
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                timeout=1.5,
-                check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            print(f"[CAMERA] Pitch command unavailable: {exc}", flush=True)
-            return False
+            if result.returncode == 0:
+                sent = True
+            else:
+                message = (result.stderr or result.stdout or "camera command failed").strip()
+                errors.append(f"{topic}: {message}")
 
-        if result.returncode == 0:
+        if sent:
             return True
 
-        message = (result.stderr or result.stdout or "camera command failed").strip()
-        print(f"[CAMERA] Pitch command skipped: {message}", flush=True)
+        print(f"[CAMERA] Pitch command unavailable: {'; '.join(errors)}", flush=True)
         return False
 
 
@@ -706,6 +941,13 @@ def toggle_monitor_window(name: str, script_name: str, process_pattern: str) -> 
     open_monitor_window(name, script_name)
 
 
+def open_monitor_window_if_needed(name: str, script_name: str, process_pattern: str) -> None:
+    if is_monitor_running(process_pattern):
+        print(f"[MONITOR] {name} already open", flush=True)
+        return
+    open_monitor_window(name, script_name)
+
+
 CONTROL_COMMAND_KEYS = {
     "takeoff": "t",
     "forward": "w",
@@ -727,6 +969,12 @@ CONTROL_COMMAND_KEYS = {
     "camera_monitor_toggle": "3",
     "lidar_monitor_toggle": "4",
     "telemetry_monitor_toggle": "5",
+    "thermal_toggle": "6",
+    "thermal_viewer_toggle": "7",
+    "thermal_palette_next": "thermal_palette_next",
+    "thermal_isotherm_toggle": "thermal_isotherm_toggle",
+    "thermal_debug_toggle": "thermal_debug_toggle",
+    "thermal_range_toggle": "thermal_range_toggle",
     "photo": "p",
     "video_toggle": "r",
     "land": "l",
@@ -736,11 +984,19 @@ CONTROL_COMMAND_KEYS = {
 
 
 class FlightControlApi:
-    def __init__(self, camera: CameraGateway, commands: "queue.Queue[str]", status_provider=None, preflight_provider=None) -> None:
+    def __init__(
+        self,
+        camera: CameraGateway,
+        commands: "queue.Queue[str]",
+        status_provider=None,
+        preflight_provider=None,
+        thermal: ThermalCameraGateway | None = None,
+    ) -> None:
         self.camera = camera
         self.commands = commands
         self.status_provider = status_provider
         self.preflight_provider = preflight_provider
+        self.thermal = thermal
         self.preflight_check_id: str | None = None
         self.preflight_started_at_s: float | None = None
         self.server: ThreadingHTTPServer | None = None
@@ -796,7 +1052,10 @@ class FlightControlApi:
                     self._write_json(200, payload)
                     return
 
-                if not self.path.startswith("/stream.mjpg"):
+                stream_source = "rgb"
+                if self.path.startswith("/thermal-stream.mjpg"):
+                    stream_source = "thermal"
+                elif not self.path.startswith("/stream.mjpg"):
                     self.send_response(404)
                     self._cors()
                     self.end_headers()
@@ -812,7 +1071,10 @@ class FlightControlApi:
 
                 while True:
                     try:
-                        frame = owner.camera._latest_jpeg(preview=True)
+                        if stream_source == "thermal":
+                            frame = owner.thermal.latest_jpeg() if owner.thermal is not None else None
+                        else:
+                            frame = owner.camera._latest_jpeg(preview=True)
                         if frame is None:
                             time.sleep(0.15)
                             continue
@@ -868,6 +1130,10 @@ class FlightControlApi:
         self.thread.start()
         print(
             f"[API] Live stream: http://localhost:{FLIGHT_CONTROL_API_PORT}/stream.mjpg",
+            flush=True,
+        )
+        print(
+            f"[API] Thermal stream: http://localhost:{FLIGHT_CONTROL_API_PORT}/thermal-stream.mjpg",
             flush=True,
         )
         print(
@@ -1040,6 +1306,11 @@ class MavsdkConnectionManager:
             self._offboard_sender_loop(),
             name="offboard-setpoint-sender",
         )
+
+    async def activate_desired_motion(self, drone: System) -> None:
+        await ensure_offboard_started(drone)
+        await drone.offboard.set_velocity_ned(self._desired_velocity)
+        self.ensure_offboard_sender()
 
     async def stop_offboard_sender(self) -> None:
         self.stop_desired_motion()
@@ -1366,7 +1637,11 @@ async def set_motion(
 
     try:
         manager.update_desired_motion(north_m_s, east_m_s, down_m_s, yaw_deg)
-        manager.ensure_offboard_sender()
+        # Start offboard and deliver the first setpoint before reporting the
+        # command as accepted. Previously this only scheduled a background
+        # task, so the UI could say "forward sent" while PX4 never entered
+        # offboard mode.
+        await manager.activate_desired_motion(drone)
         return drone
 
     except grpc.aio.AioRpcError as exc:
@@ -1387,7 +1662,7 @@ async def set_motion(
 
         try:
             manager.update_desired_motion(north_m_s, east_m_s, down_m_s, yaw_deg)
-            manager.ensure_offboard_sender()
+            await manager.activate_desired_motion(drone)
 
             return drone
 
@@ -1822,6 +2097,8 @@ async def main() -> None:
     print("      1 speed up | 2 speed down")
     print("      c switch camera down/front")
     print("      3 camera monitor on/off | 4 LiDAR monitor on/off | 5 telemetry on/off")
+    print("      6 thermal camera on/off")
+    print("      weather: u clear | y sunset | i night | g cloudy | j foggy | m windy | b light rain | z heavy rain")
     print("      p photo | r video start/stop | l land | x exit")
     print()
     print("Press one move key once to keep moving. Press k to stop/hover.")
@@ -1844,8 +2121,49 @@ async def main() -> None:
     )
     camera = CameraGateway(video_recorder, media_uploader)
     camera.start()
+    thermal = ThermalCameraGateway(backend_urls.candidates())
+    thermal_node = None
+    thermal_subscribed_topics: set[str] = set()
+    if Node is not None and GzImage is not None:
+        thermal_node = Node()
+
+        def on_native_thermal_frame(message: GzImage, *_args) -> None:
+            try:
+                pixel_format = PixelFormatType.Name(message.pixel_format_type) if PixelFormatType is not None else str(message.pixel_format_type)
+                thermal.ingest_native_frame(
+                    int(message.width),
+                    int(message.height),
+                    bytes(message.data),
+                    pixel_format,
+                )
+            except (TypeError, ValueError) as exc:
+                print(f"[THERMAL] Native frame rejected: {exc}", flush=True)
+
+        thermal_topics = tuple(dict.fromkeys((GAZEBO_THERMAL_CAMERA_TOPIC, "/thermal_camera")))
+
+        def set_native_thermal_subscription(enabled: bool) -> None:
+            if enabled:
+                for thermal_topic in thermal_topics:
+                    if thermal_topic in thermal_subscribed_topics:
+                        continue
+                    thermal_node.subscribe(GzImage, thermal_topic, on_native_thermal_frame)
+                    thermal_subscribed_topics.add(thermal_topic)
+                    print(f"[THERMAL] Sensor subscribed: {thermal_topic}", flush=True)
+                return
+
+            for thermal_topic in tuple(thermal_subscribed_topics):
+                thermal_node.unsubscribe(thermal_topic)
+                thermal_subscribed_topics.discard(thermal_topic)
+                print(f"[THERMAL] Sensor released: {thermal_topic}", flush=True)
+
+        print("[THERMAL] Sensor idle; press Thermal ON to subscribe", flush=True)
+    else:
+        def set_native_thermal_subscription(_enabled: bool) -> None:
+            return
+
+        print("[THERMAL] Gazebo Transport unavailable; synthetic fallback enabled", flush=True)
     camera_orientation = CameraOrientationController(camera.set_view_mode)
-    camera.set_view_mode(camera_orientation.current_mode)
+    camera_orientation.set_mode(camera_orientation.current_mode)
     api_commands: queue.Queue[str] = queue.Queue()
 
     current_yaw_deg = 0.0
@@ -1892,6 +2210,7 @@ async def main() -> None:
     current_velocity_east_m_s = 0.0
     current_velocity_down_m_s = 0.0
     current_px4_battery_percent = None
+    current_armed = False
     current_in_air = False
     current_health = None
     current_health_update_s: float | None = None
@@ -1899,7 +2218,8 @@ async def main() -> None:
     local_position_ready = False
     safety_speed_scale = 1.0
     simulated_battery = BatterySimulator(
-        float(os.getenv("SIM_BATTERY_INITIAL_PERCENT", "100.0"))
+        float(os.getenv("SIM_BATTERY_INITIAL_PERCENT", "100.0")),
+        capacity_mAh=float(os.getenv("SIM_BATTERY_CAPACITY_MAH", "5000")),
     )
 
     def fresh(age_s: float | None, max_age_s: float) -> bool:
@@ -2054,7 +2374,8 @@ async def main() -> None:
             current_local_north_m,
             current_local_east_m,
         )
-        return {
+        thermal.update_pose(sim_x_m, sim_y_m, max(0.0, -current_local_down_m))
+        status = {
             "missionId": MISSION_ID,
             "deviceCode": DEVICE_CODE,
             "positionReady": local_position_ready,
@@ -2073,6 +2394,10 @@ async def main() -> None:
             "batteryPercent": round(battery_snapshot.battery_percent, 1),
             "batteryState": battery_snapshot.battery_state,
             "batteryDrainMode": battery_snapshot.battery_drain_mode,
+            "batteryCurrentA": round(battery_snapshot.current_draw_a, 2),
+            "batteryCapacityMah": round(battery_snapshot.capacity_mAh, 1),
+            "batteryRemainingMah": round(battery_snapshot.remaining_mAh, 1),
+            "batteryConsumedMah": round(battery_snapshot.consumed_mAh, 1),
             "rawPx4BatteryPercent": current_px4_battery_percent,
             "connection": {
                 "grpcConnected": connection_manager.grpc_connected,
@@ -2086,6 +2411,7 @@ async def main() -> None:
                 "lidarScanAgeS": lidar.latest_scan_age_s() if lidar is not None and hasattr(lidar, "latest_scan_age_s") else None,
             },
             "cameraMode": camera_orientation.current_mode,
+            "cameraPitchDeg": camera_orientation.current_pitch_deg,
             "velocityNed": {
                 "northMps": current_velocity_north_m_s,
                 "eastMps": current_velocity_east_m_s,
@@ -2098,8 +2424,10 @@ async def main() -> None:
             },
             "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
+        status.update(thermal.status())
+        return status
 
-    control_api = FlightControlApi(camera, api_commands, api_status, build_preflight_status)
+    control_api = FlightControlApi(camera, api_commands, api_status, build_preflight_status, thermal)
     control_api.start()
     print(
         f"[SAFETY] Sensor default -> "
@@ -2188,6 +2516,9 @@ async def main() -> None:
 
     def update_in_air(in_air: bool) -> None:
         nonlocal current_in_air
+        nonlocal current_armed
+        if current_in_air and not in_air:
+            current_armed = False
         current_in_air = bool(in_air)
 
     def update_health(health) -> None:
@@ -2198,13 +2529,13 @@ async def main() -> None:
 
     async def update_simulated_battery_loop() -> None:
         while True:
-            mode = detect_battery_mode(
+            simulated_battery.update(
+                armed=current_armed or current_in_air,
                 in_air=current_in_air,
                 velocity_north_m_s=current_velocity_north_m_s,
                 velocity_east_m_s=current_velocity_east_m_s,
                 velocity_down_m_s=current_velocity_down_m_s,
             )
-            simulated_battery.update(mode)
             await asyncio.sleep(0.5)
 
     def launch_pad_clear() -> bool:
@@ -2389,6 +2720,10 @@ async def main() -> None:
         ):
             force_manual_control()
 
+        if key in WEATHER_KEY_PRESETS:
+            await asyncio.to_thread(apply_weather_key, key)
+            continue
+
         if key in {"w", "a", "s", "d", "f", "v", "q", "e"} and motion_owner != MotionOwner.MANUAL:
             print("[CONTROL] Obstacle stop active - hover until path is clear", flush=True)
             continue
@@ -2460,6 +2795,7 @@ async def main() -> None:
             print("[CMD] arm + takeoff")
             active_drone = await safe_arm(connection_manager)
             if active_drone is not None:
+                current_armed = True
                 if avoidance is not None:
                     avoidance.set_drone(active_drone)
                 try:
@@ -2555,10 +2891,21 @@ async def main() -> None:
             current_east_m_s = 0.0
             current_down_m_s = -control_vertical_speed_m_s
             try:
+                if not current_in_air:
+                    active_drone = await connection_manager.get_drone() if current_armed else None
+                    if active_drone is None:
+                        active_drone = await safe_arm(connection_manager)
+                    if active_drone is None:
+                        print("[CMD] Up cancelled - drone could not arm", flush=True)
+                        continue
+                    current_armed = True
+                    await active_drone.action.takeoff()
+                    print("[CMD] Up requested from ground - takeoff initiated", flush=True)
+                    await asyncio.sleep(0.5)
                 active_drone = await set_motion(connection_manager, current_north_m_s, current_east_m_s, current_down_m_s, current_yaw_deg)
                 if active_drone is not None and avoidance is not None:
                     avoidance.set_drone(active_drone)
-            except OffboardError as exc:
+            except (ActionError, OffboardError) as exc:
                 print_command_denied("up", exc)
             except grpc.aio.AioRpcError as exc:
                 print_mavsdk_unavailable("up", exc)
@@ -2661,6 +3008,30 @@ async def main() -> None:
                 "wsl-telemetry.sh",
                 "telemetry_sender.py|wsl-telemetry.sh",
             )
+        elif key == "6":
+            enabled = thermal.toggle()
+            set_native_thermal_subscription(enabled)
+            print(f"[THERMAL] {'ON' if enabled else 'OFF'}", flush=True)
+            if enabled:
+                open_monitor_window_if_needed(
+                    "Thermal camera",
+                    "wsl-thermal-view.sh",
+                    "wsl-thermal-view.sh|thermal_debug_viewer.py",
+                )
+        elif key == "7":
+            toggle_monitor_window(
+                "Thermal camera",
+                "wsl-thermal-view.sh",
+                "wsl-thermal-view.sh|thermal_debug_viewer.py",
+            )
+        elif key == "thermal_palette_next":
+            print(f"[THERMAL] Palette -> {thermal.cycle_palette()}", flush=True)
+        elif key == "thermal_isotherm_toggle":
+            print(f"[THERMAL] Isotherm -> {'ON' if thermal.toggle_isotherm() else 'OFF'}", flush=True)
+        elif key == "thermal_debug_toggle":
+            print(f"[THERMAL] Debug overlay -> {'ON' if thermal.toggle_debug_overlay() else 'OFF'}", flush=True)
+        elif key == "thermal_range_toggle":
+            print(f"[THERMAL] Display range -> {thermal.toggle_display_range()}", flush=True)
         elif key == "p":
             task = asyncio.create_task(camera.capture_and_upload())
             track_background_task(task, "CAMERA")
