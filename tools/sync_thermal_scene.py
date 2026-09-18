@@ -105,9 +105,16 @@ def main() -> int:
     parser.add_argument("--backend-base-url", action="append", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--timeout", type=float, default=0.8)
+    parser.add_argument("--strict", action="store_true", help="Raise backend/API errors instead of returning a soft failure.")
     args = parser.parse_args()
 
-    sources = _fetch_sources(args.backend_base_url, args.timeout)
+    try:
+        sources = _fetch_sources(args.backend_base_url, args.timeout)
+    except RuntimeError as exc:
+        if args.strict:
+            raise
+        print(f"[THERMAL] Backend sync skipped: {exc}")
+        return 2
     tree = build_model(sources)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     tree.write(args.output, encoding="utf-8", xml_declaration=True)
