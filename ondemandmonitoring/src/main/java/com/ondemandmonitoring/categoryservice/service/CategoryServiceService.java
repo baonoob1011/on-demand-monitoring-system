@@ -30,7 +30,7 @@ public class CategoryServiceService {
     }
 
     @Transactional(readOnly = true)
-    public CategoryServiceResponse getById(Long id) {
+    public CategoryServiceResponse getById(String id) {
         CategoryService entity = getEntityById(id);
         return categoryServiceMapper.toResponse(entity);
     }
@@ -43,7 +43,7 @@ public class CategoryServiceService {
     }
 
     @Transactional
-    public CategoryServiceResponse update(Long id, CategoryServiceRequest request) {
+    public CategoryServiceResponse update(String id, CategoryServiceRequest request) {
         CategoryService entity = getEntityById(id);
         categoryServiceMapper.updateEntityFromRequest(request, entity);
         CategoryService saved = categoryServiceRepository.save(entity);
@@ -51,19 +51,20 @@ public class CategoryServiceService {
     }
 
     @Transactional
-    public void delete(Long id) {
+    public void delete(String id) {
         CategoryService entity = getEntityById(id);
         categoryServiceRepository.delete(entity);
     }
 
     @Transactional(readOnly = true)
-    public boolean existsById(Long id) {
+    public boolean existsById(String id) {
         return categoryServiceRepository.existsById(id);
     }
 
     @Transactional(readOnly = true)
-    public CategoryService getEntityById(Long id) {
+    public CategoryService getEntityById(String id) {
         return categoryServiceRepository.findById(id)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Category service not found with id: " + id));
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
+                        "Category service not found with id: " + id));
     }
 }

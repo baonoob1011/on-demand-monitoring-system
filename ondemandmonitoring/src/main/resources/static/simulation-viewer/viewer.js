@@ -7,6 +7,11 @@ const overlayEl = document.getElementById("overlay");
 const statusEl = document.getElementById("status");
 const detailsEl = document.getElementById("zoneDetails");
 const zoneListEl = document.getElementById("zoneList");
+const thermalListEl = document.getElementById("thermalList");
+const thermalDetailsEl = document.getElementById("thermalDetails");
+const createThermalButton = document.getElementById("createThermal");
+const editThermalButton = document.getElementById("editThermal");
+const deleteThermalButton = document.getElementById("deleteThermal");
 const metadataBox = document.getElementById("metadataBox");
 const mouseReadout = document.getElementById("mouseReadout");
 const debugToggle = document.getElementById("debugToggle");
@@ -17,17 +22,21 @@ const deleteZoneButton = document.getElementById("deleteZone");
 const reloadZonesButton = document.getElementById("reloadZones");
 const saveStatusEl = document.getElementById("saveStatus");
 const toastEl = document.getElementById("toast");
+const readOnlyMode = new URLSearchParams(window.location.search).has("readonly");
 
 let metadata;
 let zones = [];
 let features = [];
+let thermalSources = [];
 let scale = 1;
 let panX = 0;
 let panY = 0;
 let selectedZoneId = null;
+let selectedThermalId = null;
 let dragging = false;
 let lastPointer = null;
 let zoneDrag = null;
+let thermalDrag = null;
 let toastTimer = null;
 
 function apiData(payload) {
@@ -46,6 +55,13 @@ function simToPixel(x, y) {
   const px = ((x - metadata.minX) / (metadata.maxX - metadata.minX)) * MAP_SIZE;
   const py = (1 - ((y - metadata.minY) / (metadata.maxY - metadata.minY))) * MAP_SIZE;
   return [px, py];
+}
+
+function simRadiusToPixelSize(radiusMeters) {
+  return {
+    x: (radiusMeters / (metadata.maxX - metadata.minX)) * MAP_SIZE,
+    y: (radiusMeters / (metadata.maxY - metadata.minY)) * MAP_SIZE,
+  };
 }
 
 function pixelToSim(px, py) {
@@ -71,6 +87,14 @@ function openCoordinates(coordinates) {
 function closedCoordinates(coordinates) {
   const opened = openCoordinates(coordinates);
   return [...opened.map(([x, y]) => [x, y]), [...opened[0]]];
+}
+
+function isRestrictedZone(zone) {
+  if (Object.prototype.hasOwnProperty.call(zone || {}, "restricted")) {
+    return zone.restricted === true;
+  }
+  const type = String(zone?.zoneType || "").trim().toUpperCase();
+  return ["AIRPORT", "RESTRICTED", "NO_FLY", "NO-FLY", "NOFLY"].includes(type);
 }
 
 function centroid(coordinates) {
@@ -131,19 +155,135 @@ function redrawOverlay() {
   overlayEl.innerHTML = "";
   drawFeatures();
   drawZones();
+  drawThermalSources();
   drawDebugOverlay();
   if (selectedZoneId) {
     selectZone(selectedZoneId);
   }
+  if (selectedThermalId) {
+    selectThermal(selectedThermalId);
+  }
+}
+
+function thermalClass(source) {
+  const type = String(source.thermalType || "").trim().toUpperCase();
+  if (type === "FIRE") return "thermal-source thermal-fire";
+  if (type === "HOTSPOT") return "thermal-source thermal-hotspot";
+  if (type === "WARM_AREA") return "thermal-source thermal-warm";
+  return "thermal-source thermal-ambient";
+}
+
+function drawThermalSources() {
+  for (const source of thermalSources) {
+    if (source.active === false) continue;
+    const x = Number(source.centerXM);
+    const y = Number(source.centerYM);
+    const radius = Number(source.radiusM);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius)) continue;
+
+    const [px, py] = simToPixel(x, y);
+    const pixelRadius = simRadiusToPixelSize(radius);
+
+    const radiusArea = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+    radiusArea.setAttribute("cx", px);
+    radiusArea.setAttribute("cy", py);
+    radiusArea.setAttribute("rx", Math.max(10, pixelRadius.x));
+    radiusArea.setAttribute("ry", Math.max(10, pixelRadius.y));
+    radiusArea.setAttribute("class", thermalClass(source));
+    radiusArea.classList.toggle("selected", source.id === selectedThermalId);
+    radiusArea.dataset.thermalId = source.id;
+    radiusArea.setAttribute("aria-label", `${source.name || source.code}: ${Number(source.temperatureC).toFixed(0)} C`);
+    radiusArea.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectThermal(source.id);
+    });
+    radiusArea.addEventListener("pointerdown", (event) => startThermalMove(event, source.id));
+    overlayEl.appendChild(radiusArea);
+
+    const core = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    core.setAttribute("cx", px);
+    core.setAttribute("cy", py);
+    core.setAttribute("r", 8);
+    core.setAttribute("class", "thermal-core");
+    core.dataset.thermalId = source.id;
+    core.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectThermal(source.id);
+    });
+    core.addEventListener("pointerdown", (event) => startThermalMove(event, source.id));
+    overlayEl.appendChild(core);
+
+    if (!readOnlyMode && editToggle.checked && source.id === selectedThermalId) {
+      const resizeHandle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      resizeHandle.setAttribute("cx", px + Math.max(10, pixelRadius.x));
+      resizeHandle.setAttribute("cy", py);
+      resizeHandle.setAttribute("r", 9);
+      resizeHandle.setAttribute("class", "thermal-resize-handle");
+      resizeHandle.dataset.thermalId = source.id;
+      resizeHandle.addEventListener("pointerdown", (event) => startThermalResize(event, source.id));
+      overlayEl.appendChild(resizeHandle);
+    }
+
+    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    label.setAttribute("x", px + 14);
+    label.setAttribute("y", py - 12);
+    label.setAttribute("class", "thermal-label");
+    label.textContent = `${Number(source.temperatureC).toFixed(0)}C`;
+    overlayEl.appendChild(label);
+  }
+}
+
+function drawThermalList() {
+  thermalListEl.innerHTML = "";
+  for (const source of thermalSources) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.thermalId = source.id;
+    button.classList.toggle("selected", source.id === selectedThermalId);
+    button.textContent = `${source.name} - ${Number(source.temperatureC).toFixed(0)}C`;
+    button.addEventListener("click", () => selectThermal(source.id));
+    thermalListEl.appendChild(button);
+  }
+}
+
+function selectThermal(thermalId) {
+  selectedThermalId = thermalId;
+  editThermalButton.disabled = readOnlyMode || !thermalId;
+  deleteThermalButton.disabled = readOnlyMode || !thermalId;
+  overlayEl.querySelectorAll(".thermal-source").forEach((el) => {
+    el.classList.toggle("selected", el.dataset.thermalId === thermalId);
+  });
+  thermalListEl.querySelectorAll("button").forEach((el) => {
+    el.classList.toggle("selected", el.dataset.thermalId === thermalId);
+  });
+
+  const source = thermalSources.find((item) => item.id === thermalId);
+  if (!source) {
+    thermalDetailsEl.className = "details empty";
+    thermalDetailsEl.textContent = "Click a thermal area.";
+    return;
+  }
+
+  thermalDetailsEl.className = "details";
+  thermalDetailsEl.innerHTML = `
+    <strong>Name:</strong> ${source.name}<br>
+    <strong>Code:</strong> <code>${source.code}</code><br>
+    <strong>Zone:</strong> <code>${source.zoneCode}</code><br>
+    <strong>Type:</strong> ${source.thermalType}<br>
+    <strong>Temperature:</strong> ${Number(source.temperatureC).toFixed(1)} C<br>
+    <strong>Center:</strong> X ${Number(source.centerXM).toFixed(2)} / Y ${Number(source.centerYM).toFixed(2)}<br>
+    <strong>Radius:</strong> ${Number(source.radiusM).toFixed(2)} m<br>
+    <strong>Active:</strong> ${source.active === false ? "NO" : "YES"}
+  `;
 }
 
 function drawZones() {
   for (const zone of zones) {
-    const isRestricted = zone.code === "AIRPORT";
+    const isRestricted = isRestrictedZone(zone);
     const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
     polygon.setAttribute("points", coordinateListToPoints(zone.coordinates));
     polygon.setAttribute("class", isRestricted ? "zone-polygon restricted-zone" : "zone-polygon");
-    polygon.classList.toggle("editable", editToggle.checked);
+    polygon.classList.toggle("editable", !readOnlyMode && editToggle.checked);
     polygon.dataset.zoneId = zone.id;
     polygon.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -163,7 +303,7 @@ function drawZones() {
     label.textContent = isRestricted ? `${zone.name} - RESTRICTED` : zone.name;
     overlayEl.appendChild(label);
 
-    if (editToggle.checked && zone.id === selectedZoneId) {
+    if (!readOnlyMode && editToggle.checked && zone.id === selectedZoneId) {
       drawZoneHandles(zone);
     }
   }
@@ -257,8 +397,8 @@ function drawZoneList() {
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.zoneId = zone.id;
-    button.classList.toggle("restricted-zone-button", zone.code === "AIRPORT");
-    button.textContent = zone.code === "AIRPORT" ? `${zone.name} - Restricted` : zone.name;
+    button.classList.toggle("restricted-zone-button", isRestrictedZone(zone));
+    button.textContent = isRestrictedZone(zone) ? `${zone.name} - Restricted` : zone.name;
     button.addEventListener("click", () => selectZone(zone.id));
     zoneListEl.appendChild(button);
   }
@@ -266,8 +406,8 @@ function drawZoneList() {
 
 function selectZone(zoneId) {
   selectedZoneId = zoneId;
-  saveZoneButton.disabled = !zoneId;
-  deleteZoneButton.disabled = !zoneId;
+  saveZoneButton.disabled = readOnlyMode || !zoneId;
+  deleteZoneButton.disabled = readOnlyMode || !zoneId;
   overlayEl.querySelectorAll(".zone-polygon").forEach((el) => {
     el.classList.toggle("selected", el.dataset.zoneId === zoneId);
   });
@@ -283,19 +423,47 @@ function selectZone(zoneId) {
   }
 
   const bounds = zoneBounds(zone);
+  const zoneThermalSources = thermalSources.filter((source) => source.zoneCode === zone.code);
+  const thermalDetails = zoneThermalSources.length
+    ? `<strong>Thermal sources:</strong>
+      <ul class="thermal-detail-list">
+        ${zoneThermalSources.map((source) => `
+          <li>
+            <span>${source.name}</span>
+            <strong>${Number(source.temperatureC).toFixed(0)}C</strong>
+          </li>
+        `).join("")}
+      </ul>`
+    : `<strong>Thermal sources:</strong> None<br>`;
   detailsEl.className = "details";
   detailsEl.innerHTML = `
     <strong>Zone:</strong> ${zone.name}<br>
     <strong>ID:</strong> <code>${zone.id}</code><br>
     <strong>Code:</strong> <code>${zone.code}</code><br>
     <strong>Type:</strong> ${zone.zoneType}<br>
+    <strong>Restricted:</strong> ${isRestrictedZone(zone) ? "YES" : "NO"}<br>
+    ${readOnlyMode ? "" : `<label class="restricted-editor">
+      <input id="restrictedZoneToggle" type="checkbox" ${isRestrictedZone(zone) ? "checked" : ""}>
+      Restricted / No-Fly Zone
+    </label>`}
     <strong>Area:</strong> ${Number(zone.areaSquareMeters).toFixed(2)} m²<br>
     <strong>Bounds:</strong><br>
     minX=${bounds.minX.toFixed(2)} maxX=${bounds.maxX.toFixed(2)}<br>
     minY=${bounds.minY.toFixed(2)} maxY=${bounds.maxY.toFixed(2)}<br>
+    ${thermalDetails}
     <strong>Coordinates:</strong>
     <pre>${zone.coordinates.map(([x, y]) => `${x.toFixed(2)}, ${y.toFixed(2)}`).join("\n")}</pre>
   `;
+
+  const restrictedToggle = document.getElementById("restrictedZoneToggle");
+  restrictedToggle?.addEventListener("change", (event) => {
+    if (readOnlyMode) return;
+    zone.restricted = event.target.checked;
+    redrawOverlay();
+    drawZoneList();
+    selectZone(zone.id);
+    setSaveStatus(`Restricted flag changed for ${zone.name}. Click Save DB to persist.`, false, "info");
+  });
 }
 
 function setSaveStatus(message, saving = false, type = "info") {
@@ -320,7 +488,7 @@ function pointerToSim(event) {
 }
 
 function startZoneMove(event, zoneId) {
-  if (!editToggle.checked) return;
+  if (readOnlyMode || !editToggle.checked) return;
   event.preventDefault();
   event.stopPropagation();
   selectZone(zoneId);
@@ -334,6 +502,7 @@ function startZoneMove(event, zoneId) {
 }
 
 function startVertexMove(event, zoneId, vertexIndex) {
+  if (readOnlyMode) return;
   event.preventDefault();
   event.stopPropagation();
   selectZone(zoneId);
@@ -368,7 +537,62 @@ function updateZoneDrag(event) {
   redrawOverlay();
 }
 
+function startThermalMove(event, thermalId) {
+  if (readOnlyMode || !editToggle.checked) return;
+  event.preventDefault();
+  event.stopPropagation();
+  selectThermal(thermalId);
+  thermalDrag = {
+    type: "move",
+    thermalId,
+    lastSim: pointerToSim(event),
+    changed: false,
+  };
+  mapEl.setPointerCapture(event.pointerId);
+}
+
+function startThermalResize(event, thermalId) {
+  if (readOnlyMode || !editToggle.checked) return;
+  event.preventDefault();
+  event.stopPropagation();
+  selectThermal(thermalId);
+  thermalDrag = {
+    type: "resize",
+    thermalId,
+    changed: false,
+  };
+  mapEl.setPointerCapture(event.pointerId);
+}
+
+function updateThermalDrag(event) {
+  if (!thermalDrag) return;
+  const source = thermalSources.find((item) => item.id === thermalDrag.thermalId);
+  if (!source) return;
+
+  const nextSim = pointerToSim(event);
+  if (thermalDrag.type === "move") {
+    const dx = nextSim[0] - thermalDrag.lastSim[0];
+    const dy = nextSim[1] - thermalDrag.lastSim[1];
+    source.centerXM = Number(source.centerXM) + dx;
+    source.centerYM = Number(source.centerYM) + dy;
+    thermalDrag.lastSim = nextSim;
+  } else {
+    source.radiusM = Math.max(
+      1,
+      Math.hypot(nextSim[0] - Number(source.centerXM), nextSim[1] - Number(source.centerYM)),
+    );
+  }
+
+  thermalDrag.changed = true;
+  redrawOverlay();
+  drawThermalList();
+}
+
 async function saveZone(zoneId) {
+  if (readOnlyMode) {
+    setSaveStatus("Read-only view: zone changes are disabled for this workspace.", false, "info");
+    return;
+  }
   const zone = zones.find((item) => item.id === zoneId);
   if (!zone) return;
 
@@ -377,7 +601,10 @@ async function saveZone(zoneId) {
     const response = await fetch(`/api/zones/${zone.id}/polygon`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ coordinates: zone.coordinates }),
+      body: JSON.stringify({
+        coordinates: zone.coordinates,
+        restricted: isRestrictedZone(zone),
+      }),
     });
     if (!response.ok) {
       throw new Error(`Save failed: HTTP ${response.status}`);
@@ -395,8 +622,13 @@ async function saveZone(zoneId) {
 }
 
 async function createZone() {
+  if (readOnlyMode) {
+    setSaveStatus("Read-only view: creating zones is disabled for this workspace.", false, "info");
+    return;
+  }
   const name = window.prompt("New zone name?", "Custom Zone");
   if (!name || !name.trim()) return;
+  const restricted = window.confirm("Mark this zone as Restricted / No-Fly?");
 
   const rect = mapEl.getBoundingClientRect();
   const centerPx = (rect.width / 2 - panX) / scale;
@@ -420,6 +652,7 @@ async function createZone() {
         name: name.trim(),
         zoneType: "CUSTOM",
         purpose: "Created from simulation viewer",
+        restricted,
         coordinates,
       }),
     });
@@ -445,17 +678,209 @@ async function createZone() {
 
 async function reloadZones() {
   setSaveStatus("Reloading zones from DB...", true);
-  const payload = await loadJson("/api/zones");
+  const [payload, thermalPayload] = await Promise.all([
+    loadJson("/api/zones"),
+    loadJson("/api/thermal-sources").catch(() => ({ data: [] })),
+  ]);
   zones = apiData(payload);
+  thermalSources = apiData(thermalPayload);
   selectedZoneId = null;
+  selectedThermalId = null;
   redrawOverlay();
   drawZoneList();
+  drawThermalList();
   detailsEl.className = "details empty";
   detailsEl.textContent = "Click a zone polygon.";
+  thermalDetailsEl.className = "details empty";
+  thermalDetailsEl.textContent = "Click a thermal area.";
   setSaveStatus("Reloaded zones from DB successfully.", false, "success");
 }
 
+function currentMapCenterSim() {
+  const rect = mapEl.getBoundingClientRect();
+  const centerPx = (rect.width / 2 - panX) / scale;
+  const centerPy = (rect.height / 2 - panY) / scale;
+  return pixelToSim(centerPx, centerPy);
+}
+
+function promptNumber(label, currentValue) {
+  const raw = window.prompt(label, String(currentValue));
+  if (raw == null) return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) {
+    setSaveStatus(`${label} must be a number.`, false, "error");
+    return null;
+  }
+  return value;
+}
+
+function promptThermalPayload(existing) {
+  const [centerX, centerY] = existing
+    ? [Number(existing.centerXM), Number(existing.centerYM)]
+    : currentMapCenterSim();
+  const defaultZoneCode = existing?.zoneCode
+    || zones.find((zone) => zone.id === selectedZoneId)?.code
+    || zones[0]?.code
+    || "FOREST_MONITORING_AREA";
+  const name = window.prompt("Thermal name?", existing?.name || "Custom Thermal Area");
+  if (!name || !name.trim()) return null;
+  const zoneCode = window.prompt("Zone code?", defaultZoneCode);
+  if (!zoneCode || !zoneCode.trim()) return null;
+  const type = window.prompt("Type: AMBIENT, WARM_AREA, HOTSPOT, FIRE", existing?.thermalType || "HOTSPOT");
+  if (!type || !["AMBIENT", "WARM_AREA", "HOTSPOT", "FIRE"].includes(type.trim().toUpperCase())) {
+    setSaveStatus("Thermal type must be AMBIENT, WARM_AREA, HOTSPOT, or FIRE.", false, "error");
+    return null;
+  }
+  const temperatureC = promptNumber("Temperature C?", existing?.temperatureC ?? 110);
+  if (temperatureC == null) return null;
+  const radiusM = promptNumber("Radius meters?", existing?.radiusM ?? 8);
+  if (radiusM == null || radiusM <= 0) {
+    setSaveStatus("Radius must be greater than 0.", false, "error");
+    return null;
+  }
+  const x = promptNumber("Center X meters?", centerX.toFixed(2));
+  if (x == null) return null;
+  const y = promptNumber("Center Y meters?", centerY.toFixed(2));
+  if (y == null) return null;
+  const active = window.confirm("Active thermal source?");
+
+  return {
+    code: existing?.code,
+    name: name.trim(),
+    zoneCode: zoneCode.trim(),
+    thermalType: type.trim().toUpperCase(),
+    temperatureC,
+    centerXM: x,
+    centerYM: y,
+    radiusM,
+    active,
+  };
+}
+
+async function saveThermalPayload(url, method, payload) {
+  const response = await fetch(url, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error(`Thermal save failed: HTTP ${response.status}`);
+  }
+  return apiData(await response.json());
+}
+
+function thermalToPayload(source) {
+  return {
+    code: source.code,
+    name: source.name,
+    zoneCode: source.zoneCode,
+    thermalType: source.thermalType,
+    temperatureC: Number(source.temperatureC),
+    centerXM: Number(source.centerXM),
+    centerYM: Number(source.centerYM),
+    radiusM: Number(source.radiusM),
+    active: source.active !== false,
+  };
+}
+
+async function saveThermalSource(source) {
+  setSaveStatus(`Saving ${source.name} to DB...`, true);
+  try {
+    const saved = await saveThermalPayload(
+      `/api/thermal-sources/${source.id}`,
+      "PUT",
+      thermalToPayload(source),
+    );
+    thermalSources = thermalSources.map((item) => item.id === saved.id ? saved : item);
+    selectedThermalId = saved.id;
+    redrawOverlay();
+    drawThermalList();
+    selectThermal(saved.id);
+    setSaveStatus(`Saved thermal source ${saved.name}.`, false, "success");
+  } catch (error) {
+    setSaveStatus(error.message, false, "error");
+    console.error(error);
+  }
+}
+
+async function createThermal() {
+  if (readOnlyMode) {
+    setSaveStatus("Read-only view: creating thermal sources is disabled for this workspace.", false, "info");
+    return;
+  }
+  const payload = promptThermalPayload(null);
+  if (!payload) return;
+  setSaveStatus(`Creating ${payload.name}...`, true);
+  try {
+    const created = await saveThermalPayload("/api/thermal-sources", "POST", payload);
+    thermalSources = [...thermalSources, created];
+    selectedThermalId = created.id;
+    redrawOverlay();
+    drawThermalList();
+    selectThermal(created.id);
+    setSaveStatus(`Created thermal source ${created.name}.`, false, "success");
+  } catch (error) {
+    setSaveStatus(error.message, false, "error");
+    console.error(error);
+  }
+}
+
+async function editSelectedThermal() {
+  if (readOnlyMode) {
+    setSaveStatus("Read-only view: editing thermal sources is disabled for this workspace.", false, "info");
+    return;
+  }
+  const source = thermalSources.find((item) => item.id === selectedThermalId);
+  if (!source) return;
+  const payload = promptThermalPayload(source);
+  if (!payload) return;
+  setSaveStatus(`Saving ${payload.name}...`, true);
+  try {
+    const saved = await saveThermalPayload(`/api/thermal-sources/${source.id}`, "PUT", payload);
+    thermalSources = thermalSources.map((item) => item.id === saved.id ? saved : item);
+    selectedThermalId = saved.id;
+    redrawOverlay();
+    drawThermalList();
+    selectThermal(saved.id);
+    setSaveStatus(`Saved thermal source ${saved.name}.`, false, "success");
+  } catch (error) {
+    setSaveStatus(error.message, false, "error");
+    console.error(error);
+  }
+}
+
+async function deleteSelectedThermal() {
+  if (readOnlyMode) {
+    setSaveStatus("Read-only view: deleting thermal sources is disabled for this workspace.", false, "info");
+    return;
+  }
+  const source = thermalSources.find((item) => item.id === selectedThermalId);
+  if (!source) return;
+  const confirmed = window.confirm(`Delete thermal source "${source.name}" from DB?`);
+  if (!confirmed) return;
+  setSaveStatus(`Deleting ${source.name}...`, true);
+  try {
+    const response = await fetch(`/api/thermal-sources/${source.id}`, { method: "DELETE" });
+    if (!response.ok) {
+      throw new Error(`Thermal delete failed: HTTP ${response.status}`);
+    }
+    thermalSources = thermalSources.filter((item) => item.id !== source.id);
+    selectedThermalId = null;
+    redrawOverlay();
+    drawThermalList();
+    selectThermal(null);
+    setSaveStatus(`Deleted thermal source ${source.name}.`, false, "success");
+  } catch (error) {
+    setSaveStatus(error.message, false, "error");
+    console.error(error);
+  }
+}
+
 async function deleteSelectedZone() {
+  if (readOnlyMode) {
+    setSaveStatus("Read-only view: deleting zones is disabled for this workspace.", false, "info");
+    return;
+  }
   const zone = zones.find((item) => item.id === selectedZoneId);
   if (!zone) return;
 
@@ -490,6 +915,19 @@ function updateMouseReadout(event) {
 }
 
 function attachControls() {
+  document.body.classList.toggle("readonly-viewer", readOnlyMode);
+  if (readOnlyMode) {
+    editToggle.checked = false;
+    editToggle.disabled = true;
+    saveZoneButton.disabled = true;
+    createZoneButton.disabled = true;
+    deleteZoneButton.disabled = true;
+    createThermalButton.disabled = true;
+    editThermalButton.disabled = true;
+    deleteThermalButton.disabled = true;
+    setSaveStatus("Read-only view. Drone operators can inspect zones only.", false, "info");
+  }
+
   document.getElementById("zoomIn").addEventListener("click", () => zoomBy(1.25));
   document.getElementById("zoomOut").addEventListener("click", () => zoomBy(0.8));
   document.getElementById("home").addEventListener("click", fitHome);
@@ -500,8 +938,14 @@ function attachControls() {
   });
 
   editToggle.addEventListener("change", () => {
+    if (readOnlyMode) {
+      editToggle.checked = false;
+      mapEl.classList.remove("editing");
+      setSaveStatus("Read-only view: editing is disabled for this workspace.", false, "info");
+      return;
+    }
     mapEl.classList.toggle("editing", editToggle.checked);
-    setSaveStatus(editToggle.checked ? "Edit on: drag a zone or its corner dots; release to save DB." : "Edit off.");
+    setSaveStatus(editToggle.checked ? "Edit on: drag zones, thermal centers, or thermal radius handles; release to save DB." : "Edit off.");
     redrawOverlay();
   });
 
@@ -526,13 +970,25 @@ function attachControls() {
     deleteSelectedZone();
   });
 
+  createThermalButton.addEventListener("click", () => {
+    createThermal();
+  });
+
+  editThermalButton.addEventListener("click", () => {
+    editSelectedThermal();
+  });
+
+  deleteThermalButton.addEventListener("click", () => {
+    deleteSelectedThermal();
+  });
+
   mapEl.addEventListener("wheel", (event) => {
     event.preventDefault();
     zoomBy(event.deltaY < 0 ? 1.12 : 0.88, event.clientX, event.clientY);
   }, { passive: false });
 
   mapEl.addEventListener("pointerdown", (event) => {
-    if (editToggle.checked) return;
+    if (!readOnlyMode && editToggle.checked) return;
     dragging = true;
     lastPointer = { x: event.clientX, y: event.clientY };
     mapEl.setPointerCapture(event.pointerId);
@@ -543,6 +999,10 @@ function attachControls() {
     updateMouseReadout(event);
     if (zoneDrag) {
       updateZoneDrag(event);
+      return;
+    }
+    if (thermalDrag) {
+      updateThermalDrag(event);
       return;
     }
     if (!dragging || !lastPointer) return;
@@ -559,6 +1019,15 @@ function attachControls() {
       zoneDrag = null;
       if (shouldSave) {
         saveZone(changedZoneId);
+      }
+      return;
+    }
+    if (thermalDrag) {
+      const source = thermalSources.find((item) => item.id === thermalDrag.thermalId);
+      const shouldSave = thermalDrag.changed;
+      thermalDrag = null;
+      if (shouldSave && source) {
+        saveThermalSource(source);
       }
       return;
     }
@@ -581,24 +1050,27 @@ function attachControls() {
 
 async function init() {
   try {
-    const [meta, zonesPayload, featuresPayload] = await Promise.all([
+    const [meta, zonesPayload, featuresPayload, thermalPayload] = await Promise.all([
       loadJson("./simulation-map.json"),
       loadJson("/api/zones"),
       loadJson("/api/simulation-map"),
+      loadJson("/api/thermal-sources").catch(() => ({ data: [] })),
     ]);
 
     metadata = meta;
     zones = apiData(zonesPayload);
     features = apiData(featuresPayload);
+    thermalSources = apiData(thermalPayload);
 
     basemapEl.src = metadata.image;
     overlayEl.setAttribute("viewBox", `0 0 ${MAP_SIZE} ${MAP_SIZE}`);
     redrawOverlay();
     drawZoneList();
+    drawThermalList();
     attachControls();
     fitHome();
 
-    statusEl.textContent = `${zones.length} zones | ${features.length} map features`;
+    statusEl.textContent = `${zones.length} zones | ${features.length} map features | ${thermalSources.length} thermal sources`;
     metadataBox.textContent = [
       `world=${metadata.worldName}`,
       `minX=${metadata.minX}`,
@@ -607,7 +1079,8 @@ async function init() {
       `maxY=${metadata.maxY}`,
       `Y inverted=YES`,
       `X/Y swapped=NO`,
-      `source=public.zones`
+      `thermalSources=${thermalSources.length}`,
+      `source=public.zones + public.thermal_sources`
     ].join("\n");
   } catch (error) {
     statusEl.textContent = "Failed to load";

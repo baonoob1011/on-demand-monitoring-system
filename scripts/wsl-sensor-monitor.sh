@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_PATH="/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system"
-FOREST3D_PATH="$PROJECT_PATH/Forest3D"
+PROJECT_PATH="${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+FOREST3D_PATH="${FOREST3D_PATH:-$PROJECT_PATH/Forest3D}"
 PX4_ROOT="$HOME/PX4-Autopilot"
 SIM_WORLD="${SIM_WORLD:-compact}"
 
@@ -33,9 +33,13 @@ export PYTHONPATH="$PROJECT_PATH:${PYTHONPATH:-}"
 export SENSOR_VIS_ENABLED="${SENSOR_VIS_ENABLED:-true}"
 export SENSOR_VIS_LIDAR_2D_ENABLED="${SENSOR_VIS_LIDAR_2D_ENABLED:-true}"
 export SENSOR_VIS_LIDAR_3D_ENABLED="${SENSOR_VIS_LIDAR_3D_ENABLED:-true}"
+export SENSOR_VIS_THERMAL_ENABLED="${SENSOR_VIS_THERMAL_ENABLED:-false}"
 export LIDAR_TOPIC="${LIDAR_TOPIC:-/lidar}"
 export POINTCLOUD_LIDAR_TOPIC="${POINTCLOUD_LIDAR_TOPIC:-/lidar_3d}"
 export GAZEBO_CAMERA_TOPIC="${GAZEBO_CAMERA_TOPIC:-/world/${WORLD_NAME}/model/${MODEL_PREFIX}_0/link/camera_link/sensor/camera/image}"
+export GAZEBO_THERMAL_CAMERA_TOPIC="${GAZEBO_THERMAL_CAMERA_TOPIC:-/world/${WORLD_NAME}/model/${MODEL_PREFIX}_0/link/thermal_camera_link/sensor/thermal_camera/image}"
+export QT_QPA_FONTDIR="${QT_QPA_FONTDIR:-/usr/share/fonts/truetype/dejavu}"
+export QT_QPA_PLATFORMTHEME="${QT_QPA_PLATFORMTHEME:-}"
 
 echo "========================================"
 echo " Forest3D Sensor Visual Dashboard"
@@ -45,11 +49,13 @@ echo "Drone : ${MODEL_PREFIX}_0"
 echo "Camera: $GAZEBO_CAMERA_TOPIC"
 echo "2D    : $LIDAR_TOPIC"
 echo "3D    : $POINTCLOUD_LIDAR_TOPIC"
+echo "Therm : $GAZEBO_THERMAL_CAMERA_TOPIC"
 echo
-echo "This opens the LiDAR 2D and LiDAR 3D realtime windows."
+echo "This opens the LiDAR 2D, LiDAR 3D, and Thermal Camera realtime windows."
 echo "The Downward Camera window is opened by wsl-camera-view.sh."
 echo
 
 cd "$PROJECT_PATH"
-source "$HOME/drone-env/bin/activate"
+DRONE_ENV="${DRONE_ENV:-$HOME/drone-env}"
+source "$DRONE_ENV/bin/activate"
 exec python3 -m drone.visualization.sensor_dashboard

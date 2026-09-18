@@ -51,6 +51,7 @@ public class ZoneService implements IZoneService {
         zone.setCode(uniqueCode(request.getCode(), request.getName()));
         zone.setZoneType(blankToDefault(request.getZoneType(), "CUSTOM"));
         zone.setPurpose(blankToDefault(request.getPurpose(), "Created from simulation viewer"));
+        zone.setRestricted(Boolean.TRUE.equals(request.getRestricted()));
         zone.setSourceWorld(MANUAL_SOURCE_WORLD);
         zone.setCoordinateSystem(COORDINATE_SYSTEM);
         zone.setPolygon(polygon);
@@ -67,6 +68,9 @@ public class ZoneService implements IZoneService {
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Zone not found: " + id));
 
         Polygon polygon = toPolygon(request.getCoordinates());
+        if (request.getRestricted() != null) {
+            zone.setRestricted(request.getRestricted());
+        }
         zone.setPolygon(polygon);
         zone.setCenterXM(polygon.getCentroid().getX());
         zone.setCenterYM(polygon.getCentroid().getY());

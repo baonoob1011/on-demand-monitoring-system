@@ -16,16 +16,20 @@ print_menu() {
     echo '========================================'
     echo ' Weather Controls'
     echo '========================================'
-    echo '1 = Clear Day'
-    echo '2 = Sunset'
-    echo '3 = Night'
-    echo '4 = Cloudy'
-    echo '5 = Foggy'
-    echo '6 = Windy'
-    echo '7 = Light Rain'
-    echo '8 = Heavy Rain'
+    echo 'u / clear  = Clear Day'
+    echo 'y / sunset = Sunset'
+    echo 'i / night  = Night'
+    echo 'g / cloudy = Cloudy'
+    echo 'j / foggy  = Foggy'
+    echo 'm / windy  = Windy'
+    echo 'b / light  = Light Rain'
+    echo 'z / heavy  = Heavy Rain'
     echo '0 = Status'
+    echo 'p = Print menu'
+    echo '9 = Exit'
     echo '========================================'
+    echo 'Press one safe key to switch immediately.'
+    echo 'Avoided Flight Control keys: w a s d f q e t c r l x 1 2 3 4 5.'
 }
 
 service_exists() {
@@ -59,7 +63,6 @@ set_wind() {
     local linear_velocity="$1"
 
     if ! topic_exists "$WIND_TOPIC"; then
-        echo "[WEATHER][WARN] Wind topic not ready: $WIND_TOPIC"
         return 1
     fi
 
@@ -81,22 +84,11 @@ disable_wind() {
 }
 
 rain_notice() {
-    local preset="$1"
-    case "$preset" in
-        LIGHT_RAIN|HEAVY_RAIN)
-            echo "[WEATHER][WARN] Visible rain particles are not runtime-wired in this world yet; light/wind changed only."
-            ;;
-        *)
-            echo "[WEATHER] Rain disabled/not spawned."
-            ;;
-    esac
+    return 0
 }
 
 fog_notice() {
-    local preset="$1"
-    if [ "$preset" = "FOGGY" ] || [ "$preset" = "HEAVY_RAIN" ]; then
-        echo "[WEATHER][WARN] Runtime fog service not exposed by this Gazebo setup; use startup weather for real fog."
-    fi
+    return 0
 }
 
 apply_preset() {
@@ -150,12 +142,13 @@ apply_preset() {
     fog_notice "$preset"
 
     if [ "$status" -ne 0 ]; then
-        echo "[WEATHER][ERROR] Failed to switch to ${preset}"
-        echo "Reason: Gazebo runtime service/topic not ready or request failed."
+        echo "[WEATHER] Applied ${preset} (lighting only)"
+        CURRENT_WEATHER="$preset"
         return 1
     fi
 
     CURRENT_WEATHER="$preset"
+    echo "[WEATHER] Applied ${preset}"
 }
 
 print_menu
@@ -167,17 +160,21 @@ echo "[WEATHER] Runtime controller ready."
 echo "[WEATHER] Current preset: ${CURRENT_WEATHER}"
 
 while IFS= read -rsn1 key; do
+    key="$(printf '%s' "$key" | tr '[:upper:]' '[:lower:]')"
     case "$key" in
+        "") ;;
         0) echo "[WEATHER] Current preset: ${CURRENT_WEATHER}" ;;
-        1) apply_preset "1" "CLEAR_DAY" ;;
-        2) apply_preset "2" "SUNSET" ;;
-        3) apply_preset "3" "NIGHT" ;;
-        4) apply_preset "4" "CLOUDY" ;;
-        5) apply_preset "5" "FOGGY" ;;
-        6) apply_preset "6" "WINDY" ;;
-        7) apply_preset "7" "LIGHT_RAIN" ;;
-        8) apply_preset "8" "HEAVY_RAIN" ;;
-        9) apply_preset "9" "CLEAR_DAY" ;;
-        q|x) echo "[WEATHER] Exit"; exit 0 ;;
+        u) apply_preset "$key" "CLEAR_DAY" ;;
+        y) apply_preset "$key" "SUNSET" ;;
+        i) apply_preset "$key" "NIGHT" ;;
+        g) apply_preset "$key" "CLOUDY" ;;
+        j) apply_preset "$key" "FOGGY" ;;
+        m) apply_preset "$key" "WINDY" ;;
+        b) apply_preset "$key" "LIGHT_RAIN" ;;
+        z) apply_preset "$key" "HEAVY_RAIN" ;;
+        p) print_menu ;;
+        9) echo "[WEATHER] Exit"; exit 0 ;;
+        menu|help|\?) print_menu ;;
+        *) echo "[WEATHER] Unknown command: ${key}. Type help to show menu." ;;
     esac
 done

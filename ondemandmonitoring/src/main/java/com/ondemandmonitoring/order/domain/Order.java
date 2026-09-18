@@ -1,27 +1,26 @@
 package com.ondemandmonitoring.order.domain;
 
 import com.ondemandmonitoring.categoryservice.domain.CategoryService;
+import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.order.enums.MediaTypeSp;
 import com.ondemandmonitoring.order.enums.OrderStatus;
+import com.ondemandmonitoring.user.domain.User;
+import com.ondemandmonitoring.warehouse.domain.PreferredTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.locationtech.jts.geom.Point;
 
 @Entity
 @Table(name = "orders")
@@ -30,61 +29,49 @@ import lombok.Setter;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Order {
+public class Order extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User customer;
 
-    @Column(name = "customer_id", nullable = false)
-    private Long customerId;
-
-    // General Info
     @Column(name = "title", nullable = false)
     private String title;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "category_service_id", nullable = false)
-    private CategoryService categoryService;
 
     @Column(name = "purpose")
     private String purpose;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "service_id", nullable = false)
+    private CategoryService service;
+
     @Column(name = "description")
     private String description;
-
-    // Location Info
-    @Column(name = "longitude")
-    private double longitude;
-
-    @Column(name = "latitude")
-    private double latitude;
 
     @Column(name = "address")
     private String address;
 
-    // Schedule Info
-    @Column(name = "start_date")
-    private LocalDate startDate;
+    @Column(name = "point", nullable = false, columnDefinition = "geometry(Point,4326)")
+    private Point point;
 
-    @Column(name = "start_time")
-    private LocalTime startTime;
+    @Column(name = "preferred_date", nullable = false)
+    private LocalDate preferredDate;
 
-    @Column(name = "duration_hour")
-    private int durationHour;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "preferred_time_id", nullable = false)
+    private PreferredTime preferredTime;
 
-    // Media Info
     @Enumerated(EnumType.STRING)
-    @Column(name = "media_type")
+    @Column(name = "media_type", nullable = false)
     private MediaTypeSp mediaType;
 
+    @Column(name = "duration_of_video")
+    private Integer durationOfVideo;
+
+    @Column(name = "number_of_photo")
+    private Integer numberOfPhoto;
+
     @Enumerated(EnumType.STRING)
-    @Column(name = "order_status")
+    @Column(name = "order_status", nullable = false)
     private OrderStatus orderStatus;
-
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
-
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
 }

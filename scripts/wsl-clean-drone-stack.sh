@@ -5,10 +5,10 @@ echo '========================================'
 echo ' Cleaning previous drone simulation...'
 echo '========================================'
 
-pkill -9 -f '/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/scripts/wsl-control.sh' || true
-pkill -9 -f '/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/scripts/wsl-telemetry.sh' || true
-pkill -9 -f '/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/scripts/wsl-camera-view.sh' || true
-pkill -9 -f '/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/scripts/wsl-sensor-monitor.sh' || true
+pkill -9 -f 'scripts/wsl-control.sh' || true
+pkill -9 -f 'scripts/wsl-telemetry.sh' || true
+pkill -9 -f 'scripts/wsl-camera-view.sh' || true
+pkill -9 -f 'scripts/wsl-sensor-monitor.sh' || true
 pkill -9 -f 'python(3)? flight_controller.py' || true
 pkill -9 -f 'python(3)? telemetry_sender.py' || true
 pkill -9 -f 'python(3)? downward_camera_viewer.py' || true

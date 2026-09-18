@@ -9,6 +9,8 @@ import lombok.Setter;
 @Setter
 public class ZonePolygonUpdateRequest {
 
+    private Boolean restricted;
+
     @NotEmpty
     private List<List<Double>> coordinates;
 }

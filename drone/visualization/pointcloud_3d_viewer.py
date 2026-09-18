@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 
 
-MAX_POINTS = int(os.getenv("SENSOR_VIS_POINTCLOUD_MAX_POINTS", "30000"))
+MAX_POINTS = int(os.getenv("SENSOR_VIS_POINTCLOUD_MAX_POINTS", "3000"))
 
 
 def _put(img, text: str, origin: tuple[int, int], scale: float = 0.55, color=(235, 235, 235)) -> None:
@@ -17,12 +17,15 @@ def filter_self_points(points: np.ndarray) -> np.ndarray:
     if points.size == 0:
         return points
 
-    radius = float(os.getenv("POINTCLOUD_SELF_FILTER_RADIUS_M", "2.5"))
-    half_height = float(os.getenv("POINTCLOUD_SELF_FILTER_HALF_HEIGHT_M", "2.0"))
+    radius = float(os.getenv("POINTCLOUD_SELF_FILTER_RADIUS_M", "0.35"))
+    half_height = float(os.getenv("POINTCLOUD_SELF_FILTER_HALF_HEIGHT_M", "0.35"))
     finite = np.isfinite(points).all(axis=1)
     horizontal = np.hypot(points[:, 0], points[:, 1])
     outside_self = (horizontal > radius) | (np.abs(points[:, 2]) > half_height)
-    return points[finite & outside_self]
+    filtered = points[finite & outside_self]
+    if filtered.size == 0:
+        return points[finite]
+    return filtered
 
 
 def _downsample(points: np.ndarray) -> np.ndarray:
@@ -74,20 +77,17 @@ def draw_pointcloud_3d(points: np.ndarray | None, fps: float, topic: str, raw_co
 
     if points is not None and points.size:
         filtered = _downsample(filter_self_points(points))
-        shown = filtered.shape[0]
         projected, distances = _project(filtered, width, height)
-        valid = (
-            (projected[:, 0] >= 0)
-            & (projected[:, 0] < panel_x - 4)
-            & (projected[:, 1] >= 44)
-            & (projected[:, 1] < height)
-        )
+        valid = np.isfinite(projected).all(axis=1) & np.isfinite(distances)
         projected = projected[valid]
         distances = distances[valid]
+        shown = projected.shape[0]
         colors = np.clip((distances / max_dist) * 255, 0, 255).astype(np.uint8)
         for (x, y), value in zip(projected, colors):
             color = cv2.applyColorMap(np.array([[255 - value]], dtype=np.uint8), cv2.COLORMAP_JET)[0, 0]
-            cv2.circle(img, (int(x), int(y)), 1, tuple(int(c) for c in color), -1)
+            draw_x = int(np.clip(x, 4, panel_x - 8))
+            draw_y = int(np.clip(y, 46, height - 6))
+            cv2.circle(img, (draw_x, draw_y), 1, tuple(int(c) for c in color), -1)
 
     cv2.drawMarker(img, origin, (255, 255, 255), cv2.MARKER_CROSS, 28, 2)
     _put(img, "DRONE", (origin[0] - 28, origin[1] + 28), 0.42)
@@ -95,7 +95,7 @@ def draw_pointcloud_3d(points: np.ndarray | None, fps: float, topic: str, raw_co
     _put(img, f"Raw points: {raw_count}", (panel_x + 18, 126), 0.52)
     _put(img, f"Shown: {shown}", (panel_x + 18, 154), 0.52)
     _put(img, f"FPS: {fps:.1f}", (panel_x + 18, 182), 0.52)
-    _put(img, "Self filter: ON", (panel_x + 18, 230), 0.5, (180, 220, 255))
+    _put(img, f"Self filter: {float(os.getenv('POINTCLOUD_SELF_FILTER_RADIUS_M', '0.35')):.2f}m", (panel_x + 18, 230), 0.5, (180, 220, 255))
     _put(img, f"Max draw: {MAX_POINTS}", (panel_x + 18, 258), 0.5)
 
     bar_x = panel_x + 55

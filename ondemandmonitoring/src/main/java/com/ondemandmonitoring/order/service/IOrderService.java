@@ -6,4 +6,6 @@ import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
 public interface IOrderService {
 
     OrderCreateResponse createOrder(OrderCreateRequest request);
+
+    void approveOrder(String orderId);
 }

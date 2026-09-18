@@ -8,7 +8,7 @@
     </include>
 
     <link name="camera_link">
-      <pose relative_to="base_link">0 0 -0.20 0 1.57079632679 0</pose>
+      <pose relative_to="base_link">0 0 -0.20 0 0 0</pose>
       <inertial>
         <pose>0.03 0.03 0.03 0 0 0</pose>
         <mass>0.050</mass>
@@ -43,44 +43,127 @@
         <camera>
           <horizontal_fov>1.74</horizontal_fov>
           <image>
-            <width>960</width>
-            <height>720</height>
+            <width>720</width>
+            <height>540</height>
           </image>
           <clip>
             <near>0.1</near>
             <far>3000</far>
           </clip>
         </camera>
-        <always_on>true</always_on>
-        <update_rate>8</update_rate>
+        <always_on>false</always_on>
+        <update_rate>12</update_rate>
         <visualize>false</visualize>
       </sensor>
       <sensor name="camera_down" type="camera">
         <gz_frame_id>camera_link_down</gz_frame_id>
-        <pose>0 0 0 0 -1.57079632679 0</pose>
+        <pose>0 0 0 0 1.57079632679 0</pose>
         <camera>
           <horizontal_fov>1.74</horizontal_fov>
           <image>
-            <width>960</width>
-            <height>720</height>
+            <width>640</width>
+            <height>480</height>
           </image>
           <clip>
             <near>0.1</near>
             <far>3000</far>
           </clip>
         </camera>
-        <always_on>true</always_on>
-        <update_rate>8</update_rate>
+        <always_on>false</always_on>
+        <update_rate>6</update_rate>
         <visualize>false</visualize>
+      </sensor>
+      <gravity>false</gravity>
+      <velocity_decay />
+    </link>
+
+    <joint name="CameraJoint" type="revolute">
+      <parent>base_link</parent>
+      <child>camera_link</child>
+      <pose relative_to="base_link">0 0 -0.20 0 0 0</pose>
+      <axis>
+        <xyz>0 1 0</xyz>
+        <limit>
+          <lower>0</lower>
+          <upper>1.57079632679</upper>
+          <effort>2</effort>
+          <velocity>2</velocity>
+        </limit>
+        <dynamics>
+          <damping>1.0</damping>
+          <friction>0.08</friction>
+        </dynamics>
+      </axis>
+    </joint>
+
+    <plugin filename="gz-sim-joint-position-controller-system"
+            name="gz::sim::systems::JointPositionController">
+      <joint_name>CameraJoint</joint_name>
+      <p_gain>12.0</p_gain>
+      <i_gain>0.0</i_gain>
+      <d_gain>1.5</d_gain>
+      <i_max>0.0</i_max>
+      <i_min>0.0</i_min>
+    </plugin>
+
+    <link name="thermal_camera_link">
+      <pose relative_to="base_link">0.02 0 -0.24 0 0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 0 0</pose>
+        <mass>0.040</mass>
+        <inertia>
+          <ixx>0.00003</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.00003</iyy>
+          <iyz>0</iyz>
+          <izz>0.00003</izz>
+        </inertia>
+      </inertial>
+      <visual name="thermal_camera_housing">
+        <geometry>
+          <box>
+            <size>0.026 0.042 0.024</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.04 0.05 0.06 1</ambient>
+          <diffuse>0.04 0.05 0.06 1</diffuse>
+        </material>
+      </visual>
+      <sensor name="thermal_camera" type="thermal">
+        <gz_frame_id>thermal_camera_link</gz_frame_id>
+        <pose>0 0 0 0 1.57079632679 0</pose>
+        <topic>thermal_camera</topic>
+        <camera>
+          <horizontal_fov>1.74</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>L16</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>1500</far>
+          </clip>
+        </camera>
+        <always_on>false</always_on>
+        <update_rate>5</update_rate>
+        <visualize>false</visualize>
+        <plugin filename="gz-sim-thermal-sensor-system"
+                name="gz::sim::systems::ThermalSensor">
+          <min_temp>293.15</min_temp>
+          <max_temp>573.15</max_temp>
+          <resolution>0.01</resolution>
+        </plugin>
       </sensor>
       <gravity>true</gravity>
       <velocity_decay />
     </link>
 
-    <joint name="CameraJoint" type="fixed">
+    <joint name="ThermalCameraJoint" type="fixed">
       <parent>base_link</parent>
-      <child>camera_link</child>
-      <pose relative_to="base_link">0 0 -0.20 0 1.57079632679 0</pose>
+      <child>thermal_camera_link</child>
     </joint>
 
     <link name="lidar_link">
@@ -102,7 +185,7 @@
         </geometry>
       </visual>
       <sensor name="lidar" type="gpu_lidar">
-        <always_on>true</always_on>
+        <always_on>false</always_on>
         <update_rate>8</update_rate>
         <visualize>false</visualize>
         <topic>lidar</topic>
@@ -123,7 +206,7 @@
         </lidar>
       </sensor>
       <sensor name="lidar_3d" type="gpu_lidar">
-        <always_on>true</always_on>
+        <always_on>false</always_on>
         <update_rate>2</update_rate>
         <visualize>false</visualize>
         <topic>/lidar_3d</topic>

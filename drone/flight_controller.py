@@ -7,6 +7,8 @@ import json
 import logging
 import math
 import os
+import queue
+import select
 import shlex
 import socket
 import subprocess
@@ -16,7 +18,7 @@ import time
 import tty
 import sys
 import grpc
-import httpx
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from mavsdk import System
 from mavsdk.action import ActionError
 from mavsdk.offboard import OffboardError, VelocityNedYaw
@@ -24,6 +26,9 @@ from PIL import Image as PilImage
 from pathlib import Path
 from dotenv import load_dotenv
 from video.video_recorder import RecordingResult, VideoRecorder
+from battery_simulator import BatterySimulator, preflight_battery_check
+from media_uploader import BackendUrlResolver, MediaUploader
+from thermal_camera_gateway import ThermalCameraGateway
 
 PROJECT_ROOT = Path(
     os.getenv(
@@ -87,14 +92,20 @@ class SavedMotion:
     yaw_deg: float
 
 try:
-    from gz.msgs10.image_pb2 import Image as GzImage
+    from geofence_monitor import px4_ned_to_sim_xy
+except ImportError:
+    def px4_ned_to_sim_xy(north_m: float, east_m: float) -> tuple[float, float]:
+        return east_m, north_m
+
+try:
+    from gz.msgs10.image_pb2 import Image as GzImage, PixelFormatType
     from gz.transport13 import Node
 except ImportError:
     GzImage = None
+    PixelFormatType = None
     Node = None
 
 
-load_dotenv(ENV_FILE, override=True)
 PX4_CONTROL_SYSTEM_ADDRESS = os.getenv(
     "PX4_CONTROL_SYSTEM_ADDRESS",
     "udpin://0.0.0.0:14030",
@@ -109,6 +120,8 @@ MAVSDK_CONTROL_SYSID = int(
 MAVSDK_CONTROL_COMPID = int(
     os.getenv("MAVSDK_CONTROL_COMPID", "191")
 )
+FLIGHT_CONTROL_API_PORT = int(os.getenv("FLIGHT_CONTROL_API_PORT", "8090"))
+FLIGHT_CONTROL_API_BIND = os.getenv("FLIGHT_CONTROL_API_BIND", "0.0.0.0")
 MAVSDK_DISCONNECT_GRACE_S = float(
     os.getenv("MAVSDK_DISCONNECT_GRACE_S", "8.0")
 )
@@ -151,6 +164,9 @@ PX4_SPEED_LIMIT_M_S = float(
         str(max(MOVE_SPEED_M_S, VERTICAL_SPEED_M_S)),
     )
 )
+TAKEOFF_CONFIRM_TIMEOUT_S = float(os.getenv("TAKEOFF_CONFIRM_TIMEOUT_S", "30.0"))
+TAKEOFF_CONFIRM_ALTITUDE_M = float(os.getenv("TAKEOFF_CONFIRM_ALTITUDE_M", "1.0"))
+MEDIA_UPLOAD_SHUTDOWN_WAIT_S = float(os.getenv("MEDIA_UPLOAD_SHUTDOWN_WAIT_S", "15.0"))
 
 SAFETY_POLL_INTERVAL_S = float(
     os.getenv("SAFETY_POLL_INTERVAL_S", "0.5")
@@ -259,13 +275,23 @@ CAMERA_TOPIC = os.getenv(
     "GAZEBO_CAMERA_TOPIC",
     f"/world/{DEFAULT_GAZEBO_WORLD}/model/x500_mono_cam_down_0/link/camera_link/sensor/camera_down/image",
 )
+CAMERA_DOWN_TOPIC = os.getenv(
+    "GAZEBO_CAMERA_DOWN_TOPIC",
+    f"/world/{DEFAULT_GAZEBO_WORLD}/model/x500_mono_cam_down_0/link/camera_link/sensor/camera_down/image",
+)
+CAMERA_FRONT_TOPIC = os.getenv(
+    "GAZEBO_CAMERA_FRONT_TOPIC",
+    f"/world/{DEFAULT_GAZEBO_WORLD}/model/x500_mono_cam_down_0/link/camera_link/sensor/camera_front/image",
+)
 GZ_MODEL_NAME = os.getenv("GZ_MODEL_NAME", "x500_mono_cam_down_0")
-CAMERA_DEFAULT_VIEW = os.getenv("CAMERA_DEFAULT_VIEW", "DOWN").strip().upper()
+CAMERA_DEFAULT_VIEW = os.getenv("CAMERA_DEFAULT_VIEW", "FRONT").strip().upper()
 CAMERA_TOGGLE_DEBOUNCE_S = float(os.getenv("CAMERA_TOGGLE_DEBOUNCE_S", "0.35"))
 GAZEBO_CAMERA_PITCH_TOPIC = os.getenv(
     "GAZEBO_CAMERA_PITCH_TOPIC",
-    f"/model/{GZ_MODEL_NAME}/command/camera_pitch",
+    f"/model/{GZ_MODEL_NAME}/joint/CameraJoint/0/cmd_pos",
 )
+GAZEBO_CAMERA_JOINT_TOPIC = f"/model/{GZ_MODEL_NAME}/joint/CameraJoint/0/cmd_pos"
+CAMERA_PITCH_STEP_DEG = float(os.getenv("CAMERA_PITCH_STEP_DEG", "30"))
 CAMERA_DOWN_JOINT_POSITION_RAD = float(os.getenv("CAMERA_DOWN_JOINT_POSITION_RAD", "-1.57079632679"))
 CAMERA_FRONT_JOINT_POSITION_RAD = float(
     os.getenv("CAMERA_FRONT_JOINT_POSITION_RAD", "0.0")
@@ -279,6 +305,98 @@ VIDEO_RECORDING_DIR = Path(
 VIDEO_RECORDING_FPS = float(os.getenv("VIDEO_RECORDING_FPS", "15.0"))
 VIDEO_RECORDING_QUEUE_SIZE = int(os.getenv("VIDEO_RECORDING_QUEUE_SIZE", "4"))
 VIDEO_UPLOAD_TIMEOUT_S = float(os.getenv("VIDEO_UPLOAD_TIMEOUT_S", "120.0"))
+CAMERA_STREAM_FPS = float(os.getenv("CAMERA_STREAM_FPS", "15.0"))
+CAMERA_STREAM_MAX_WIDTH = int(os.getenv("CAMERA_STREAM_MAX_WIDTH", "0"))
+CAMERA_LEGACY_DOWN_SENSOR_ENABLED = (
+    os.getenv("CAMERA_LEGACY_DOWN_SENSOR_ENABLED", "false").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
+CAMERA_STREAM_JPEG_QUALITY = int(os.getenv("CAMERA_STREAM_JPEG_QUALITY", "88"))
+CAMERA_CAPTURE_JPEG_QUALITY = int(os.getenv("CAMERA_CAPTURE_JPEG_QUALITY", "88"))
+GAZEBO_THERMAL_CAMERA_TOPIC = os.getenv(
+    "GAZEBO_THERMAL_CAMERA_TOPIC",
+    "/thermal_camera",
+)
+GAZEBO_LIGHT_SERVICE = f"/world/{DEFAULT_GAZEBO_WORLD}/light_config"
+GAZEBO_WIND_TOPIC = f"/world/{DEFAULT_GAZEBO_WORLD}/wind"
+
+WEATHER_KEY_PRESETS = {
+    "u": "CLEAR_DAY",
+    "y": "SUNSET",
+    "i": "NIGHT",
+    "g": "CLOUDY",
+    "j": "FOGGY",
+    "m": "WINDY",
+    "b": "LIGHT_RAIN",
+    "z": "HEAVY_RAIN",
+}
+
+WEATHER_PRESETS = {
+    "CLEAR_DAY": {
+        "label": "Clear Day",
+        "intensity": "1.2",
+        "direction": "x: -0.5 y: 0.5 z: -0.8",
+        "diffuse": "r: 0.95 g: 0.93 b: 0.88 a: 1",
+        "specular": "r: 0.3 g: 0.3 b: 0.25 a: 1",
+        "wind": None,
+    },
+    "SUNSET": {
+        "label": "Sunset",
+        "intensity": "0.75",
+        "direction": "x: -0.9 y: 0.15 z: -0.25",
+        "diffuse": "r: 1.0 g: 0.48 b: 0.22 a: 1",
+        "specular": "r: 0.55 g: 0.25 b: 0.12 a: 1",
+        "wind": None,
+    },
+    "NIGHT": {
+        "label": "Night",
+        "intensity": "0.12",
+        "direction": "x: -0.25 y: 0.35 z: -0.9",
+        "diffuse": "r: 0.08 g: 0.1 b: 0.18 a: 1",
+        "specular": "r: 0.02 g: 0.03 b: 0.06 a: 1",
+        "wind": None,
+    },
+    "CLOUDY": {
+        "label": "Cloudy",
+        "intensity": "0.45",
+        "direction": "x: -0.35 y: 0.4 z: -0.85",
+        "diffuse": "r: 0.45 g: 0.5 b: 0.58 a: 1",
+        "specular": "r: 0.12 g: 0.13 b: 0.15 a: 1",
+        "wind": None,
+    },
+    "FOGGY": {
+        "label": "Foggy",
+        "intensity": "0.35",
+        "direction": "x: -0.25 y: 0.25 z: -0.9",
+        "diffuse": "r: 0.55 g: 0.58 b: 0.6 a: 1",
+        "specular": "r: 0.08 g: 0.08 b: 0.08 a: 1",
+        "wind": None,
+    },
+    "WINDY": {
+        "label": "Windy",
+        "intensity": "0.9",
+        "direction": "x: -0.5 y: 0.5 z: -0.8",
+        "diffuse": "r: 0.8 g: 0.82 b: 0.78 a: 1",
+        "specular": "r: 0.2 g: 0.22 b: 0.2 a: 1",
+        "wind": "x: 12 y: 4 z: 0",
+    },
+    "LIGHT_RAIN": {
+        "label": "Light Rain",
+        "intensity": "0.35",
+        "direction": "x: -0.35 y: 0.4 z: -0.85",
+        "diffuse": "r: 0.32 g: 0.36 b: 0.42 a: 1",
+        "specular": "r: 0.08 g: 0.08 b: 0.1 a: 1",
+        "wind": "x: 5 y: 2 z: 0",
+    },
+    "HEAVY_RAIN": {
+        "label": "Heavy Rain",
+        "intensity": "0.22",
+        "direction": "x: -0.35 y: 0.4 z: -0.85",
+        "diffuse": "r: 0.22 g: 0.25 b: 0.3 a: 1",
+        "specular": "r: 0.04 g: 0.04 b: 0.05 a: 1",
+        "wind": "x: 14 y: 5 z: 0",
+    },
+}
 
 class MavsdkAckNoiseFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
@@ -304,31 +422,6 @@ def env_bool(name: str, default: bool = False) -> bool:
     return value.strip().lower() in ("1", "true", "yes", "on")
 
 
-def backend_url_candidates() -> list[str]:
-    configured = BACKEND_BASE_URL.rstrip("/")
-    candidates = [configured]
-
-    if configured in {"http://localhost:8080", "http://127.0.0.1:8080"}:
-        candidates.append("http://host.docker.internal:8080")
-        candidates.append("http://172.20.176.1:8080")
-        try:
-            output = subprocess.check_output(
-                ["sh", "-lc", "awk '/^nameserver / {print $2; exit}' /etc/resolv.conf"],
-                text=True,
-                timeout=1.0,
-            ).strip()
-            if output:
-                candidates.append(f"http://{output}:8080")
-        except (OSError, subprocess.SubprocessError):
-            pass
-
-    deduped = []
-    for url in candidates:
-        if url and url not in deduped:
-            deduped.append(url)
-    return deduped
-
-
 def read_key() -> str:
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
@@ -339,12 +432,155 @@ def read_key() -> str:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
+def read_key_timeout(timeout_s: float) -> str | None:
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        readable, _, _ = select.select([sys.stdin], [], [], timeout_s)
+        if not readable:
+            return None
+        return sys.stdin.read(1).lower()
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+
+def gz_service_exists(service_name: str) -> bool:
+    try:
+        result = subprocess.run(
+            ["gz", "service", "-l"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if result.returncode != 0:
+        return False
+    return service_name in {line.strip() for line in result.stdout.splitlines()}
+
+
+def gz_topic_exists(topic_name: str) -> bool:
+    try:
+        result = subprocess.run(
+            ["gz", "topic", "-l"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if result.returncode != 0:
+        return False
+    return topic_name in {line.strip() for line in result.stdout.splitlines()}
+
+
+def set_gazebo_light(preset: dict[str, str | None]) -> bool:
+    if not gz_service_exists(GAZEBO_LIGHT_SERVICE):
+        print(f"[WEATHER][WARN] Light service not ready: {GAZEBO_LIGHT_SERVICE}", flush=True)
+        return False
+
+    request = (
+        f"name: \"sunUTC\" type: DIRECTIONAL cast_shadows: true "
+        f"intensity: {preset['intensity']} "
+        f"direction {{ {preset['direction']} }} "
+        f"diffuse {{ {preset['diffuse']} }} "
+        f"specular {{ {preset['specular']} }}"
+    )
+    try:
+        result = subprocess.run(
+            [
+                "gz",
+                "service",
+                "-s",
+                GAZEBO_LIGHT_SERVICE,
+                "--reqtype",
+                "gz.msgs.Light",
+                "--reptype",
+                "gz.msgs.Boolean",
+                "--timeout",
+                "2000",
+                "--req",
+                request,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def set_gazebo_wind(linear_velocity: str | None) -> bool:
+    if not gz_topic_exists(GAZEBO_WIND_TOPIC):
+        return False
+
+    if linear_velocity is None:
+        payload = "enable_wind: false linear_velocity { x: 0 y: 0 z: 0 }"
+    else:
+        payload = f"enable_wind: true linear_velocity {{ {linear_velocity} }}"
+
+    try:
+        result = subprocess.run(
+            [
+                "gz",
+                "topic",
+                "-t",
+                GAZEBO_WIND_TOPIC,
+                "-m",
+                "gz.msgs.Wind",
+                "-d",
+                "0.2",
+                "-p",
+                payload,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def apply_weather_key(key: str) -> bool:
+    preset_name = WEATHER_KEY_PRESETS[key]
+    preset = WEATHER_PRESETS[preset_name]
+    print(f"[WEATHER] {key} -> {preset['label']}", flush=True)
+
+    light_ok = set_gazebo_light(preset)
+    wind_ok = set_gazebo_wind(preset["wind"])
+
+    if not light_ok:
+        print("[WEATHER][ERROR] Gazebo light service was not ready.", flush=True)
+        return False
+    if preset["wind"] is not None and not wind_ok:
+        print(f"[WEATHER] Applied {preset['label']} (lighting only)", flush=True)
+    else:
+        print(f"[WEATHER] Applied {preset['label']}", flush=True)
+    return True
+
+
 class CameraGateway:
-    def __init__(self, video_recorder: VideoRecorder | None = None) -> None:
-        self.latest_frame: GzImage | None = None
+    def __init__(
+        self,
+        video_recorder: VideoRecorder | None = None,
+        media_uploader: MediaUploader | None = None,
+    ) -> None:
+        self.latest_frames: dict[str, GzImage] = {}
+        self.latest_frame_time_s: dict[str, float] = {}
+        self.latest_frame_versions: dict[str, int] = {}
+        self.latest_jpegs: dict[tuple[str, str], tuple[int, bytes]] = {}
+        self.current_mode = CAMERA_DEFAULT_VIEW if CAMERA_DEFAULT_VIEW in {"DOWN", "FRONT"} else "FRONT"
         self.lock = threading.Lock()
         self.node = None
         self.video_recorder = video_recorder
+        self.media_uploader = media_uploader
 
     def start(self) -> None:
         if Node is None or GzImage is None:
@@ -353,18 +589,57 @@ class CameraGateway:
             return
 
         self.node = Node()
-        self.node.subscribe(GzImage, CAMERA_TOPIC, self._on_frame)
-        print(f"[CAMERA] Listening to drone sensor: {CAMERA_TOPIC}")
+        topics = {"FRONT": CAMERA_FRONT_TOPIC}
+        if CAMERA_LEGACY_DOWN_SENSOR_ENABLED:
+            topics["DOWN"] = CAMERA_DOWN_TOPIC
+        for mode, topic in topics.items():
+            self.node.subscribe(GzImage, topic, self._make_frame_handler(mode))
+            print(f"[CAMERA] Listening to {mode.lower()} sensor: {topic}")
+        if CAMERA_LEGACY_DOWN_SENSOR_ENABLED and CAMERA_TOPIC not in topics.values():
+            self.node.subscribe(GzImage, CAMERA_TOPIC, self._make_frame_handler(self.current_mode))
+            print(f"[CAMERA] Listening to fallback sensor: {CAMERA_TOPIC}")
 
-    def _on_frame(self, msg: GzImage, *_args) -> None:
-        with self.lock:
-            self.latest_frame = msg
-        if self.video_recorder is not None and self.video_recorder.is_recording():
-            self.video_recorder.submit_frame(msg)
+    def _make_frame_handler(self, mode: str):
+        def _on_frame(msg: GzImage, *_args) -> None:
+            with self.lock:
+                self.latest_frames[mode] = msg
+                self.latest_frame_time_s[mode] = time.monotonic()
+                self.latest_frame_versions[mode] = self.latest_frame_versions.get(mode, 0) + 1
+                is_active_mode = mode == self.current_mode
+            if is_active_mode and self.video_recorder is not None and self.video_recorder.is_recording():
+                self.video_recorder.submit_frame(msg)
+        return _on_frame
 
-    def _latest_jpeg(self) -> bytes | None:
+    def latest_frame_age_s(self, mode: str | None = None) -> float | None:
+        target_mode = (mode or self.current_mode).strip().upper()
         with self.lock:
-            frame = self.latest_frame
+            timestamp = self.latest_frame_time_s.get(target_mode)
+            if timestamp is None:
+                timestamps = list(self.latest_frame_time_s.values())
+                timestamp = max(timestamps) if timestamps else None
+        if timestamp is None:
+            return None
+        return time.monotonic() - timestamp
+
+    def set_view_mode(self, mode: str) -> None:
+        normalized = mode.strip().upper()
+        if normalized not in {"DOWN", "FRONT"}:
+            return
+        with self.lock:
+            self.current_mode = normalized
+
+    def _latest_jpeg(self, *, preview: bool = False) -> bytes | None:
+        with self.lock:
+            mode = self.current_mode
+            frame = self.latest_frames.get(mode)
+            if frame is None:
+                mode = "DOWN" if "DOWN" in self.latest_frames else "FRONT"
+                frame = self.latest_frames.get(mode)
+            version = self.latest_frame_versions.get(mode, 0)
+            cache_key = (mode, "preview" if preview else "capture")
+            cached = self.latest_jpegs.get(cache_key)
+            if cached is not None and cached[0] == version:
+                return cached[1]
 
         if frame is None:
             return None
@@ -383,9 +658,21 @@ class CameraGateway:
             print(f"[CAMERA] Unsupported frame size: {len(raw)} bytes for {width}x{height}")
             return None
 
+        quality = CAMERA_CAPTURE_JPEG_QUALITY
+        if preview:
+            quality = CAMERA_STREAM_JPEG_QUALITY
+            if CAMERA_STREAM_MAX_WIDTH > 0 and width > CAMERA_STREAM_MAX_WIDTH:
+                preview_height = max(1, round(height * (CAMERA_STREAM_MAX_WIDTH / width)))
+                resample = getattr(getattr(PilImage, "Resampling", PilImage), "BILINEAR")
+                image = image.resize((CAMERA_STREAM_MAX_WIDTH, preview_height), resample)
+
         output = BytesIO()
-        image.save(output, format="JPEG", quality=88)
-        return output.getvalue()
+        image.save(output, format="JPEG", quality=quality, optimize=False)
+        jpeg = output.getvalue()
+        with self.lock:
+            if self.latest_frame_versions.get(mode) == version:
+                self.latest_jpegs[cache_key] = (version, jpeg)
+        return jpeg
 
     async def capture_and_upload(self) -> None:
         print("[CAMERA] Drone camera capture requested")
@@ -394,121 +681,27 @@ class CameraGateway:
             print("[CAMERA] No camera frame available")
             return
 
-        captured_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        filename = f"{DRONE_ID}-downward-{timestamp}.jpg"
-        data = {
-            "droneId": DRONE_ID,
-            "capturedAt": captured_at,
-        }
-
-        response = None
-        last_error = None
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            for base_url in backend_url_candidates():
-                upload_url = f"{base_url}/api/missions/{MISSION_ID}/images"
-                files = {"image": (filename, jpeg, "image/jpeg")}
-                try:
-                    response = await client.post(upload_url, data=data, files=files)
-                    if response.status_code < 500:
-                        break
-                except httpx.TimeoutException as exc:
-                    last_error = f"timeout via {base_url}: {exc}"
-                except httpx.HTTPError as exc:
-                    last_error = f"{base_url}: {exc}"
-
-        if response is None:
-            print(f"[CAMERA] Backend unavailable ({last_error or 'no route worked'})")
+        if self.media_uploader is None:
+            print("[CAMERA] Media uploader unavailable")
             return
 
-        if 200 <= response.status_code < 300:
-            try:
-                payload = response.json()
-            except ValueError:
-                print("[CAMERA] Image uploaded successfully")
-                return
-
-            image = payload.get("data") or {}
-            storage_provider = image.get("storageProvider", "UNKNOWN")
-            print(f"[CAMERA] Image uploaded successfully ({storage_provider})")
-            if storage_provider == "S3":
-                print(f"[CAMERA] S3 bucket: {image.get('s3Bucket')}")
-                print(f"[CAMERA] S3 key: {image.get('s3Key')}")
-            elif storage_provider == "LOCAL":
-                print(f"[CAMERA] Local file: {image.get('s3Url')}")
-            return
-
-        print(f"[CAMERA] Upload failed - HTTP {response.status_code}")
-        print(response.text[:500])
+        await self.media_uploader.upload_image(jpeg)
 
     async def upload_recorded_video(self, recording: RecordingResult) -> None:
-        path = recording.path
-        if not path.exists() or path.stat().st_size <= 0:
-            print(f"[VIDEO] Upload skipped - missing or empty file: {path}", flush=True)
+        if self.media_uploader is None:
+            print("[VIDEO] Media uploader unavailable", flush=True)
             return
 
-        size = path.stat().st_size
-        captured_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        data = {
-            "droneId": DRONE_ID,
-            "capturedAt": captured_at,
-            "mediaType": "VIDEO",
-        }
-        print(
-            f"[VIDEO] Upload started mission={recording.mission_id} size={size} path={path}",
-            flush=True,
-        )
-        response = None
-        last_error = None
-        async with httpx.AsyncClient(timeout=VIDEO_UPLOAD_TIMEOUT_S) as client:
-            for base_url in backend_url_candidates():
-                upload_url = f"{base_url}/api/missions/{MISSION_ID}/media"
-                try:
-                    with path.open("rb") as video_file:
-                        files = {"file": (path.name, video_file, "video/mp4")}
-                        response = await client.post(upload_url, data=data, files=files)
-                    if response.status_code < 500:
-                        break
-                except httpx.TimeoutException as exc:
-                    last_error = f"timeout via {base_url}: {exc}"
-                except httpx.HTTPError as exc:
-                    last_error = f"{base_url}: {exc}"
-
-        if response is None:
-            print(f"[VIDEO] Backend unavailable ({last_error or 'no route worked'})", flush=True)
-            return
-
-        if 200 <= response.status_code < 300:
-            try:
-                payload = response.json()
-            except ValueError:
-                print("[VIDEO] Upload success", flush=True)
-                return
-
-            media = payload.get("data") or {}
-            storage_provider = media.get("storageProvider", "UNKNOWN")
-            if storage_provider == "S3":
-                print(
-                    f"[VIDEO] Upload success provider=S3 key={media.get('s3Key')}",
-                    flush=True,
-                )
-            elif storage_provider == "LOCAL":
-                print(
-                    f"[VIDEO] Upload success provider=LOCAL path={media.get('s3Url')}",
-                    flush=True,
-                )
-            else:
-                print(f"[VIDEO] Upload success provider={storage_provider}", flush=True)
-            return
-
-        print(f"[VIDEO] Upload failed HTTP {response.status_code}", flush=True)
-        print(response.text[:500], flush=True)
+        await self.media_uploader.upload_video(recording)
 
 
 class CameraOrientationController:
-    def __init__(self) -> None:
-        self.current_mode = CAMERA_DEFAULT_VIEW if CAMERA_DEFAULT_VIEW in {"DOWN", "FRONT"} else "DOWN"
+    def __init__(self, on_mode_change=None) -> None:
+        self.current_mode = CAMERA_DEFAULT_VIEW if CAMERA_DEFAULT_VIEW in {"DOWN", "FRONT"} else "FRONT"
+        self.current_pitch_deg = -90.0 if self.current_mode == "DOWN" else 0.0
+        self._pitch_direction = 1.0 if self.current_pitch_deg <= -90.0 else -1.0
         self._last_toggle_s = 0.0
+        self.on_mode_change = on_mode_change
 
     def toggle(self) -> None:
         now = time.monotonic()
@@ -516,20 +709,38 @@ class CameraOrientationController:
             return
         self._last_toggle_s = now
 
-        next_mode = "FRONT" if self.current_mode == "DOWN" else "DOWN"
-        self.set_mode(next_mode)
+        next_pitch = self.current_pitch_deg + self._pitch_direction * CAMERA_PITCH_STEP_DEG
+        if next_pitch <= -90.0:
+            next_pitch = -90.0
+            self._pitch_direction = 1.0
+        elif next_pitch >= 0.0:
+            next_pitch = 0.0
+            self._pitch_direction = -1.0
+        self.set_pitch(next_pitch)
 
     def set_mode(self, mode: str) -> None:
         normalized = mode.strip().upper()
         if normalized not in {"DOWN", "FRONT"}:
             return
-        self.current_mode = normalized
-        self._write_state(normalized)
-        print(f"[CAMERA] View -> {normalized} (press c to switch)", flush=True)
+        self.set_pitch(-90.0 if normalized == "DOWN" else 0.0)
 
-    def _write_state(self, mode: str) -> None:
+    def set_pitch(self, pitch_deg: float) -> None:
+        clamped_pitch = max(-90.0, min(0.0, pitch_deg))
+        if not self.request_pitch(clamped_pitch):
+            return
+        normalized = "DOWN" if clamped_pitch <= -89.5 else "FRONT"
+        if self.on_mode_change is not None:
+            # The movable front sensor supplies every intermediate angle.
+            self.on_mode_change("FRONT")
+        self.current_mode = normalized
+        self.current_pitch_deg = clamped_pitch
+        self._write_state(normalized, clamped_pitch)
+        print(f"[CAMERA] Pitch -> {clamped_pitch:.0f} deg (press c for next 30 deg step)", flush=True)
+
+    def _write_state(self, mode: str, pitch_deg: float) -> None:
         payload = {
             "mode": mode,
+            "pitchDeg": pitch_deg,
             "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
         try:
@@ -537,40 +748,46 @@ class CameraOrientationController:
         except OSError as exc:
             print(f"[CAMERA] State write failed: {exc}", flush=True)
 
-    def request_mode(self, mode: str) -> bool:
-        joint_position = (
-            CAMERA_FRONT_JOINT_POSITION_RAD
-            if mode == "FRONT"
-            else CAMERA_DOWN_JOINT_POSITION_RAD
-        )
-        command = [
-            "gz",
-            "topic",
-            "-t",
-            GAZEBO_CAMERA_PITCH_TOPIC,
-            "-m",
-            "gz.msgs.Double",
-            "-p",
-            f"data: {joint_position:.12f}",
-        ]
+    def request_pitch(self, pitch_deg: float) -> bool:
+        # UI pitch is expressed as 0..-90 degrees, while this Gazebo joint
+        # rotates in the positive Y direction to look downward.
+        joint_position = math.radians(-pitch_deg)
+        topics = tuple(dict.fromkeys((GAZEBO_CAMERA_PITCH_TOPIC, GAZEBO_CAMERA_JOINT_TOPIC)))
+        sent = False
+        errors: list[str] = []
+        for topic in topics:
+            command = [
+                "gz",
+                "topic",
+                "-t",
+                topic,
+                "-m",
+                "gz.msgs.Double",
+                "-p",
+                f"data: {joint_position:.12f}",
+            ]
+            try:
+                result = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    timeout=1.5,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                errors.append(f"{topic}: {exc}")
+                continue
 
-        try:
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                timeout=1.5,
-                check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            print(f"[CAMERA] Switch failed: {exc}", flush=True)
-            return False
+            if result.returncode == 0:
+                sent = True
+            else:
+                message = (result.stderr or result.stdout or "camera command failed").strip()
+                errors.append(f"{topic}: {message}")
 
-        if result.returncode == 0:
+        if sent:
             return True
 
-        message = (result.stderr or result.stdout or "camera command failed").strip()
-        print(f"[CAMERA] Switch failed: {message}", flush=True)
+        print(f"[CAMERA] Pitch command unavailable: {'; '.join(errors)}", flush=True)
         return False
 
 
@@ -724,6 +941,212 @@ def toggle_monitor_window(name: str, script_name: str, process_pattern: str) -> 
     open_monitor_window(name, script_name)
 
 
+def open_monitor_window_if_needed(name: str, script_name: str, process_pattern: str) -> None:
+    if is_monitor_running(process_pattern):
+        print(f"[MONITOR] {name} already open", flush=True)
+        return
+    open_monitor_window(name, script_name)
+
+
+CONTROL_COMMAND_KEYS = {
+    "takeoff": "t",
+    "forward": "w",
+    "back": "s",
+    "backward": "s",
+    "left": "a",
+    "right": "d",
+    "up": "f",
+    "down": "v",
+    "yaw_left": "q",
+    "yaw-right": "e",
+    "yaw_right": "e",
+    "stop": "k",
+    "hover": "k",
+    "safety_toggle": "o",
+    "speed_up": "1",
+    "speed_down": "2",
+    "camera_switch": "c",
+    "camera_monitor_toggle": "3",
+    "lidar_monitor_toggle": "4",
+    "telemetry_monitor_toggle": "5",
+    "thermal_toggle": "6",
+    "thermal_viewer_toggle": "7",
+    "thermal_palette_next": "thermal_palette_next",
+    "thermal_isotherm_toggle": "thermal_isotherm_toggle",
+    "thermal_debug_toggle": "thermal_debug_toggle",
+    "thermal_range_toggle": "thermal_range_toggle",
+    "photo": "p",
+    "video_toggle": "r",
+    "land": "l",
+    "return_to_base": "l",
+    "emergency_stop": "l",
+}
+
+
+class FlightControlApi:
+    def __init__(
+        self,
+        camera: CameraGateway,
+        commands: "queue.Queue[str]",
+        status_provider=None,
+        preflight_provider=None,
+        thermal: ThermalCameraGateway | None = None,
+    ) -> None:
+        self.camera = camera
+        self.commands = commands
+        self.status_provider = status_provider
+        self.preflight_provider = preflight_provider
+        self.thermal = thermal
+        self.preflight_check_id: str | None = None
+        self.preflight_started_at_s: float | None = None
+        self.server: ThreadingHTTPServer | None = None
+        self.thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        owner = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, _format: str, *_args) -> None:
+                return
+
+            def _cors(self) -> None:
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+            def _write_json(self, status_code: int, payload: dict) -> bool:
+                try:
+                    self.send_response(status_code)
+                    self._cors()
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                    return True
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    return False
+
+            def do_OPTIONS(self) -> None:
+                self.send_response(204)
+                self._cors()
+                self.end_headers()
+
+            def do_GET(self) -> None:
+                if self.path.startswith("/api/control/status"):
+                    status = {"online": True}
+                    if owner.status_provider is not None:
+                        try:
+                            status.update(owner.status_provider())
+                        except Exception as exc:
+                            status["statusError"] = str(exc)
+                    self._write_json(200, status)
+                    return
+
+                if self.path.startswith("/api/preflight/"):
+                    check_id = self.path.rstrip("/").rsplit("/", 1)[-1]
+                    if owner.preflight_provider is None or check_id != owner.preflight_check_id:
+                        self.send_response(404)
+                        self._cors()
+                        self.end_headers()
+                        return
+                    payload = owner.preflight_provider(check_id, owner.preflight_started_at_s)
+                    self._write_json(200, payload)
+                    return
+
+                stream_source = "rgb"
+                if self.path.startswith("/thermal-stream.mjpg"):
+                    stream_source = "thermal"
+                elif not self.path.startswith("/stream.mjpg"):
+                    self.send_response(404)
+                    self._cors()
+                    self.end_headers()
+                    return
+
+                self.send_response(200)
+                self._cors()
+                self.send_header("Age", "0")
+                self.send_header("Cache-Control", "no-cache, private")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+                self.end_headers()
+
+                while True:
+                    try:
+                        if stream_source == "thermal":
+                            frame = owner.thermal.latest_jpeg() if owner.thermal is not None else None
+                        else:
+                            frame = owner.camera._latest_jpeg(preview=True)
+                        if frame is None:
+                            time.sleep(0.15)
+                            continue
+                        self.wfile.write(b"--frame\r\n")
+                        self.wfile.write(b"Content-Type: image/jpeg\r\n")
+                        self.wfile.write(f"Content-Length: {len(frame)}\r\n\r\n".encode("ascii"))
+                        self.wfile.write(frame)
+                        self.wfile.write(b"\r\n")
+                        time.sleep(1 / max(1.0, CAMERA_STREAM_FPS))
+                    except (BrokenPipeError, ConnectionResetError, OSError):
+                        return
+
+            def do_POST(self) -> None:
+                if self.path.startswith("/api/preflight/check"):
+                    owner.preflight_check_id = f"PF-{int(time.time() * 1000)}"
+                    owner.preflight_started_at_s = time.monotonic()
+                    payload = {
+                        "checkId": owner.preflight_check_id,
+                        "status": "CHECKING",
+                    }
+                    self._write_json(202, payload)
+                    return
+
+                if not self.path.startswith("/api/control/command"):
+                    self.send_response(404)
+                    self._cors()
+                    self.end_headers()
+                    return
+
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
+                    payload = json.loads(body or "{}")
+                except (ValueError, json.JSONDecodeError):
+                    payload = {}
+
+                command = str(payload.get("command", "")).strip().lower()
+                key = CONTROL_COMMAND_KEYS.get(command)
+                if key is None:
+                    self._write_json(400, {"ok": False, "error": "unknown command"})
+                    return
+
+                owner.commands.put(key)
+                self._write_json(202, {"ok": True, "command": command})
+
+        try:
+            self.server = ThreadingHTTPServer((FLIGHT_CONTROL_API_BIND, FLIGHT_CONTROL_API_PORT), Handler)
+        except OSError as exc:
+            print(f"[API] Flight control API unavailable: {exc}", flush=True)
+            return
+
+        self.thread = threading.Thread(target=self.server.serve_forever, name="flight-control-api", daemon=True)
+        self.thread.start()
+        print(
+            f"[API] Live stream: http://localhost:{FLIGHT_CONTROL_API_PORT}/stream.mjpg",
+            flush=True,
+        )
+        print(
+            f"[API] Thermal stream: http://localhost:{FLIGHT_CONTROL_API_PORT}/thermal-stream.mjpg",
+            flush=True,
+        )
+        print(
+            f"[API] Controls: POST http://localhost:{FLIGHT_CONTROL_API_PORT}/api/control/command",
+            flush=True,
+        )
+
+    def stop(self) -> None:
+        if self.server is not None:
+            self.server.shutdown()
+            self.server.server_close()
+
+
 def is_grpc_unavailable(exc: Exception) -> bool:
     if not isinstance(exc, grpc.aio.AioRpcError):
         return False
@@ -791,7 +1214,7 @@ class MavsdkConnectionManager:
             px4_ready = await connect_px4(drone)
             self.drone = drone
             self.generation += 1
-            now_s = asyncio.get_running_loop().time()
+            now_s = time.monotonic()
             self.grpc_connected = True
             self.px4_connected = px4_ready
             if px4_ready:
@@ -884,6 +1307,11 @@ class MavsdkConnectionManager:
             name="offboard-setpoint-sender",
         )
 
+    async def activate_desired_motion(self, drone: System) -> None:
+        await ensure_offboard_started(drone)
+        await drone.offboard.set_velocity_ned(self._desired_velocity)
+        self.ensure_offboard_sender()
+
     async def stop_offboard_sender(self) -> None:
         self.stop_desired_motion()
         task = self._offboard_sender_task
@@ -892,6 +1320,13 @@ class MavsdkConnectionManager:
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
             print("[OFFBOARD] Sender stopped", flush=True)
+
+    async def stop_connection_monitor(self) -> None:
+        task = self._connection_monitor_task
+        self._connection_monitor_task = None
+        if task is not None and not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
     async def _offboard_sender_loop(self) -> None:
         interval_s = 1.0 / max(OFFBOARD_SETPOINT_RATE_HZ, 1.0)
@@ -916,7 +1351,7 @@ class MavsdkConnectionManager:
                         flush=True,
                     )
 
-                now_s = asyncio.get_running_loop().time()
+                now_s = time.monotonic()
                 if self._last_setpoint_sent_s is not None:
                     gap_s = now_s - self._last_setpoint_sent_s
                     self._setpoint_intervals.append(gap_s)
@@ -1016,7 +1451,7 @@ class MavsdkConnectionManager:
     def connection_age_s(self) -> float | None:
         if not self.last_px4_connected_s:
             return None
-        return asyncio.get_running_loop().time() - self.last_px4_connected_s
+        return time.monotonic() - self.last_px4_connected_s
 
     def recently_connected(self) -> bool:
         age = self.connection_age_s()
@@ -1126,6 +1561,62 @@ async def safe_arm(manager: MavsdkConnectionManager) -> System | None:
     print("[ERR] Check: sensors OK, no safety switch active.")
     return None
 
+
+async def wait_for_takeoff_confirm(drone: System) -> bool:
+    print("[CMD] Takeoff command accepted - waiting for climb confirmation...", flush=True)
+    deadline = asyncio.get_running_loop().time() + TAKEOFF_CONFIRM_TIMEOUT_S
+    in_air_seen = False
+    altitude_seen = False
+
+    async def watch_in_air() -> None:
+        nonlocal in_air_seen
+        async for in_air in drone.telemetry.in_air():
+            if in_air:
+                in_air_seen = True
+                return
+
+    async def watch_altitude() -> None:
+        nonlocal altitude_seen
+        async for position in drone.telemetry.position():
+            altitude = float(getattr(position, "relative_altitude_m", 0.0) or 0.0)
+            if altitude >= TAKEOFF_CONFIRM_ALTITUDE_M:
+                altitude_seen = True
+                return
+
+    tasks = [
+        asyncio.create_task(watch_in_air(), name="takeoff-in-air"),
+        asyncio.create_task(watch_altitude(), name="takeoff-altitude"),
+    ]
+    try:
+        while asyncio.get_running_loop().time() < deadline:
+            if in_air_seen and altitude_seen:
+                print("[CMD] Takeoff confirmed. Use wasdqefv to start offboard flight, k to hover.", flush=True)
+                return True
+            if in_air_seen:
+                print("[CMD] Climbing...", flush=True)
+                break
+            await asyncio.sleep(0.2)
+
+        remaining = max(0.0, deadline - asyncio.get_running_loop().time())
+        if remaining > 0:
+            await asyncio.wait(tasks, timeout=remaining, return_when=asyncio.ALL_COMPLETED)
+
+        if in_air_seen and altitude_seen:
+            print("[CMD] Takeoff confirmed. Use wasdqefv to start offboard flight, k to hover.", flush=True)
+            return True
+
+        print("[WARN] Takeoff timeout - command may still be in progress", flush=True)
+        return False
+    except (grpc.aio.AioRpcError, asyncio.TimeoutError) as exc:
+        print_mavsdk_unavailable("takeoff confirmation", exc)
+        return False
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
 async def set_motion(
         manager: MavsdkConnectionManager,
         north_m_s: float,
@@ -1146,7 +1637,11 @@ async def set_motion(
 
     try:
         manager.update_desired_motion(north_m_s, east_m_s, down_m_s, yaw_deg)
-        manager.ensure_offboard_sender()
+        # Start offboard and deliver the first setpoint before reporting the
+        # command as accepted. Previously this only scheduled a background
+        # task, so the UI could say "forward sent" while PX4 never entered
+        # offboard mode.
+        await manager.activate_desired_motion(drone)
         return drone
 
     except grpc.aio.AioRpcError as exc:
@@ -1167,7 +1662,7 @@ async def set_motion(
 
         try:
             manager.update_desired_motion(north_m_s, east_m_s, down_m_s, yaw_deg)
-            manager.ensure_offboard_sender()
+            await manager.activate_desired_motion(drone)
 
             return drone
 
@@ -1183,6 +1678,7 @@ async def set_motion(
 async def track_local_position(
         manager: MavsdkConnectionManager,
         update_position,
+        update_velocity=None,
 ) -> None:
     active_generation = -1
 
@@ -1219,15 +1715,164 @@ async def track_local_position(
                     break
 
                 position = sample.position
+                velocity = getattr(sample, "velocity", None)
 
                 update_position(
                     float(position.north_m),
                     float(position.east_m),
                     float(position.down_m),
                 )
+                if update_velocity is not None and velocity is not None:
+                    update_velocity(
+                        float(velocity.north_m_s),
+                        float(velocity.east_m_s),
+                        float(velocity.down_m_s),
+                    )
 
         except asyncio.CancelledError:
             raise
+
+        except (AttributeError, grpc.aio.AioRpcError):
+            await asyncio.sleep(0.5)
+
+
+def normalize_battery_percent(value: float | None) -> float | None:
+    if value is None or not math.isfinite(value):
+        return None
+    percent = value * 100.0 if 0.0 <= value <= 1.0 else value
+    return max(0.0, min(100.0, percent))
+
+
+async def track_battery(
+        manager: MavsdkConnectionManager,
+        update_battery,
+) -> None:
+    active_generation = -1
+
+    while True:
+        drone = await manager.get_drone()
+
+        if drone is None:
+            await asyncio.sleep(0.5)
+            continue
+
+        generation = manager.generation
+
+        if generation != active_generation:
+            active_generation = generation
+            print(
+                f"[BATTERY] Telemetry generation={generation}",
+                flush=True,
+            )
+
+        try:
+            stream = drone.telemetry.battery()
+
+            while generation == manager.generation:
+                try:
+                    battery = await asyncio.wait_for(
+                        anext(stream),
+                        timeout=3.0,
+                    )
+                except StopAsyncIteration:
+                    break
+                except asyncio.TimeoutError:
+                    break
+
+                update_battery(
+                    normalize_battery_percent(
+                        float(battery.remaining_percent)
+                        if battery.remaining_percent is not None
+                        else None
+                    )
+                )
+
+        except asyncio.CancelledError:
+            raise
+
+
+async def track_in_air(
+        manager: MavsdkConnectionManager,
+        update_in_air,
+) -> None:
+    active_generation = -1
+
+    while True:
+        drone = await manager.get_drone()
+
+        if drone is None:
+            update_in_air(False)
+            await asyncio.sleep(0.5)
+            continue
+
+        generation = manager.generation
+
+        if generation != active_generation:
+            active_generation = generation
+            print(f"[AIR] Telemetry generation={generation}", flush=True)
+
+        try:
+            stream = drone.telemetry.in_air()
+
+            while generation == manager.generation:
+                try:
+                    in_air = await asyncio.wait_for(
+                        anext(stream),
+                        timeout=3.0,
+                    )
+                except StopAsyncIteration:
+                    break
+                except asyncio.TimeoutError:
+                    break
+
+                update_in_air(bool(in_air))
+
+        except asyncio.CancelledError:
+            raise
+        except (AttributeError, grpc.aio.AioRpcError):
+            update_in_air(False)
+            await asyncio.sleep(0.5)
+
+
+async def track_health(
+        manager: MavsdkConnectionManager,
+        update_health,
+) -> None:
+    active_generation = -1
+
+    while True:
+        drone = await manager.get_drone()
+
+        if drone is None:
+            await asyncio.sleep(0.5)
+            continue
+
+        generation = manager.generation
+
+        if generation != active_generation:
+            active_generation = generation
+            print(f"[HEALTH] Telemetry generation={generation}", flush=True)
+
+        try:
+            stream = drone.telemetry.health()
+
+            while generation == manager.generation:
+                try:
+                    health = await asyncio.wait_for(
+                        anext(stream),
+                        timeout=3.0,
+                    )
+                except StopAsyncIteration:
+                    break
+                except asyncio.TimeoutError:
+                    break
+
+                update_health(health)
+
+        except asyncio.CancelledError:
+            raise
+        except (AttributeError, grpc.aio.AioRpcError):
+            await asyncio.sleep(0.5)
 
         except (AttributeError, grpc.aio.AioRpcError):
             await asyncio.sleep(0.5)
@@ -1274,8 +1919,12 @@ def is_front_obstacle_direction(direction: str) -> bool:
     return direction == "FRONT"
 
 
-def should_handle_front_obstacle(state, direction: str) -> bool:
-    return is_forward_blocked(state) and is_front_obstacle_direction(direction)
+def should_handle_front_obstacle(state, saved_motion: SavedMotion | None) -> bool:
+    return (
+        saved_motion is not None
+        and saved_motion.forward_m_s > 1e-6
+        and is_forward_blocked(state)
+    )
 
 
 def warning_speed_scale(front_distance_m: float) -> float:
@@ -1348,7 +1997,8 @@ async def obstacle_safety_loop(
             print("[SAFETY] 2D LiDAR emergency guard ready")
             ready_reported = True
 
-        front_blocked = should_handle_front_obstacle(state, direction)
+        saved_motion = get_saved_motion()
+        front_blocked = should_handle_front_obstacle(state, saved_motion)
 
         if front_blocked and get_motion_owner() != MotionOwner.EMERGENCY:
             set_safety_speed_scale(0.0)
@@ -1447,6 +2097,8 @@ async def main() -> None:
     print("      1 speed up | 2 speed down")
     print("      c switch camera down/front")
     print("      3 camera monitor on/off | 4 LiDAR monitor on/off | 5 telemetry on/off")
+    print("      6 thermal camera on/off")
+    print("      weather: u clear | y sunset | i night | g cloudy | j foggy | m windy | b light rain | z heavy rain")
     print("      p photo | r video start/stop | l land | x exit")
     print()
     print("Press one move key once to keep moving. Press k to stop/hover.")
@@ -1454,18 +2106,68 @@ async def main() -> None:
 
     connection_manager = MavsdkConnectionManager()
     drone = await connection_manager.connect()
+    backend_urls = BackendUrlResolver(BACKEND_BASE_URL)
+    media_uploader = MediaUploader(
+        backend_urls,
+        DRONE_ID,
+        MISSION_ID,
+        VIDEO_UPLOAD_TIMEOUT_S,
+    )
 
     video_recorder = VideoRecorder(
         VIDEO_RECORDING_DIR,
         fps=VIDEO_RECORDING_FPS,
         queue_size=VIDEO_RECORDING_QUEUE_SIZE,
     )
-    camera = CameraGateway(video_recorder)
+    camera = CameraGateway(video_recorder, media_uploader)
     camera.start()
-    camera_orientation = CameraOrientationController()
+    thermal = ThermalCameraGateway(backend_urls.candidates())
+    thermal_node = None
+    thermal_subscribed_topics: set[str] = set()
+    if Node is not None and GzImage is not None:
+        thermal_node = Node()
+
+        def on_native_thermal_frame(message: GzImage, *_args) -> None:
+            try:
+                pixel_format = PixelFormatType.Name(message.pixel_format_type) if PixelFormatType is not None else str(message.pixel_format_type)
+                thermal.ingest_native_frame(
+                    int(message.width),
+                    int(message.height),
+                    bytes(message.data),
+                    pixel_format,
+                )
+            except (TypeError, ValueError) as exc:
+                print(f"[THERMAL] Native frame rejected: {exc}", flush=True)
+
+        thermal_topics = tuple(dict.fromkeys((GAZEBO_THERMAL_CAMERA_TOPIC, "/thermal_camera")))
+
+        def set_native_thermal_subscription(enabled: bool) -> None:
+            if enabled:
+                for thermal_topic in thermal_topics:
+                    if thermal_topic in thermal_subscribed_topics:
+                        continue
+                    thermal_node.subscribe(GzImage, thermal_topic, on_native_thermal_frame)
+                    thermal_subscribed_topics.add(thermal_topic)
+                    print(f"[THERMAL] Sensor subscribed: {thermal_topic}", flush=True)
+                return
+
+            for thermal_topic in tuple(thermal_subscribed_topics):
+                thermal_node.unsubscribe(thermal_topic)
+                thermal_subscribed_topics.discard(thermal_topic)
+                print(f"[THERMAL] Sensor released: {thermal_topic}", flush=True)
+
+        print("[THERMAL] Sensor idle; press Thermal ON to subscribe", flush=True)
+    else:
+        def set_native_thermal_subscription(_enabled: bool) -> None:
+            return
+
+        print("[THERMAL] Gazebo Transport unavailable; synthetic fallback enabled", flush=True)
+    camera_orientation = CameraOrientationController(camera.set_view_mode)
+    camera_orientation.set_mode(camera_orientation.current_mode)
+    api_commands: queue.Queue[str] = queue.Queue()
 
     current_yaw_deg = 0.0
-    video_upload_tasks: set[asyncio.Task] = set()
+    media_tasks: set[asyncio.Task] = set()
 
     def set_current_yaw(yaw_deg: float) -> None:
         nonlocal current_yaw_deg
@@ -1485,6 +2187,10 @@ async def main() -> None:
 
     safety_task = None
     position_task = None
+    battery_task = None
+    health_task = None
+    in_air_task = None
+    simulated_battery_task = None
     watchdog_task = asyncio.create_task(
         event_loop_watchdog(),
         name="event-loop-watchdog",
@@ -1492,7 +2198,7 @@ async def main() -> None:
     avoidance = None
     lidar = None
     safety_sensor_enabled = (
-    os.getenv("SAFETY_SENSOR_ENABLED", "true").strip().lower()
+    os.getenv("SAFETY_SENSOR_ENABLED", "false").strip().lower()
         in {"1", "true", "yes", "on"}
     )
 
@@ -1500,8 +2206,229 @@ async def main() -> None:
     current_local_north_m = 0.0
     current_local_east_m = 0.0
     current_local_down_m = 0.0
+    current_velocity_north_m_s = 0.0
+    current_velocity_east_m_s = 0.0
+    current_velocity_down_m_s = 0.0
+    current_px4_battery_percent = None
+    current_armed = False
+    current_in_air = False
+    current_health = None
+    current_health_update_s: float | None = None
+    local_position_update_s: float | None = None
     local_position_ready = False
     safety_speed_scale = 1.0
+    simulated_battery = BatterySimulator(
+        float(os.getenv("SIM_BATTERY_INITIAL_PERCENT", "100.0")),
+        capacity_mAh=float(os.getenv("SIM_BATTERY_CAPACITY_MAH", "5000")),
+    )
+
+    def fresh(age_s: float | None, max_age_s: float) -> bool:
+        return age_s is not None and math.isfinite(age_s) and age_s <= max_age_s
+
+    def check_item(key: str, name: str, status: str, message: str, critical: bool = True) -> dict:
+        return {
+            "key": key,
+            "name": name,
+            "status": status,
+            "message": message,
+            "critical": critical,
+        }
+
+    def build_preflight_status(check_id: str, started_at_s: float | None) -> dict:
+        now_s = time.monotonic()
+        local_age_s = now_s - local_position_update_s if local_position_update_s is not None else None
+        health_age_s = now_s - current_health_update_s if current_health_update_s is not None else None
+        camera_age_s = camera.latest_frame_age_s("DOWN")
+        lidar_age_s = lidar.latest_scan_age_s() if lidar is not None and hasattr(lidar, "latest_scan_age_s") else None
+        connection_age_s = connection_manager.connection_age_s()
+        px4_ready = connection_manager.px4_connected or connection_manager.recently_connected()
+        grpc_ready = connection_manager.grpc_connected
+        local_values_ok = all(
+            math.isfinite(value)
+            for value in (
+                current_local_north_m,
+                current_local_east_m,
+                current_local_down_m,
+            )
+        )
+        health_local_ok = bool(getattr(current_health, "is_local_position_ok", False))
+        health_sensor_ok = all(
+            bool(getattr(current_health, field, False))
+            for field in (
+                "is_accelerometer_calibration_ok",
+                "is_gyrometer_calibration_ok",
+            )
+        ) if current_health is not None else False
+        module_ok = LIDAR_IMPORT_ERROR is None and Node is not None and GzImage is not None
+        backend_ok, backend_target = backend_urls.reachable()
+        battery_snapshot = simulated_battery.snapshot()
+        simulated_battery_percent = battery_snapshot.battery_percent
+        battery_ready_status, battery_ready_message = preflight_battery_check(simulated_battery_percent)
+
+        checks = [
+            check_item(
+                "GAZEBO",
+                "Gazebo Simulation",
+                "PASS" if fresh(camera_age_s, 5.0) or fresh(lidar_age_s, 5.0) else "FAIL",
+                "Drone model loaded" if fresh(camera_age_s, 5.0) or fresh(lidar_age_s, 5.0) else "No fresh Gazebo sensor data",
+                True,
+            ),
+            check_item(
+                "PX4",
+                "PX4 Flight Controller",
+                "PASS" if px4_ready else "FAIL",
+                "Ready for takeoff" if px4_ready else "PX4 heartbeat not available",
+                True,
+            ),
+            check_item(
+                "MAVSDK",
+                "MAVSDK Connection",
+                "PASS" if grpc_ready else "FAIL",
+                "PX4 discovered" if grpc_ready else "MAVSDK gRPC bridge unavailable",
+                True,
+            ),
+            check_item(
+                "PX4_CONTROL",
+                "PX4 Control",
+                "PASS" if px4_ready and grpc_ready else "FAIL",
+                "Flight controller ready" if px4_ready and grpc_ready else "Flight controller not connected",
+                True,
+            ),
+            check_item(
+                "LOCAL_POSITION",
+                "Local Position",
+                "PASS" if local_position_ready and local_values_ok and fresh(local_age_s, 3.0) else "FAIL",
+                "Ready to fly" if local_position_ready and local_values_ok and fresh(local_age_s, 3.0) else "No fresh PX4 local position received",
+                True,
+            ),
+            check_item(
+                "MAVSDK_HEALTH",
+                "MAVSDK Health",
+                "PASS" if fresh(health_age_s, 5.0) and health_local_ok and health_sensor_ok else "FAIL",
+                "PX4 health ready" if fresh(health_age_s, 5.0) and health_local_ok and health_sensor_ok else "PX4 health not ready",
+                True,
+            ),
+            check_item(
+                "BATTERY",
+                "Battery",
+                battery_ready_status,
+                battery_ready_message,
+                True,
+            ),
+            check_item(
+                "LIDAR",
+                "LiDAR",
+                "PASS" if fresh(lidar_age_s, 5.0) else "WARN",
+                "Fresh scan received" if fresh(lidar_age_s, 5.0) else "No fresh scan received",
+                False,
+            ),
+            check_item(
+                "CAMERA",
+                "Downward Camera",
+                "PASS" if fresh(camera_age_s, 5.0) else "WARN",
+                "Camera frames received" if fresh(camera_age_s, 5.0) else "No recent downward camera frame",
+                False,
+            ),
+            check_item(
+                "BACKEND",
+                "Backend Connection",
+                "PASS" if backend_ok else "WARN",
+                backend_target if backend_ok else f"{backend_target} not reachable",
+                False,
+            ),
+            check_item(
+                "MEDIA",
+                "Media Upload",
+                "PASS" if module_ok else "WARN",
+                "Media capture pipeline ready" if module_ok else "Media capture pipeline not fully verified",
+                False,
+            ),
+            check_item(
+                "MODULES",
+                "Module Check",
+                "PASS" if module_ok else "WARN",
+                "Required components loaded" if module_ok else "Some optional Gazebo/LiDAR bindings are unavailable",
+                False,
+            ),
+        ]
+        completed = sum(1 for item in checks if item["status"] in {"PASS", "WARN", "FAIL"})
+        critical_failures = [item for item in checks if item["critical"] and item["status"] == "FAIL"]
+        overall = "FAILED" if critical_failures else "READY"
+        return {
+            "checkId": check_id,
+            "status": overall,
+            "progress": round((completed / len(checks)) * 100),
+            "startedAt": datetime.fromtimestamp(time.time() - (now_s - started_at_s), timezone.utc).isoformat().replace("+00:00", "Z") if started_at_s is not None else None,
+            "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "checks": checks,
+        }
+
+    def api_status() -> dict:
+        battery_snapshot = simulated_battery.snapshot()
+        horizontal_speed = math.hypot(
+            current_velocity_north_m_s,
+            current_velocity_east_m_s,
+        )
+        connection_age_s = connection_manager.connection_age_s()
+        sim_x_m, sim_y_m = px4_ned_to_sim_xy(
+            current_local_north_m,
+            current_local_east_m,
+        )
+        thermal.update_pose(sim_x_m, sim_y_m, max(0.0, -current_local_down_m))
+        status = {
+            "missionId": MISSION_ID,
+            "deviceCode": DEVICE_CODE,
+            "positionReady": local_position_ready,
+            "positionNed": {
+                "northM": current_local_north_m,
+                "eastM": current_local_east_m,
+                "downM": current_local_down_m,
+            },
+            "positionGazebo": {
+                "x": sim_x_m,
+                "y": sim_y_m,
+            },
+            "yawDeg": current_yaw_deg,
+            "altitudeM": max(0.0, -current_local_down_m),
+            "speedMps": horizontal_speed,
+            "batteryPercent": round(battery_snapshot.battery_percent, 1),
+            "batteryState": battery_snapshot.battery_state,
+            "batteryDrainMode": battery_snapshot.battery_drain_mode,
+            "batteryCurrentA": round(battery_snapshot.current_draw_a, 2),
+            "batteryCapacityMah": round(battery_snapshot.capacity_mAh, 1),
+            "batteryRemainingMah": round(battery_snapshot.remaining_mAh, 1),
+            "batteryConsumedMah": round(battery_snapshot.consumed_mAh, 1),
+            "rawPx4BatteryPercent": current_px4_battery_percent,
+            "connection": {
+                "grpcConnected": connection_manager.grpc_connected,
+                "px4Connected": connection_manager.px4_connected,
+                "lastPx4SeenAgeS": connection_age_s,
+            },
+            "freshness": {
+                "localPositionAgeS": time.monotonic() - local_position_update_s if local_position_update_s is not None else None,
+                "healthAgeS": time.monotonic() - current_health_update_s if current_health_update_s is not None else None,
+                "cameraFrameAgeS": camera.latest_frame_age_s("DOWN"),
+                "lidarScanAgeS": lidar.latest_scan_age_s() if lidar is not None and hasattr(lidar, "latest_scan_age_s") else None,
+            },
+            "cameraMode": camera_orientation.current_mode,
+            "cameraPitchDeg": camera_orientation.current_pitch_deg,
+            "velocityNed": {
+                "northMps": current_velocity_north_m_s,
+                "eastMps": current_velocity_east_m_s,
+                "downMps": current_velocity_down_m_s,
+            },
+            "activeCommand": {
+                "forwardMps": current_forward_m_s,
+                "rightMps": current_right_m_s,
+                "downMps": current_down_m_s,
+            },
+            "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+        status.update(thermal.status())
+        return status
+
+    control_api = FlightControlApi(camera, api_commands, api_status, build_preflight_status, thermal)
+    control_api.start()
     print(
         f"[SAFETY] Sensor default -> "
         f"{'ON' if safety_sensor_enabled else 'OFF'} "
@@ -1529,15 +2456,87 @@ async def main() -> None:
         nonlocal safety_speed_scale
         safety_speed_scale = max(0.0, min(1.0, scale))
 
+    def start_obstacle_safety_if_needed() -> bool:
+        nonlocal avoidance, lidar, safety_task
+        if safety_task is not None and not safety_task.done():
+            return True
+        if LidarGateway is None or AvoidanceController is None:
+            print(f"[LIDAR] Disabled: {LIDAR_IMPORT_ERROR}")
+            print("[LIDAR] Flight control continues without obstacle avoidance.")
+            return False
+
+        if lidar is None:
+            lidar = LidarGateway()
+            lidar.start()
+        if avoidance is None:
+            avoidance = AvoidanceController(drone)
+
+        safety_task = asyncio.create_task(
+            obstacle_safety_loop(
+                avoidance,
+                lidar,
+                connection_manager,
+                lambda: current_yaw_deg,
+                current_saved_motion,
+                lambda: safety_sensor_enabled,
+                get_motion_owner,
+                set_motion_owner,
+                stop_manual_motion,
+                set_safety_speed_scale,
+                launch_pad_clear,
+            ),
+            name="obstacle-safety",
+        )
+        return True
+
     def update_local_position(north_m: float, east_m: float, down_m: float) -> None:
         nonlocal current_local_north_m
         nonlocal current_local_east_m
         nonlocal current_local_down_m
         nonlocal local_position_ready
+        nonlocal local_position_update_s
         current_local_north_m = north_m
         current_local_east_m = east_m
         current_local_down_m = down_m
         local_position_ready = True
+        local_position_update_s = time.monotonic()
+
+    def update_velocity(north_m_s: float, east_m_s: float, down_m_s: float) -> None:
+        nonlocal current_velocity_north_m_s
+        nonlocal current_velocity_east_m_s
+        nonlocal current_velocity_down_m_s
+        current_velocity_north_m_s = north_m_s
+        current_velocity_east_m_s = east_m_s
+        current_velocity_down_m_s = down_m_s
+
+    def update_battery(percent: float | None) -> None:
+        nonlocal current_px4_battery_percent
+        if percent is not None:
+            current_px4_battery_percent = percent
+
+    def update_in_air(in_air: bool) -> None:
+        nonlocal current_in_air
+        nonlocal current_armed
+        if current_in_air and not in_air:
+            current_armed = False
+        current_in_air = bool(in_air)
+
+    def update_health(health) -> None:
+        nonlocal current_health
+        nonlocal current_health_update_s
+        current_health = health
+        current_health_update_s = time.monotonic()
+
+    async def update_simulated_battery_loop() -> None:
+        while True:
+            simulated_battery.update(
+                armed=current_armed or current_in_air,
+                in_air=current_in_air,
+                velocity_north_m_s=current_velocity_north_m_s,
+                velocity_east_m_s=current_velocity_east_m_s,
+                velocity_down_m_s=current_velocity_down_m_s,
+            )
+            await asyncio.sleep(0.5)
 
     def launch_pad_clear() -> bool:
         if not local_position_ready:
@@ -1571,6 +2570,9 @@ async def main() -> None:
         nonlocal current_east_m_s
         nonlocal current_down_m_s
 
+        if not clear_saved:
+            return
+
         current_forward_m_s = 0.0
         current_right_m_s = 0.0
         current_north_m_s = 0.0
@@ -1578,10 +2580,10 @@ async def main() -> None:
         current_down_m_s = 0.0
 
     def track_background_task(task: asyncio.Task, label: str) -> None:
-        video_upload_tasks.add(task)
+        media_tasks.add(task)
 
         def _done(done: asyncio.Task) -> None:
-            video_upload_tasks.discard(done)
+            media_tasks.discard(done)
             try:
                 exc = done.exception()
             except asyncio.CancelledError:
@@ -1590,6 +2592,52 @@ async def main() -> None:
                 print(f"[{label}] Background error: {exc}", flush=True)
 
         task.add_done_callback(_done)
+
+    async def wait_for_media_tasks(timeout_s: float = MEDIA_UPLOAD_SHUTDOWN_WAIT_S) -> None:
+        pending = [task for task in media_tasks if not task.done()]
+        if not pending:
+            return
+        print(f"[VIDEO] Waiting for {len(pending)} pending upload(s)", flush=True)
+        done, still_pending = await asyncio.wait(pending, timeout=timeout_s)
+        for task in done:
+            try:
+                task.result()
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:
+                print(f"[MEDIA] Background error: {exc}", flush=True)
+        if still_pending:
+            print("[VIDEO] Upload wait timeout - local file retained", flush=True)
+            for task in still_pending:
+                task.cancel()
+            await asyncio.gather(*still_pending, return_exceptions=True)
+
+    async def cancel_owned_tasks() -> None:
+        owned = [
+            ("safety", safety_task),
+            ("position", position_task),
+            ("battery", battery_task),
+            ("in-air", in_air_task),
+            ("simulated-battery", simulated_battery_task),
+            ("health", health_task),
+            ("watchdog", watchdog_task),
+        ]
+        for name, task in owned:
+            if task is not None and not task.done():
+                task.cancel()
+        tasks = [task for _name, task in owned if task is not None]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def cleanup_controller(upload_video: bool = True) -> None:
+        print("[SHUTDOWN] Cleaning up...", flush=True)
+        control_api.stop()
+        stop_video_recording(upload=upload_video)
+        await connection_manager.stop_offboard_sender()
+        await connection_manager.stop_connection_monitor()
+        await cancel_owned_tasks()
+        await wait_for_media_tasks()
+        print("[SHUTDOWN] Cleanup complete", flush=True)
 
     def stop_video_recording(upload: bool = True) -> RecordingResult | None:
         if not video_recorder.is_recording():
@@ -1619,49 +2667,62 @@ async def main() -> None:
     # START LIDAR / SAFETY
     # ================================================================
 
-    if LidarGateway is None or AvoidanceController is None:
-        print(f"[LIDAR] Disabled: {LIDAR_IMPORT_ERROR}")
-        print(
-            "[LIDAR] Flight control continues without obstacle avoidance."
+    position_task = asyncio.create_task(
+        track_local_position(
+            connection_manager,
+            update_local_position,
+            update_velocity,
         )
-    else:
-        lidar = LidarGateway()
-        lidar.start()
+    )
 
-        avoidance = AvoidanceController(drone)
-
-        position_task = asyncio.create_task(
-            track_local_position(
-                connection_manager,
-                update_local_position,
-            )
+    battery_task = asyncio.create_task(
+        track_battery(
+            connection_manager,
+            update_battery,
         )
+    )
 
-        safety_task = asyncio.create_task(
-            obstacle_safety_loop(
-                avoidance,
-                lidar,
-                connection_manager,
-                lambda: current_yaw_deg,
-                current_saved_motion,
-                lambda: safety_sensor_enabled,
-                get_motion_owner,
-                set_motion_owner,
-                stop_manual_motion,
-                set_safety_speed_scale,
-                launch_pad_clear,
-            )
+    in_air_task = asyncio.create_task(
+        track_in_air(
+            connection_manager,
+            update_in_air,
         )
+    )
+
+    simulated_battery_task = asyncio.create_task(
+        update_simulated_battery_loop(),
+        name="simulated-battery",
+    )
+
+    health_task = asyncio.create_task(
+        track_health(
+            connection_manager,
+            update_health,
+        )
+    )
+
+    if safety_sensor_enabled:
+        if not start_obstacle_safety_if_needed():
+            safety_sensor_enabled = False
 
     while True:
 
-        key = await asyncio.to_thread(read_key)
+        try:
+            key = api_commands.get_nowait()
+        except queue.Empty:
+            key = await asyncio.to_thread(read_key_timeout, 0.1)
+            if key is None:
+                continue
 
         if (
                 motion_owner != MotionOwner.MANUAL
                 and not safety_sensor_enabled
         ):
             force_manual_control()
+
+        if key in WEATHER_KEY_PRESETS:
+            await asyncio.to_thread(apply_weather_key, key)
+            continue
 
         if key in {"w", "a", "s", "d", "f", "v", "q", "e"} and motion_owner != MotionOwner.MANUAL:
             print("[CONTROL] Obstacle stop active - hover until path is clear", flush=True)
@@ -1734,13 +2795,13 @@ async def main() -> None:
             print("[CMD] arm + takeoff")
             active_drone = await safe_arm(connection_manager)
             if active_drone is not None:
+                current_armed = True
                 if avoidance is not None:
                     avoidance.set_drone(active_drone)
                 try:
                     await active_drone.action.takeoff()
                     print("[CMD] Takeoff command sent - climbing...")
-                    await asyncio.sleep(5)
-                    print("[CMD] Takeoff complete. Use wasdqefv to start offboard flight, k to hover.")
+                    await wait_for_takeoff_confirm(active_drone)
                 except (ActionError, OffboardError) as exc:
                     print_command_denied("takeoff/offboard", exc)
                 except grpc.aio.AioRpcError as exc:
@@ -1753,8 +2814,7 @@ async def main() -> None:
                             try:
                                 await new_drone.action.takeoff()
                                 print("[CMD] Takeoff command sent - climbing...")
-                                await asyncio.sleep(5)
-                                print("[CMD] Takeoff complete. Use wasdqefv to start offboard flight, k to hover.")
+                                await wait_for_takeoff_confirm(new_drone)
                             except (ActionError, OffboardError) as retry_exc:
                                 print_command_denied("takeoff/offboard", retry_exc)
                             except grpc.aio.AioRpcError as retry_exc:
@@ -1831,10 +2891,21 @@ async def main() -> None:
             current_east_m_s = 0.0
             current_down_m_s = -control_vertical_speed_m_s
             try:
+                if not current_in_air:
+                    active_drone = await connection_manager.get_drone() if current_armed else None
+                    if active_drone is None:
+                        active_drone = await safe_arm(connection_manager)
+                    if active_drone is None:
+                        print("[CMD] Up cancelled - drone could not arm", flush=True)
+                        continue
+                    current_armed = True
+                    await active_drone.action.takeoff()
+                    print("[CMD] Up requested from ground - takeoff initiated", flush=True)
+                    await asyncio.sleep(0.5)
                 active_drone = await set_motion(connection_manager, current_north_m_s, current_east_m_s, current_down_m_s, current_yaw_deg)
                 if active_drone is not None and avoidance is not None:
                     avoidance.set_drone(active_drone)
-            except OffboardError as exc:
+            except (ActionError, OffboardError) as exc:
                 print_command_denied("up", exc)
             except grpc.aio.AioRpcError as exc:
                 print_mavsdk_unavailable("up", exc)
@@ -1909,7 +2980,10 @@ async def main() -> None:
             except grpc.aio.AioRpcError as exc:
                 print_mavsdk_unavailable("stop/hover", exc)
         elif key == "o":
-            safety_sensor_enabled = not safety_sensor_enabled
+            requested_state = not safety_sensor_enabled
+            if requested_state and not start_obstacle_safety_if_needed():
+                requested_state = False
+            safety_sensor_enabled = requested_state
             if not safety_sensor_enabled and motion_owner == MotionOwner.EMERGENCY:
                 force_manual_control()
             state = "ON" if safety_sensor_enabled else "OFF"
@@ -1934,13 +3008,33 @@ async def main() -> None:
                 "wsl-telemetry.sh",
                 "telemetry_sender.py|wsl-telemetry.sh",
             )
+        elif key == "6":
+            enabled = thermal.toggle()
+            set_native_thermal_subscription(enabled)
+            print(f"[THERMAL] {'ON' if enabled else 'OFF'}", flush=True)
+            if enabled:
+                open_monitor_window_if_needed(
+                    "Thermal camera",
+                    "wsl-thermal-view.sh",
+                    "wsl-thermal-view.sh|thermal_debug_viewer.py",
+                )
+        elif key == "7":
+            toggle_monitor_window(
+                "Thermal camera",
+                "wsl-thermal-view.sh",
+                "wsl-thermal-view.sh|thermal_debug_viewer.py",
+            )
+        elif key == "thermal_palette_next":
+            print(f"[THERMAL] Palette -> {thermal.cycle_palette()}", flush=True)
+        elif key == "thermal_isotherm_toggle":
+            print(f"[THERMAL] Isotherm -> {'ON' if thermal.toggle_isotherm() else 'OFF'}", flush=True)
+        elif key == "thermal_debug_toggle":
+            print(f"[THERMAL] Debug overlay -> {'ON' if thermal.toggle_debug_overlay() else 'OFF'}", flush=True)
+        elif key == "thermal_range_toggle":
+            print(f"[THERMAL] Display range -> {thermal.toggle_display_range()}", flush=True)
         elif key == "p":
             task = asyncio.create_task(camera.capture_and_upload())
-            task.add_done_callback(
-                lambda done: print(f"[CAMERA] Background error: {done.exception()}")
-                if done.exception()
-                else None
-            )
+            track_background_task(task, "CAMERA")
         elif key == "r":
             if video_recorder.is_recording():
                 stop_video_recording(upload=True)
@@ -1985,10 +3079,10 @@ async def main() -> None:
                             print_command_denied("land", retry_exc)
                         except grpc.aio.AioRpcError as retry_exc:
                             print_mavsdk_unavailable("land retry", retry_exc)
+            await wait_for_media_tasks()
         elif key == "x":
             print("[SHUTDOWN] Stopped by user")
-            stop_video_recording(upload=True)
-            await connection_manager.stop_offboard_sender()
+            await cleanup_controller(upload_video=True)
             return
 
 

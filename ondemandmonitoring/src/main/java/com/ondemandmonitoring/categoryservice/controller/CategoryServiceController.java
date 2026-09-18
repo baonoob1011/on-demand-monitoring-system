@@ -42,7 +42,7 @@ public class CategoryServiceController {
 
     @Operation(summary = "Get category service by ID", description = "Retrieves details of a category service by its ID")
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<CategoryServiceResponse>> getById(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<CategoryServiceResponse>> getById(@PathVariable String id) {
         CategoryServiceResponse response = categoryServiceService.getById(id);
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
@@ -57,7 +57,7 @@ public class CategoryServiceController {
     @Operation(summary = "Update category service", description = "Updates an existing category service by its ID")
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<CategoryServiceResponse>> update(
-            @PathVariable Long id,
+            @PathVariable String id,
             @Valid @RequestBody CategoryServiceRequest request) {
         CategoryServiceResponse response = categoryServiceService.update(id, request);
         return ResponseEntity.ok(ApiResponse.ok("Category service updated successfully", response));
@@ -65,7 +65,7 @@ public class CategoryServiceController {
 
     @Operation(summary = "Delete category service", description = "Deletes a category service by its ID")
     @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable String id) {
         categoryServiceService.delete(id);
         return ResponseEntity.ok(ApiResponse.ok("Category service deleted successfully", null));
     }

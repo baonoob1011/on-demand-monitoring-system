@@ -1,6 +1,7 @@
 import importlib
 import subprocess
 import threading
+import time
 
 from .sensor_reader import (
     ObstacleState,
@@ -76,6 +77,7 @@ class LidarGateway:
         self.latest_state: ObstacleState | None = None
         self.latest_status = "CLEAR"
         self.latest_direction = "NONE"
+        self.latest_scan_time_s: float | None = None
 
     def start(self):
         if self._start_native():
@@ -163,6 +165,7 @@ class LidarGateway:
             self.latest_state = state
             self.latest_status = status
             self.latest_direction = direction
+            self.latest_scan_time_s = time.monotonic()
 
     def snapshot(self):
         with self.lock:
@@ -171,3 +174,9 @@ class LidarGateway:
                 self.latest_status,
                 self.latest_direction,
             )
+
+    def latest_scan_age_s(self) -> float | None:
+        with self.lock:
+            if self.latest_scan_time_s is None:
+                return None
+            return time.monotonic() - self.latest_scan_time_s

@@ -28,22 +28,22 @@ public class FlightTokenGenerator {
      * Generates an Enterprise Flight Access Token.
      *
      * @param missionId  Target mission ID (e.g. "M-001")
-     * @param deviceCode Assigned drone code (e.g. "DRONE-01")
+     * @param droneCode Assigned drone code (e.g. "DRONE-01")
      * @param operatorId Operator ID issuing token (e.g. "OP-001")
      * @param issuedAt   Timestamp when token was issued
      * @return Cryptographically signed structured token string
      */
-    public static String generateTokenValue(String missionId, String deviceCode, String operatorId, Instant issuedAt) {
+    public static String generateTokenValue(String missionId, String droneCode, String operatorId, Instant issuedAt) {
         String cleanMission = sanitize(missionId);
-        String cleanDevice = sanitize(deviceCode);
+        String cleanDrone = sanitize(droneCode);
         long epochSecond = issuedAt != null ? issuedAt.getEpochSecond() : Instant.now().getEpochSecond();
         String hexTimestamp = Long.toHexString(epochSecond).toUpperCase();
 
-        String rawPayload = String.format("%s:%s:%s:%d", cleanMission, cleanDevice,
+        String rawPayload = String.format("%s:%s:%s:%d", cleanMission, cleanDrone,
                 operatorId != null ? operatorId : "OP-SYSTEM", epochSecond);
         String signature = computeHmacSha256(rawPayload, SECRET_KEY).substring(0, 8).toUpperCase();
 
-        return String.format("FTK-%s-%s-%s-%s", cleanMission, cleanDevice, hexTimestamp, signature);
+        return String.format("FTK-%s-%s-%s-%s", cleanMission, cleanDrone, hexTimestamp, signature);
     }
 
     private static String sanitize(String input) {
