@@ -67,7 +67,9 @@ public class SecurityConfig {
         };
 
         @Bean
-        SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        SecurityFilterChain securityFilterChain(
+                        HttpSecurity http,
+                        @Qualifier("cognitoAccessTokenDecoder") JwtDecoder cognitoAccessTokenDecoder) throws Exception {
                 return http
                                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                                 .csrf(csrf -> csrf
@@ -84,17 +86,21 @@ public class SecurityConfig {
                                                                 // Simulation Viewer APIs (PUT/POST/DELETE from browser
                                                                 // JS)
                                                                 "/api/zones/**",
+                                                                "/api/thermal-sources/**",
                                                                 "/api/simulation-map/**",
                                                                 "/api/missions/*/images",
                                                                 "/api/missions/*/media"))
                                 .sessionManagement(session -> session
                                                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                                .headers(headers -> headers.frameOptions(frameOptions -> frameOptions.disable()))
                                 .authorizeHttpRequests(auth -> auth
                                                 .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
                                                 .anyRequest().authenticated())
                                 .oauth2ResourceServer(oauth2 -> oauth2
-                                                .jwt(jwt -> jwt.jwtAuthenticationConverter(
-                                                                jwtAuthenticationConverter())))
+                                                .jwt(jwt -> jwt
+                                                                .decoder(cognitoAccessTokenDecoder)
+                                                                .jwtAuthenticationConverter(
+                                                                                jwtAuthenticationConverter())))
                                 .build();
         }
 

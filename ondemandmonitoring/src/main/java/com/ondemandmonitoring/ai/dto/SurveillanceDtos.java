@@ -1,8 +1,15 @@
 package com.ondemandmonitoring.ai.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.ondemandmonitoring.order.dto.GeoJsonPointDto;
+import com.ondemandmonitoring.order.enums.MediaTypeSp;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
-import java.time.LocalDateTime;
+
+import java.time.LocalDate;
 import java.util.List;
 
 public class SurveillanceDtos {
@@ -13,13 +20,48 @@ public class SurveillanceDtos {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
+    @Schema(description = "Request object for AI surveillance analysis, matching OrderCreateRequest")
     public static class SurveillanceAnalysisRequest {
+
+        @NotBlank(message = "Title is required")
+        @Schema(description = "Title of the order", example = "Forest Area Monitoring")
         private String title;
-        private String service; // "giám sát công trình", "giám sát nông nghiệp", "giám sát thiên tai"
-        private String purpose; // Mục tiêu cụ thể cần giám sát
-        private String description; // Miêu tả chi tiết những gì cần giám sát
-        private LocalDateTime startDateTime; // Thời gian bắt đầu
-        private String mediaType; // "IMAGE", "VIDEO"
+
+        @Schema(description = "Purpose of the monitoring order", example = "Wildfire risk detection")
+        private String purpose;
+
+        @NotBlank(message = "Service ID is required")
+        @Schema(description = "Category Service ID", example = "550e8400-e29b-41d4-a716-446655440000")
+        private String serviceId;
+
+        @Schema(description = "Detailed description of the monitoring request")
+        private String description;
+
+        @Schema(description = "Address of the monitoring target location")
+        private String address;
+
+        @Valid
+        @NotNull(message = "Point location is required")
+        @Schema(description = "GeoJSON Point location format")
+        private GeoJsonPointDto point;
+
+        @NotNull(message = "Preferred date is required")
+        @Schema(description = "Preferred monitoring date", example = "2026-10-01")
+        private LocalDate preferredDate;
+
+        @NotBlank(message = "Preferred time ID is required")
+        @Schema(description = "Preferred time frame ID")
+        private String preferredTimeId;
+
+        @NotNull(message = "Media type is required")
+        @Schema(description = "Media output type: IMAGE or VIDEO")
+        private MediaTypeSp mediaType;
+
+        @Schema(description = "Duration of video in seconds (Required if mediaType is VIDEO)", example = "120")
+        private Integer durationOfVideo;
+
+        @Schema(description = "Number of photos (Required if mediaType is IMAGE)", example = "10")
+        private Integer numberOfPhoto;
     }
 
     // Kết quả phân tích trả về cho Frontend

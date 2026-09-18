@@ -37,6 +37,17 @@ public class GlobalExceptionHandler {
                         errors));
     }
 
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadable(org.springframework.http.converter.HttpMessageNotReadableException exception) {
+        log.warn("Malformed JSON request payload: {}", exception.getMessage());
+        String detailMessage = exception.getMostSpecificCause() != null ? exception.getMostSpecificCause().getMessage() : exception.getMessage();
+        return ResponseEntity
+                .status(ErrorCode.INVALID_REQUEST.getStatus())
+                .body(ApiResponse.error(
+                        ErrorCode.INVALID_REQUEST.name(),
+                        "Malformed JSON request body: " + detailMessage));
+    }
+
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<Void> handleNoResourceFound(NoResourceFoundException exception) {
         log.debug(
