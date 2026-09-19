@@ -2,6 +2,7 @@
 INSERT INTO users (
     user_id,
     full_name,
+    role,
     role_id,
     email,
     email_verified,
@@ -10,23 +11,24 @@ INSERT INTO users (
     updated_at
 )
 VALUES
-    ('00000000-0000-0000-0000-000000000001', 'Seed Customer', (SELECT role_id FROM roles WHERE code = 'CUSTOMER'),
+    ('00000000-0000-0000-0000-000000000001', 'Seed Customer', 'CUSTOMER', (SELECT role_id FROM roles WHERE code = 'CUSTOMER'),
      'seed.customer@odms.local', true, true,
      CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-    ('00000000-0000-0000-0000-000000000002', 'Seed Staff', (SELECT role_id FROM roles WHERE code = 'STAFF'),
+    ('00000000-0000-0000-0000-000000000002', 'Seed Staff', 'STAFF', (SELECT role_id FROM roles WHERE code = 'STAFF'),
      'seed.staff@odms.local', true, true,
      CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-    ('00000000-0000-0000-0000-000000000003', 'Seed Drone Operator', (SELECT role_id FROM roles WHERE code = 'DRONE_OPERATOR'),
+    ('00000000-0000-0000-0000-000000000003', 'Seed Drone Operator', 'DRONE_OPERATOR', (SELECT role_id FROM roles WHERE code = 'DRONE_OPERATOR'),
      'seed.drone.operator@odms.local', true, true,
      CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-    ('00000000-0000-0000-0000-000000000004', 'Seed System Operator', (SELECT role_id FROM roles WHERE code = 'SYSTEM_OPERATOR'),
+    ('00000000-0000-0000-0000-000000000004', 'Seed System Operator', 'SYSTEM_OPERATOR', (SELECT role_id FROM roles WHERE code = 'SYSTEM_OPERATOR'),
      'seed.system.operator@odms.local', true, true,
      CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-    ('00000000-0000-0000-0000-000000000005', 'Seed Admin', (SELECT role_id FROM roles WHERE code = 'ADMIN'),
+    ('00000000-0000-0000-0000-000000000005', 'Seed Admin', 'ADMIN', (SELECT role_id FROM roles WHERE code = 'ADMIN'),
      'seed.admin@odms.local', true, true,
      CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 ON CONFLICT (email) DO UPDATE SET
     full_name = EXCLUDED.full_name,
+    role = EXCLUDED.role,
     role_id = EXCLUDED.role_id,
     email_verified = EXCLUDED.email_verified,
     is_active = EXCLUDED.is_active,

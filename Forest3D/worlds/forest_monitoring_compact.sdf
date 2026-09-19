@@ -91,6 +91,10 @@
       <uri>model://compact_forest</uri>
     </include>
     <include>
+      <name>compact_thermal_sources</name>
+      <uri>model://compact_thermal_sources</uri>
+    </include>
+    <include>
       <name>compact_environment_props</name>
       <uri>model://compact_environment_props</uri>
     </include>

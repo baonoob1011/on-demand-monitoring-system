@@ -27,7 +27,11 @@ import com.ondemandmonitoring.media.repository.MediaNotificationOutboxRepository
 import com.ondemandmonitoring.media.repository.MediaUploadAttemptRepository;
 import com.ondemandmonitoring.media.repository.StorageEventInboxRepository;
 import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
+import com.ondemandmonitoring.mission.domain.MissionOperatorAssignment;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
+import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
+import com.ondemandmonitoring.mission.repository.MissionOperatorAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.s3.AwsS3Properties;
 import com.ondemandmonitoring.s3.S3ObjectStorageService;
@@ -49,6 +53,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 class MediaUploadServiceTest {
 
     private MissionRepository missionRepository;
+    private MissionDroneAssignmentRepository missionDroneAssignmentRepository;
+    private MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
     private DroneRepository droneRepository;
     private MediaAssetRepository mediaRepository;
     private MediaUploadAttemptRepository attemptRepository;
@@ -61,6 +67,8 @@ class MediaUploadServiceTest {
     @BeforeEach
     void setUp() {
         missionRepository = mock(MissionRepository.class);
+        missionDroneAssignmentRepository = mock(MissionDroneAssignmentRepository.class);
+        missionOperatorAssignmentRepository = mock(MissionOperatorAssignmentRepository.class);
         droneRepository = mock(DroneRepository.class);
         mediaRepository = mock(MediaAssetRepository.class);
         attemptRepository = mock(MediaUploadAttemptRepository.class);
@@ -72,6 +80,8 @@ class MediaUploadServiceTest {
         properties.setPrefix("monitoring");
         service = new MediaUploadServiceImpl(
                 missionRepository,
+                missionDroneAssignmentRepository,
+                missionOperatorAssignmentRepository,
                 droneRepository,
                 mediaRepository,
                 attemptRepository,
@@ -102,11 +112,17 @@ class MediaUploadServiceTest {
         mission.setId("mission-1");
         mission.setStatus(MissionStatus.IN_FLIGHT);
         UUID operatorId = UUID.fromString("00000000-0000-0000-0000-000000000003");
-        mission.setOperatorId(operatorId.toString());
-        mission.setDrone(drone);
+        MissionOperatorAssignment operatorAssignment = new MissionOperatorAssignment();
+        operatorAssignment.setOperatorId(operatorId.toString());
+        MissionDroneAssignment droneAssignment = new MissionDroneAssignment();
+        droneAssignment.setDrone(drone);
         User operator = User.builder().id(operatorId).build();
         when(userService.findByCognitoSub("cognito-sub-1")).thenReturn(operator);
         when(missionRepository.findById("mission-1")).thenReturn(Optional.of(mission));
+        when(missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1"))
+                .thenReturn(Optional.of(operatorAssignment));
+        when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1"))
+                .thenReturn(Optional.of(droneAssignment));
         when(droneRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(drone));
         when(mediaRepository.findByMissionIdAndDroneIdAndLocalMediaId(any(), any(), any()))
                 .thenReturn(Optional.empty());

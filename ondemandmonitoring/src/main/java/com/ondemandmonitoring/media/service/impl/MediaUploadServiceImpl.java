@@ -23,8 +23,12 @@ import com.ondemandmonitoring.media.repository.MediaUploadAttemptRepository;
 import com.ondemandmonitoring.media.repository.StorageEventInboxRepository;
 import com.ondemandmonitoring.media.service.IMediaUploadService;
 import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
+import com.ondemandmonitoring.mission.domain.MissionOperatorAssignment;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
+import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
+import com.ondemandmonitoring.mission.repository.MissionOperatorAssignmentRepository;
 import com.ondemandmonitoring.s3.AwsS3Properties;
 import com.ondemandmonitoring.s3.S3ObjectStorageService;
 import com.ondemandmonitoring.s3.S3ObjectStorageService.PresignedUpload;
@@ -61,6 +65,8 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     private static final String CUSTOMER_MEDIA_AVAILABLE = "CUSTOMER_MEDIA_AVAILABLE";
 
     private final MissionRepository missionRepository;
+    private final MissionDroneAssignmentRepository missionDroneAssignmentRepository;
+    private final MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
     private final DroneRepository droneRepository;
     private final MediaAssetRepository mediaRepository;
     private final MediaUploadAttemptRepository attemptRepository;
@@ -325,7 +331,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
             created.setMedia(media);
             created.setStatus(ManualUploadTaskStatus.OPEN);
             created.setAssignedOperatorId(missionRepository.findById(media.getMissionId())
-                    .map(Mission::getOperatorId)
+                    .map(this::currentOperatorId)
                     .orElse(null));
             return created;
         });
@@ -470,8 +476,9 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
         String authenticatedOperatorId = privileged
                 ? null
                 : userService.findByCognitoSub(authentication.getName()).getId().toString();
-        if (!privileged && (mission.getOperatorId() == null
-                || !mission.getOperatorId().equals(authenticatedOperatorId))) {
+        String assignedOperatorId = currentOperatorId(mission);
+        if (!privileged && (assignedOperatorId == null
+                || !assignedOperatorId.equals(authenticatedOperatorId))) {
             throw new ApiException(ErrorCode.ACCESS_DENIED,
                     "Operator is not assigned to this mission");
         }
@@ -485,10 +492,21 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     private Drone requireAssignedDrone(Mission mission, String droneId) {
         Drone drone = droneRepository.findByDroneCode(droneId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Drone not found"));
-        if (mission.getDrone() == null || !mission.getDrone().getId().equals(drone.getId())) {
+        boolean assigned = missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
+                .map(MissionDroneAssignment::getDrone)
+                .map(Drone::getId)
+                .filter(drone.getId()::equals)
+                .isPresent();
+        if (!assigned) {
             throw new ApiException(ErrorCode.ACCESS_DENIED, "Drone is not assigned to this mission");
         }
         return drone;
+    }
+
+    private String currentOperatorId(Mission mission) {
+        return missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
+                .map(MissionOperatorAssignment::getOperatorId)
+                .orElse(null);
     }
 
     private MediaAsset requireMedia(String mediaId) {

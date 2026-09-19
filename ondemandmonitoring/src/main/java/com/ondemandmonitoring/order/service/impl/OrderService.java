@@ -12,6 +12,7 @@ import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.mapper.OrderMapper;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.IOrderService;
+import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.repository.UserRepository;
 import com.ondemandmonitoring.user.service.UserIdentityService;
@@ -42,7 +43,25 @@ public class OrderService implements IOrderService {
     ZoneRepository zoneRepository;
     UserRepository userRepository;
     UserIdentityService userIdentityService;
+    IMissionService missionService;
     OrderMapper orderMapper;
+
+    @Override
+    @Transactional
+    public void approveOrder(String orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+        
+        if (order.getOrderStatus() != OrderStatus.PENDING) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Only PENDING orders can be approved");
+        }
+        
+        order.setOrderStatus(OrderStatus.APPROVED);
+        orderRepository.save(order);
+        
+        // Flow 2: Create mission for the approved order
+        missionService.createMissionForOrder(orderId);
+    }
 
     @Override
     @Transactional

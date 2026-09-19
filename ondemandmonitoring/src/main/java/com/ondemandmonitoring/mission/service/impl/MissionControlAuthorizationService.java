@@ -3,9 +3,13 @@ package com.ondemandmonitoring.mission.service.impl;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
+import com.ondemandmonitoring.mission.domain.MissionOperatorAssignment;
 import com.ondemandmonitoring.mission.dto.response.MissionControlContextResponse;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
+import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
+import com.ondemandmonitoring.mission.repository.MissionOperatorAssignmentRepository;
 import com.ondemandmonitoring.mission.service.IMissionControlAuthorizationService;
 import com.ondemandmonitoring.user.service.IUserService;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +41,8 @@ public class MissionControlAuthorizationService implements IMissionControlAuthor
             MissionStatus.RETURNING);
 
     private final MissionRepository missionRepository;
+    private final MissionDroneAssignmentRepository missionDroneAssignmentRepository;
+    private final MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
     private final IUserService userService;
 
     @Override
@@ -56,15 +62,16 @@ public class MissionControlAuthorizationService implements IMissionControlAuthor
         String actorId = privileged
                 ? null
                 : userService.findByCognitoSub(authentication.getName()).getId().toString();
-        if (!privileged && (mission.getOperatorId() == null
-                || !mission.getOperatorId().equals(actorId))) {
+        String assignedOperatorId = currentOperatorId(mission);
+        if (!privileged && (assignedOperatorId == null
+                || !assignedOperatorId.equals(actorId))) {
             throw new ApiException(ErrorCode.ACCESS_DENIED, "Operator is not assigned to this mission");
         }
-        if (mission.getDrone() == null) {
+        String assignedDrone = currentDroneCode(mission);
+        if (assignedDrone == null) {
             throw new ApiException(ErrorCode.DRONE_NOT_AVAILABLE, "Mission has no assigned drone");
         }
 
-        String assignedDrone = mission.getDrone().getDroneCode();
         if (droneId != null && !droneId.isBlank() && !assignedDrone.equals(droneId)) {
             throw new ApiException(ErrorCode.ACCESS_DENIED, "Drone is not assigned to this mission");
         }
@@ -74,10 +81,23 @@ public class MissionControlAuthorizationService implements IMissionControlAuthor
                 mission.getId().toString(),
                 mission.getMissionCode(),
                 assignedDrone,
-                mission.getOperatorId(),
+                assignedOperatorId,
                 status.name(),
                 CONTROL_STATUSES.contains(status),
                 CAPTURE_STATUSES.contains(status),
                 UPLOAD_STATUSES.contains(status));
+    }
+
+    private String currentOperatorId(Mission mission) {
+        return missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
+                .map(MissionOperatorAssignment::getOperatorId)
+                .orElse(null);
+    }
+
+    private String currentDroneCode(Mission mission) {
+        return missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
+                .map(MissionDroneAssignment::getDrone)
+                .map(drone -> drone.getDroneCode())
+                .orElse(null);
     }
 }

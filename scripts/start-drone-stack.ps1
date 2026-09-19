@@ -5,6 +5,7 @@ param(
     [switch]$WithTelemetry,
     [switch]$WithCamera,
     [switch]$WithSensors,
+    [switch]$WithWeather,
     [switch]$SkipBootstrap
 )
 
@@ -19,6 +20,12 @@ function ConvertTo-WslPath([string]$WindowsPath) {
     $drive = $Matches[1].ToLowerInvariant()
     $rest = $Matches[2] -replace "\\", "/"
     return "/mnt/$drive/$rest"
+}
+
+function Start-WslWindow([string]$Title, [string]$Command) {
+    $escapedCommand = $Command.Replace('"', '\"')
+    $cmdLine = "title $Title && wsl.exe -d $ubuntuDistro -- bash -lc `"$escapedCommand`""
+    Start-Process cmd.exe -ArgumentList @("/k", $cmdLine) -WindowStyle Normal
 }
 
 $ubuntuDistro = "Ubuntu-24.04"
@@ -91,8 +98,10 @@ if (Get-Command wt.exe -ErrorAction SilentlyContinue) {
             "wsl.exe", "-d", $ubuntuDistro, "--", "bash", "-lc", "SIM_WORLD=${simArg} exec ${scriptRoot}/wsl-sensor-monitor.sh"
         )
     }
-
     & wt.exe @wtArgs
+    if ($WithWeather) {
+        Start-WslWindow -Title "WEATHER - Controls" -Command "SIM_WORLD=${simArg} exec ${scriptRoot}/wsl-weather-control.sh"
+    }
     exit 0
 }
 
@@ -107,4 +116,7 @@ if ($WithCamera) {
 }
 if ($WithSensors) {
     Start-Process wsl.exe -ArgumentList "-d", $ubuntuDistro, "--", "bash", "-lc", "SIM_WORLD=${simArg} exec ${scriptRoot}/wsl-sensor-monitor.sh"
+}
+if ($WithWeather) {
+    Start-WslWindow -Title "WEATHER - Controls" -Command "SIM_WORLD=${simArg} exec ${scriptRoot}/wsl-weather-control.sh"
 }

@@ -15,6 +15,7 @@ import java.time.Instant;
 public class MissionResponse {
 
     String id;
+    String orderId;
     String missionCode;
     MissionStatus status;
     String operatorId;

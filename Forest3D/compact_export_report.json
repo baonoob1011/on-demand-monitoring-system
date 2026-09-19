@@ -11,12 +11,29 @@
     "max": [
       450.0,
       686.497,
-      267.5
+      162.0
     ],
     "size": [
       902.0,
       1101.497,
-      298.5
+      193.0
+    ]
+  },
+  "content_bounds": {
+    "min": [
+      -422.523,
+      -415.0,
+      -31.0
+    ],
+    "max": [
+      419.216,
+      446.32,
+      162.0
+    ],
+    "size": [
+      841.739,
+      861.32,
+      193.0
     ]
   },
   "home_blender": [
@@ -39,23 +56,23 @@
   ],
   "counts": {
     "compact_terrain": 284,
-    "compact_mountains": 105,
-    "compact_water": 179,
+    "compact_mountains": 0,
+    "compact_water": 190,
     "compact_airport": 75,
-    "compact_roads": 197,
-    "compact_bridges": 0,
-    "compact_home": 60,
+    "compact_roads": 199,
+    "compact_bridges": 2,
+    "compact_home": 61,
     "compact_highrise": 94,
-    "compact_zones": 247,
-    "compact_forest": 700,
-    "compact_environment_props": 306
+    "compact_zones": 257,
+    "compact_forest": 1308,
+    "compact_environment_props": 394
   },
   "exports": {
     "compact_terrain": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\compact_terrain\\meshes\\compact_terrain.glb",
-    "compact_mountains": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\compact_mountains\\meshes\\compact_mountains.glb",
     "compact_water": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\compact_water\\meshes\\compact_water.glb",
     "compact_airport": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\compact_airport\\meshes\\compact_airport.glb",
     "compact_roads": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\compact_roads\\meshes\\compact_roads.glb",
+    "compact_bridges": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\compact_bridges\\meshes\\compact_bridges.glb",
     "compact_home": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\compact_home\\meshes\\compact_home.glb",
     "compact_highrise": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\compact_highrise\\meshes\\compact_highrise.glb",
     "compact_zones": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\models\\compact_zones\\meshes\\compact_zones.glb",
@@ -343,9 +360,26 @@
     "Final_River_Edge_Foam_00",
     "Final_River_Edge_Foam_01",
     "Final_River_Edge_Foam_02",
-    "Foothill_Front_Left_ClearOfReservoir",
-    "Foothill_Front_Right_ClearOfReservoir",
-    "Foothill_Back_Connected_Ridge_BehindReservoir"
+    "Ref_Reservoir_Shallow_Highlight",
+    "Ref_Dam_Discharge_Centerline",
+    "Ref_Reservoir_Rock_00",
+    "Ref_Reservoir_Rock_01",
+    "Ref_Reservoir_Rock_02",
+    "Ref_Reservoir_Rock_03",
+    "Ref_Reservoir_Rock_04",
+    "Ref_Reservoir_Rock_05",
+    "Ref_Reservoir_Rock_06",
+    "Ref_Reservoir_Rock_07",
+    "Ref_Reservoir_Rock_08",
+    "Ref_Reservoir_Rock_09",
+    "Ref_Landslide_Boulder_00",
+    "Ref_Landslide_Boulder_01",
+    "Ref_Landslide_Boulder_02",
+    "Ref_Landslide_Boulder_03",
+    "Ref_Landslide_Boulder_04",
+    "Ref_Landslide_Boulder_05",
+    "Ref_Landslide_Boulder_06",
+    "Ref_Landslide_Boulder_07"
   ],
   "dam_waterfalls": [
     "Dam_Waterfall_01",
@@ -365,27 +399,16 @@
       "vertices": 40796,
       "materials": 9
     },
-    "compact_mountains": {
-      "exists": true,
-      "valid_glb": true,
-      "bytes": 273016,
-      "declared_length": 273016,
-      "meshes": 105,
-      "nodes": 105,
-      "primitives": 151,
-      "vertices": 5531,
-      "materials": 8
-    },
     "compact_water": {
       "exists": true,
       "valid_glb": true,
-      "bytes": 402488,
-      "declared_length": 402488,
-      "meshes": 179,
-      "nodes": 179,
-      "primitives": 179,
-      "vertices": 7834,
-      "materials": 8
+      "bytes": 431700,
+      "declared_length": 431700,
+      "meshes": 190,
+      "nodes": 190,
+      "primitives": 190,
+      "vertices": 8455,
+      "materials": 10
     },
     "compact_airport": {
       "exists": true,
@@ -401,24 +424,35 @@
     "compact_roads": {
       "exists": true,
       "valid_glb": true,
-      "bytes": 466408,
-      "declared_length": 466408,
-      "meshes": 197,
-      "nodes": 197,
-      "primitives": 197,
-      "vertices": 10592,
-      "materials": 15
+      "bytes": 469644,
+      "declared_length": 469644,
+      "meshes": 199,
+      "nodes": 199,
+      "primitives": 199,
+      "vertices": 10652,
+      "materials": 16
+    },
+    "compact_bridges": {
+      "exists": true,
+      "valid_glb": true,
+      "bytes": 1736,
+      "declared_length": 1736,
+      "meshes": 2,
+      "nodes": 2,
+      "primitives": 2,
+      "vertices": 8,
+      "materials": 1
     },
     "compact_home": {
       "exists": true,
       "valid_glb": true,
-      "bytes": 139504,
-      "declared_length": 139504,
-      "meshes": 60,
-      "nodes": 60,
-      "primitives": 60,
-      "vertices": 2928,
-      "materials": 7
+      "bytes": 140440,
+      "declared_length": 140440,
+      "meshes": 61,
+      "nodes": 61,
+      "primitives": 61,
+      "vertices": 2932,
+      "materials": 8
     },
     "compact_highrise": {
       "exists": true,
@@ -434,35 +468,35 @@
     "compact_zones": {
       "exists": true,
       "valid_glb": true,
-      "bytes": 399800,
-      "declared_length": 399800,
-      "meshes": 247,
-      "nodes": 247,
-      "primitives": 247,
-      "vertices": 7104,
-      "materials": 22
+      "bytes": 425244,
+      "declared_length": 425244,
+      "meshes": 257,
+      "nodes": 257,
+      "primitives": 257,
+      "vertices": 7624,
+      "materials": 25
     },
     "compact_forest": {
       "exists": true,
       "valid_glb": true,
-      "bytes": 1762760,
-      "declared_length": 1762760,
-      "meshes": 700,
-      "nodes": 700,
-      "primitives": 700,
-      "vertices": 37440,
-      "materials": 6
+      "bytes": 2882280,
+      "declared_length": 2882280,
+      "meshes": 1308,
+      "nodes": 1308,
+      "primitives": 1308,
+      "vertices": 55680,
+      "materials": 12
     },
     "compact_environment_props": {
       "exists": true,
       "valid_glb": true,
-      "bytes": 272440,
-      "declared_length": 272440,
-      "meshes": 306,
-      "nodes": 306,
-      "primitives": 306,
-      "vertices": 3206,
-      "materials": 5
+      "bytes": 427116,
+      "declared_length": 427116,
+      "meshes": 365,
+      "nodes": 394,
+      "primitives": 365,
+      "vertices": 6494,
+      "materials": 13
     }
   },
   "world": "C:\\Users\\ACER\\Documents\\GitHub\\doan\\on-demand-monitoring-system\\Forest3D\\worlds\\forest_monitoring_compact.sdf"

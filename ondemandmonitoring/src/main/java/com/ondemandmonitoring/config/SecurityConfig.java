@@ -56,6 +56,8 @@ public class SecurityConfig {
             "/simulation-viewer/**",
             "/api/zones",
             "/api/zones/**",
+            "/api/thermal-sources",
+            "/api/thermal-sources/**",
             "/api/simulation-map",
             "/api/simulation-map/**",
             "/api/missions/*/images",
@@ -83,6 +85,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/reset-password",
                                 // Simulation Viewer APIs (PUT/POST/DELETE from browser JS)
                                 "/api/zones/**",
+                                "/api/thermal-sources/**",
                                 "/api/simulation-map/**",
                                 "/api/missions/*/images",
                                 "/api/missions/*/media"))

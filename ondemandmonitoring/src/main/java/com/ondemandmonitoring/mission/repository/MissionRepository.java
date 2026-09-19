@@ -11,16 +11,19 @@ import java.util.List;
 import java.util.Optional;
 
 public interface MissionRepository extends JpaRepository<Mission, String> {
-
-    @EntityGraph(attributePaths = {"drone"})
     @Override
     Optional<Mission> findById(String id);
 
-    @EntityGraph(attributePaths = {"drone"})
     Optional<Mission> findByMissionCode(String missionCode);
 
-    @EntityGraph(attributePaths = {"drone"})
-    List<Mission> findByOperatorIdAndStatusIn(String operatorId, List<MissionStatus> statuses);
+    @Query("""
+            SELECT m FROM Mission m
+            JOIN MissionOperatorAssignment moa ON moa.mission = m
+            WHERE moa.operatorId = :operatorId
+              AND moa.isCurrent = true
+              AND m.status IN :statuses
+            """)
+    List<Mission> findByOperatorIdAndStatusIn(@Param("operatorId") String operatorId, @Param("statuses") List<MissionStatus> statuses);
 
     /**
      * Find missions assigned to a drone whose scheduled window overlaps [startAt, endAt].
@@ -28,7 +31,9 @@ public interface MissionRepository extends JpaRepository<Mission, String> {
      */
     @Query("""
             SELECT m FROM Mission m
-            WHERE m.drone.id = :droneId
+            JOIN MissionDroneAssignment mda ON mda.mission = m
+            WHERE mda.drone.id = :droneId
+              AND mda.isCurrent = true
               AND m.status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED')
               AND m.completedAt IS NULL
             """)

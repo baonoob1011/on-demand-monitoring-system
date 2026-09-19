@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PathVariable;
 
 @Tag(name = "Order Management", description = "APIs for creating and managing monitoring orders")
 @RestController
@@ -33,5 +34,12 @@ public class OrderController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.created("Order created successfully", response));
+    }
+
+    @Operation(summary = "Approve an order", description = "Manager approves an order and creates a mission")
+    @PostMapping("/{orderId}/approve")
+    public ResponseEntity<ApiResponse<Void>> approveOrder(@PathVariable String orderId) {
+        orderService.approveOrder(orderId);
+        return ResponseEntity.ok(ApiResponse.ok("Order approved and mission created successfully", null));
     }
 }
