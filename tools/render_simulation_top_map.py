@@ -57,6 +57,14 @@ def configure_scene(min_x, max_x, min_y, max_y):
     scene.world.color = (0.78, 0.83, 0.88)
     scene.render.filepath = str(OUT_IMAGE)
 
+    half_span = camera.data.ortho_scale / 2.0
+    return {
+        "minX": center_x - half_span,
+        "maxX": center_x + half_span,
+        "minY": center_y - half_span,
+        "maxY": center_y + half_span,
+    }
+
 
 def material(name, color):
     mat = bpy.data.materials.get(name)
@@ -130,7 +138,7 @@ def colorize_for_top_map():
 def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     report, min_x, max_x, min_y, max_y = read_bounds()
-    configure_scene(min_x, max_x, min_y, max_y)
+    image_bounds = configure_scene(min_x, max_x, min_y, max_y)
     bpy.ops.render.render(write_still=True)
     image_version = hashlib.sha256(OUT_IMAGE.read_bytes()).hexdigest()[:12]
 
@@ -146,6 +154,7 @@ def main():
         "maxY": max_y,
         "widthM": max_x - min_x,
         "heightM": max_y - min_y,
+        "imageBounds": image_bounds,
         "coordinateSystem": "LOCAL_SIMULATION_METERS_GAZEBO_XY",
         "imageOrientation": {
             "xIncreasesRight": True,

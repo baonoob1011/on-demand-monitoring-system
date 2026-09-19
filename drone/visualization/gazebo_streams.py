@@ -150,7 +150,7 @@ class GazeboLaserScanStream:
             "vertical_angle_max": 0.0,
             "vertical_angle_step": 0.0,
             "range_min": 0.0,
-            "range_max": float(os.getenv("LIDAR_MAX_RANGE_M", "120.0")),
+            "range_max": float(os.getenv("LIDAR_MAX_RANGE_M", "200.0")),
         }
         ranges: list[float] = []
 
@@ -218,4 +218,3 @@ def topic_list() -> list[str]:
     except Exception:
         return []
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
-

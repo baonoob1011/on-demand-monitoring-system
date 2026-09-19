@@ -7,7 +7,7 @@ import os
 # CONFIG
 # ============================================================
 
-MAX_RANGE_M = float(os.getenv("LIDAR_MAX_RANGE_M", "60.0"))
+MAX_RANGE_M = float(os.getenv("LIDAR_MAX_RANGE_M", "200.0"))
 MIN_VALID_DISTANCE_M = float(os.getenv("LIDAR_MIN_VALID_DISTANCE_M", "1.0"))
 
 WARNING_DISTANCE_M = float(os.getenv("LIDAR_WARNING_DISTANCE_M", "25.0"))

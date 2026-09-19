@@ -72,8 +72,8 @@ def draw_pointcloud_3d(points: np.ndarray | None, fps: float, topic: str, raw_co
         cv2.line(img, (70, origin[1] + offset // 3), (panel_x - 20, origin[1] + offset // 3), (45, 51, 60), 1)
 
     shown = 0
-    max_dist = float(os.getenv("POINTCLOUD_MAX_RANGE_M", "50.0"))
-    max_dist = min(max(max_dist, 1.0), 80.0)
+    max_dist = float(os.getenv("POINTCLOUD_MAX_RANGE_M", "200.0"))
+    max_dist = max(max_dist, 1.0)
 
     if points is not None and points.size:
         filtered = _downsample(filter_self_points(points))
