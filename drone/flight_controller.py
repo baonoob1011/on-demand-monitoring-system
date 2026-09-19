@@ -3016,13 +3016,18 @@ async def main() -> None:
                 open_monitor_window_if_needed(
                     "Thermal camera",
                     "wsl-thermal-view.sh",
-                    "wsl-thermal-view.sh|thermal_debug_viewer.py",
+                    "wsl-thermal-view.sh|thermal_debug_viewer.py|sensor_dashboard.*--thermal-view",
+                )
+            else:
+                stop_monitor_window(
+                    "Thermal camera",
+                    "wsl-thermal-view.sh|thermal_debug_viewer.py|sensor_dashboard.*--thermal-view",
                 )
         elif key == "7":
             toggle_monitor_window(
                 "Thermal camera",
                 "wsl-thermal-view.sh",
-                "wsl-thermal-view.sh|thermal_debug_viewer.py",
+                "wsl-thermal-view.sh|thermal_debug_viewer.py|sensor_dashboard.*--thermal-view",
             )
         elif key == "thermal_palette_next":
             print(f"[THERMAL] Palette -> {thermal.cycle_palette()}", flush=True)

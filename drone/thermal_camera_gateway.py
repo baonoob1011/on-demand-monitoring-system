@@ -166,6 +166,7 @@ class ThermalCameraGateway:
         self._last_frame_s = 0.0
         self._last_jpeg: bytes | None = None
         self._processing_generation = 0
+        self._min_temp_c: float | None = None
         self._max_temp_c: float | None = None
         self._avg_temp_c: float | None = None
         self._hotspot_temp_c: float | None = None
@@ -181,6 +182,7 @@ class ThermalCameraGateway:
         self._debug_overlay_enabled = False
         self._display_range_mode = "FIXED"
         self._auto_display_range: tuple[float, float] | None = None
+        self._thermal_mode = "SYNTHETIC_THERMAL"
 
     @property
     def processing_generation(self) -> int:
@@ -194,6 +196,7 @@ class ThermalCameraGateway:
             self.enabled = enabled
             self._processing_generation += 1
             if not enabled:
+                self._min_temp_c = None
                 self._max_temp_c = None
                 self._avg_temp_c = None
                 self._hotspot_temp_c = None
@@ -201,6 +204,7 @@ class ThermalCameraGateway:
                 self._hotspot_sim_y = None
                 self._last_measurement_s = None
                 self._last_jpeg = None
+                self._thermal_mode = "SYNTHETIC_THERMAL"
 
     def toggle(self) -> bool:
         with self._lock:
@@ -325,7 +329,7 @@ class ThermalCameraGateway:
         # SITL moments where altitude may still be stabilizing.
         return max(8.0, altitude_m * math.tan(THERMAL_CAMERA_FOV_RAD / 2.0))
 
-    def _measure_locked(self) -> tuple[float, float, float | None, float | None, float | None]:
+    def _measure_locked(self) -> tuple[float, float, float, float | None, float | None, float | None, bool]:
         sources = self._active_world_sources()
         footprint_radius = self._footprint_radius_m(self._altitude_m)
         visible: list[tuple[ThermalSource, float]] = []
@@ -337,27 +341,48 @@ class ThermalCameraGateway:
                 visible.append((source, weight))
 
         if not visible:
-            return THERMAL_AMBIENT_TEMP_C, THERMAL_AMBIENT_TEMP_C, None, None, None
+            return (
+                THERMAL_AMBIENT_TEMP_C,
+                THERMAL_AMBIENT_TEMP_C,
+                THERMAL_AMBIENT_TEMP_C,
+                None,
+                None,
+                None,
+                False,
+            )
 
         weighted_sum = sum(source.temperature_c * weight for source, weight in visible)
         total_weight = sum(weight for _source, weight in visible)
         avg_temp = weighted_sum / max(total_weight, 1e-9)
         hottest = max(visible, key=lambda item: item[0].temperature_c)[0]
-        return avg_temp, hottest.temperature_c, hottest.temperature_c, hottest.center_x_m, hottest.center_y_m
+        return (
+            THERMAL_AMBIENT_TEMP_C,
+            avg_temp,
+            hottest.temperature_c,
+            hottest.temperature_c,
+            hottest.center_x_m,
+            hottest.center_y_m,
+            True,
+        )
 
     def update(self) -> None:
         self._refresh_sources_if_needed()
         with self._lock:
             if not self.enabled:
                 return
-            if self._native_frame_fresh_locked():
+            min_temp, avg_temp, max_temp, hotspot_temp, hotspot_x, hotspot_y, has_db_source = self._measure_locked()
+            if self._native_frame_fresh_locked() and not has_db_source:
                 minimum, average, maximum = thermal_statistics(self._native_temperatures_c)
+                self._min_temp_c = minimum
                 self._avg_temp_c = average
                 self._max_temp_c = maximum
                 self._hotspot_temp_c = maximum if maximum >= THERMAL_HOTSPOT_THRESHOLD_C else None
+                self._hotspot_sim_x = None
+                self._hotspot_sim_y = None
                 self._last_measurement_s = self._native_frame_time_s
+                self._thermal_mode = "NATIVE_GAZEBO"
                 return
-            avg_temp, max_temp, hotspot_temp, hotspot_x, hotspot_y = self._measure_locked()
+            self._min_temp_c = min_temp
             self._avg_temp_c = avg_temp
             self._max_temp_c = max_temp
             if max_temp >= THERMAL_HOTSPOT_THRESHOLD_C:
@@ -369,20 +394,21 @@ class ThermalCameraGateway:
                 self._hotspot_sim_x = None
                 self._hotspot_sim_y = None
             self._last_measurement_s = self.clock()
+            self._thermal_mode = "DB_THERMAL_SOURCE" if has_db_source else "SYNTHETIC_THERMAL"
 
     def status(self) -> dict[str, Any]:
         self.update()
         with self._lock:
             frame_age_ms = None
-            active_frame_time = self._native_frame_time_s or self._last_measurement_s
+            active_frame_time = (
+                self._native_frame_time_s
+                if self._thermal_mode == "NATIVE_GAZEBO"
+                else self._last_measurement_s
+            )
             if active_frame_time is not None:
                 frame_age_ms = round((self.clock() - active_frame_time) * 1000)
             native_active = self._native_frame_fresh_locked()
-            minimum = None
-            if self.enabled and native_active and self._native_temperatures_c is not None:
-                minimum = float(self._native_temperatures_c.min())
-            elif self.enabled:
-                minimum = THERMAL_AMBIENT_TEMP_C
+            minimum = self._min_temp_c if self.enabled else None
             hotspot_detected = (
                 self.enabled
                 and self._max_temp_c is not None
@@ -403,7 +429,7 @@ class ThermalCameraGateway:
                 "hotspotSimY": round(self._hotspot_sim_y, 2) if hotspot_detected and self._hotspot_sim_y is not None else None,
                 "thermalSourceError": self._source_error,
                 "thermalProcessingGeneration": self._processing_generation,
-                "thermalMode": "NATIVE_GAZEBO" if native_active else "SYNTHETIC_THERMAL",
+                "thermalMode": self._thermal_mode,
                 "thermalPixelFormat": self._native_format,
                 "thermalPalette": self._palette,
                 "thermalIsothermEnabled": self._isotherm_enabled,
@@ -419,7 +445,11 @@ class ThermalCameraGateway:
             now_s = self.clock()
             if self._last_jpeg is not None and now_s - self._last_frame_s < 1.0 / max(1.0, THERMAL_FRAME_FPS):
                 return self._last_jpeg
-            native_temperatures = self._native_temperatures_c.copy() if self._native_frame_fresh_locked() else None
+            native_temperatures = (
+                self._native_temperatures_c.copy()
+                if self._native_frame_fresh_locked() and self._thermal_mode == "NATIVE_GAZEBO"
+                else None
+            )
             max_temp = self._max_temp_c if self._max_temp_c is not None else THERMAL_AMBIENT_TEMP_C
             avg_temp = self._avg_temp_c if self._avg_temp_c is not None else THERMAL_AMBIENT_TEMP_C
             hotspot = max_temp >= THERMAL_HOTSPOT_THRESHOLD_C

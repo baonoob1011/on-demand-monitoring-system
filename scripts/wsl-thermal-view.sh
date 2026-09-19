@@ -42,4 +42,4 @@ echo
 cd "$PROJECT_PATH"
 DRONE_ENV="${DRONE_ENV:-$HOME/drone-env}"
 source "$DRONE_ENV/bin/activate"
-exec python3 -m drone.visualization.sensor_dashboard
+exec python3 -m drone.visualization.sensor_dashboard --thermal-view
