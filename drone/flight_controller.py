@@ -18,6 +18,7 @@ import time
 import tty
 import sys
 import grpc
+import httpx
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from mavsdk import System
 from mavsdk.action import ActionError
@@ -983,6 +984,92 @@ CONTROL_COMMAND_KEYS = {
 }
 
 
+class PreflightPersistenceBridge:
+    def __init__(self, backend_urls: BackendUrlResolver, mission_id: str) -> None:
+        self.backend_urls = backend_urls
+        self.mission_id = mission_id
+        self.run_id: str | None = None
+        self.base_url: str | None = None
+        self.sent_items: dict[str, tuple[str, str]] = {}
+        self.warned_unavailable = False
+
+    def start(self) -> str | None:
+        self.run_id = None
+        self.base_url = None
+        self.sent_items.clear()
+
+        for base_url in self.backend_urls.candidates():
+            try:
+                response = httpx.post(
+                    f"{base_url}/api/missions/{self.mission_id}/preflight-checks",
+                    timeout=1.5,
+                )
+                if response.status_code >= 400:
+                    continue
+
+                payload = response.json()
+                data = payload.get("data") if isinstance(payload, dict) else None
+                run_id = data.get("id") if isinstance(data, dict) else None
+                if not run_id:
+                    continue
+
+                self.run_id = str(run_id)
+                self.base_url = base_url
+                self.warned_unavailable = False
+                print(
+                    f"[PREFLIGHT-DB] Created run={self.run_id} mission={self.mission_id}",
+                    flush=True,
+                )
+                return self.run_id
+            except (httpx.HTTPError, ValueError):
+                continue
+
+        if not self.warned_unavailable:
+            print(
+                f"[PREFLIGHT-DB] Not saved. Backend unavailable or mission missing: {self.mission_id}",
+                flush=True,
+            )
+            self.warned_unavailable = True
+        return None
+
+    def sync(self, payload: dict) -> None:
+        if not self.run_id or not self.base_url:
+            return
+
+        for item in payload.get("checks", []):
+            check_type = str(item.get("key", "")).strip()
+            status = self._to_backend_status(str(item.get("status", "")).strip().upper())
+            message = str(item.get("message", "")).strip()
+
+            if not check_type or status is None:
+                continue
+
+            state = (status, message)
+            if self.sent_items.get(check_type) == state:
+                continue
+
+            try:
+                response = httpx.patch(
+                    f"{self.base_url}/api/preflight-checks/{self.run_id}/items/{check_type}",
+                    json={"status": status, "message": message},
+                    timeout=1.0,
+                )
+                if response.status_code < 400:
+                    self.sent_items[check_type] = state
+            except httpx.HTTPError:
+                return
+
+    @staticmethod
+    def _to_backend_status(status: str) -> str | None:
+        if status == "PASS":
+            return "PASSED"
+        if status in {"FAIL", "WARN"}:
+            return "FAILED"
+        if status in {"PENDING", "CHECKING"}:
+            return status
+        return None
+
+
 class FlightControlApi:
     def __init__(
         self,
@@ -990,12 +1077,14 @@ class FlightControlApi:
         commands: "queue.Queue[str]",
         status_provider=None,
         preflight_provider=None,
+        preflight_persistence=None,
         thermal: ThermalCameraGateway | None = None,
     ) -> None:
         self.camera = camera
         self.commands = commands
         self.status_provider = status_provider
         self.preflight_provider = preflight_provider
+        self.preflight_persistence = preflight_persistence
         self.thermal = thermal
         self.preflight_check_id: str | None = None
         self.preflight_started_at_s: float | None = None
@@ -1089,7 +1178,11 @@ class FlightControlApi:
 
             def do_POST(self) -> None:
                 if self.path.startswith("/api/preflight/check"):
-                    owner.preflight_check_id = f"PF-{int(time.time() * 1000)}"
+                    persisted_check_id = None
+                    if owner.preflight_persistence is not None:
+                        persisted_check_id = owner.preflight_persistence.start()
+
+                    owner.preflight_check_id = persisted_check_id or f"PF-{int(time.time() * 1000)}"
                     owner.preflight_started_at_s = time.monotonic()
                     payload = {
                         "checkId": owner.preflight_check_id,
@@ -2107,6 +2200,7 @@ async def main() -> None:
     connection_manager = MavsdkConnectionManager()
     drone = await connection_manager.connect()
     backend_urls = BackendUrlResolver(BACKEND_BASE_URL)
+    preflight_persistence = PreflightPersistenceBridge(backend_urls, MISSION_ID)
     media_uploader = MediaUploader(
         backend_urls,
         DRONE_ID,
@@ -2354,7 +2448,7 @@ async def main() -> None:
         completed = sum(1 for item in checks if item["status"] in {"PASS", "WARN", "FAIL"})
         critical_failures = [item for item in checks if item["critical"] and item["status"] == "FAIL"]
         overall = "FAILED" if critical_failures else "READY"
-        return {
+        payload = {
             "checkId": check_id,
             "status": overall,
             "progress": round((completed / len(checks)) * 100),
@@ -2362,6 +2456,8 @@ async def main() -> None:
             "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "checks": checks,
         }
+        preflight_persistence.sync(payload)
+        return payload
 
     def api_status() -> dict:
         battery_snapshot = simulated_battery.snapshot()
@@ -2427,7 +2523,14 @@ async def main() -> None:
         status.update(thermal.status())
         return status
 
-    control_api = FlightControlApi(camera, api_commands, api_status, build_preflight_status, thermal)
+    control_api = FlightControlApi(
+        camera,
+        api_commands,
+        api_status,
+        build_preflight_status,
+        preflight_persistence,
+        thermal,
+    )
     control_api.start()
     print(
         f"[SAFETY] Sensor default -> "
@@ -3012,23 +3115,12 @@ async def main() -> None:
             enabled = thermal.toggle()
             set_native_thermal_subscription(enabled)
             print(f"[THERMAL] {'ON' if enabled else 'OFF'}", flush=True)
-            if enabled:
-                open_monitor_window_if_needed(
-                    "Thermal camera",
-                    "wsl-thermal-view.sh",
-                    "wsl-thermal-view.sh|thermal_debug_viewer.py|sensor_dashboard.*--thermal-view",
-                )
-            else:
-                stop_monitor_window(
-                    "Thermal camera",
-                    "wsl-thermal-view.sh|thermal_debug_viewer.py|sensor_dashboard.*--thermal-view",
-                )
-        elif key == "7":
-            toggle_monitor_window(
+            stop_monitor_window(
                 "Thermal camera",
-                "wsl-thermal-view.sh",
                 "wsl-thermal-view.sh|thermal_debug_viewer.py|sensor_dashboard.*--thermal-view",
             )
+        elif key == "7":
+            print("[THERMAL] Viewer disabled; use UI thermal stream only", flush=True)
         elif key == "thermal_palette_next":
             print(f"[THERMAL] Palette -> {thermal.cycle_palette()}", flush=True)
         elif key == "thermal_isotherm_toggle":
