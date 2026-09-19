@@ -31,6 +31,7 @@
         <div id="map" class="map-viewport">
           <div id="mapContent" class="map-content">
             <img id="basemap" alt="Top-down simulation map">
+            <canvas id="planningCanvas" class="planning-canvas" width="2048" height="2048" aria-label="Planning map debug overlay"></canvas>
             <svg id="overlay" aria-label="Simulation zones"></svg>
           </div>
         </div>
@@ -74,6 +75,22 @@
             <span class="legend-chip feature"></span>Map features
             <span class="legend-chip thermal"></span>Thermal sources
           </div>
+        </section>
+        <section id="planningDebugPanel" class="planning-debug-panel">
+          <h2>Planning Debug</h2>
+          <div class="planning-debug-controls">
+            <label><input id="planningGridToggle" type="checkbox" checked> Grid</label>
+            <label><input id="planningTerrainToggle" type="checkbox" checked> Terrain</label>
+            <label><input id="planningObstacleToggle" type="checkbox"> Surface / Obstacles</label>
+            <label><input id="planningNoDataToggle" type="checkbox" checked> No Data</label>
+            <label><input id="planningClickToggle" type="checkbox" checked> Click Sample</label>
+          </div>
+          <div class="planning-legend">
+            <div><span class="planning-chip terrain-low"></span>Terrain low/high</div>
+            <div><span class="planning-chip obstacle"></span>Obstacle cells</div>
+            <div><span class="planning-chip nodata"></span>No data</div>
+          </div>
+          <pre id="planningSampleBox">Enable Debug, then click the map.</pre>
         </section>
         <section>
           <h2>Coordinate Debug</h2>
