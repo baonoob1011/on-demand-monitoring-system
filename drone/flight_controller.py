@@ -31,12 +31,19 @@ from battery_simulator import BatterySimulator, preflight_battery_check
 from media_uploader import BackendUrlResolver, MediaUploader
 from thermal_camera_gateway import ThermalCameraGateway
 
-PROJECT_ROOT = Path(
-    os.getenv(
-        "PROJECT_PATH",
-        "/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system",
-    )
-)
+def resolve_project_root() -> Path:
+    configured = os.getenv("PROJECT_PATH")
+    if configured:
+        return Path(configured)
+
+    source_candidate = Path(__file__).resolve().parent.parent
+    if (source_candidate / "Forest3D").exists() and (source_candidate / "ondemandmonitoring").exists():
+        return source_candidate
+
+    return Path.cwd()
+
+
+PROJECT_ROOT = resolve_project_root()
 
 DRONE_DIR = PROJECT_ROOT / "drone"
 
@@ -2291,6 +2298,7 @@ async def main() -> None:
     )
     avoidance = None
     lidar = None
+    lidar_ui_enabled = False
     safety_sensor_enabled = (
     os.getenv("SAFETY_SENSOR_ENABLED", "false").strip().lower()
         in {"1", "true", "yes", "on"}
@@ -2520,6 +2528,35 @@ async def main() -> None:
             },
             "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
+        if lidar is not None and hasattr(lidar, "snapshot"):
+            lidar_state, lidar_status, lidar_direction = lidar.snapshot()
+            if lidar_state is not None:
+                status["lidar"] = {
+                    "enabled": lidar_ui_enabled or safety_sensor_enabled,
+                    "available": bool(getattr(lidar, "available", False)),
+                    "status": lidar_status,
+                    "direction": lidar_direction,
+                    "rangeMaxM": float(os.getenv("LIDAR_MAX_RANGE_M", "500.0")),
+                    "frontM": lidar_state.front,
+                    "frontLeftM": lidar_state.front_left,
+                    "frontRightM": lidar_state.front_right,
+                    "leftM": lidar_state.left,
+                    "rightM": lidar_state.right,
+                    "backM": lidar_state.back,
+                    "nearestM": lidar_state.nearest_distance,
+                    "nearestAngleDeg": lidar_state.nearest_angle,
+                    "nearestDirection": lidar_state.nearest_direction,
+                    "scanAgeS": lidar.latest_scan_age_s() if hasattr(lidar, "latest_scan_age_s") else None,
+                }
+        elif lidar_ui_enabled:
+            status["lidar"] = {
+                "enabled": True,
+                "available": False,
+                "status": "STARTING",
+                "direction": "NONE",
+                "rangeMaxM": float(os.getenv("LIDAR_MAX_RANGE_M", "500.0")),
+                "scanAgeS": None,
+            }
         status.update(thermal.status())
         return status
 
@@ -3100,11 +3137,19 @@ async def main() -> None:
                 "downward_camera_viewer.py|wsl-camera-view.sh",
             )
         elif key == "4":
-            toggle_monitor_window(
-                "LiDAR monitor",
-                "wsl-sensor-monitor.sh",
-                "drone.visualization.sensor_dashboard|wsl-sensor-monitor.sh",
-            )
+            lidar_ui_enabled = not lidar_ui_enabled
+            if lidar_ui_enabled:
+                if LidarGateway is None:
+                    lidar_ui_enabled = False
+                    print(f"[LIDAR] Disabled: {LIDAR_IMPORT_ERROR}", flush=True)
+                elif lidar is None:
+                    lidar = LidarGateway()
+                    lidar.start()
+                    print("[LIDAR] UI monitor -> ON (web dashboard only)", flush=True)
+                else:
+                    print("[LIDAR] UI monitor -> ON (web dashboard only)", flush=True)
+            else:
+                print("[LIDAR] UI monitor -> OFF", flush=True)
         elif key == "5":
             toggle_monitor_window(
                 "Telemetry monitor",

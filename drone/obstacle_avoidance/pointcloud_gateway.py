@@ -11,7 +11,7 @@ import numpy as np
 
 
 POINTCLOUD_TOPIC = os.getenv("POINTCLOUD_LIDAR_TOPIC", "/lidar_3d")
-POINTCLOUD_MAX_RANGE_M = float(os.getenv("POINTCLOUD_MAX_RANGE_M", "200.0"))
+POINTCLOUD_MAX_RANGE_M = float(os.getenv("POINTCLOUD_MAX_RANGE_M", "500.0"))
 POINTCLOUD_MIN_VALID_DISTANCE_M = float(os.getenv("POINTCLOUD_MIN_VALID_DISTANCE_M", "1.0"))
 
 

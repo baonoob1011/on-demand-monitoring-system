@@ -76,6 +76,15 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional(readOnly = true)
+    public MissionResponse getByCodeResponse(String missionCode) {
+        Mission mission = missionRepository.findByMissionCode(missionCode)
+                .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND,
+                        "Mission not found: " + missionCode));
+        return missionMapper.toResponse(mission);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Mission findById(String missionId) {
         return getOrThrow(missionId);
     }

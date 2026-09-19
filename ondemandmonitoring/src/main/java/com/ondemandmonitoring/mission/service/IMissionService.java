@@ -12,6 +12,8 @@ import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 public interface IMissionService {
 
     MissionResponse getByIdResponse(String missionId);
+
+    MissionResponse getByCodeResponse(String missionCode);
     MissionResponse createMissionForOrder(String orderId);
     MissionResponse assignDrone(String missionId, String droneId);
     MissionResponse assignOperator(String missionId, String operatorId);

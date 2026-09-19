@@ -103,10 +103,32 @@ function Assert-CompactMapAssets([string]$Root) {
     $worldFile = Join-Path $Root "Forest3D\worlds\forest_monitoring_compact.sdf"
     $mapImage = Join-Path $Root "ondemandmonitoring\src\main\resources\static\simulation-viewer\simulation_map_top.png"
     $mapMeta = Join-Path $Root "ondemandmonitoring\src\main\resources\static\simulation-viewer\simulation-map.json"
+    $modelRoot = Join-Path $Root "Forest3D\models"
+    $requiredModels = @(
+        "compact_terrain",
+        "compact_water",
+        "compact_roads",
+        "compact_bridges",
+        "compact_home",
+        "compact_highrise",
+        "compact_zones",
+        "compact_forest",
+        "compact_thermal_sources",
+        "compact_environment_props",
+        "compact_mountains",
+        "compact_airport",
+        "x500_mono_cam_down"
+    )
 
     if (-not (Test-Path $worldFile)) { throw "Full compact world is missing: $worldFile" }
     if (-not (Test-Path $mapImage)) { throw "Full simulation map image is missing: $mapImage" }
     if (-not (Test-Path $mapMeta)) { throw "Simulation map metadata is missing: $mapMeta" }
+    foreach ($model in $requiredModels) {
+        $config = Join-Path $modelRoot "$model\model.config"
+        $sdf = Join-Path $modelRoot "$model\model.sdf"
+        if (-not (Test-Path $config)) { throw "Packaged Gazebo model config is missing: $config" }
+        if (-not (Test-Path $sdf)) { throw "Packaged Gazebo model SDF is missing: $sdf" }
+    }
 
     $meta = Get-Content -Raw -Path $mapMeta | ConvertFrom-Json
     if ($meta.worldName -ne "forest_monitoring_compact") {
