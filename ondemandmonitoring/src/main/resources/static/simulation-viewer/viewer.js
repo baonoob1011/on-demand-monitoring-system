@@ -3,6 +3,8 @@ const MAP_SIZE = 2048;
 const mapEl = document.getElementById("map");
 const contentEl = document.getElementById("mapContent");
 const basemapEl = document.getElementById("basemap");
+const planningCanvas = document.getElementById("planningCanvas");
+const planningCtx = planningCanvas.getContext("2d");
 const overlayEl = document.getElementById("overlay");
 const statusEl = document.getElementById("status");
 const detailsEl = document.getElementById("zoneDetails");
@@ -22,9 +24,17 @@ const deleteZoneButton = document.getElementById("deleteZone");
 const reloadZonesButton = document.getElementById("reloadZones");
 const saveStatusEl = document.getElementById("saveStatus");
 const toastEl = document.getElementById("toast");
+const planningDebugPanel = document.getElementById("planningDebugPanel");
+const planningGridToggle = document.getElementById("planningGridToggle");
+const planningTerrainToggle = document.getElementById("planningTerrainToggle");
+const planningObstacleToggle = document.getElementById("planningObstacleToggle");
+const planningNoDataToggle = document.getElementById("planningNoDataToggle");
+const planningClickToggle = document.getElementById("planningClickToggle");
+const planningSampleBox = document.getElementById("planningSampleBox");
 const readOnlyMode = new URLSearchParams(window.location.search).has("readonly");
 
 let metadata;
+let planningGrid;
 let zones = [];
 let features = [];
 let thermalSources = [];
@@ -35,9 +45,13 @@ let selectedZoneId = null;
 let selectedThermalId = null;
 let dragging = false;
 let lastPointer = null;
+let dragStartPointer = null;
+let panMoved = false;
+let suppressNextMapClick = false;
 let zoneDrag = null;
 let thermalDrag = null;
 let toastTimer = null;
+let planningMarker = null;
 
 function apiData(payload) {
   return payload.data || payload.result || payload;
@@ -52,21 +66,24 @@ async function loadJson(url) {
 }
 
 function simToPixel(x, y) {
-  const px = ((x - metadata.minX) / (metadata.maxX - metadata.minX)) * MAP_SIZE;
-  const py = (1 - ((y - metadata.minY) / (metadata.maxY - metadata.minY))) * MAP_SIZE;
+  const bounds = metadata.imageBounds || metadata;
+  const px = ((x - bounds.minX) / (bounds.maxX - bounds.minX)) * MAP_SIZE;
+  const py = (1 - ((y - bounds.minY) / (bounds.maxY - bounds.minY))) * MAP_SIZE;
   return [px, py];
 }
 
 function simRadiusToPixelSize(radiusMeters) {
+  const bounds = metadata.imageBounds || metadata;
   return {
-    x: (radiusMeters / (metadata.maxX - metadata.minX)) * MAP_SIZE,
-    y: (radiusMeters / (metadata.maxY - metadata.minY)) * MAP_SIZE,
+    x: (radiusMeters / (bounds.maxX - bounds.minX)) * MAP_SIZE,
+    y: (radiusMeters / (bounds.maxY - bounds.minY)) * MAP_SIZE,
   };
 }
 
 function pixelToSim(px, py) {
-  const x = metadata.minX + (px / MAP_SIZE) * (metadata.maxX - metadata.minX);
-  const y = metadata.minY + (1 - py / MAP_SIZE) * (metadata.maxY - metadata.minY);
+  const bounds = metadata.imageBounds || metadata;
+  const x = bounds.minX + (px / MAP_SIZE) * (bounds.maxX - bounds.minX);
+  const y = bounds.minY + (1 - py / MAP_SIZE) * (bounds.maxY - bounds.minY);
   return [x, y];
 }
 
@@ -389,6 +406,264 @@ function drawDebugOverlay() {
   }
 
   overlayEl.appendChild(group);
+  drawPlanningMarker();
+}
+
+function drawPlanningMarker() {
+  if (!planningMarker) return;
+
+  const [px, py] = simToPixel(planningMarker.x, planningMarker.y);
+  const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  group.setAttribute("class", "planning-sample-marker");
+
+  const outer = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  outer.setAttribute("cx", px);
+  outer.setAttribute("cy", py);
+  outer.setAttribute("r", 15);
+  outer.setAttribute("class", "planning-sample-marker-outer");
+  group.appendChild(outer);
+
+  const inner = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  inner.setAttribute("cx", px);
+  inner.setAttribute("cy", py);
+  inner.setAttribute("r", 6);
+  inner.setAttribute("class", "planning-sample-marker-inner");
+  group.appendChild(inner);
+
+  const hLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  hLine.setAttribute("x1", px - 22);
+  hLine.setAttribute("y1", py);
+  hLine.setAttribute("x2", px + 22);
+  hLine.setAttribute("y2", py);
+  hLine.setAttribute("class", "planning-sample-marker-line");
+  group.appendChild(hLine);
+
+  const vLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  vLine.setAttribute("x1", px);
+  vLine.setAttribute("y1", py - 22);
+  vLine.setAttribute("x2", px);
+  vLine.setAttribute("y2", py + 22);
+  vLine.setAttribute("class", "planning-sample-marker-line");
+  group.appendChild(vLine);
+
+  const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  label.setAttribute("x", px + 18);
+  label.setAttribute("y", py - 18);
+  label.setAttribute("class", "planning-sample-marker-label");
+  label.textContent = planningMarker.label;
+  group.appendChild(label);
+
+  overlayEl.appendChild(group);
+}
+
+function planningValueAt(values, row, col) {
+  if (!planningGrid || !values) return null;
+  return values[row * planningGrid.width + col] ?? null;
+}
+
+function planningCellBounds(row, col) {
+  const b = planningGrid.bounds;
+  const resolution = Number(planningGrid.resolutionM);
+  const centerX = col === planningGrid.width - 1 ? b.maxX : b.minX + col * resolution;
+  const centerY = row === planningGrid.height - 1 ? b.maxY : b.minY + row * resolution;
+  return {
+    minX: Math.max(b.minX, centerX - resolution / 2),
+    maxX: Math.min(b.maxX, centerX + resolution / 2),
+    minY: Math.max(b.minY, centerY - resolution / 2),
+    maxY: Math.min(b.maxY, centerY + resolution / 2),
+  };
+}
+
+function terrainColor(value, min, max) {
+  if (value == null || !Number.isFinite(value)) return "rgba(0,0,0,0)";
+  const t = max > min ? Math.max(0, Math.min(1, (value - min) / (max - min))) : 0;
+  const r = Math.round(37 + t * 190);
+  const g = Math.round(99 + Math.sin(t * Math.PI) * 120);
+  const bl = Math.round(235 - t * 180);
+  return `rgba(${r}, ${g}, ${bl}, 0.46)`;
+}
+
+function drawPlanningOverlay() {
+  planningCtx.clearRect(0, 0, MAP_SIZE, MAP_SIZE);
+  planningCanvas.classList.toggle("visible", debugToggle.checked && Boolean(planningGrid));
+  planningDebugPanel.classList.toggle("visible", debugToggle.checked);
+  if (!debugToggle.checked || !planningGrid) {
+    return;
+  }
+
+  const stats = planningGrid.stats || {};
+  const terrainMin = Number(stats.terrainMinM ?? 0);
+  const terrainMax = Number(stats.terrainMaxM ?? 1);
+  const drawTerrain = planningTerrainToggle.checked;
+  const drawObstacles = planningObstacleToggle.checked;
+  const drawNoData = planningNoDataToggle.checked;
+  const drawGrid = planningGridToggle.checked;
+
+  for (let row = 0; row < planningGrid.height; row++) {
+    for (let col = 0; col < planningGrid.width; col++) {
+      const terrain = planningValueAt(planningGrid.terrainElevationM, row, col);
+      const obstacleHeight = planningValueAt(planningGrid.obstacleHeightM, row, col);
+      if (!drawTerrain && !drawObstacles && !drawNoData) continue;
+
+      const bounds = planningCellBounds(row, col);
+      const [left, bottom] = simToPixel(bounds.minX, bounds.minY);
+      const [right, top] = simToPixel(bounds.maxX, bounds.maxY);
+      const x = Math.min(left, right);
+      const y = Math.min(top, bottom);
+      const w = Math.max(1, Math.abs(right - left));
+      const h = Math.max(1, Math.abs(bottom - top));
+
+      if (terrain == null && drawNoData) {
+        planningCtx.fillStyle = "rgba(71, 85, 105, 0.32)";
+        planningCtx.fillRect(x, y, w, h);
+        continue;
+      }
+
+      if (terrain != null && drawTerrain) {
+        planningCtx.fillStyle = terrainColor(Number(terrain), terrainMin, terrainMax);
+        planningCtx.fillRect(x, y, w, h);
+      }
+
+      if (drawObstacles && obstacleHeight != null && Number(obstacleHeight) > 0.25) {
+        planningCtx.fillStyle = "rgba(126, 34, 206, 0.62)";
+        planningCtx.fillRect(x, y, w, h);
+      }
+    }
+  }
+
+  if (drawGrid) {
+    planningCtx.save();
+    planningCtx.strokeStyle = "rgba(15, 23, 42, 0.2)";
+    planningCtx.lineWidth = 1;
+    const step = 5;
+    for (let col = 0; col < planningGrid.width; col += step) {
+      const x = col === planningGrid.width - 1
+        ? planningGrid.bounds.maxX
+        : planningGrid.bounds.minX + col * planningGrid.resolutionM;
+      const [px] = simToPixel(x, 0);
+      planningCtx.beginPath();
+      planningCtx.moveTo(px, 0);
+      planningCtx.lineTo(px, MAP_SIZE);
+      planningCtx.stroke();
+    }
+    for (let row = 0; row < planningGrid.height; row += step) {
+      const y = row === planningGrid.height - 1
+        ? planningGrid.bounds.maxY
+        : planningGrid.bounds.minY + row * planningGrid.resolutionM;
+      const [, py] = simToPixel(0, y);
+      planningCtx.beginPath();
+      planningCtx.moveTo(0, py);
+      planningCtx.lineTo(MAP_SIZE, py);
+      planningCtx.stroke();
+    }
+    planningCtx.restore();
+  }
+}
+
+function formatMeters(value) {
+  return value == null ? "NO DATA" : `${Number(value).toFixed(3)} m`;
+}
+
+function formatYesNo(value) {
+  return value ? "YES" : "NO";
+}
+
+function findNearestObstacle(x, y, radiusM = 25, minimumHeightM = 1) {
+  if (!planningGrid?.obstacleHeightM) return null;
+
+  const resolution = Number(planningGrid.resolutionM);
+  const b = planningGrid.bounds;
+  const centerCol = Math.round((x - b.minX) / resolution);
+  const centerRow = Math.round((y - b.minY) / resolution);
+  const searchCells = Math.ceil(radiusM / resolution);
+  let nearest = null;
+
+  for (let row = Math.max(0, centerRow - searchCells); row <= Math.min(planningGrid.height - 1, centerRow + searchCells); row++) {
+    for (let col = Math.max(0, centerCol - searchCells); col <= Math.min(planningGrid.width - 1, centerCol + searchCells); col++) {
+      const obstacleHeight = planningValueAt(planningGrid.obstacleHeightM, row, col);
+      if (obstacleHeight == null || Number(obstacleHeight) <= minimumHeightM) continue;
+
+      const cellX = col === planningGrid.width - 1 ? b.maxX : b.minX + col * resolution;
+      const cellY = row === planningGrid.height - 1 ? b.maxY : b.minY + row * resolution;
+      const distanceM = Math.hypot(cellX - x, cellY - y);
+      if (distanceM > radiusM) continue;
+
+      if (!nearest || distanceM < nearest.distanceM) {
+        nearest = {
+          x: cellX,
+          y: cellY,
+          distanceM,
+          obstacleHeightM: Number(obstacleHeight),
+          terrainElevationM: planningValueAt(planningGrid.terrainElevationM, row, col),
+          surfaceElevationM: planningValueAt(planningGrid.surfaceElevationM, row, col),
+        };
+      }
+    }
+  }
+
+  return nearest;
+}
+
+function formatNearestObstacle(obstacle) {
+  if (!obstacle) return "None within 25m";
+  return `${obstacle.obstacleHeightM.toFixed(3)} m at X ${obstacle.x.toFixed(1)}, Y ${obstacle.y.toFixed(1)} (${obstacle.distanceM.toFixed(1)}m away)`;
+}
+
+function sampleStatus(sample) {
+  if (!sample.insideWorldBounds) return "OUTSIDE WORLD";
+  if (sample.terrainElevationM == null) return "NO DATA";
+  return "VALID";
+}
+
+async function samplePlanningAt(x, y) {
+  planningSampleBox.textContent = "Loading planning sample...";
+  try {
+    const payload = await loadJson(`/api/planning/environment/sample?x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}`);
+    const sample = apiData(payload);
+    const nearestObstacle = findNearestObstacle(Number(sample.simX), Number(sample.simY));
+    const shouldSnapToObstacle = Number(sample.obstacleHeightM || 0) <= 1
+      && nearestObstacle?.distanceM <= 1.5;
+    const displaySample = shouldSnapToObstacle
+      ? {
+          simX: nearestObstacle.x,
+          simY: nearestObstacle.y,
+          terrainElevationM: nearestObstacle.terrainElevationM,
+          surfaceElevationM: nearestObstacle.surfaceElevationM,
+          obstacleHeightM: nearestObstacle.obstacleHeightM,
+        }
+      : sample;
+    planningMarker = {
+      x: Number(displaySample.simX),
+      y: Number(displaySample.simY),
+      label: displaySample.terrainElevationM == null
+        ? "NO DATA"
+        : `Z ${Number(displaySample.terrainElevationM).toFixed(1)} / S ${displaySample.surfaceElevationM == null ? "--" : Number(displaySample.surfaceElevationM).toFixed(1)}`,
+    };
+    redrawOverlay();
+    planningSampleBox.textContent = [
+      "PLANNING SAMPLE",
+      "",
+      `Gazebo X:         ${Number(displaySample.simX).toFixed(2)} m`,
+      `Gazebo Y:         ${Number(displaySample.simY).toFixed(2)} m`,
+      `Sample Mode:      ${shouldSnapToObstacle ? `SNAPPED TO SURFACE (${nearestObstacle.distanceM.toFixed(1)}m)` : "EXACT CLICK"}`,
+      "",
+      `Inside World:     ${formatYesNo(sample.insideWorldBounds)}`,
+      `Terrain Z:        ${formatMeters(displaySample.terrainElevationM)}`,
+      `Surface Z:        ${formatMeters(displaySample.surfaceElevationM)}`,
+      `Above Terrain:    ${formatMeters(displaySample.obstacleHeightM)}`,
+      `Nearest Obstacle: ${formatNearestObstacle(nearestObstacle)}`,
+      "",
+      `Restricted:       ${formatYesNo(sample.restricted)}`,
+      `Zone Code:        ${sample.restrictedZoneCode || "—"}`,
+      `Zone Name:        ${sample.restrictedZoneName || "—"}`,
+      "",
+      `Grid Accuracy:    ${Number(planningGrid?.resolutionM || 0).toFixed(0)}m mesh sample`,
+      `Data Status:      ${sampleStatus(sample)}`,
+    ].join("\n");
+  } catch (error) {
+    planningSampleBox.textContent = error.message;
+    console.error(error);
+  }
 }
 
 function drawZoneList() {
@@ -935,7 +1210,15 @@ function attachControls() {
   debugToggle.addEventListener("change", () => {
     mouseReadout.classList.toggle("visible", debugToggle.checked);
     overlayEl.classList.toggle("debug-visible", debugToggle.checked);
+    drawPlanningOverlay();
   });
+
+  [
+    planningGridToggle,
+    planningTerrainToggle,
+    planningObstacleToggle,
+    planningNoDataToggle,
+  ].forEach((control) => control.addEventListener("change", drawPlanningOverlay));
 
   editToggle.addEventListener("change", () => {
     if (readOnlyMode) {
@@ -990,7 +1273,9 @@ function attachControls() {
   mapEl.addEventListener("pointerdown", (event) => {
     if (!readOnlyMode && editToggle.checked) return;
     dragging = true;
+    panMoved = false;
     lastPointer = { x: event.clientX, y: event.clientY };
+    dragStartPointer = { ...lastPointer };
     mapEl.setPointerCapture(event.pointerId);
     mapEl.classList.add("dragging");
   });
@@ -1006,8 +1291,13 @@ function attachControls() {
       return;
     }
     if (!dragging || !lastPointer) return;
-    panX += event.clientX - lastPointer.x;
-    panY += event.clientY - lastPointer.y;
+    const dx = event.clientX - lastPointer.x;
+    const dy = event.clientY - lastPointer.y;
+    if (dragStartPointer && Math.hypot(event.clientX - dragStartPointer.x, event.clientY - dragStartPointer.y) > 3) {
+      panMoved = true;
+    }
+    panX += dx;
+    panY += dy;
     lastPointer = { x: event.clientX, y: event.clientY };
     applyTransform();
   });
@@ -1031,14 +1321,27 @@ function attachControls() {
       }
       return;
     }
+    if (dragging && panMoved) {
+      suppressNextMapClick = true;
+    }
     dragging = false;
+    panMoved = false;
     lastPointer = null;
+    dragStartPointer = null;
     mapEl.classList.remove("dragging");
   });
 
   mapEl.addEventListener("click", (event) => {
+    if (suppressNextMapClick) {
+      suppressNextMapClick = false;
+      return;
+    }
     if (event.target.closest?.(".zone-polygon")) {
       return;
+    }
+    if (debugToggle.checked && planningClickToggle.checked) {
+      const [x, y] = pointerToSim(event);
+      samplePlanningAt(x, y);
     }
     if (selectedZoneId) {
       selectZone(null);
@@ -1050,33 +1353,43 @@ function attachControls() {
 
 async function init() {
   try {
-    const [meta, zonesPayload, featuresPayload, thermalPayload] = await Promise.all([
+    const [meta, zonesPayload, featuresPayload, thermalPayload, planningPayload] = await Promise.all([
       loadJson("./simulation-map.json"),
       loadJson("/api/zones"),
       loadJson("/api/simulation-map"),
       loadJson("/api/thermal-sources").catch(() => ({ data: [] })),
+      loadJson("/api/planning/environment/grid").catch(() => ({ data: null })),
     ]);
 
     metadata = meta;
     zones = apiData(zonesPayload);
     features = apiData(featuresPayload);
     thermalSources = apiData(thermalPayload);
+    planningGrid = apiData(planningPayload);
 
     basemapEl.src = metadata.image;
     overlayEl.setAttribute("viewBox", `0 0 ${MAP_SIZE} ${MAP_SIZE}`);
     redrawOverlay();
+    drawPlanningOverlay();
     drawZoneList();
     drawThermalList();
     attachControls();
     fitHome();
 
-    statusEl.textContent = `${zones.length} zones | ${features.length} map features | ${thermalSources.length} thermal sources`;
+    statusEl.textContent = `${zones.length} zones | ${features.length} map features | ${thermalSources.length} thermal sources | planning ${planningGrid ? "ready" : "unavailable"}`;
     metadataBox.textContent = [
       `world=${metadata.worldName}`,
       `minX=${metadata.minX}`,
       `maxX=${metadata.maxX}`,
       `minY=${metadata.minY}`,
       `maxY=${metadata.maxY}`,
+      `imageMinX=${metadata.imageBounds?.minX ?? metadata.minX}`,
+      `imageMaxX=${metadata.imageBounds?.maxX ?? metadata.maxX}`,
+      `imageMinY=${metadata.imageBounds?.minY ?? metadata.minY}`,
+      `imageMaxY=${metadata.imageBounds?.maxY ?? metadata.maxY}`,
+      `planningResolution=${planningGrid?.resolutionM ?? "unavailable"}m`,
+      `planningGrid=${planningGrid ? `${planningGrid.width}x${planningGrid.height}` : "unavailable"}`,
+      `planningTerrain=${planningGrid?.stats ? `${planningGrid.stats.terrainMinM}..${planningGrid.stats.terrainMaxM}m` : "unavailable"}`,
       `Y inverted=YES`,
       `X/Y swapped=NO`,
       `thermalSources=${thermalSources.length}`,
