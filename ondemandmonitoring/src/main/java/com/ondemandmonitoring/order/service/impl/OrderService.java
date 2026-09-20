@@ -14,21 +14,16 @@ import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.IOrderService;
 import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.user.domain.User;
-import com.ondemandmonitoring.user.repository.UserRepository;
-import com.ondemandmonitoring.user.service.UserIdentityService;
+import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import com.ondemandmonitoring.warehouse.domain.PreferredTime;
 import com.ondemandmonitoring.warehouse.repository.PreferredTimeRepository;
 import com.ondemandmonitoring.zone.domain.Zone;
 import com.ondemandmonitoring.zone.repository.ZoneRepository;
 import java.util.List;
-import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.locationtech.jts.geom.Point;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,8 +36,7 @@ public class OrderService implements IOrderService {
     CategoryServiceRepository categoryServiceRepository;
     PreferredTimeRepository preferredTimeRepository;
     ZoneRepository zoneRepository;
-    UserRepository userRepository;
-    UserIdentityService userIdentityService;
+    AuthenticatedUserResolver authenticatedUserResolver;
     IMissionService missionService;
     OrderMapper orderMapper;
 
@@ -68,7 +62,7 @@ public class OrderService implements IOrderService {
     public OrderCreateResponse createOrder(OrderCreateRequest request) {
 
         // 1. Resolve Customer from logged-in user session
-        User customer = getCurrentAuthenticatedUser();
+        User customer = authenticatedUserResolver.getCurrentUser();
 
         // 2. Validate & fetch Category Service
         CategoryService service = categoryServiceRepository.findById(request.getServiceId())
@@ -100,45 +94,6 @@ public class OrderService implements IOrderService {
 
         Order savedOrder = orderRepository.save(order);
         return orderMapper.toResponse(savedOrder);
-    }
-
-    private User getCurrentAuthenticatedUser() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated()) {
-            throw new ApiException(ErrorCode.UNAUTHORIZED, "User authentication is required");
-        }
-
-        Object principal = auth.getPrincipal();
-        if (principal instanceof Jwt jwt) {
-            String cognitoSub = jwt.getSubject();
-            if (cognitoSub != null && !cognitoSub.isBlank()) {
-                try {
-                    return userIdentityService.findUserByCognitoSub(cognitoSub);
-                } catch (ApiException e) {
-                    // Fallback check by email claim
-                    String email = jwt.getClaimAsString("email");
-                    if (email != null && !email.isBlank()) {
-                        return userRepository.findByEmailIgnoreCase(email)
-                                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, "User not found for email: " + email));
-                    }
-                    throw e;
-                }
-            }
-        }
-
-        String name = auth.getName();
-        if (name != null && !name.isBlank()) {
-            try {
-                UUID userId = UUID.fromString(name);
-                return userRepository.findById(userId)
-                        .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, "User not found with id: " + userId));
-            } catch (IllegalArgumentException ignored) {
-                return userRepository.findByEmailIgnoreCase(name)
-                        .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, "User not found with identifier: " + name));
-            }
-        }
-
-        throw new ApiException(ErrorCode.USER_NOT_FOUND, "Authenticated user identity could not be resolved");
     }
 
     private void validateMediaType(OrderCreateRequest request) {
