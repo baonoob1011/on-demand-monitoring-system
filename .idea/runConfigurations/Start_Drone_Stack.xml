@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Start Drone Stack" type="ShConfigurationType">
-    <option name="SCRIPT_TEXT" value="&quot;$PROJECT_DIR$\RUN_DRONE_SIM_ONLY.cmd&quot;" />
+    <option name="SCRIPT_TEXT" value="if exist &quot;$PROJECT_DIR$\RUN_DRONE_SIM_ONLY.cmd&quot; (call &quot;$PROJECT_DIR$\RUN_DRONE_SIM_ONLY.cmd&quot;) else (call &quot;$PROJECT_DIR$\on-demand-monitoring-system\RUN_DRONE_SIM_ONLY.cmd&quot;)" />
     <option name="INDEPENDENT_SCRIPT_PATH" value="false" />
     <option name="SCRIPT_PATH" value="" />
     <option name="SCRIPT_OPTIONS" value="" />
