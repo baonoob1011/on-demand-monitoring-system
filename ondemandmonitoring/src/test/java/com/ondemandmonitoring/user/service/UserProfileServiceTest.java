@@ -12,8 +12,10 @@ import com.ondemandmonitoring.role.domain.Role;
 import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.user.domain.CustomerProfile;
 import com.ondemandmonitoring.user.domain.User;
+import com.ondemandmonitoring.user.dto.request.UserProfileUpdateRequest;
 import com.ondemandmonitoring.user.dto.response.UserProfileResponse;
 import com.ondemandmonitoring.user.repository.CustomerProfileRepository;
+import com.ondemandmonitoring.user.repository.UserRepository;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -30,6 +32,9 @@ class UserProfileServiceTest {
 
     @Mock
     private CustomerProfileRepository customerProfileRepository;
+
+    @Mock
+    private UserRepository userRepository;
 
     @InjectMocks
     private UserProfileService userProfileService;
@@ -84,6 +89,99 @@ class UserProfileServiceTest {
                 .isInstanceOfSatisfying(ApiException.class,
                         exception -> assertThat(exception.getErrorCode())
                                 .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    @Test
+    void updateCurrentProfile_customer_updatesAndNormalizesProvidedFields() {
+        User user = user(RoleCode.CUSTOMER);
+        CustomerProfile customerProfile = CustomerProfile.builder()
+                .userId(user.getId())
+                .user(user)
+                .phoneNumber("0900000000")
+                .address("Old address")
+                .companyName("Old company")
+                .build();
+        when(authenticatedUserResolver.getCurrentUser()).thenReturn(user);
+        when(customerProfileRepository.findById(user.getId()))
+                .thenReturn(Optional.of(customerProfile));
+        UserProfileUpdateRequest request = UserProfileUpdateRequest.builder()
+                .fullName("  Updated Name  ")
+                .phoneNumber("+84 901 234 567")
+                .address("")
+                .companyName("  Updated Company  ")
+                .build();
+
+        UserProfileResponse response = userProfileService.updateCurrentProfile(request);
+
+        assertThat(user.getFullName()).isEqualTo("Updated Name");
+        assertThat(customerProfile.getPhoneNumber()).isEqualTo("+84 901 234 567");
+        assertThat(customerProfile.getAddress()).isNull();
+        assertThat(customerProfile.getCompanyName()).isEqualTo("Updated Company");
+        assertThat(response.getFullName()).isEqualTo("Updated Name");
+        assertThat(response.getCustomerProfile().getAddress()).isNull();
+        verify(userRepository).save(user);
+        verify(customerProfileRepository).save(customerProfile);
+    }
+
+    @Test
+    void updateCurrentProfile_customerPartialUpdate_preservesUnspecifiedFields() {
+        User user = user(RoleCode.CUSTOMER);
+        CustomerProfile customerProfile = CustomerProfile.builder()
+                .userId(user.getId())
+                .user(user)
+                .phoneNumber("0900000000")
+                .address("Existing address")
+                .companyName("Existing company")
+                .build();
+        when(authenticatedUserResolver.getCurrentUser()).thenReturn(user);
+        when(customerProfileRepository.findById(user.getId()))
+                .thenReturn(Optional.of(customerProfile));
+
+        userProfileService.updateCurrentProfile(UserProfileUpdateRequest.builder()
+                .address("New address")
+                .build());
+
+        assertThat(customerProfile.getPhoneNumber()).isEqualTo("0900000000");
+        assertThat(customerProfile.getAddress()).isEqualTo("New address");
+        assertThat(customerProfile.getCompanyName()).isEqualTo("Existing company");
+        verify(userRepository, never()).save(user);
+    }
+
+    @Test
+    void updateCurrentProfile_employee_canUpdateCommonFields() {
+        User user = user(RoleCode.STAFF);
+        when(authenticatedUserResolver.getCurrentUser()).thenReturn(user);
+
+        UserProfileResponse response = userProfileService.updateCurrentProfile(
+                UserProfileUpdateRequest.builder().fullName("Updated Staff").build());
+
+        assertThat(response.getFullName()).isEqualTo("Updated Staff");
+        assertThat(response.getCustomerProfile()).isNull();
+        verify(userRepository).save(user);
+        verify(customerProfileRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void updateCurrentProfile_employeeCannotUpdateCustomerFields() {
+        User user = user(RoleCode.STAFF);
+        when(authenticatedUserResolver.getCurrentUser()).thenReturn(user);
+
+        assertThatThrownBy(() -> userProfileService.updateCurrentProfile(
+                UserProfileUpdateRequest.builder().companyName("Not allowed").build()))
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.INVALID_REQUEST));
+        verify(userRepository, never()).save(user);
+    }
+
+    @Test
+    void updateCurrentProfile_emptyRequest_throwsInvalidRequest() {
+        assertThatThrownBy(() -> userProfileService.updateCurrentProfile(
+                UserProfileUpdateRequest.builder().build()))
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.INVALID_REQUEST));
+        verify(authenticatedUserResolver, never()).getCurrentUser();
     }
 
     private User user(RoleCode roleCode) {

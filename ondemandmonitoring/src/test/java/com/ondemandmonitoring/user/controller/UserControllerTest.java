@@ -1,6 +1,7 @@
 package com.ondemandmonitoring.user.controller;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.mockito.Mockito.when;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.http.MediaType;
 
 class UserControllerTest {
 
@@ -49,5 +51,42 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.data.emailVerified").doesNotExist())
                 .andExpect(jsonPath("$.data.isActive").doesNotExist())
                 .andExpect(jsonPath("$.data.linkedProviders").doesNotExist());
+    }
+
+    @Test
+    void updateCurrentProfile_returnsUpdatedProfileEnvelope() throws Exception {
+        when(userProfileService.updateCurrentProfile(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(UserProfileResponse.builder()
+                        .id(UUID.randomUUID())
+                        .fullName("Updated Name")
+                        .email("customer@example.com")
+                        .role(RoleCode.CUSTOMER)
+                        .customerProfile(CustomerProfileResponse.builder()
+                                .companyName("Updated Company")
+                                .build())
+                        .build());
+
+        mockMvc.perform(patch("/api/v1/users/me")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "fullName": "Updated Name",
+                                  "companyName": "Updated Company"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Profile updated successfully"))
+                .andExpect(jsonPath("$.data.fullName").value("Updated Name"))
+                .andExpect(jsonPath("$.data.customerProfile.companyName")
+                        .value("Updated Company"));
+    }
+
+    @Test
+    void updateCurrentProfile_rejectsBlankFullName() throws Exception {
+        mockMvc.perform(patch("/api/v1/users/me")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fullName\":\"   \"}"))
+                .andExpect(status().isBadRequest());
     }
 }
