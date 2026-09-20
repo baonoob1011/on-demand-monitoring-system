@@ -4,6 +4,7 @@ import com.ondemandmonitoring.auth.dto.request.SocialSyncRequest;
 import com.ondemandmonitoring.auth.enumeration.AuthProvider;
 import com.ondemandmonitoring.auth.enumeration.SocialAuthIntent;
 import com.ondemandmonitoring.auth.infrastructure.outbox.AuthOutboxService;
+import com.ondemandmonitoring.auth.mapper.AuthenticatedUserMapper;
 import com.ondemandmonitoring.auth.port.out.AuthenticationTokens;
 import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
 import com.ondemandmonitoring.auth.port.out.SocialAuthenticationResult;
@@ -41,7 +42,8 @@ class SocialAuthServiceTest {
         outbox = mock(AuthOutboxService.class);
         users = mock(IUserService.class);
         cookies = mock(RefreshTokenCookieService.class);
-        service = new SocialAuthService(socialProvider, cognito, outbox, users, cookies);
+        service = new SocialAuthService(
+                socialProvider, cognito, outbox, users, cookies, new AuthenticatedUserMapper());
     }
 
     @Test

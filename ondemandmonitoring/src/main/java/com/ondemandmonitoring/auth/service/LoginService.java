@@ -3,6 +3,7 @@ package com.ondemandmonitoring.auth.service;
 import com.ondemandmonitoring.auth.dto.request.LoginRequest;
 import com.ondemandmonitoring.auth.dto.request.FirstLoginPasswordChangeRequest;
 import com.ondemandmonitoring.auth.dto.response.AuthResponse;
+import com.ondemandmonitoring.auth.mapper.AuthenticatedUserMapper;
 import com.ondemandmonitoring.auth.port.out.AuthenticationTokens;
 import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
 import com.ondemandmonitoring.common.exception.ApiException;
@@ -10,7 +11,6 @@ import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.user.service.IUserService;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.enumeration.IdentityProvider;
-import com.ondemandmonitoring.user.dto.response.UserProfileResponse;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.transaction.Transactional;
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,6 +31,7 @@ public class LoginService {
     private final IUserService userService;
     private final IdentityProviderPort identityProvider;
     private final RefreshTokenCookieService refreshTokenCookieService;
+    private final AuthenticatedUserMapper authenticatedUserMapper;
 
     @Transactional
     public AuthResponse login(LoginRequest request, HttpServletResponse response) {
@@ -136,19 +137,11 @@ public class LoginService {
     }
 
     private AuthResponse toResponse(AuthenticationTokens tokens, User user) {
-        UserProfileResponse profile = UserProfileResponse.builder()
-                .id(user.getId())
-                .fullName(user.getFullName())
-                .email(user.getEmail())
-                .emailVerified(user.getEmailVerified())
-                .role(user.getRole().getCode())
-                .isActive(user.getIsActive())
-                .build();
         return AuthResponse.builder()
                 .accessToken(tokens.accessToken())
                 .status("AUTHENTICATED")
                 .expiresIn(tokens.expiresIn())
-                .user(profile)
+                .user(authenticatedUserMapper.toResponse(user))
                 .build();
     }
 

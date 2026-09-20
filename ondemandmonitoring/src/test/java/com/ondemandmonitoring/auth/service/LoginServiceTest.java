@@ -4,6 +4,7 @@ import com.ondemandmonitoring.auth.dto.request.LoginRequest;
 import com.ondemandmonitoring.auth.dto.request.FirstLoginPasswordChangeRequest;
 import com.ondemandmonitoring.auth.port.out.AuthenticationTokens;
 import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
+import com.ondemandmonitoring.auth.mapper.AuthenticatedUserMapper;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.role.domain.Role;
@@ -33,7 +34,7 @@ class LoginServiceTest {
         users = mock(IUserService.class);
         identityProvider = mock(IdentityProviderPort.class);
         cookies = mock(RefreshTokenCookieService.class);
-        service = new LoginService(users, identityProvider, cookies);
+        service = new LoginService(users, identityProvider, cookies, new AuthenticatedUserMapper());
     }
 
     @Test

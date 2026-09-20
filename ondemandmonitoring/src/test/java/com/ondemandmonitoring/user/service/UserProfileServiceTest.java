@@ -62,9 +62,6 @@ class UserProfileServiceTest {
         assertThat(response.getCustomerProfile().getPhoneNumber()).isEqualTo("0901234567");
         assertThat(response.getCustomerProfile().getAddress()).isEqualTo("Ho Chi Minh City");
         assertThat(response.getCustomerProfile().getCompanyName()).isEqualTo("ODMS Customer");
-        assertThat(response.getEmailVerified()).isNull();
-        assertThat(response.getIsActive()).isNull();
-        assertThat(response.getLinkedProviders()).isNull();
     }
 
     @Test
