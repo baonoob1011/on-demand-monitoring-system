@@ -60,6 +60,8 @@ public class SecurityConfig {
             "/api/thermal-sources/**",
             "/api/simulation-map",
             "/api/simulation-map/**",
+            "/api/planning/environment",
+            "/api/planning/environment/**",
             "/api/missions/*/images",
             "/api/missions/*/media",
             "/swagger-ui/**",
@@ -87,6 +89,7 @@ public class SecurityConfig {
                                 "/api/zones/**",
                                 "/api/thermal-sources/**",
                                 "/api/simulation-map/**",
+                                "/api/planning/environment/**",
                                 "/api/missions/*/images",
                                 "/api/missions/*/media"))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

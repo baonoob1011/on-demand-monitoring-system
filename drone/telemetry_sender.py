@@ -20,12 +20,19 @@ from sitl_battery_sim import (
 )
 
 
-PROJECT_ROOT = Path(
-    os.getenv(
-        "PROJECT_PATH",
-        "/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system",
-    )
-)
+def resolve_project_root() -> Path:
+    configured = os.getenv("PROJECT_PATH")
+    if configured:
+        return Path(configured)
+
+    source_candidate = Path(__file__).resolve().parent.parent
+    if (source_candidate / "Forest3D").exists() and (source_candidate / "ondemandmonitoring").exists():
+        return source_candidate
+
+    return Path.cwd()
+
+
+PROJECT_ROOT = resolve_project_root()
 ENV_FILE = PROJECT_ROOT / "ondemandmonitoring" / ".env"
 load_dotenv(ENV_FILE, override=True)
 

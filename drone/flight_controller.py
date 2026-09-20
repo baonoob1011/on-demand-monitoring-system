@@ -18,6 +18,7 @@ import time
 import tty
 import sys
 import grpc
+import httpx
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from mavsdk import System
 from mavsdk.action import ActionError
@@ -29,9 +30,19 @@ from video.video_recorder import VideoRecorder
 from battery_simulator import BatterySimulator, detect_battery_mode, preflight_battery_check
 from thermal_camera_gateway import ThermalCameraGateway
 
-PROJECT_ROOT = Path(
-    os.getenv("PROJECT_PATH", str(Path(__file__).resolve().parents[1]))
-).expanduser().resolve()
+def resolve_project_root() -> Path:
+    configured = os.getenv("PROJECT_PATH")
+    if configured:
+        return Path(configured).expanduser().resolve()
+
+    source_candidate = Path(__file__).resolve().parent.parent
+    if (source_candidate / "Forest3D").exists() and (source_candidate / "ondemandmonitoring").exists():
+        return source_candidate
+
+    return Path.cwd()
+
+
+PROJECT_ROOT = resolve_project_root()
 
 DRONE_DIR = PROJECT_ROOT / "drone"
 
@@ -954,6 +965,92 @@ CONTROL_COMMAND_KEYS = {
 }
 
 
+class PreflightPersistenceBridge:
+    def __init__(self, backend_urls: BackendUrlResolver, mission_id: str) -> None:
+        self.backend_urls = backend_urls
+        self.mission_id = mission_id
+        self.run_id: str | None = None
+        self.base_url: str | None = None
+        self.sent_items: dict[str, tuple[str, str]] = {}
+        self.warned_unavailable = False
+
+    def start(self) -> str | None:
+        self.run_id = None
+        self.base_url = None
+        self.sent_items.clear()
+
+        for base_url in self.backend_urls.candidates():
+            try:
+                response = httpx.post(
+                    f"{base_url}/api/missions/{self.mission_id}/preflight-checks",
+                    timeout=1.5,
+                )
+                if response.status_code >= 400:
+                    continue
+
+                payload = response.json()
+                data = payload.get("data") if isinstance(payload, dict) else None
+                run_id = data.get("id") if isinstance(data, dict) else None
+                if not run_id:
+                    continue
+
+                self.run_id = str(run_id)
+                self.base_url = base_url
+                self.warned_unavailable = False
+                print(
+                    f"[PREFLIGHT-DB] Created run={self.run_id} mission={self.mission_id}",
+                    flush=True,
+                )
+                return self.run_id
+            except (httpx.HTTPError, ValueError):
+                continue
+
+        if not self.warned_unavailable:
+            print(
+                f"[PREFLIGHT-DB] Not saved. Backend unavailable or mission missing: {self.mission_id}",
+                flush=True,
+            )
+            self.warned_unavailable = True
+        return None
+
+    def sync(self, payload: dict) -> None:
+        if not self.run_id or not self.base_url:
+            return
+
+        for item in payload.get("checks", []):
+            check_type = str(item.get("key", "")).strip()
+            status = self._to_backend_status(str(item.get("status", "")).strip().upper())
+            message = str(item.get("message", "")).strip()
+
+            if not check_type or status is None:
+                continue
+
+            state = (status, message)
+            if self.sent_items.get(check_type) == state:
+                continue
+
+            try:
+                response = httpx.patch(
+                    f"{self.base_url}/api/preflight-checks/{self.run_id}/items/{check_type}",
+                    json={"status": status, "message": message},
+                    timeout=1.0,
+                )
+                if response.status_code < 400:
+                    self.sent_items[check_type] = state
+            except httpx.HTTPError:
+                return
+
+    @staticmethod
+    def _to_backend_status(status: str) -> str | None:
+        if status == "PASS":
+            return "PASSED"
+        if status in {"FAIL", "WARN"}:
+            return "FAILED"
+        if status in {"PENDING", "CHECKING"}:
+            return status
+        return None
+
+
 class FlightControlApi:
     def __init__(
         self,
@@ -961,12 +1058,14 @@ class FlightControlApi:
         commands: "queue.Queue[str]",
         status_provider=None,
         preflight_provider=None,
+        preflight_persistence=None,
         thermal: ThermalCameraGateway | None = None,
     ) -> None:
         self.camera = camera
         self.commands = commands
         self.status_provider = status_provider
         self.preflight_provider = preflight_provider
+        self.preflight_persistence = preflight_persistence
         self.thermal = thermal
         self.preflight_check_id: str | None = None
         self.preflight_started_at_s: float | None = None
@@ -1057,7 +1156,11 @@ class FlightControlApi:
 
             def do_POST(self) -> None:
                 if self.path.startswith("/api/preflight/check"):
-                    owner.preflight_check_id = f"PF-{int(time.time() * 1000)}"
+                    persisted_check_id = None
+                    if owner.preflight_persistence is not None:
+                        persisted_check_id = owner.preflight_persistence.start()
+
+                    owner.preflight_check_id = persisted_check_id or f"PF-{int(time.time() * 1000)}"
                     owner.preflight_started_at_s = time.monotonic()
                     payload = {
                         "checkId": owner.preflight_check_id,
@@ -2087,6 +2190,7 @@ async def main() -> None:
     connection_manager = MavsdkConnectionManager()
     drone = await connection_manager.connect()
     backend_urls = BackendUrlResolver(BACKEND_BASE_URL)
+    preflight_persistence = PreflightPersistenceBridge(backend_urls, MISSION_ID)
     video_recorder = VideoRecorder(
         VIDEO_RECORDING_DIR,
         fps=VIDEO_RECORDING_FPS,
@@ -2190,6 +2294,7 @@ async def main() -> None:
     )
     avoidance = None
     lidar = None
+    lidar_ui_enabled = False
     safety_sensor_enabled = (
     os.getenv("SAFETY_SENSOR_ENABLED", "true").strip().lower()
         in {"1", "true", "yes", "on"}
@@ -2345,7 +2450,7 @@ async def main() -> None:
         completed = sum(1 for item in checks if item["status"] in {"PASS", "WARN", "FAIL"})
         critical_failures = [item for item in checks if item["critical"] and item["status"] == "FAIL"]
         overall = "FAILED" if critical_failures else "READY"
-        return {
+        payload = {
             "checkId": check_id,
             "status": overall,
             "progress": round((completed / len(checks)) * 100),
@@ -2353,6 +2458,8 @@ async def main() -> None:
             "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "checks": checks,
         }
+        preflight_persistence.sync(payload)
+        return payload
 
     def api_status() -> dict:
         battery_snapshot = simulated_battery.snapshot()
@@ -2411,10 +2518,46 @@ async def main() -> None:
             },
             "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
+        if lidar is not None and hasattr(lidar, "snapshot"):
+            lidar_state, lidar_status, lidar_direction = lidar.snapshot()
+            if lidar_state is not None:
+                status["lidar"] = {
+                    "enabled": lidar_ui_enabled or safety_sensor_enabled,
+                    "available": bool(getattr(lidar, "available", False)),
+                    "status": lidar_status,
+                    "direction": lidar_direction,
+                    "rangeMaxM": float(os.getenv("LIDAR_MAX_RANGE_M", "500.0")),
+                    "frontM": lidar_state.front,
+                    "frontLeftM": lidar_state.front_left,
+                    "frontRightM": lidar_state.front_right,
+                    "leftM": lidar_state.left,
+                    "rightM": lidar_state.right,
+                    "backM": lidar_state.back,
+                    "nearestM": lidar_state.nearest_distance,
+                    "nearestAngleDeg": lidar_state.nearest_angle,
+                    "nearestDirection": lidar_state.nearest_direction,
+                    "scanAgeS": lidar.latest_scan_age_s() if hasattr(lidar, "latest_scan_age_s") else None,
+                }
+        elif lidar_ui_enabled:
+            status["lidar"] = {
+                "enabled": True,
+                "available": False,
+                "status": "STARTING",
+                "direction": "NONE",
+                "rangeMaxM": float(os.getenv("LIDAR_MAX_RANGE_M", "500.0")),
+                "scanAgeS": None,
+            }
         status.update(thermal.status())
         return status
 
-    control_api = FlightControlApi(camera, api_commands, api_status, build_preflight_status, thermal)
+    control_api = FlightControlApi(
+        camera,
+        api_commands,
+        api_status,
+        build_preflight_status,
+        preflight_persistence,
+        thermal,
+    )
     control_api.start()
     print(
         f"[SAFETY] Sensor default -> "
@@ -2981,11 +3124,19 @@ async def main() -> None:
                 "downward_camera_viewer.py|wsl-camera-view.sh",
             )
         elif key == "4":
-            toggle_monitor_window(
-                "LiDAR monitor",
-                "wsl-sensor-monitor.sh",
-                "drone.visualization.sensor_dashboard|wsl-sensor-monitor.sh",
-            )
+            lidar_ui_enabled = not lidar_ui_enabled
+            if lidar_ui_enabled:
+                if LidarGateway is None:
+                    lidar_ui_enabled = False
+                    print(f"[LIDAR] Disabled: {LIDAR_IMPORT_ERROR}", flush=True)
+                elif lidar is None:
+                    lidar = LidarGateway()
+                    lidar.start()
+                    print("[LIDAR] UI monitor -> ON (web dashboard only)", flush=True)
+                else:
+                    print("[LIDAR] UI monitor -> ON (web dashboard only)", flush=True)
+            else:
+                print("[LIDAR] UI monitor -> OFF", flush=True)
         elif key == "5":
             toggle_monitor_window(
                 "Telemetry monitor",
@@ -2996,18 +3147,12 @@ async def main() -> None:
             enabled = thermal.toggle()
             set_native_thermal_subscription(enabled)
             print(f"[THERMAL] {'ON' if enabled else 'OFF'}", flush=True)
-            if enabled:
-                open_monitor_window_if_needed(
-                    "Thermal camera",
-                    "wsl-thermal-view.sh",
-                    "wsl-thermal-view.sh|thermal_debug_viewer.py",
-                )
-        elif key == "7":
-            toggle_monitor_window(
+            stop_monitor_window(
                 "Thermal camera",
-                "wsl-thermal-view.sh",
-                "wsl-thermal-view.sh|thermal_debug_viewer.py",
+                "wsl-thermal-view.sh|thermal_debug_viewer.py|sensor_dashboard.*--thermal-view",
             )
+        elif key == "7":
+            print("[THERMAL] Viewer disabled; use UI thermal stream only", flush=True)
         elif key == "thermal_palette_next":
             print(f"[THERMAL] Palette -> {thermal.cycle_palette()}", flush=True)
         elif key == "thermal_isotherm_toggle":

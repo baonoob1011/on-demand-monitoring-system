@@ -46,6 +46,13 @@ public class MissionController {
     // ------------------------------------------------------------------
 
     /** GET /api/missions/{id} – retrieve mission details */
+    @GetMapping("/code/{missionCode}")
+    public ResponseEntity<ApiResponse<MissionResponse>> getByCode(@PathVariable String missionCode) {
+        MissionResponse response = missionService.getByCodeResponse(missionCode);
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
+    /** GET /api/missions/{id} – retrieve mission details */
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<MissionResponse>> getById(@PathVariable String id) {
         MissionResponse response = missionService.getByIdResponse(id);

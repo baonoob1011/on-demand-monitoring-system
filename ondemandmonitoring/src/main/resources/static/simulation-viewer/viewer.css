@@ -113,6 +113,7 @@ body {
 }
 
 #basemap,
+#planningCanvas,
 #overlay {
   position: absolute;
   inset: 0;
@@ -124,6 +125,17 @@ body {
   object-fit: fill;
   user-select: none;
   pointer-events: none;
+}
+
+.planning-canvas {
+  display: none;
+  pointer-events: none;
+  opacity: 0.78;
+  mix-blend-mode: multiply;
+}
+
+.planning-canvas.visible {
+  display: block;
 }
 
 #overlay {
@@ -418,6 +430,56 @@ pre {
   border-radius: 999px;
 }
 
+.planning-debug-panel {
+  display: none;
+}
+
+.planning-debug-panel.visible {
+  display: block;
+}
+
+.planning-debug-controls {
+  display: grid;
+  gap: 7px;
+  font-size: 13px;
+}
+
+.planning-debug-controls label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.planning-legend {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.planning-chip {
+  display: inline-block;
+  width: 18px;
+  height: 12px;
+  margin-right: 7px;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+
+.planning-chip.terrain-low {
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.7), rgba(250, 204, 21, 0.8), rgba(185, 28, 28, 0.85));
+}
+
+.planning-chip.obstacle {
+  background: rgba(126, 34, 206, 0.78);
+}
+
+.planning-chip.nodata {
+  background: rgba(100, 116, 139, 0.45);
+  border: 1px solid rgba(51, 65, 85, 0.7);
+}
+
 .zone-polygon {
   fill: var(--blue-fill);
   stroke: var(--blue);
@@ -617,6 +679,46 @@ pre {
   paint-order: stroke;
   stroke: rgba(255, 255, 255, 0.92);
   stroke-width: 4px;
+}
+
+.planning-sample-marker {
+  display: none;
+  pointer-events: none;
+}
+
+#overlay.debug-visible .planning-sample-marker {
+  display: block;
+}
+
+.planning-sample-marker-outer {
+  fill: rgba(255, 255, 255, 0.92);
+  stroke: #f59e0b;
+  stroke-width: 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.planning-sample-marker-inner {
+  fill: #ef4444;
+  stroke: #ffffff;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.planning-sample-marker-line {
+  stroke: #f59e0b;
+  stroke-width: 4;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.planning-sample-marker-label {
+  font-size: 16px;
+  font-family: Consolas, monospace;
+  font-weight: 900;
+  fill: #111827;
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.96);
+  stroke-width: 5px;
 }
 
 @media (max-width: 900px) {
