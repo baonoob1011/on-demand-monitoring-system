@@ -9,9 +9,18 @@ This folder is portable. Do not edit scripts to point at a personal path like
   - `RUN_DRONE_STACK.cmd`
 - Drone simulator only:
   - `RUN_DRONE_SIM_ONLY.cmd`
+- Create a clean zip package for another Windows machine:
+  - `PACKAGE_DRONE_STACK.cmd`
+- Vietnamese A-to-Z guide that can also start the stack:
+  - `HUONG_DAN_CHAY_DRONE_STACK.cmd`
 
 Both launchers use the folder they are stored in as `PROJECT_PATH`, convert it to
 WSL format, then start the scripts from that location.
+
+`RUN_DRONE_STACK.cmd` now checks the Windows-side tools too. If Java 21 or
+Node.js LTS are missing, it tries to install them with `winget`; if Windows needs
+a restart or a new terminal session afterward, run the same file again. It then
+builds the Spring Boot backend and React frontend before starting the stack.
 
 ## Packaged Assets
 
@@ -38,7 +47,8 @@ files fail early with a clear message instead of Gazebo `model://...` errors.
 
 ## Requirements
 
-- Windows with WSL installed.
+- Windows with WSL available. If Ubuntu is missing, the launcher asks WSL to
+  install `Ubuntu-24.04`.
 - Ubuntu distro name defaults to `Ubuntu-24.04`.
 - Internet access on first bootstrap so PX4 and Python dependencies can install.
 - Frontend folder `ondemand-monitoring-web` should sit next to this folder when
@@ -48,6 +58,10 @@ files fail early with a clear message instead of Gazebo `model://...` errors.
 
 ```powershell
 .\RUN_DRONE_STACK.cmd -SkipBootstrap
+.\RUN_DRONE_STACK.cmd -SkipBuild
+.\RUN_DRONE_STACK.cmd -SkipDrone
 .\RUN_DRONE_STACK.cmd -NoBrowser
 .\RUN_DRONE_SIM_ONLY.cmd -WithWeather
+.\PACKAGE_DRONE_STACK.cmd
+.\HUONG_DAN_CHAY_DRONE_STACK.cmd
 ```

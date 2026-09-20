@@ -1,8 +1,10 @@
 param(
     [string]$UbuntuDistro = "Ubuntu-24.04",
     [switch]$SkipBootstrap,
+    [switch]$SkipBuild,
     [switch]$SkipBackend,
     [switch]$SkipFrontend,
+    [switch]$SkipDrone,
     [switch]$NoBrowser
 )
 
@@ -99,6 +101,73 @@ function Wait-HttpOk([string]$Url, [int]$TimeoutSeconds = 90) {
     return $false
 }
 
+function Test-CommandExists([string]$Name) {
+    return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
+}
+
+function Get-JavaMajorVersion {
+    if (-not (Test-CommandExists "java.exe")) { return 0 }
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $versionOutput = & java.exe -version 2>&1 | ForEach-Object { $_.ToString() } | Select-Object -First 1
+        if ($versionOutput -match '"(?<version>[0-9]+)(\.|")') {
+            return [int]$Matches["version"]
+        }
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    return 0
+}
+
+function Install-WithWinget([string]$PackageId, [string]$DisplayName) {
+    if (-not (Test-CommandExists "winget.exe")) {
+        throw "$DisplayName is missing and winget is not available. Install $DisplayName, then run RUN_DRONE_STACK.cmd again."
+    }
+
+    Write-Step "Installing $DisplayName"
+    & winget.exe install --id $PackageId --exact --silent --accept-package-agreements --accept-source-agreements
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not install $DisplayName automatically. Install it manually, then run RUN_DRONE_STACK.cmd again."
+    }
+
+    $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $env:Path = "$machinePath;$userPath"
+}
+
+function Ensure-WindowsBuildTools {
+    if ((Get-JavaMajorVersion) -lt 21) {
+        Install-WithWinget "EclipseAdoptium.Temurin.21.JDK" "Java 21 JDK"
+    }
+
+    if (-not (Test-CommandExists "node.exe")) {
+        Install-WithWinget "OpenJS.NodeJS.LTS" "Node.js LTS"
+    }
+
+    if (-not (Test-CommandExists "npm.cmd")) {
+        throw "npm is still unavailable after checking Node.js. Reopen the terminal or restart Windows, then run RUN_DRONE_STACK.cmd again."
+    }
+
+    if ((Get-JavaMajorVersion) -lt 21) {
+        throw "Java 21 is still unavailable. Reopen the terminal or restart Windows, then run RUN_DRONE_STACK.cmd again."
+    }
+}
+
+function Invoke-Checked([string]$Label, [string]$FilePath, [string[]]$Arguments, [string]$WorkingDirectory) {
+    Write-Step $Label
+    Push-Location $WorkingDirectory
+    try {
+        & $FilePath @Arguments
+        if ($LASTEXITCODE -ne 0) {
+            throw "$Label failed with exit code $LASTEXITCODE."
+        }
+    } finally {
+        Pop-Location
+    }
+}
+
 function Assert-CompactMapAssets([string]$Root) {
     $worldFile = Join-Path $Root "Forest3D\worlds\forest_monitoring_compact.sdf"
     $mapImage = Join-Path $Root "ondemandmonitoring\src\main\resources\static\simulation-viewer\simulation_map_top.png"
@@ -167,6 +236,28 @@ Write-Host "World   : $packagedWorldName"
 Write-Host "Weather : separate WEATHER - Controls window"
 Write-Host "Mode    : Web UI camera only, no separate Gazebo camera window"
 
+Ensure-WindowsBuildTools
+
+if (-not $SkipBuild) {
+    Invoke-Checked `
+        -Label "Building Backend API" `
+        -FilePath (Join-Path $backendRoot "mvnw.cmd") `
+        -Arguments @("-DskipTests", "package") `
+        -WorkingDirectory $backendRoot
+
+    Invoke-Checked `
+        -Label "Installing Frontend packages" `
+        -FilePath "npm.cmd" `
+        -Arguments @("install") `
+        -WorkingDirectory $webRoot
+
+    Invoke-Checked `
+        -Label "Building Frontend UI" `
+        -FilePath "npm.cmd" `
+        -Arguments @("run", "build") `
+        -WorkingDirectory $webRoot
+}
+
 if (-not $SkipBackend) {
     Write-Step "Starting Backend API"
     Start-TerminalTab -Title "BE - OMSS API" -WorkingDirectory $backendRoot -Command ".\mvnw.cmd spring-boot:run"
@@ -187,6 +278,11 @@ if (-not $SkipBootstrap) {
 
 $systemRootWsl = ConvertTo-WslPath $systemRoot
 $scriptRootWsl = "$systemRootWsl/scripts"
+
+if ($SkipDrone) {
+    Write-Step "Build/setup finished; drone startup was skipped"
+    exit 0
+}
 
 Write-Step "Cleaning old PX4/Gazebo/MAVSDK processes"
 & wsl.exe -d $UbuntuDistro -- bash -lc "PROJECT_PATH='$systemRootWsl' exec '$scriptRootWsl/wsl-clean-drone-stack.sh'" | Out-Null
