@@ -3,7 +3,11 @@ package com.ondemandmonitoring.user.config;
 import com.ondemandmonitoring.role.domain.Role;
 import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.role.repository.RoleRepository;
+import com.ondemandmonitoring.user.domain.CustomerProfile;
+import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.enumeration.IdentityProvider;
+import com.ondemandmonitoring.user.repository.CustomerProfileRepository;
+import com.ondemandmonitoring.user.repository.UserRepository;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -58,6 +62,8 @@ public class UserSeedDataInitializer implements ApplicationRunner {
 
     private final RoleRepository roleRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final UserRepository userRepository;
+    private final CustomerProfileRepository customerProfileRepository;
 
     @Override
     @Transactional
@@ -70,6 +76,22 @@ public class UserSeedDataInitializer implements ApplicationRunner {
 
             upsertUser(seed, role, roleColumnExists);
             insertIdentity(seed);
+            provisionCustomerProfile(seed);
+        }
+    }
+
+    private void provisionCustomerProfile(SeedUser seed) {
+        if (seed.role() != RoleCode.CUSTOMER) {
+            return;
+        }
+
+        User user = userRepository.findByEmailIgnoreCase(seed.email())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Missing seeded customer after upsert: " + seed.email()));
+        if (!customerProfileRepository.existsById(user.getId())) {
+            customerProfileRepository.save(CustomerProfile.builder()
+                    .user(user)
+                    .build());
         }
     }
 
