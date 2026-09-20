@@ -28,4 +28,6 @@ public class UserProfileResponse {
 
     private Boolean isActive;
 
+    private CustomerProfileResponse customerProfile;
+
 }
