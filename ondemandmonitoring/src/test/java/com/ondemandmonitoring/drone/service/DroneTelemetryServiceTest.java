@@ -10,6 +10,7 @@ import com.ondemandmonitoring.drone.domain.DroneTelemetry;
 import com.ondemandmonitoring.drone.domain.Drone;
 import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
+import com.ondemandmonitoring.environment.service.EnvironmentalMeasurementService;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,6 +27,9 @@ class DroneTelemetryServiceTest {
 
     @Mock
     private DroneRepository droneRepository;
+
+    @Mock
+    private EnvironmentalMeasurementService environmentalMeasurementService;
 
     @InjectMocks
     private DroneTelemetryService service;
@@ -63,5 +67,6 @@ class DroneTelemetryServiceTest {
         assertThat(captured.getSpeed()).isEqualTo(12.5);
         assertThat(captured.getFlightMode()).isEqualTo("AUTO");
         assertThat(captured.getArmed()).isTrue();
+        verify(environmentalMeasurementService).recordAirPressure(drone, "DRONE-01", request);
     }
 }
