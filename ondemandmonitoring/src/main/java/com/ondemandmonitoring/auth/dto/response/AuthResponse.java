@@ -1,9 +1,7 @@
 package com.ondemandmonitoring.auth.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.ondemandmonitoring.user.dto.response.UserProfileResponse;
 import lombok.Builder;
-import lombok.Data;
 import lombok.Getter;
 
 @Getter
@@ -24,6 +22,6 @@ public class AuthResponse {
 
     private Integer expiresIn;
 
-    private UserProfileResponse user;
+    private AuthenticatedUserResponse user;
 
 }

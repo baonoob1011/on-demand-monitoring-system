@@ -9,10 +9,10 @@ import com.ondemandmonitoring.auth.port.out.SocialIdentityProviderPort;
 import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
 import com.ondemandmonitoring.auth.port.out.AuthenticationTokens;
 import com.ondemandmonitoring.auth.infrastructure.outbox.AuthOutboxService;
+import com.ondemandmonitoring.auth.mapper.AuthenticatedUserMapper;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.user.domain.User;
-import com.ondemandmonitoring.user.dto.response.UserProfileResponse;
 import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.user.enumeration.IdentityProvider;
 import com.ondemandmonitoring.user.service.IUserService;
@@ -35,6 +35,7 @@ public class SocialAuthService {
     private final AuthOutboxService outboxService;
     private final IUserService userService;
     private final RefreshTokenCookieService refreshTokenCookieService;
+    private final AuthenticatedUserMapper authenticatedUserMapper;
 
     @Transactional
     public AuthResponse sync(SocialSyncRequest request, HttpServletResponse response) {
@@ -96,19 +97,10 @@ public class SocialAuthService {
                     responseTokens.username());
         }
 
-        UserProfileResponse profile = UserProfileResponse.builder()
-                .id(user.getId())
-                .fullName(user.getFullName())
-                .email(user.getEmail())
-                .emailVerified(user.getEmailVerified())
-                .role(user.getRole().getCode())
-                .isActive(user.getIsActive())
-                .build();
-
         return AuthResponse.builder()
                 .accessToken(responseTokens.accessToken())
                 .expiresIn(responseTokens.expiresIn())
-                .user(profile)
+                .user(authenticatedUserMapper.toResponse(user))
                 .build();
     }
 
