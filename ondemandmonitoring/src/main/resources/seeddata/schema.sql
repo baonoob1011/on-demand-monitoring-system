@@ -3,6 +3,47 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 ALTER TABLE IF EXISTS public.zones
     ADD COLUMN IF NOT EXISTS restricted BOOLEAN NOT NULL DEFAULT FALSE;
 
+CREATE TABLE IF NOT EXISTS public.atmosphere_profiles (
+    id VARCHAR(255) PRIMARY KEY,
+    source_world VARCHAR(120) NOT NULL,
+    base_pressure_pa DOUBLE PRECISION NOT NULL,
+    base_altitude_m DOUBLE PRECISION NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE,
+    version BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_atmosphere_profiles_active_world
+    ON public.atmosphere_profiles (source_world)
+    WHERE active = TRUE;
+
+CREATE TABLE IF NOT EXISTS public.environmental_measurements (
+    id VARCHAR(255) PRIMARY KEY,
+    drone_id VARCHAR(255) REFERENCES public.drones(id),
+    drone_code VARCHAR(50),
+    measurement_type VARCHAR(40) NOT NULL,
+    value DOUBLE PRECISION NOT NULL,
+    unit VARCHAR(30) NOT NULL,
+    altitude_m DOUBLE PRECISION,
+    sim_x DOUBLE PRECISION,
+    sim_y DOUBLE PRECISION,
+    source_world VARCHAR(120) NOT NULL,
+    measured_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE,
+    version BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_environmental_measurements_drone_type_time
+    ON public.environmental_measurements (drone_code, measurement_type, measured_at DESC);
+
+ALTER TABLE IF EXISTS public.drone_telemetries
+    ADD COLUMN IF NOT EXISTS sim_x DOUBLE PRECISION;
+
+ALTER TABLE IF EXISTS public.drone_telemetries
+    ADD COLUMN IF NOT EXISTS sim_y DOUBLE PRECISION;
+
 -- Persistent preflight execution history. JPA creates these tables in normal
 -- environments; keep the SQL here for deployments that apply seed schema SQL.
 CREATE TABLE IF NOT EXISTS public.preflight_checks (
