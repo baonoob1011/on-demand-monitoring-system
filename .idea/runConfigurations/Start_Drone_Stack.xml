@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Start Drone Stack" type="ShConfigurationType">
-    <option name="SCRIPT_TEXT" value="RUN_DRONE_STACK.cmd" />
+    <option name="SCRIPT_TEXT" value="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$PROJECT_DIR$\RUN_DRONE_STACK.ps1&quot;" />
     <option name="INDEPENDENT_SCRIPT_PATH" value="false" />
     <option name="SCRIPT_PATH" value="" />
     <option name="SCRIPT_OPTIONS" value="" />

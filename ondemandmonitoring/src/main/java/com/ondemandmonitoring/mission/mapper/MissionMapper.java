@@ -84,7 +84,7 @@ public abstract class MissionMapper {
                 .orElse(null);
     }
 
-    protected MissionPlanResponse toPlanResponse(MissionPlan plan) {
+    public MissionPlanResponse toPlanResponse(MissionPlan plan) {
         return MissionPlanResponse.builder()
                 .id(plan.getId())
                 .planningAlgorithm(plan.getPlanningAlgorithm())

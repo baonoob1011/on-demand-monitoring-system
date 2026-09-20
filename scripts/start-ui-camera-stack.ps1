@@ -25,6 +25,11 @@ function ConvertTo-WslPath([string]$WindowsPath) {
     return "/mnt/$drive/$rest"
 }
 
+function Write-Utf8NoBomLines([string]$Path, [string[]]$Lines) {
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllLines($Path, $Lines, $encoding)
+}
+
 function Set-EnvValue([string]$Path, [string]$Name, [string]$Value) {
     if (-not (Test-Path $Path)) {
         New-Item -ItemType File -Path $Path -Force | Out-Null
@@ -46,7 +51,7 @@ function Set-EnvValue([string]$Path, [string]$Name, [string]$Value) {
     if (-not $found) {
         $nextLines += $entry
     }
-    Set-Content -Path $Path -Value $nextLines -Encoding UTF8
+    Write-Utf8NoBomLines $Path $nextLines
 }
 
 function Start-TerminalTab([string]$Title, [string]$Command, [string]$WorkingDirectory) {
@@ -266,7 +271,10 @@ if (-not $SkipBackend) {
 if (-not $SkipFrontend) {
     Write-Step "Preparing and starting Frontend UI"
     $envFile = Join-Path $webRoot ".env.local"
-    Set-Content -Path $envFile -Value "VITE_API_BASE_URL=http://localhost:8080`nVITE_FLIGHT_CONTROL_API_URL=http://localhost:8090`n" -Encoding UTF8
+    Write-Utf8NoBomLines $envFile @(
+        "VITE_API_BASE_URL=http://localhost:8080",
+        "VITE_FLIGHT_CONTROL_API_URL=http://localhost:8090"
+    )
     Start-TerminalTab -Title "FE - OMSS UI" -WorkingDirectory $webRoot -Command "if (-not (Test-Path node_modules)) { npm install }; npm run dev -- --host 0.0.0.0 --port 5173"
 }
 

@@ -110,6 +110,10 @@ public class MissionPlan extends BaseEntity {
     /*
      * Độ cao lớn nhất mà planned route yêu cầu, đơn vị mét.
      *
+     * Với DIRECT planning trong simulation hiện tại, đây là Gazebo World Z,
+     * không phải PX4 relative altitude, altitude above home, terrain-relative
+     * altitude, hay NED Down.
+     *
      * Giá trị này có thể phụ thuộc vào:
      * - terrain
      * - obstacle

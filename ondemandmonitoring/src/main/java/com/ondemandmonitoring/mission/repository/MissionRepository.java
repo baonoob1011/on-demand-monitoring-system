@@ -14,6 +14,10 @@ public interface MissionRepository extends JpaRepository<Mission, String> {
     @Override
     Optional<Mission> findById(String id);
 
+    @EntityGraph(attributePaths = "order")
+    @Query("SELECT m FROM Mission m WHERE m.id = :id")
+    Optional<Mission> findByIdWithOrder(@Param("id") String id);
+
     Optional<Mission> findByMissionCode(String missionCode);
 
     @Query("""

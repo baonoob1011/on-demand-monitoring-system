@@ -241,6 +241,12 @@ public class MissionDemoDataInitializer {
     }
 
     private void seedWaypoints() {
+        String missionPlanId = jdbcTemplate.queryForObject("""
+                SELECT id
+                FROM mission_plans
+                WHERE mission_id = ?
+                """, String.class, MISSION_ID);
+
         Object[][] waypoints = {
                 {"WP-2024-0891-00", 0, 0.0, 0.0, 12.0, 4.0, "START"},
                 {"WP-2024-0891-01", 1, -42.0, 76.0, 35.0, 5.5, "CRUISE"},
@@ -266,7 +272,7 @@ public class MissionDemoDataInitializer {
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     waypoint[0],
-                    MISSION_PLAN_ID,
+                    missionPlanId,
                     waypoint[1],
                     waypoint[2],
                     waypoint[3],

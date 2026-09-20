@@ -42,6 +42,8 @@ public class SecurityConfig {
             "/api/v1/auth/register",
             "/api/v1/auth/verify-otp",
             "/api/v1/auth/resend-otp",
+            "/api/missions/**",
+            "/api/missions/*/accept",
             "/api/v1/auth/login",
             "/api/v1/auth/first-login/change-password",
             "/api/v1/auth/social/sync",
@@ -85,6 +87,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/social/sync",
                                 "/api/v1/auth/forgot-password",
                                 "/api/v1/auth/reset-password",
+                                "/api/missions/**",
                                 // Simulation Viewer APIs (PUT/POST/DELETE from browser JS)
                                 "/api/zones/**",
                                 "/api/thermal-sources/**",
@@ -109,7 +112,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(List.of(allowedOrigins.split(",")));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Operator-Id"));
         configuration.setExposedHeaders(List.of("Authorization"));
         configuration.setAllowCredentials(true);
 

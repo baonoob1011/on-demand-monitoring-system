@@ -9,6 +9,7 @@ import com.ondemandmonitoring.mission.dto.request.DroneReplacementRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionFailRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionRejectRequest;
 import com.ondemandmonitoring.mission.dto.request.PostFlightStatusRequest;
+import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.service.IMissionMediaUploadService;
 import com.ondemandmonitoring.mission.service.IMissionService;
@@ -59,6 +60,13 @@ public class MissionController {
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
+    /** GET /api/missions/{id}/plan – retrieve generated operational MissionPlan */
+    @GetMapping("/{id}/plan")
+    public ResponseEntity<ApiResponse<MissionPlanResponse>> getPlan(@PathVariable String id) {
+        MissionPlanResponse response = missionService.getMissionPlan(id);
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
     // ------------------------------------------------------------------
     // F2 – Manager Assignment (Flow 2)
     // ------------------------------------------------------------------
@@ -94,7 +102,7 @@ public class MissionController {
     /**
      * PATCH /api/missions/{id}/accept
      * Drone Operator confirms they accept the mission.
-     * Transitions: WAITING_OPERATOR_ACCEPTANCE → SCHEDULED
+     * Transitions: WAITING_OPERATOR_ACCEPTANCE → ASTAR_ENERGY_AWARE planning → SCHEDULED
      */
     @PatchMapping("/{id}/accept")
     public ResponseEntity<ApiResponse<MissionResponse>> accept(

@@ -75,3 +75,107 @@ CREATE TABLE IF NOT EXISTS public.preflight_check_items (
 
 CREATE INDEX IF NOT EXISTS idx_preflight_item_run
     ON public.preflight_check_items (preflight_check_id);
+
+
+
+-- Reset seed order target về tọa độ simulation local XY
+UPDATE orders
+SET point = ST_SetSRID(ST_MakePoint(200.0, -280.0), 4326),
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = 'ORD-78234';
+
+-- Xóa plan/waypoints cũ để nhìn rõ accept tạo plan mới
+DELETE FROM plan_waypoints
+WHERE mission_plan_id IN (
+    SELECT id FROM mission_plans WHERE mission_id = 'MSN-2024-0891'
+);
+
+DELETE FROM mission_plans
+WHERE mission_id = 'MSN-2024-0891';
+
+-- Reset mission về đúng trạng thái chờ operator accept
+UPDATE missions
+SET status = 'WAITING_OPERATOR_ACCEPTANCE',
+    started_at = NULL,
+    preflight_passed = NULL,
+    preflight_checked_at = NULL,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = 'MSN-2024-0891';
+
+-- Reset operator assignment về PENDING
+UPDATE mission_operator_assignments
+SET status = 'PENDING',
+    is_current = true,
+    responded_at = NULL,
+    released_at = NULL,
+    updated_at = CURRENT_TIMESTAMP
+WHERE mission_id = 'MSN-2024-0891';
+
+-- Đảm bảo drone assignment vẫn current
+UPDATE mission_drone_assignments
+SET status = 'ACTIVE',
+    is_current = true,
+    updated_at = CURRENT_TIMESTAMP
+WHERE mission_id = 'MSN-2024-0891';
+
+
+
+DELETE FROM plan_waypoints
+WHERE mission_plan_id IN (
+    SELECT id FROM mission_plans WHERE mission_id = 'MSN-2024-0891'
+);
+
+DELETE FROM mission_plans
+WHERE mission_id = 'MSN-2024-0891';
+
+UPDATE orders
+SET point = ST_SetSRID(ST_MakePoint(200.0, -280.0), 4326),
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = 'ORD-78234';
+
+UPDATE missions
+SET status = 'WAITING_OPERATOR_ACCEPTANCE',
+    started_at = NULL,
+    preflight_passed = NULL,
+    preflight_checked_at = NULL,
+    preflight_retry_count = 0,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = 'MSN-2024-0891';
+
+UPDATE mission_operator_assignments
+SET status = 'PENDING',
+    is_current = true,
+    responded_at = NULL,
+    released_at = NULL,
+    updated_at = CURRENT_TIMESTAMP
+WHERE mission_id = 'MSN-2024-0891';
+
+DELETE FROM plan_waypoints
+WHERE mission_plan_id IN (
+    SELECT id FROM mission_plans WHERE mission_id = 'MSN-2024-0891'
+);
+
+DELETE FROM mission_plans
+WHERE mission_id = 'MSN-2024-0891';
+
+UPDATE orders
+SET point = ST_SetSRID(ST_MakePoint(200.0, -280.0), 4326),
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = 'ORD-78234';
+
+UPDATE missions
+SET status = 'WAITING_OPERATOR_ACCEPTANCE',
+    started_at = NULL,
+    preflight_passed = NULL,
+    preflight_checked_at = NULL,
+    preflight_retry_count = 0,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = 'MSN-2024-0891';
+
+UPDATE mission_operator_assignments
+SET status = 'PENDING',
+    is_current = true,
+    responded_at = NULL,
+    released_at = NULL,
+    updated_at = CURRENT_TIMESTAMP
+WHERE mission_id = 'MSN-2024-0891';

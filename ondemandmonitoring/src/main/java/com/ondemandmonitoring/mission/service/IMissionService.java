@@ -3,6 +3,7 @@ package com.ondemandmonitoring.mission.service;
 import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
 import com.ondemandmonitoring.drone.enums.DroneStatus;
 import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 
 /**
@@ -14,6 +15,7 @@ public interface IMissionService {
     MissionResponse getByIdResponse(String missionId);
 
     MissionResponse getByCodeResponse(String missionCode);
+    MissionPlanResponse getMissionPlan(String missionId);
     MissionResponse createMissionForOrder(String orderId);
     MissionResponse assignDrone(String missionId, String droneId);
     MissionResponse assignOperator(String missionId, String operatorId);
