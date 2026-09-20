@@ -35,7 +35,7 @@ public class SecurityConfig {
             RoleCode.SYSTEM_OPERATOR.name(),
             RoleCode.ADMIN.name());
 
-    @Value("${app.cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174}")
+    @Value("${cors.address:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174}")
     private String allowedOrigins;
 
     private static final String[] PUBLIC_ENDPOINTS = {
