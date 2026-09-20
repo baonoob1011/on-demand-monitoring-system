@@ -30,6 +30,7 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: ${COGNITO_ISSUER_URI:}
+          jwk-set-uri: ${COGNITO_JWK_SET_URI:}
 
 mybatis:
   mapper-locations: ${MYBATIS_MAPPER_LOCATIONS}
