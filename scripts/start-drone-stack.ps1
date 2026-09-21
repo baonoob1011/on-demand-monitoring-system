@@ -6,6 +6,8 @@ param(
     [switch]$WithCamera,
     [switch]$WithSensors,
     [switch]$WithWeather,
+    [ValidateRange(0.1, 180.0)]
+    [double]$YawStepDeg = 5.0,
     [switch]$SkipBootstrap
 )
 
@@ -70,7 +72,7 @@ $repoRootWsl = ConvertTo-WslPath $repoRoot
 $scriptRoot = "$repoRootWsl/scripts"
 $simArg = $SimWorld
 $webOnly = if ($ShowGazeboGui) { "0" } else { "1" }
-$baseWslEnv = "PROJECT_PATH='$repoRootWsl'"
+$baseWslEnv = "PROJECT_PATH='$repoRootWsl' CONTROL_YAW_STEP_DEG='$YawStepDeg'"
 $simCommand = "$baseWslEnv FOREST3D_WEB_ONLY=${webOnly} SIM_WORLD=${simArg} exec ${scriptRoot}/wsl-sim-pane.sh ${simArg}"
 
 wsl.exe -d $ubuntuDistro -- bash -lc "$baseWslEnv exec ${scriptRoot}/wsl-clean-drone-stack.sh" | Out-Null

@@ -92,6 +92,20 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<MissionResponse> getByOperatorId(String operatorId) {
+        List<MissionStatus> activeStatuses = List.of(MissionStatus.values());
+        return missionRepository.findByOperatorIdAndStatusIn(operatorId, activeStatuses)
+                .stream()
+                .sorted(java.util.Comparator.comparing(
+                        Mission::getScheduledStartAt,
+                        java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())
+                ))
+                .map(missionMapper::toResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public MissionPlanResponse getMissionPlan(String missionId) {
         getOrThrow(missionId);
         MissionPlan plan = missionPlanRepository.findByMissionId(missionId)

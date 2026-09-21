@@ -247,13 +247,17 @@ public class MissionDemoDataInitializer {
                 WHERE mission_id = ?
                 """, String.class, MISSION_ID);
 
+        jdbcTemplate.update("""
+                DELETE FROM plan_waypoints
+                WHERE mission_plan_id = ?
+                """, missionPlanId);
+
         Object[][] waypoints = {
-                {"WP-2024-0891-00", 0, 0.0, 0.0, 12.0, 4.0, "START"},
+                {"WP-2024-0891-00", 0, 0.0, -280.0, 12.0, 4.0, "START"},
                 {"WP-2024-0891-01", 1, -42.0, 76.0, 35.0, 5.5, "CRUISE"},
                 {"WP-2024-0891-02", 2, -92.0, 132.0, 48.0, 5.5, "TERRAIN_CLEARANCE"},
                 {"WP-2024-0891-03", 3, -142.0, 168.0, 55.0, 4.5, "TARGET_APPROACH"},
-                {"WP-2024-0891-04", 4, -178.0, 190.0, 60.0, 3.5, "TARGET"},
-                {"WP-2024-0891-05", 5, -54.0, 42.0, 30.0, 5.5, "RETURN"}
+                {"WP-2024-0891-04", 4, -178.0, 190.0, 60.0, 3.5, "TARGET"}
         };
 
         for (Object[] waypoint : waypoints) {
