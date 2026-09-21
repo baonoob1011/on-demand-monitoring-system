@@ -14,6 +14,7 @@ import com.ondemandmonitoring.user.mapper.UserManagementMapper;
 import com.ondemandmonitoring.user.repository.CustomerProfileRepository;
 import com.ondemandmonitoring.user.repository.UserIdentityRepository;
 import com.ondemandmonitoring.user.repository.UserRepository;
+import com.ondemandmonitoring.user.repository.UserManagementSpecifications;
 import com.ondemandmonitoring.user.service.IUserManagementService;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.util.List;
@@ -21,7 +22,9 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -56,8 +59,17 @@ public class UserManagementServiceImpl implements IUserManagementService {
             Boolean active,
             Boolean emailVerified) {
         validatePageable(pageable);
-        Page<User> users = userRepository.findForManagement(
-                normalizeSearch(search), role, active, emailVerified, pageable);
+        Sort sort = pageable.getSort();
+        if (sort.getOrderFor("id") == null) {
+            sort = sort.and(Sort.by("id"));
+        }
+        Pageable stablePageable = PageRequest.of(
+                pageable.getPageNumber(),
+                pageable.getPageSize(),
+                sort);
+        Page<User> users = userRepository.findAll(
+                UserManagementSpecifications.filter(search, role, active, emailVerified),
+                stablePageable);
         return PageResponse.from(users.map(userManagementMapper::toSummary));
     }
 
@@ -121,12 +133,5 @@ public class UserManagementServiceImpl implements IUserManagementService {
                         "Unsupported user sort property: " + order.getProperty());
             }
         });
-    }
-
-    private String normalizeSearch(String search) {
-        if (search == null || search.isBlank()) {
-            return null;
-        }
-        return search.trim();
     }
 }
