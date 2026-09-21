@@ -37,9 +37,11 @@ public enum ErrorCode {
 
     INTERNAL_SERVER_ERROR("Lỗi hệ thống", HttpStatus.INTERNAL_SERVER_ERROR),
 
+
     /**
-     *  Mission & Drone Error Codes
-     */
+     *  Mission Error Code
+     *
+     * */
     MISSION_NOT_FOUND("Mission not found", HttpStatus.NOT_FOUND),
     MISSION_STATUS_INVALID("Mission status is invalid for this operation", HttpStatus.CONFLICT),
     DRONE_NOT_AVAILABLE("Drone is not available", HttpStatus.CONFLICT),
@@ -51,6 +53,13 @@ public enum ErrorCode {
     DRONE_NOT_FOUND("Drone not found", HttpStatus.NOT_FOUND),
 
     /**
+     * Service & DeliverableType Error Codes
+     */
+    SERVICE_NOT_FOUND("Service not found", HttpStatus.NOT_FOUND),
+    SERVICE_ALREADY_EXISTS("Service already exists", HttpStatus.CONFLICT),
+    DELIVERABLE_TYPE_NOT_FOUND("Deliverable type not found", HttpStatus.NOT_FOUND),
+    DELIVERABLE_TYPE_ALREADY_EXISTS("Deliverable type already exists", HttpStatus.CONFLICT),
+    SERVICE_DELIVERABLE_ALREADY_EXISTS("Service deliverable link already exists", HttpStatus.CONFLICT);
      *  Device Error Codes
      */
     DEVICE_TYPE_NOT_FOUND("Device type not found", HttpStatus.NOT_FOUND),
