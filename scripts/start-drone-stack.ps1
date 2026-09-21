@@ -36,17 +36,17 @@ function Write-Utf8NoBomLines([string]$Path, [string[]]$Lines) {
 }
 
 function Initialize-StackEnv([string]$Root) {
-    $backendEnvFile = Join-Path $Root "ondemandmonitoring\.env"
-    if (Test-Path $backendEnvFile) { return }
+    $rootEnvFile = Join-Path $Root ".env"
+    if (Test-Path $rootEnvFile) { return }
 
-    $droneEnvExample = Join-Path $Root "drone\.env.example"
-    if (Test-Path $droneEnvExample) {
-        $lines = @(Get-Content -Path $droneEnvExample -ErrorAction Stop)
-        Write-Utf8NoBomLines $backendEnvFile $lines
+    $rootEnvExample = Join-Path $Root ".env.example"
+    if (Test-Path $rootEnvExample) {
+        $lines = @(Get-Content -Path $rootEnvExample -ErrorAction Stop)
+        Write-Utf8NoBomLines $rootEnvFile $lines
         return
     }
 
-    New-Item -ItemType File -Path $backendEnvFile -Force | Out-Null
+    New-Item -ItemType File -Path $rootEnvFile -Force | Out-Null
 }
 
 function Update-Forest3DAssetsFromGit([string]$Root) {

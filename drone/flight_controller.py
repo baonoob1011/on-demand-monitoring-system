@@ -53,7 +53,9 @@ if "/usr/lib/python3/dist-packages" not in sys.path:
 if str(DRONE_DIR) not in sys.path:
     sys.path.insert(0, str(DRONE_DIR))
 
-ENV_FILE = PROJECT_ROOT / "ondemandmonitoring" / ".env"
+ENV_FILE = PROJECT_ROOT / ".env"
+if not ENV_FILE.exists():
+    ENV_FILE = PROJECT_ROOT / "ondemandmonitoring" / ".env"
 
 load_dotenv(ENV_FILE, override=True)
 
