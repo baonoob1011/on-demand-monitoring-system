@@ -80,6 +80,11 @@ public class MissionController {
     }
 
     // ------------------------------------------------------------------
+@GetMapping("/pending-assignment")
+    public ResponseEntity<ApiResponse<List<MissionResponse>>> getPendingAssignment() {
+        return ResponseEntity.ok(ApiResponse.ok(missionService.getPendingAssignmentMissions()));
+    }
+
     // F2 – Manager Assignment (Flow 2)
     // ------------------------------------------------------------------
 

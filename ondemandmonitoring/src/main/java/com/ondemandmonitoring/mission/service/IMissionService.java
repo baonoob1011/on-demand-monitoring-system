@@ -19,6 +19,8 @@ public interface IMissionService {
     MissionResponse getByCodeResponse(String missionCode);
 
     List<MissionResponse> getByOperatorId(String operatorId);
+    
+    List<MissionResponse> getPendingAssignmentMissions();
 
     MissionPlanResponse getMissionPlan(String missionId);
     MissionResponse createMissionForOrder(String orderId);

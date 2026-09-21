@@ -62,6 +62,8 @@ public class SecurityConfig {
             "/api/simulation-map/**",
             "/api/planning/environment",
             "/api/planning/environment/**",
+            "/api/missions",
+            "/api/missions/**",
             "/api/missions/*/images",
             "/api/missions/*/media",
             "/swagger-ui/**",
@@ -90,6 +92,7 @@ public class SecurityConfig {
                                 "/api/thermal-sources/**",
                                 "/api/simulation-map/**",
                                 "/api/planning/environment/**",
+                                "/api/missions/**",
                                 "/api/missions/*/images",
                                 "/api/missions/*/media"))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -109,7 +112,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(List.of(allowedOrigins.split(",")));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Operator-Id"));
         configuration.setExposedHeaders(List.of("Authorization"));
         configuration.setAllowCredentials(true);
 

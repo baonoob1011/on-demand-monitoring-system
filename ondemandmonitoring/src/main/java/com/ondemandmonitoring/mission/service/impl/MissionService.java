@@ -106,6 +106,21 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<MissionResponse> getPendingAssignmentMissions() {
+        return missionRepository.findByStatusIn(List.of(
+                        MissionStatus.CREATED,
+                        MissionStatus.RESOURCE_ASSIGNING))
+                .stream()
+                .sorted(java.util.Comparator.comparing(
+                        Mission::getCreatedAt,
+                        java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())
+                ))
+                .map(missionMapper::toResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public MissionPlanResponse getMissionPlan(String missionId) {
         getOrThrow(missionId);
         MissionPlan plan = missionPlanRepository.findByMissionId(missionId)
@@ -221,6 +236,13 @@ public class MissionService implements IMissionService {
         newMoa.setIsCurrent(true);
         newMoa.setAssignedAt(Instant.now());
         missionOperatorAssignmentRepository.save(newMoa);
+
+        MissionPlan plan = missionPlanningService.generateAStarEnergyAwarePlan(missionId);
+        if (plan.getFeasibilityStatus() != FeasibilityStatus.FEASIBLE) {
+            throw new ApiException(
+                    ErrorCode.INVALID_REQUEST,
+                    "No safe route could be generated for this mission.");
+        }
         
         log.info("Mission {} assigned to operator {}", missionId, operatorId);
         Mission saved = missionRepository.save(mission);
@@ -619,10 +641,15 @@ public class MissionService implements IMissionService {
     @Transactional
     public MissionResponse completeMission(String missionId) {
         Mission mission = getOrThrow(missionId);
-        requireStatus(mission, MissionStatus.POSTFLIGHT_CHECKING);
+        if (mission.getStatus() != MissionStatus.IN_FLIGHT
+                && mission.getStatus() != MissionStatus.RETURNING
+                && mission.getStatus() != MissionStatus.POSTFLIGHT_CHECKING) {
+            throw new ApiException(ErrorCode.MISSION_STATUS_INVALID,
+                    "Mission must be IN_FLIGHT, RETURNING or POSTFLIGHT_CHECKING to complete but is " + mission.getStatus());
+        }
         mission.setStatus(MissionStatus.COMPLETED);
         mission.setCompletedAt(Instant.now());
-        updateDroneStatus(mission, DroneStatus.AVAILABLE);
+        releaseMissionResources(mission, "MISSION_COMPLETE");
         log.info("Mission {} COMPLETED successfully", missionId);
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
@@ -634,7 +661,7 @@ public class MissionService implements IMissionService {
         Mission mission = getOrThrow(missionId);
         mission.setStatus(MissionStatus.FAILED);
         mission.setFailureReason(reason);
-        updateDroneStatus(mission, DroneStatus.AVAILABLE);
+        releaseMissionResources(mission, "MISSION_FAILED");
         log.error("Mission {} FAILED – reason: {}", missionId, reason);
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
@@ -685,6 +712,7 @@ public class MissionService implements IMissionService {
         if (mission.getStatus() == MissionStatus.POSTFLIGHT_CHECKING) {
             mission.setStatus(MissionStatus.COMPLETED);
             mission.setCompletedAt(Instant.now());
+            releaseMissionResources(mission, "MISSION_COMPLETE");
         }
 
         if (notes != null && !notes.isBlank()) {
@@ -718,6 +746,34 @@ public class MissionService implements IMissionService {
             drone.setStatus(newStatus);
             droneRepository.save(drone);
         }
+    }
+
+    private void releaseMissionResources(Mission mission, String reason) {
+        Drone drone = getCurrentDrone(mission.getId());
+        if (drone != null) {
+            drone.setStatus(DroneStatus.AVAILABLE);
+            droneRepository.save(drone);
+        }
+
+        missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
+                .ifPresent(assignment -> {
+                    assignment.setIsCurrent(false);
+                    assignment.setStatus("RELEASED");
+                    assignment.setReleaseReason(reason);
+                    assignment.setReleasedAt(Instant.now());
+                    missionDroneAssignmentRepository.save(assignment);
+                });
+
+        missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
+                .ifPresent(assignment -> {
+                    assignment.setIsCurrent(false);
+                    assignment.setStatus("COMPLETED");
+                    assignment.setReleasedAt(Instant.now());
+                    if (assignment.getRespondedAt() == null) {
+                        assignment.setRespondedAt(Instant.now());
+                    }
+                    missionOperatorAssignmentRepository.save(assignment);
+                });
     }
 
     private Drone getCurrentDrone(String missionId) {
