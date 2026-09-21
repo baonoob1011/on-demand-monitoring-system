@@ -41,6 +41,42 @@ function Copy-PackageDirectory([string]$Source, [string]$Destination) {
     }
 }
 
+function Assert-PackageAssets([string]$Root) {
+    $forest3DPath = Join-Path $Root "Forest3D"
+    $worldFile = Join-Path $forest3DPath "worlds\forest_monitoring_compact.sdf"
+    $requiredModels = @(
+        "compact_terrain",
+        "compact_water",
+        "compact_roads",
+        "compact_bridges",
+        "compact_home",
+        "compact_highrise",
+        "compact_zones",
+        "compact_forest",
+        "compact_thermal_sources",
+        "compact_environment_props",
+        "compact_mountains",
+        "compact_airport",
+        "x500_mono_cam_down"
+    )
+
+    if (-not (Test-Path $worldFile)) {
+        throw "Cannot package drone stack because compact world is missing: $worldFile"
+    }
+
+    foreach ($model in $requiredModels) {
+        $modelDir = Join-Path $forest3DPath "models\$model"
+        $config = Join-Path $modelDir "model.config"
+        $sdf = Join-Path $modelDir "model.sdf"
+        if (-not (Test-Path $config)) {
+            throw "Cannot package drone stack because Gazebo model config is missing: $config"
+        }
+        if (-not (Test-Path $sdf)) {
+            throw "Cannot package drone stack because Gazebo model SDF is missing: $sdf"
+        }
+    }
+}
+
 $systemRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $workspaceRoot = (Resolve-Path (Join-Path $systemRoot "..")).Path
 $webRoot = Join-Path $workspaceRoot "ondemand-monitoring-web"
@@ -58,6 +94,7 @@ $stageRoot = Join-Path $env:TEMP "ondemand-drone-stack-$stamp"
 $zipPath = Join-Path $OutputDirectory "ondemand-drone-stack-$stamp.zip"
 
 Write-Step "Preparing package folder"
+Assert-PackageAssets $systemRoot
 New-Item -ItemType Directory -Path $stageRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 
@@ -81,6 +118,7 @@ try {
     Write-Host $zipPath
     Write-Host ""
     Write-Host "Receiver only needs to unzip it, open on-demand-monitoring-system, then run RUN_DRONE_STACK.cmd."
+    Write-Host "For simulator only, run RUN_DRONE_SIM_ONLY.cmd from the same folder."
 } finally {
     if (Test-Path $stageRoot) {
         Remove-Item -LiteralPath $stageRoot -Recurse -Force
