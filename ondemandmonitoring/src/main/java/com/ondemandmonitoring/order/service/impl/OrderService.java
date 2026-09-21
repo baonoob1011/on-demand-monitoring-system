@@ -23,6 +23,7 @@ import java.util.List;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+
 import org.locationtech.jts.geom.Point;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -94,48 +95,6 @@ public class OrderService implements IOrderService {
 
         Order savedOrder = orderRepository.save(order);
         return orderMapper.toResponse(savedOrder);
-    }
-
-    private User getCurrentAuthenticatedUser() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated()) {
-            throw new ApiException(ErrorCode.UNAUTHORIZED, "User authentication is required");
-        }
-
-        Object principal = auth.getPrincipal();
-        if (principal instanceof Jwt jwt) {
-            String cognitoSub = jwt.getSubject();
-            if (cognitoSub != null && !cognitoSub.isBlank()) {
-                try {
-                    return userIdentityService.findUserByCognitoSub(cognitoSub);
-                } catch (ApiException e) {
-                    // Fallback check by email claim
-                    String email = jwt.getClaimAsString("email");
-                    if (email != null && !email.isBlank()) {
-                        return userRepository.findByEmailIgnoreCase(email)
-                                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND,
-                                        "User not found for email: " + email));
-                    }
-                    throw e;
-                }
-            }
-        }
-
-        String name = auth.getName();
-        if (name != null && !name.isBlank()) {
-            try {
-                UUID userId = UUID.fromString(name);
-                return userRepository.findById(userId)
-                        .orElseThrow(
-                                () -> new ApiException(ErrorCode.USER_NOT_FOUND, "User not found with id: " + userId));
-            } catch (IllegalArgumentException ignored) {
-                return userRepository.findByEmailIgnoreCase(name)
-                        .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND,
-                                "User not found with identifier: " + name));
-            }
-        }
-
-        throw new ApiException(ErrorCode.USER_NOT_FOUND, "Authenticated user identity could not be resolved");
     }
 
     private void validateMediaType(OrderCreateRequest request) {
