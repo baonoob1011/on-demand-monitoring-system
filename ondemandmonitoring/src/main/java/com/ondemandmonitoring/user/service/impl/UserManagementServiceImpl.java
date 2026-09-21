@@ -5,11 +5,16 @@ import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
+import com.ondemandmonitoring.user.domain.CustomerProfile;
+import com.ondemandmonitoring.user.dto.response.UserManagementDetailResponse;
 import com.ondemandmonitoring.user.dto.response.UserManagementSummaryResponse;
 import com.ondemandmonitoring.user.mapper.UserManagementMapper;
+import com.ondemandmonitoring.user.repository.CustomerProfileRepository;
+import com.ondemandmonitoring.user.repository.UserIdentityRepository;
 import com.ondemandmonitoring.user.repository.UserRepository;
 import com.ondemandmonitoring.user.service.IUserManagementService;
 import java.util.Set;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -32,6 +37,8 @@ public class UserManagementServiceImpl implements IUserManagementService {
             "lastLoginAt");
 
     private final UserRepository userRepository;
+    private final UserIdentityRepository userIdentityRepository;
+    private final CustomerProfileRepository customerProfileRepository;
     private final UserManagementMapper userManagementMapper;
 
     @Override
@@ -46,6 +53,21 @@ public class UserManagementServiceImpl implements IUserManagementService {
         Page<User> users = userRepository.findForManagement(
                 normalizeSearch(search), role, active, emailVerified, pageable);
         return PageResponse.from(users.map(userManagementMapper::toSummary));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public UserManagementDetailResponse getUser(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
+        CustomerProfile customerProfile = null;
+        if (user.getRole().getCode() == RoleCode.CUSTOMER) {
+            customerProfile = customerProfileRepository.findById(userId).orElse(null);
+        }
+        return userManagementMapper.toDetail(
+                user,
+                userIdentityRepository.findAllByUserId(userId),
+                customerProfile);
     }
 
     private void validatePageable(Pageable pageable) {

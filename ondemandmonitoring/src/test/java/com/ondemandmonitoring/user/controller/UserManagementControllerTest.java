@@ -12,6 +12,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.user.dto.response.UserManagementSummaryResponse;
+import com.ondemandmonitoring.user.dto.response.UserManagementDetailResponse;
+import com.ondemandmonitoring.user.dto.response.CustomerProfileResponse;
+import com.ondemandmonitoring.user.enumeration.IdentityProvider;
 import com.ondemandmonitoring.user.service.IUserManagementService;
 import java.util.List;
 import java.util.UUID;
@@ -83,5 +86,30 @@ class UserManagementControllerTest {
                 .andExpect(jsonPath("$.data.items[0].id").value(userId.toString()))
                 .andExpect(jsonPath("$.data.items[0].active").value(true))
                 .andExpect(jsonPath("$.data.totalItems").value(1));
+    }
+
+    @Test
+    void getUser_returnsManagementDetail() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(userManagementService.getUser(userId)).thenReturn(
+                UserManagementDetailResponse.builder()
+                        .id(userId)
+                        .fullName("Customer Name")
+                        .email("customer@example.com")
+                        .role(RoleCode.CUSTOMER)
+                        .active(true)
+                        .emailVerified(true)
+                        .linkedProviders(List.of(IdentityProvider.LOCAL, IdentityProvider.GOOGLE))
+                        .customerProfile(CustomerProfileResponse.builder()
+                                .companyName("Customer Company")
+                                .build())
+                        .build());
+
+        mockMvc.perform(get("/api/v1/admin/users/{userId}", userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(userId.toString()))
+                .andExpect(jsonPath("$.data.linkedProviders[0]").value("LOCAL"))
+                .andExpect(jsonPath("$.data.customerProfile.companyName")
+                        .value("Customer Company"));
     }
 }
