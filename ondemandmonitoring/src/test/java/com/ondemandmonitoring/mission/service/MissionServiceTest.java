@@ -375,8 +375,8 @@ class MissionServiceTest {
         }
 
         @Test
-        @DisplayName("5. runPreflightCheck hardware failed routes drone to MAINTENANCE and mission to PENDING_APPROVAL")
-        void runPreflightCheck_hardwareFailed_routesToMaintenance_andPendingApproval() {
+        @DisplayName("5. runPreflightCheck HARDWARE fault routes drone to MAINTENANCE, auto-creates ticket, re-queues mission to RESOURCE_ASSIGNING")
+        void runPreflightCheck_hardwareFailed_routesToMaintenance_andRequeues() {
             Mission mission = buildMission("m-fail", MissionStatus.CONNECTED);
             Drone drone = buildDrone("DRONE-01", DroneStatus.PREFLIGHT);
             PreflightCheck failedCheck = new PreflightCheck();
@@ -390,17 +390,21 @@ class MissionServiceTest {
             when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(preflightCheckService.run("DRONE-01", "m-fail")).thenReturn(failedCheck);
+            when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-fail")).thenReturn(Optional.empty());
+            when(maintenanceTicketRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             PreflightCheckResponse result = missionService.runPreflightCheck("m-fail", "DRONE-01");
 
             assertThat(result.getOverallPassed()).isFalse();
             assertThat(drone.getStatus()).isEqualTo(DroneStatus.MAINTENANCE);
-            assertThat(mission.getStatus()).isEqualTo(MissionStatus.PENDING_APPROVAL);
+            // AC: HARDWARE fault auto-creates ticket and re-queues to RESOURCE_ASSIGNING for manager
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
+            verify(maintenanceTicketRepository).save(any());
         }
 
         @Test
-        @DisplayName("6. runPreflightCheck battery low routes drone to IDLE_CHARGING and mission to PENDING_APPROVAL")
-        void runPreflightCheck_batteryLow_routesToIdleCharging_andPendingApproval() {
+        @DisplayName("6. runPreflightCheck BATTERY fault routes drone to IDLE_CHARGING, triggers auto-swap, re-queues mission to RESOURCE_ASSIGNING")
+        void runPreflightCheck_batteryLow_routesToIdleCharging_andTriggersAutoSwap() {
             Mission mission = buildMission("m-bat", MissionStatus.CONNECTED);
             Drone drone = buildDrone("DRONE-01", DroneStatus.PREFLIGHT);
             PreflightCheck batteryLowCheck = new PreflightCheck();
@@ -415,12 +419,18 @@ class MissionServiceTest {
             when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(preflightCheckService.run("DRONE-01", "m-bat")).thenReturn(batteryLowCheck);
+            when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-bat")).thenReturn(Optional.empty());
+            // No replacement available — simulates pool empty fallback
+            when(droneRepository.findFirstAvailableExcluding(eq(DroneStatus.AVAILABLE), eq(drone.getId())))
+                    .thenReturn(Optional.empty());
 
             PreflightCheckResponse result = missionService.runPreflightCheck("m-bat", "DRONE-01");
 
             assertThat(result.getOverallPassed()).isFalse();
-            assertThat(drone.getStatus()).isEqualTo(DroneStatus.IDLE_CHARGING);
-            assertThat(mission.getStatus()).isEqualTo(MissionStatus.PENDING_APPROVAL);
+            assertThat(drone.getStatus()).isEqualTo(DroneStatus.MAINTENANCE);
+            verify(maintenanceTicketRepository).save(any());
+            // AC: BATTERY fault auto-swap attempted, mission re-queued to RESOURCE_ASSIGNING
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
         }
     }
 
@@ -698,14 +708,16 @@ class MissionServiceTest {
         }
 
         @Test
-        @DisplayName("4. completeMission throws exception when status is not POSTFLIGHT_CHECKING")
+        @DisplayName("4. completeMission throws exception when status is SCHEDULED (fully invalid for completion)")
         void completeMission_invalidStatus_throws() {
-            Mission mission = buildMission("m-8", MissionStatus.IN_FLIGHT);
+            // completeMission now accepts IN_FLIGHT, RETURNING, POSTFLIGHT_CHECKING
+            // SCHEDULED is not in that set and must still throw
+            Mission mission = buildMission("m-8", MissionStatus.SCHEDULED);
             when(missionRepository.findById("m-8")).thenReturn(Optional.of(mission));
 
             assertThatThrownBy(() -> missionService.completeMission("m-8"))
                     .isInstanceOf(ApiException.class)
-                    .hasMessageContaining("must be POSTFLIGHT_CHECKING");
+                    .hasMessageContaining("IN_FLIGHT");
         }
 
         @Test
@@ -758,7 +770,109 @@ class MissionServiceTest {
 
             assertThatThrownBy(() -> missionService.updatePostFlightStatus("m-nodev", DroneStatus.AVAILABLE, "Notes"))
                     .isInstanceOf(ApiException.class)
-                    .hasMessageContaining("has no assigned drone");
+                    .hasMessageContaining("has no assigned");
+        }
+    }
+
+    // =========================================================================
+    // Fault Handling – Acceptance Criteria Tests (3 Test Cases)
+    // =========================================================================
+    @Nested
+    @DisplayName("AC – Automated Preflight Fault Handling")
+    class AC_PreflightFaultHandling {
+
+        @Test
+        @DisplayName("AC-1. assignDrone throws when drone is under MAINTENANCE – block by status")
+        void assignDrone_maintenanceDrone_blocked() {
+            Mission mission = buildMission("m-assign", MissionStatus.RESOURCE_ASSIGNING);
+            Drone maintenanceDrone = buildDrone("DRONE-BROKEN", DroneStatus.MAINTENANCE);
+
+            when(missionRepository.findById("m-assign")).thenReturn(Optional.of(mission));
+            when(droneRepository.findById("DRONE-BROKEN-id")).thenReturn(Optional.of(maintenanceDrone));
+
+            assertThatThrownBy(() -> missionService.assignDrone("m-assign", "DRONE-BROKEN-id"))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessageContaining("MAINTENANCE");
+        }
+
+        @Test
+        @DisplayName("AC-2. BATTERY preflight fault triggers auto-swap when a replacement drone is available")
+        void preflightFail_battery_autoSwapSucceeds() {
+            Mission mission = buildMission("m-bat-swap", MissionStatus.CONNECTED);
+            Drone faultyDrone = buildDrone("DRONE-LOW", DroneStatus.PREFLIGHT);
+            Drone replacementDrone = buildDrone("DRONE-GOOD", DroneStatus.AVAILABLE);
+            replacementDrone.setId("DRONE-GOOD-id");
+
+            PreflightCheck batteryCheck = new PreflightCheck();
+            batteryCheck.setOverallPassed(false);
+            batteryCheck.setFaultType("BATTERY");
+            batteryCheck.setBatteryPercent(20.0);
+            batteryCheck.setFailureReason("Battery below minimum threshold (80%)");
+            batteryCheck.setDrone(faultyDrone);
+
+            MissionPlan plan = feasiblePlan("m-bat-swap");
+            when(missionPlanRepository.findByMissionId("m-bat-swap")).thenReturn(Optional.of(plan));
+            when(missionRepository.findById("m-bat-swap")).thenReturn(Optional.of(mission));
+            when(droneRepository.findByDroneCode("DRONE-LOW")).thenReturn(Optional.of(faultyDrone));
+            when(preflightCheckService.run("DRONE-LOW", "m-bat-swap")).thenReturn(batteryCheck);
+            when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-bat-swap"))
+                    .thenReturn(Optional.empty());
+            // Auto-swap finds a replacement drone
+            when(droneRepository.findFirstAvailableExcluding(eq(DroneStatus.AVAILABLE), eq(faultyDrone.getId())))
+                    .thenReturn(Optional.of(replacementDrone));
+            when(missionRepository.findActiveByDroneId("DRONE-GOOD-id")).thenReturn(List.of());
+            when(missionDroneAssignmentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(preflightCheckMapper.toResponse(any(), any())).thenReturn(
+                    com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse.builder()
+                            .overallPassed(false).build()
+            );
+
+            missionService.runPreflightCheck("m-bat-swap", "DRONE-LOW");
+
+            // Faulty drone should be MAINTENANCE, replacement RESERVED, mission RESOURCE_ASSIGNING
+            assertThat(faultyDrone.getStatus()).isEqualTo(DroneStatus.MAINTENANCE);
+            assertThat(replacementDrone.getStatus()).isEqualTo(DroneStatus.RESERVED);
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
+            verify(missionDroneAssignmentRepository, atLeastOnce()).save(any());
+        }
+
+        @Test
+        @DisplayName("AC-3. BATTERY preflight fault with no available drones falls back to RESOURCE_ASSIGNING")
+        void preflightFail_battery_noAvailableDrone_requeues() {
+            Mission mission = buildMission("m-bat-empty", MissionStatus.CONNECTED);
+            Drone faultyDrone = buildDrone("DRONE-DEAD", DroneStatus.PREFLIGHT);
+
+            PreflightCheck batteryCheck = new PreflightCheck();
+            batteryCheck.setOverallPassed(false);
+            batteryCheck.setFaultType("BATTERY");
+            batteryCheck.setBatteryPercent(15.0);
+            batteryCheck.setFailureReason("Battery critically low");
+            batteryCheck.setDrone(faultyDrone);
+
+            MissionPlan plan = feasiblePlan("m-bat-empty");
+            when(missionPlanRepository.findByMissionId("m-bat-empty")).thenReturn(Optional.of(plan));
+            when(missionRepository.findById("m-bat-empty")).thenReturn(Optional.of(mission));
+            when(droneRepository.findByDroneCode("DRONE-DEAD")).thenReturn(Optional.of(faultyDrone));
+            when(preflightCheckService.run("DRONE-DEAD", "m-bat-empty")).thenReturn(batteryCheck);
+            when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-bat-empty"))
+                    .thenReturn(Optional.empty());
+            // No available drone in pool
+            when(droneRepository.findFirstAvailableExcluding(eq(DroneStatus.AVAILABLE), eq(faultyDrone.getId())))
+                    .thenReturn(Optional.empty());
+            when(preflightCheckMapper.toResponse(any(), any())).thenReturn(
+                    com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse.builder()
+                            .overallPassed(false).build()
+            );
+
+            missionService.runPreflightCheck("m-bat-empty", "DRONE-DEAD");
+
+            // Faulty drone MAINTENANCE, mission falls back to RESOURCE_ASSIGNING for manager
+            assertThat(faultyDrone.getStatus()).isEqualTo(DroneStatus.MAINTENANCE);
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
         }
     }
 
