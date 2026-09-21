@@ -55,8 +55,8 @@ public class DeviceTypeServiceImpl implements IDeviceTypeService {
 
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<DeviceTypeResponse> getAll(Pageable pageable, String search) {
-        Page<DeviceType> page = deviceTypeRepository.searchDeviceTypes(search, pageable);
+    public PageResponse<DeviceTypeResponse> getAll(Pageable pageable) {
+        Page<DeviceType> page = deviceTypeRepository.findAll(pageable);
         Page<DeviceTypeResponse> mappedPage = page.map(deviceTypeMapper::toResponse);
         return PageResponse.from(mappedPage);
     }

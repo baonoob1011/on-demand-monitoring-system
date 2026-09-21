@@ -118,9 +118,9 @@ class DeviceModelControllerTest {
                 new PageImpl<>(List.of(response), PageRequest.of(0, 10), 1)
         );
 
-        when(deviceModelService.getAll(any(), any(), any())).thenReturn(pageResponse);
+        when(deviceModelService.getAll(any())).thenReturn(pageResponse);
 
-        mockMvc.perform(get("/api/device-models?search=Alpha&type=Camera"))
+        mockMvc.perform(get("/api/device-models"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.items[0].id").value("model-123"))

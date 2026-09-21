@@ -112,9 +112,9 @@ class DeviceControllerTest {
                 new PageImpl<>(List.of(response), PageRequest.of(0, 10), 1)
         );
 
-        when(deviceService.getAll(any(), any(), any(), any())).thenReturn(pageResponse);
+        when(deviceService.getAll(any())).thenReturn(pageResponse);
 
-        mockMvc.perform(get("/api/devices?search=SN-1001&status=AVAILABLE"))
+        mockMvc.perform(get("/api/devices"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.items[0].id").value("device-123"))

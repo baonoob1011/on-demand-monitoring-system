@@ -15,7 +15,7 @@ public interface IDeviceModelService {
 
     DeviceModel getEntityById(String id);
 
-    PageResponse<DeviceModelResponse> getAll(Pageable pageable, String search, String deviceTypeId);
+    PageResponse<DeviceModelResponse> getAll(Pageable pageable);
 
     DeviceModelResponse update(String id, DeviceModelUpdateRequest request);
 

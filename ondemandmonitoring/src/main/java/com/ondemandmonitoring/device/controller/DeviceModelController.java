@@ -52,13 +52,11 @@ public class DeviceModelController {
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
-    @Operation(summary = "Get all device models", description = "Retrieves a paginated list of device models with optional search and deviceTypeId filters")
+    @Operation(summary = "Get all device models", description = "Retrieves a paginated list of device models")
     @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<DeviceModelResponse>>> getAll(
-            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
-            @RequestParam(required = false) String search,
-            @RequestParam(required = false) String deviceTypeId) {
-        PageResponse<DeviceModelResponse> response = deviceModelService.getAll(pageable, search, deviceTypeId);
+            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        PageResponse<DeviceModelResponse> response = deviceModelService.getAll(pageable);
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 

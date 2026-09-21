@@ -149,10 +149,10 @@ class DeviceModelServiceImplTest {
         Page<DeviceModel> page = new PageImpl<>(List.of(entity), pageable, 1);
         DeviceModelResponse response = DeviceModelResponse.builder().id("model-123").build();
 
-        when(deviceModelRepository.searchDeviceModels(null, null, pageable)).thenReturn(page);
+        when(deviceModelRepository.findAll(pageable)).thenReturn(page);
         when(deviceModelMapper.toResponse(entity)).thenReturn(response);
 
-        PageResponse<DeviceModelResponse> result = deviceModelService.getAll(pageable, null, null);
+        PageResponse<DeviceModelResponse> result = deviceModelService.getAll(pageable);
 
         assertThat(result).isNotNull();
         assertThat(result.getItems()).hasSize(1);

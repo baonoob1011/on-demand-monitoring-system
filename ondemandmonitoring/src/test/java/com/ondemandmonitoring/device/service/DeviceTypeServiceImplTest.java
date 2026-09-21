@@ -131,10 +131,10 @@ class DeviceTypeServiceImplTest {
         Page<DeviceType> page = new PageImpl<>(List.of(entity), pageable, 1);
         DeviceTypeResponse response = DeviceTypeResponse.builder().id("uuid-123").build();
 
-        when(deviceTypeRepository.searchDeviceTypes(null, pageable)).thenReturn(page);
+        when(deviceTypeRepository.findAll(pageable)).thenReturn(page);
         when(deviceTypeMapper.toResponse(entity)).thenReturn(response);
 
-        PageResponse<DeviceTypeResponse> result = deviceTypeService.getAll(pageable, null);
+        PageResponse<DeviceTypeResponse> result = deviceTypeService.getAll(pageable);
 
         assertThat(result).isNotNull();
         assertThat(result.getItems()).hasSize(1);

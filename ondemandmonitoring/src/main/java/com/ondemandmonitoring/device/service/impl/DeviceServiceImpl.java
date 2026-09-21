@@ -70,8 +70,8 @@ public class DeviceServiceImpl implements IDeviceService {
 
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<DeviceResponse> getAll(Pageable pageable, String search, DeviceStatus status, String modelId) {
-        Page<Device> page = deviceRepository.searchDevices(search, status, modelId, pageable);
+    public PageResponse<DeviceResponse> getAll(Pageable pageable) {
+        Page<Device> page = deviceRepository.findAll(pageable);
         Page<DeviceResponse> mappedPage = page.map(deviceMapper::toResponse);
         return PageResponse.from(mappedPage);
     }

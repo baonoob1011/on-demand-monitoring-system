@@ -110,9 +110,9 @@ class DeviceTypeControllerTest {
                 new PageImpl<>(List.of(response), PageRequest.of(0, 10), 1)
         );
 
-        when(deviceTypeService.getAll(any(), any())).thenReturn(pageResponse);
+        when(deviceTypeService.getAll(any())).thenReturn(pageResponse);
 
-        mockMvc.perform(get("/api/device-types?search=CAM"))
+        mockMvc.perform(get("/api/device-types"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.items[0].id").value("uuid-123"))

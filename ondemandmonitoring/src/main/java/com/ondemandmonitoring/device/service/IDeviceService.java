@@ -5,7 +5,6 @@ import com.ondemandmonitoring.device.domain.Device;
 import com.ondemandmonitoring.device.dto.request.DeviceCreateRequest;
 import com.ondemandmonitoring.device.dto.request.DeviceUpdateRequest;
 import com.ondemandmonitoring.device.dto.response.DeviceResponse;
-import com.ondemandmonitoring.device.enums.DeviceStatus;
 import org.springframework.data.domain.Pageable;
 
 public interface IDeviceService {
@@ -16,7 +15,7 @@ public interface IDeviceService {
 
     Device getEntityById(String id);
 
-    PageResponse<DeviceResponse> getAll(Pageable pageable, String search, DeviceStatus status, String modelId);
+    PageResponse<DeviceResponse> getAll(Pageable pageable);
 
     DeviceResponse update(String id, DeviceUpdateRequest request);
 

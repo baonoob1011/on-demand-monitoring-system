@@ -5,7 +5,6 @@ import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.device.dto.request.DeviceCreateRequest;
 import com.ondemandmonitoring.device.dto.request.DeviceUpdateRequest;
 import com.ondemandmonitoring.device.dto.response.DeviceResponse;
-import com.ondemandmonitoring.device.enums.DeviceStatus;
 import com.ondemandmonitoring.device.service.IDeviceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -53,14 +52,11 @@ public class DeviceController {
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
-    @Operation(summary = "Get all devices", description = "Retrieves a paginated list of devices with optional search, status, and modelId filters")
+    @Operation(summary = "Get all devices", description = "Retrieves a paginated list of devices")
     @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<DeviceResponse>>> getAll(
-            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
-            @RequestParam(required = false) String search,
-            @RequestParam(required = false) DeviceStatus status,
-            @RequestParam(required = false) String modelId) {
-        PageResponse<DeviceResponse> response = deviceService.getAll(pageable, search, status, modelId);
+            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        PageResponse<DeviceResponse> response = deviceService.getAll(pageable);
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
