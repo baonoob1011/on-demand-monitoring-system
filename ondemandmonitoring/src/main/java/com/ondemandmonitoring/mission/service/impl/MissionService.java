@@ -22,6 +22,8 @@ import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.drone.mapper.PreflightCheckMapper;
 import com.ondemandmonitoring.mission.mapper.FlightTokenMapper;
 import com.ondemandmonitoring.mission.mapper.MissionMapper;
+import com.ondemandmonitoring.mission.service.IDeviceConnectionService;
+import com.ondemandmonitoring.mission.service.IFlightTokenService;
 import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.planning.service.MissionPlanningService;
@@ -71,6 +73,8 @@ public class MissionService implements IMissionService {
     PostflightCheckRepository postflightCheckRepository;
     MaintenanceTicketRepository maintenanceTicketRepository;
     OrderRepository orderRepository;
+    IDeviceConnectionService deviceConnectionService;
+    IFlightTokenService flightTokenService;
 
     // =========================================================================
     // Query Methods
@@ -331,45 +335,20 @@ public class MissionService implements IMissionService {
     @Transactional
     public MissionResponse connectGcs(String missionId) {
         Mission mission = getOrThrow(missionId);
-        if (mission.getStatus() != MissionStatus.SCHEDULED && mission.getStatus() != MissionStatus.CONNECTED) {
-            throw new ApiException(ErrorCode.MISSION_STATUS_INVALID,
-                    "Mission must be in SCHEDULED state to pair with GCS, current: " + mission.getStatus());
-        }
         requireFeasiblePlan(missionId);
-        mission.setStatus(MissionStatus.CONNECTED);
+        return deviceConnectionService.connectGcs(missionId);
+    }
 
-        Drone drone = getCurrentDrone(missionId);
-        if (drone != null) {
-            drone.setStatus(DroneStatus.PREFLIGHT);
-            droneRepository.save(drone);
+    @Override
+    @Transactional
+    public MissionResponse disconnectGcs(String missionId, String disconnectReason) {
+        return deviceConnectionService.disconnectGcs(missionId, disconnectReason);
+    }
 
-            // Record GcsSession flight connection log
-            GcsSession gcsSession = new GcsSession();
-            gcsSession.setMission(mission);
-            gcsSession.setDrone(drone);
-            gcsSession.setOperatorId(getCurrentOperatorId(missionId));
-            gcsSession.setConnectionStatus("CONNECTED");
-            gcsSession.setTelemetryActive(true);
-            gcsSession.setConnectedAt(Instant.now());
-            gcsSessionRepository.save(gcsSession);
-
-            // Ensure MissionDroneAssignment record exists
-            missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                    .orElseGet(() -> {
-                        MissionDroneAssignment mda = new MissionDroneAssignment();
-                        mda.setMission(mission);
-                        mda.setDrone(drone);
-                        mda.setAssignmentSource("MANUAL_MANAGER");
-                        mda.setStatus("ACTIVE");
-                        mda.setIsCurrent(true);
-                        mda.setAssignedAt(Instant.now());
-                        return missionDroneAssignmentRepository.save(mda);
-                    });
-        }
-
-        log.info("Mission {} – powerOnAndPairWithGCSApp confirmed, status CONNECTED", missionId);
-        Mission saved = missionRepository.save(mission);
-        return missionMapper.toResponse(saved);
+    @Override
+    @Transactional
+    public MissionResponse handleGcsSessionLost(String missionId, String reason) {
+        return deviceConnectionService.handleGcsSessionLost(missionId, reason);
     }
 
     @Override
@@ -550,17 +529,7 @@ public class MissionService implements IMissionService {
     }
 
     private FlightToken issueFlightToken(String missionId, String droneCode, String operatorId) {
-        Instant now = Instant.now();
-        FlightToken token = new FlightToken();
-        token.setTokenValue(com.ondemandmonitoring.mission.util.FlightTokenGenerator.generateTokenValue(missionId, droneCode, operatorId, now));
-        token.setMissionId(missionId);
-        token.setDroneCode(droneCode);
-        token.setOperatorId(operatorId);
-        token.setIssuedAt(now);
-        token.setExpiresAt(now.plusSeconds(TOKEN_TTL_SECONDS));
-        token.setUsed(false);
-        token.setRevoked(false);
-        return flightTokenRepository.save(token);
+        return flightTokenService.issueFlightToken(missionId, droneCode, operatorId);
     }
 
     private MissionOperatorAssignment requireCurrentOperatorAssignment(String missionId, String operatorId) {
