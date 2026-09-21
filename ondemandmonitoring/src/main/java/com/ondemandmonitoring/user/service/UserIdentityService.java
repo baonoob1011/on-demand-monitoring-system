@@ -17,4 +17,6 @@ public interface UserIdentityService {
     boolean hasIdentity(UUID userId, IdentityProvider provider);
 
     User findUserByCognitoSub(String cognitoSub);
+
+    User findUserByCognitoUsername(String cognitoUsername);
 }

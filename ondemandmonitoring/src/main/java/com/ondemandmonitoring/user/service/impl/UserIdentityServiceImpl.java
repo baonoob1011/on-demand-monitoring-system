@@ -72,4 +72,12 @@ public class UserIdentityServiceImpl implements UserIdentityService {
                 .map(UserIdentity::getUser)
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public User findUserByCognitoUsername(String cognitoUsername) {
+        return identityRepository.findByCognitoUsername(cognitoUsername)
+                .map(UserIdentity::getUser)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
+    }
 }

@@ -4,6 +4,7 @@ import com.ondemandmonitoring.auth.controller.AdminAccountController;
 import com.ondemandmonitoring.auth.dto.response.ManagedAccountResponse;
 import com.ondemandmonitoring.auth.service.IAdminAccountService;
 import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -31,6 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringJUnitConfig(classes = {
         SecurityConfig.class,
+        ActiveAccountFilter.class,
         SecurityAuthorizationTest.TestBeans.class,
         AdminAccountController.class
 })
@@ -100,6 +102,11 @@ class SecurityAuthorizationTest {
         @Qualifier("cognitoAccessTokenDecoder")
         JwtDecoder cognitoAccessTokenDecoder() {
             return mock(JwtDecoder.class);
+        }
+
+        @Bean
+        AuthenticatedUserResolver authenticatedUserResolver() {
+            return mock(AuthenticatedUserResolver.class);
         }
     }
 }
