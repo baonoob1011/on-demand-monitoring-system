@@ -37,11 +37,9 @@ public enum ErrorCode {
 
     INTERNAL_SERVER_ERROR("Lỗi hệ thống", HttpStatus.INTERNAL_SERVER_ERROR),
 
-
     /**
-     *  Mission Error Code
-     *
-     * */
+     *  Mission & Drone Error Codes
+     */
     MISSION_NOT_FOUND("Mission not found", HttpStatus.NOT_FOUND),
     MISSION_STATUS_INVALID("Mission status is invalid for this operation", HttpStatus.CONFLICT),
     DRONE_NOT_AVAILABLE("Drone is not available", HttpStatus.CONFLICT),
@@ -50,10 +48,13 @@ public enum ErrorCode {
     MEDIA_UPLOAD_FAILED("File upload failed after 3 attempts", HttpStatus.BAD_GATEWAY),
     DRONE_MODEL_NOT_FOUND("Drone model not found", HttpStatus.NOT_FOUND),
     DRONE_PAYLOAD_NOT_FOUND("Drone payload not found", HttpStatus.NOT_FOUND),
-    DRONE_NOT_FOUND("Drone not found", HttpStatus.NOT_FOUND);
+    DRONE_NOT_FOUND("Drone not found", HttpStatus.NOT_FOUND),
 
-
-
+    /**
+     *  Device Error Codes
+     */
+    DEVICE_TYPE_NOT_FOUND("Device type not found", HttpStatus.NOT_FOUND),
+    DEVICE_TYPE_CODE_EXISTS("Device type code already exists", HttpStatus.CONFLICT);
 
     String message;
     HttpStatus status;
