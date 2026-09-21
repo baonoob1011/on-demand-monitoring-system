@@ -32,6 +32,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mapstruct.factory.Mappers;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -63,7 +64,7 @@ class UserManagementServiceImplTest {
                 userRepository,
                 userIdentityRepository,
                 customerProfileRepository,
-                new UserManagementMapper(),
+                Mappers.getMapper(UserManagementMapper.class),
                 authenticatedUserResolver,
                 authOutboxService);
     }

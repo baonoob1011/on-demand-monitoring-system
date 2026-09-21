@@ -19,6 +19,7 @@ import com.ondemandmonitoring.user.service.IUserService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mapstruct.factory.Mappers;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -43,7 +44,8 @@ class SocialAuthServiceTest {
         users = mock(IUserService.class);
         cookies = mock(RefreshTokenCookieService.class);
         service = new SocialAuthService(
-                socialProvider, cognito, outbox, users, cookies, new AuthenticatedUserMapper());
+                socialProvider, cognito, outbox, users, cookies,
+                Mappers.getMapper(AuthenticatedUserMapper.class));
     }
 
     @Test
