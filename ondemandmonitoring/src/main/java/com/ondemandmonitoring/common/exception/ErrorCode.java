@@ -54,7 +54,9 @@ public enum ErrorCode {
      *  Device Error Codes
      */
     DEVICE_TYPE_NOT_FOUND("Device type not found", HttpStatus.NOT_FOUND),
-    DEVICE_TYPE_CODE_EXISTS("Device type code already exists", HttpStatus.CONFLICT);
+    DEVICE_TYPE_CODE_EXISTS("Device type code already exists", HttpStatus.CONFLICT),
+    DEVICE_MODEL_NOT_FOUND("Device model not found", HttpStatus.NOT_FOUND),
+    DEVICE_MODEL_CODE_EXISTS("Device model code already exists", HttpStatus.CONFLICT);
 
     String message;
     HttpStatus status;
