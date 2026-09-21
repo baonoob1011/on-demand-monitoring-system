@@ -34,7 +34,7 @@ class UserServiceImplTest {
     private RoleService roleService;
 
     @Mock
-    private UserIdentityService userIdentityService;
+    private IUserIdentityService userIdentityService;
 
     @Mock
     private CustomerProfileRepository customerProfileRepository;
@@ -108,6 +108,17 @@ class UserServiceImplTest {
                 "cognito-user", "cognito-sub"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("profile provisioning failed");
+    }
+
+    @Test
+    void findByCognitoUsername_delegatesToIdentityService() {
+        User expected = User.builder().id(UUID.randomUUID()).build();
+        when(userIdentityService.findUserByCognitoUsername("cognito-user"))
+                .thenReturn(expected);
+
+        User actual = userService.findByCognitoUsername("cognito-user");
+
+        assertThat(actual).isSameAs(expected);
     }
 
     private Role role(RoleCode code) {

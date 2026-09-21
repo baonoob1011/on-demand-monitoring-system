@@ -6,7 +6,7 @@ import com.ondemandmonitoring.user.enumeration.IdentityProvider;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.domain.UserIdentity;
 import com.ondemandmonitoring.user.repository.UserIdentityRepository;
-import com.ondemandmonitoring.user.service.UserIdentityService;
+import com.ondemandmonitoring.user.service.IUserIdentityService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,7 +15,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
-public class UserIdentityServiceImpl implements UserIdentityService {
+public class UserIdentityServiceImpl implements IUserIdentityService {
 
     private final UserIdentityRepository identityRepository;
 
@@ -69,6 +69,14 @@ public class UserIdentityServiceImpl implements UserIdentityService {
     @Transactional(readOnly = true)
     public User findUserByCognitoSub(String cognitoSub) {
         return identityRepository.findByCognitoSub(cognitoSub)
+                .map(UserIdentity::getUser)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public User findUserByCognitoUsername(String cognitoUsername) {
+        return identityRepository.findByCognitoUsername(cognitoUsername)
                 .map(UserIdentity::getUser)
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
     }

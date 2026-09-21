@@ -9,7 +9,7 @@ import com.ondemandmonitoring.role.service.RoleService;
 import com.ondemandmonitoring.user.repository.CustomerProfileRepository;
 import com.ondemandmonitoring.user.repository.UserRepository;
 import com.ondemandmonitoring.user.service.IUserService;
-import com.ondemandmonitoring.user.service.UserIdentityService;
+import com.ondemandmonitoring.user.service.IUserIdentityService;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +29,7 @@ public class UserServiceImpl implements IUserService {
 
     private final UserRepository userRepository;
     private final RoleService roleService;
-    private final UserIdentityService userIdentityService;
+    private final IUserIdentityService userIdentityService;
     private final CustomerProfileRepository customerProfileRepository;
 
     @Override
@@ -143,6 +143,12 @@ public class UserServiceImpl implements IUserService {
     @Transactional(readOnly = true)
     public User findByCognitoSub(String cognitoSub) {
         return userIdentityService.findUserByCognitoSub(cognitoSub);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public User findByCognitoUsername(String cognitoUsername) {
+        return userIdentityService.findUserByCognitoUsername(cognitoUsername);
     }
 
     @Override

@@ -13,5 +13,7 @@ public interface UserIdentityRepository extends JpaRepository<UserIdentity, UUID
 
     Optional<UserIdentity> findByCognitoSub(String cognitoSub);
 
+    Optional<UserIdentity> findByCognitoUsername(String cognitoUsername);
+
     boolean existsByCognitoSubAndProvider(String cognitoSub, IdentityProvider provider);
 }

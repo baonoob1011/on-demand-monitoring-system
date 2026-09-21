@@ -34,7 +34,7 @@ class AuthenticatedUserResolverTest {
     private UserRepository userRepository;
 
     @Mock
-    private UserIdentityService userIdentityService;
+    private IUserIdentityService userIdentityService;
 
     @InjectMocks
     private AuthenticatedUserResolver resolver;
@@ -128,6 +128,22 @@ class AuthenticatedUserResolverTest {
                 .isInstanceOfSatisfying(ApiException.class,
                         exception -> assertThat(exception.getErrorCode())
                                 .isEqualTo(ErrorCode.USER_NOT_FOUND));
+    }
+
+    @Test
+    void getCurrentUser_withInactiveAccount_throwsAccountDisabled() {
+        User inactiveUser = user();
+        inactiveUser.setIsActive(false);
+        Jwt jwt = jwt("inactive-sub", "inactive@example.com");
+        SecurityContextHolder.getContext().setAuthentication(
+                new JwtAuthenticationToken(jwt, List.of()));
+        when(userIdentityService.findUserByCognitoSub("inactive-sub"))
+                .thenReturn(inactiveUser);
+
+        assertThatThrownBy(resolver::getCurrentUser)
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.ACCOUNT_DISABLED));
     }
 
     private Jwt jwt(String subject, String email) {

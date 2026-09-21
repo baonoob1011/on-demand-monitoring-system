@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthenticatedUserResolver {
 
     private final UserRepository userRepository;
-    private final UserIdentityService userIdentityService;
+    private final IUserIdentityService userIdentityService;
 
     @Transactional(readOnly = true)
     public User getCurrentUser() {
@@ -29,11 +29,13 @@ public class AuthenticatedUserResolver {
             throw new ApiException(ErrorCode.UNAUTHORIZED, "User authentication is required");
         }
 
-        if (authentication.getPrincipal() instanceof Jwt jwt) {
-            return resolveJwtUser(jwt);
+        User user = authentication.getPrincipal() instanceof Jwt jwt
+                ? resolveJwtUser(jwt)
+                : resolveByAuthenticationName(authentication.getName());
+        if (!Boolean.TRUE.equals(user.getIsActive())) {
+            throw new ApiException(ErrorCode.ACCOUNT_DISABLED);
         }
-
-        return resolveByAuthenticationName(authentication.getName());
+        return user;
     }
 
     private User resolveJwtUser(Jwt jwt) {
