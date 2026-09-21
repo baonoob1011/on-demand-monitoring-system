@@ -14,18 +14,21 @@ import com.ondemandmonitoring.user.domain.CustomerProfile;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.dto.request.UserProfileUpdateRequest;
 import com.ondemandmonitoring.user.dto.response.UserProfileResponse;
+import com.ondemandmonitoring.user.mapper.UserProfileMapper;
 import com.ondemandmonitoring.user.repository.CustomerProfileRepository;
 import com.ondemandmonitoring.user.repository.UserRepository;
+import com.ondemandmonitoring.user.service.impl.UserProfileServiceImpl;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mapstruct.factory.Mappers;
 
 @ExtendWith(MockitoExtension.class)
-class UserProfileServiceTest {
+class UserProfileServiceImplTest {
 
     @Mock
     private AuthenticatedUserResolver authenticatedUserResolver;
@@ -36,8 +39,16 @@ class UserProfileServiceTest {
     @Mock
     private UserRepository userRepository;
 
-    @InjectMocks
-    private UserProfileService userProfileService;
+    private UserProfileServiceImpl userProfileService;
+
+    @BeforeEach
+    void setUp() {
+        userProfileService = new UserProfileServiceImpl(
+                authenticatedUserResolver,
+                customerProfileRepository,
+                userRepository,
+                Mappers.getMapper(UserProfileMapper.class));
+    }
 
     @Test
     void getCurrentProfile_customer_returnsCommonAndCustomerFields() {

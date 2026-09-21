@@ -9,7 +9,7 @@ import static org.mockito.Mockito.when;
 import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.user.dto.response.CustomerProfileResponse;
 import com.ondemandmonitoring.user.dto.response.UserProfileResponse;
-import com.ondemandmonitoring.user.service.UserProfileService;
+import com.ondemandmonitoring.user.service.IUserProfileService;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,12 +19,12 @@ import org.springframework.http.MediaType;
 
 class UserControllerTest {
 
-    private UserProfileService userProfileService;
+    private IUserProfileService userProfileService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        userProfileService = org.mockito.Mockito.mock(UserProfileService.class);
+        userProfileService = org.mockito.Mockito.mock(IUserProfileService.class);
         mockMvc = MockMvcBuilders.standaloneSetup(new UserController(userProfileService)).build();
     }
 
