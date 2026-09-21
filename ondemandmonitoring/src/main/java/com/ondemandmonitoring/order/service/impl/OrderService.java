@@ -14,21 +14,16 @@ import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.IOrderService;
 import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.user.domain.User;
-import com.ondemandmonitoring.user.repository.UserRepository;
-import com.ondemandmonitoring.user.service.UserIdentityService;
+import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import com.ondemandmonitoring.warehouse.domain.PreferredTime;
 import com.ondemandmonitoring.warehouse.repository.PreferredTimeRepository;
 import com.ondemandmonitoring.zone.domain.Zone;
 import com.ondemandmonitoring.zone.repository.ZoneRepository;
 import java.util.List;
-import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.locationtech.jts.geom.Point;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,8 +36,7 @@ public class OrderService implements IOrderService {
     CategoryServiceRepository categoryServiceRepository;
     PreferredTimeRepository preferredTimeRepository;
     ZoneRepository zoneRepository;
-    UserRepository userRepository;
-    UserIdentityService userIdentityService;
+    AuthenticatedUserResolver authenticatedUserResolver;
     IMissionService missionService;
     OrderMapper orderMapper;
 
@@ -68,7 +62,7 @@ public class OrderService implements IOrderService {
     public OrderCreateResponse createOrder(OrderCreateRequest request) {
 
         // 1. Resolve Customer from logged-in user session
-        User customer = getCurrentAuthenticatedUser();
+        User customer = authenticatedUserResolver.getCurrentUser();
 
         // 2. Validate & fetch Category Service
         CategoryService service = categoryServiceRepository.findById(request.getServiceId())
@@ -177,5 +171,14 @@ public class OrderService implements IOrderService {
                     String.format("Location point [%f, %f] is not within any defined monitoring zone",
                             point.getX(), point.getY()));
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderCreateResponse> getPendingOrders() {
+        return orderRepository.findByOrderStatusOrderByCreatedAtAsc(OrderStatus.PENDING)
+                .stream()
+                .map(orderMapper::toResponse)
+                .toList();
     }
 }

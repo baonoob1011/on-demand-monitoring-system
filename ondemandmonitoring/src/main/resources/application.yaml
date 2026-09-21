@@ -1,6 +1,6 @@
 spring:
   application:
-    name: ${SPRING_APPLICATION_NAME}
+    name: ${SPRING_APPLICATION_NAME:ondemandmonitoring}
   config:
     import: optional:file:.env[.properties],optional:file:ondemandmonitoring/.env[.properties]
   datasource:

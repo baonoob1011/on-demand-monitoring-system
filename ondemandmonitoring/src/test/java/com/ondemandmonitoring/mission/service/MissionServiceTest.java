@@ -9,15 +9,22 @@ import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.drone.service.PreflightCheckService;
 import com.ondemandmonitoring.mission.domain.FlightToken;
 import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.domain.MissionOperatorAssignment;
+import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.dto.response.FlightTokenResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
+import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
+import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
 import com.ondemandmonitoring.mission.mapper.FlightTokenMapper;
 import com.ondemandmonitoring.mission.mapper.MissionMapper;
 import com.ondemandmonitoring.drone.mapper.PreflightCheckMapper;
 import com.ondemandmonitoring.mission.repository.FlightTokenRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
+import com.ondemandmonitoring.mission.service.impl.DeviceConnectionService;
+import com.ondemandmonitoring.mission.service.impl.FlightTokenService;
 import com.ondemandmonitoring.mission.service.impl.MissionService;
+import com.ondemandmonitoring.planning.service.MissionPlanningService;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -48,11 +55,16 @@ class MissionServiceTest {
 
     MissionDroneAssignmentRepository missionDroneAssignmentRepository;
     MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
+    MissionPlanRepository missionPlanRepository;
+    MissionPlanningService missionPlanningService;
     GcsSessionRepository gcsSessionRepository;
     ControlHandoverRepository controlHandoverRepository;
     PostflightCheckRepository postflightCheckRepository;
     MaintenanceTicketRepository maintenanceTicketRepository;
     com.ondemandmonitoring.order.repository.OrderRepository orderRepository;
+
+    DeviceConnectionService deviceConnectionService;
+    FlightTokenService flightTokenService;
 
     MissionService missionService;
 
@@ -67,11 +79,27 @@ class MissionServiceTest {
         preflightCheckMapper                  = mock(PreflightCheckMapper.class);
         missionDroneAssignmentRepository     = mock(MissionDroneAssignmentRepository.class);
         missionOperatorAssignmentRepository  = mock(MissionOperatorAssignmentRepository.class);
+        missionPlanRepository                = mock(MissionPlanRepository.class);
+        missionPlanningService               = mock(MissionPlanningService.class);
         gcsSessionRepository                  = mock(GcsSessionRepository.class);
         controlHandoverRepository             = mock(ControlHandoverRepository.class);
         postflightCheckRepository             = mock(PostflightCheckRepository.class);
         maintenanceTicketRepository          = mock(MaintenanceTicketRepository.class);
         orderRepository                      = mock(com.ondemandmonitoring.order.repository.OrderRepository.class);
+
+        deviceConnectionService = new DeviceConnectionService(
+                missionRepository,
+                gcsSessionRepository,
+                missionDroneAssignmentRepository,
+                missionOperatorAssignmentRepository,
+                droneRepository,
+                missionMapper
+        );
+
+        flightTokenService = new FlightTokenService(
+                flightTokenRepository,
+                missionOperatorAssignmentRepository
+        );
 
         missionService = new MissionService(
                 missionRepository,
@@ -83,11 +111,15 @@ class MissionServiceTest {
                 preflightCheckMapper,
                 missionDroneAssignmentRepository,
                 missionOperatorAssignmentRepository,
+                missionPlanRepository,
+                missionPlanningService,
                 gcsSessionRepository,
                 controlHandoverRepository,
                 postflightCheckRepository,
                 maintenanceTicketRepository,
-                orderRepository
+                orderRepository,
+                deviceConnectionService,
+                flightTokenService
         );
 
         when(missionMapper.toResponse(any())).thenAnswer(inv -> {
@@ -123,6 +155,9 @@ class MissionServiceTest {
                     .flightToken(ft)
                     .build();
         });
+
+        when(missionPlanRepository.findByMissionId(any())).thenAnswer(inv -> Optional.of(feasiblePlan(inv.getArgument(0))));
+        when(missionPlanningService.generateAStarEnergyAwarePlan(any())).thenAnswer(inv -> feasiblePlan(inv.getArgument(0)));
     }
 
     // =========================================================================
@@ -137,11 +172,14 @@ class MissionServiceTest {
         void acceptMission_success() {
             Mission mission = buildMission("m-1", MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
             when(missionRepository.findById("m-1")).thenReturn(Optional.of(mission));
+            when(missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-1"))
+                    .thenReturn(Optional.of(operatorAssignment(mission, "op-01", "PENDING")));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             MissionResponse result = missionService.acceptMission("m-1", "op-01");
 
             assertThat(result.getStatus()).isEqualTo(MissionStatus.SCHEDULED);
+            verify(missionPlanningService).generateAStarEnergyAwarePlan("m-1");
             verify(missionOperatorAssignmentRepository, atLeastOnce()).save(any());
         }
 
@@ -164,10 +202,76 @@ class MissionServiceTest {
             assertThatThrownBy(() -> missionService.acceptMission("m-1", "op-01"))
                     .isInstanceOf(ApiException.class)
                     .hasMessageContaining("must be WAITING_OPERATOR_ACCEPTANCE");
+            verifyNoInteractions(missionPlanningService);
         }
 
         @Test
-        @DisplayName("4. rejectMission success when WAITING_OPERATOR_ACCEPTANCE")
+        @DisplayName("4. acceptMission rejects wrong operator before planning")
+        void acceptMission_wrongOperator_doesNotPlan() {
+            Mission mission = buildMission("m-operator", MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+            when(missionRepository.findById("m-operator")).thenReturn(Optional.of(mission));
+            when(missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-operator"))
+                    .thenReturn(Optional.of(operatorAssignment(mission, "op-expected", "PENDING")));
+
+            assertThatThrownBy(() -> missionService.acceptMission("m-operator", "op-other"))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessageContaining("assigned to another operator");
+            verifyNoInteractions(missionPlanningService);
+        }
+
+        @Test
+        @DisplayName("5. acceptMission rejects non-pending assignment before planning")
+        void acceptMission_rejectedAssignment_doesNotPlan() {
+            Mission mission = buildMission("m-rejected", MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+            when(missionRepository.findById("m-rejected")).thenReturn(Optional.of(mission));
+            when(missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-rejected"))
+                    .thenReturn(Optional.of(operatorAssignment(mission, "op-01", "REJECTED")));
+
+            assertThatThrownBy(() -> missionService.acceptMission("m-rejected", "op-01"))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessageContaining("not pending acceptance");
+            verifyNoInteractions(missionPlanningService);
+        }
+
+        @Test
+        @DisplayName("6. acceptMission blocks NO_SAFE_ROUTE before scheduled")
+        void acceptMission_noSafeRoute_doesNotSchedule() {
+            Mission mission = buildMission("m-nosafe", MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+            MissionPlan plan = feasiblePlan("m-nosafe");
+            plan.setFeasibilityStatus(FeasibilityStatus.NO_SAFE_ROUTE);
+            when(missionRepository.findById("m-nosafe")).thenReturn(Optional.of(mission));
+            when(missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-nosafe"))
+                    .thenReturn(Optional.of(operatorAssignment(mission, "op-01", "PENDING")));
+            when(missionPlanningService.generateAStarEnergyAwarePlan("m-nosafe")).thenReturn(plan);
+
+            assertThatThrownBy(() -> missionService.acceptMission("m-nosafe", "op-01"))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessageContaining("No safe route");
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+            verify(missionRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("7. acceptMission planning exception does not mark assignment accepted")
+        void acceptMission_planningException_rollsBackAcceptance() {
+            Mission mission = buildMission("m-plan-fail", MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+            MissionOperatorAssignment assignment = operatorAssignment(mission, "op-01", "PENDING");
+            when(missionRepository.findById("m-plan-fail")).thenReturn(Optional.of(mission));
+            when(missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-plan-fail"))
+                    .thenReturn(Optional.of(assignment));
+            when(missionPlanningService.generateAStarEnergyAwarePlan("m-plan-fail"))
+                    .thenThrow(new ApiException(com.ondemandmonitoring.common.exception.ErrorCode.INVALID_REQUEST, "Mission m-plan-fail order has no target point."));
+
+            assertThatThrownBy(() -> missionService.acceptMission("m-plan-fail", "op-01"))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessageContaining("no target point");
+            assertThat(assignment.getStatus()).isEqualTo("PENDING");
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+            verify(missionRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("8. rejectMission success when WAITING_OPERATOR_ACCEPTANCE")
         void rejectMission_success() {
             Mission mission = buildMission("m-2", MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
             when(missionRepository.findById("m-2")).thenReturn(Optional.of(mission));
@@ -181,7 +285,7 @@ class MissionServiceTest {
         }
 
         @Test
-        @DisplayName("5. rejectMission throws exception when mission not found")
+        @DisplayName("9. rejectMission throws exception when mission not found")
         void rejectMission_notFound_throws() {
             when(missionRepository.findById("m-missing")).thenReturn(Optional.empty());
 
@@ -191,7 +295,7 @@ class MissionServiceTest {
         }
 
         @Test
-        @DisplayName("6. rejectMission throws exception when status is invalid")
+        @DisplayName("10. rejectMission throws exception when status is invalid")
         void rejectMission_wrongStatus_throws() {
             Mission mission = buildMission("m-2", MissionStatus.IN_FLIGHT);
             when(missionRepository.findById("m-2")).thenReturn(Optional.of(mission));
@@ -241,6 +345,18 @@ class MissionServiceTest {
         }
 
         @Test
+        @DisplayName("1b. connectGcs blocks when no feasible plan exists")
+        void connectGcs_requiresFeasiblePlan() {
+            Mission mission = buildMission("m-no-plan", MissionStatus.SCHEDULED);
+            when(missionRepository.findById("m-no-plan")).thenReturn(Optional.of(mission));
+            when(missionPlanRepository.findByMissionId("m-no-plan")).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> missionService.connectGcs("m-no-plan"))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessageContaining("feasible plan");
+        }
+
+        @Test
         @DisplayName("3. connectGcs throws exception when status is invalid (e.g. IN_FLIGHT)")
         void connectGcs_invalidStatus_throws() {
             Mission mission = buildMission("m-gcs3", MissionStatus.IN_FLIGHT);
@@ -249,6 +365,58 @@ class MissionServiceTest {
             assertThatThrownBy(() -> missionService.connectGcs("m-gcs3"))
                     .isInstanceOf(ApiException.class)
                     .hasMessageContaining("SCHEDULED state");
+        }
+
+        @Test
+        @DisplayName("3b. disconnectGcs updates active GCS session status to DISCONNECTED")
+        void disconnectGcs_success_updatesSessionToDisconnected() {
+            Mission mission = buildMission("m-disc", MissionStatus.CONNECTED);
+            com.ondemandmonitoring.mission.domain.GcsSession session = new com.ondemandmonitoring.mission.domain.GcsSession();
+            session.setConnectionStatus("CONNECTED");
+            session.setTelemetryActive(true);
+
+            when(missionRepository.findById("m-disc")).thenReturn(Optional.of(mission));
+            when(gcsSessionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc("m-disc", "CONNECTED"))
+                    .thenReturn(Optional.of(session));
+            when(gcsSessionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            MissionResponse response = missionService.disconnectGcs("m-disc", "OPERATOR_EXIT");
+
+            assertThat(response).isNotNull();
+            assertThat(session.getConnectionStatus()).isEqualTo("DISCONNECTED");
+            assertThat(session.getTelemetryActive()).isFalse();
+            assertThat(session.getDisconnectReason()).isEqualTo("OPERATOR_EXIT");
+        }
+
+        @Test
+        @DisplayName("3c. handleGcsSessionLost updates GCS session status to LOST and triggers RTL (RETURNING)")
+        void handleGcsSessionLost_updatesSessionToLost_andTriggersRTL() {
+            Mission mission = buildMission("m-lost", MissionStatus.IN_FLIGHT);
+            Drone drone = buildDrone("DRONE-01", DroneStatus.ACTIVE_MISSION);
+            com.ondemandmonitoring.mission.domain.MissionDroneAssignment mda = new com.ondemandmonitoring.mission.domain.MissionDroneAssignment();
+            mda.setDrone(drone);
+            when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-lost")).thenReturn(Optional.of(mda));
+
+            com.ondemandmonitoring.mission.domain.GcsSession session = new com.ondemandmonitoring.mission.domain.GcsSession();
+            session.setConnectionStatus("CONNECTED");
+            session.setTelemetryActive(true);
+
+            when(missionRepository.findById("m-lost")).thenReturn(Optional.of(mission));
+            when(gcsSessionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc("m-lost", "CONNECTED"))
+                    .thenReturn(Optional.of(session));
+            when(gcsSessionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            MissionResponse response = missionService.handleGcsSessionLost("m-lost", "SIGNAL_LOSS");
+
+            assertThat(response).isNotNull();
+            assertThat(session.getConnectionStatus()).isEqualTo("LOST");
+            assertThat(session.getTelemetryActive()).isFalse();
+            assertThat(session.getDisconnectReason()).isEqualTo("SIGNAL_LOSS");
+            // AC: Trigger RTL signal when status=LOST
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.RETURNING);
+            assertThat(drone.getStatus()).isEqualTo(DroneStatus.RETURNING);
         }
 
         @Test
@@ -280,8 +448,8 @@ class MissionServiceTest {
         }
 
         @Test
-        @DisplayName("5. runPreflightCheck hardware failed routes drone to MAINTENANCE and mission to PENDING_APPROVAL")
-        void runPreflightCheck_hardwareFailed_routesToMaintenance_andPendingApproval() {
+        @DisplayName("5. runPreflightCheck HARDWARE fault routes drone to MAINTENANCE, auto-creates ticket, re-queues mission to RESOURCE_ASSIGNING")
+        void runPreflightCheck_hardwareFailed_routesToMaintenance_andRequeues() {
             Mission mission = buildMission("m-fail", MissionStatus.CONNECTED);
             Drone drone = buildDrone("DRONE-01", DroneStatus.PREFLIGHT);
             PreflightCheck failedCheck = new PreflightCheck();
@@ -295,17 +463,21 @@ class MissionServiceTest {
             when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(preflightCheckService.run("DRONE-01", "m-fail")).thenReturn(failedCheck);
+            when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-fail")).thenReturn(Optional.empty());
+            when(maintenanceTicketRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             PreflightCheckResponse result = missionService.runPreflightCheck("m-fail", "DRONE-01");
 
             assertThat(result.getOverallPassed()).isFalse();
             assertThat(drone.getStatus()).isEqualTo(DroneStatus.MAINTENANCE);
-            assertThat(mission.getStatus()).isEqualTo(MissionStatus.PENDING_APPROVAL);
+            // AC: HARDWARE fault auto-creates ticket and re-queues to RESOURCE_ASSIGNING for manager
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
+            verify(maintenanceTicketRepository).save(any());
         }
 
         @Test
-        @DisplayName("6. runPreflightCheck battery low routes drone to IDLE_CHARGING and mission to PENDING_APPROVAL")
-        void runPreflightCheck_batteryLow_routesToIdleCharging_andPendingApproval() {
+        @DisplayName("6. runPreflightCheck BATTERY fault routes drone to IDLE_CHARGING, triggers auto-swap, re-queues mission to RESOURCE_ASSIGNING")
+        void runPreflightCheck_batteryLow_routesToIdleCharging_andTriggersAutoSwap() {
             Mission mission = buildMission("m-bat", MissionStatus.CONNECTED);
             Drone drone = buildDrone("DRONE-01", DroneStatus.PREFLIGHT);
             PreflightCheck batteryLowCheck = new PreflightCheck();
@@ -320,12 +492,18 @@ class MissionServiceTest {
             when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(preflightCheckService.run("DRONE-01", "m-bat")).thenReturn(batteryLowCheck);
+            when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-bat")).thenReturn(Optional.empty());
+            // No replacement available — simulates pool empty fallback
+            when(droneRepository.findFirstAvailableExcluding(eq(DroneStatus.AVAILABLE), eq(drone.getId())))
+                    .thenReturn(Optional.empty());
 
             PreflightCheckResponse result = missionService.runPreflightCheck("m-bat", "DRONE-01");
 
             assertThat(result.getOverallPassed()).isFalse();
-            assertThat(drone.getStatus()).isEqualTo(DroneStatus.IDLE_CHARGING);
-            assertThat(mission.getStatus()).isEqualTo(MissionStatus.PENDING_APPROVAL);
+            assertThat(drone.getStatus()).isEqualTo(DroneStatus.MAINTENANCE);
+            verify(maintenanceTicketRepository).save(any());
+            // AC: BATTERY fault auto-swap attempted, mission re-queued to RESOURCE_ASSIGNING
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
         }
     }
 
@@ -603,14 +781,16 @@ class MissionServiceTest {
         }
 
         @Test
-        @DisplayName("4. completeMission throws exception when status is not POSTFLIGHT_CHECKING")
+        @DisplayName("4. completeMission throws exception when status is SCHEDULED (fully invalid for completion)")
         void completeMission_invalidStatus_throws() {
-            Mission mission = buildMission("m-8", MissionStatus.IN_FLIGHT);
+            // completeMission now accepts IN_FLIGHT, RETURNING, POSTFLIGHT_CHECKING
+            // SCHEDULED is not in that set and must still throw
+            Mission mission = buildMission("m-8", MissionStatus.SCHEDULED);
             when(missionRepository.findById("m-8")).thenReturn(Optional.of(mission));
 
             assertThatThrownBy(() -> missionService.completeMission("m-8"))
                     .isInstanceOf(ApiException.class)
-                    .hasMessageContaining("must be POSTFLIGHT_CHECKING");
+                    .hasMessageContaining("IN_FLIGHT");
         }
 
         @Test
@@ -663,7 +843,109 @@ class MissionServiceTest {
 
             assertThatThrownBy(() -> missionService.updatePostFlightStatus("m-nodev", DroneStatus.AVAILABLE, "Notes"))
                     .isInstanceOf(ApiException.class)
-                    .hasMessageContaining("has no assigned drone");
+                    .hasMessageContaining("has no assigned");
+        }
+    }
+
+    // =========================================================================
+    // Fault Handling – Acceptance Criteria Tests (3 Test Cases)
+    // =========================================================================
+    @Nested
+    @DisplayName("AC – Automated Preflight Fault Handling")
+    class AC_PreflightFaultHandling {
+
+        @Test
+        @DisplayName("AC-1. assignDrone throws when drone is under MAINTENANCE – block by status")
+        void assignDrone_maintenanceDrone_blocked() {
+            Mission mission = buildMission("m-assign", MissionStatus.RESOURCE_ASSIGNING);
+            Drone maintenanceDrone = buildDrone("DRONE-BROKEN", DroneStatus.MAINTENANCE);
+
+            when(missionRepository.findById("m-assign")).thenReturn(Optional.of(mission));
+            when(droneRepository.findById("DRONE-BROKEN-id")).thenReturn(Optional.of(maintenanceDrone));
+
+            assertThatThrownBy(() -> missionService.assignDrone("m-assign", "DRONE-BROKEN-id"))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessageContaining("MAINTENANCE");
+        }
+
+        @Test
+        @DisplayName("AC-2. BATTERY preflight fault triggers auto-swap when a replacement drone is available")
+        void preflightFail_battery_autoSwapSucceeds() {
+            Mission mission = buildMission("m-bat-swap", MissionStatus.CONNECTED);
+            Drone faultyDrone = buildDrone("DRONE-LOW", DroneStatus.PREFLIGHT);
+            Drone replacementDrone = buildDrone("DRONE-GOOD", DroneStatus.AVAILABLE);
+            replacementDrone.setId("DRONE-GOOD-id");
+
+            PreflightCheck batteryCheck = new PreflightCheck();
+            batteryCheck.setOverallPassed(false);
+            batteryCheck.setFaultType("BATTERY");
+            batteryCheck.setBatteryPercent(20.0);
+            batteryCheck.setFailureReason("Battery below minimum threshold (80%)");
+            batteryCheck.setDrone(faultyDrone);
+
+            MissionPlan plan = feasiblePlan("m-bat-swap");
+            when(missionPlanRepository.findByMissionId("m-bat-swap")).thenReturn(Optional.of(plan));
+            when(missionRepository.findById("m-bat-swap")).thenReturn(Optional.of(mission));
+            when(droneRepository.findByDroneCode("DRONE-LOW")).thenReturn(Optional.of(faultyDrone));
+            when(preflightCheckService.run("DRONE-LOW", "m-bat-swap")).thenReturn(batteryCheck);
+            when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-bat-swap"))
+                    .thenReturn(Optional.empty());
+            // Auto-swap finds a replacement drone
+            when(droneRepository.findFirstAvailableExcluding(eq(DroneStatus.AVAILABLE), eq(faultyDrone.getId())))
+                    .thenReturn(Optional.of(replacementDrone));
+            when(missionRepository.findActiveByDroneId("DRONE-GOOD-id")).thenReturn(List.of());
+            when(missionDroneAssignmentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(preflightCheckMapper.toResponse(any(), any())).thenReturn(
+                    com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse.builder()
+                            .overallPassed(false).build()
+            );
+
+            missionService.runPreflightCheck("m-bat-swap", "DRONE-LOW");
+
+            // Faulty drone should be MAINTENANCE, replacement RESERVED, mission RESOURCE_ASSIGNING
+            assertThat(faultyDrone.getStatus()).isEqualTo(DroneStatus.MAINTENANCE);
+            assertThat(replacementDrone.getStatus()).isEqualTo(DroneStatus.RESERVED);
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
+            verify(missionDroneAssignmentRepository, atLeastOnce()).save(any());
+        }
+
+        @Test
+        @DisplayName("AC-3. BATTERY preflight fault with no available drones falls back to RESOURCE_ASSIGNING")
+        void preflightFail_battery_noAvailableDrone_requeues() {
+            Mission mission = buildMission("m-bat-empty", MissionStatus.CONNECTED);
+            Drone faultyDrone = buildDrone("DRONE-DEAD", DroneStatus.PREFLIGHT);
+
+            PreflightCheck batteryCheck = new PreflightCheck();
+            batteryCheck.setOverallPassed(false);
+            batteryCheck.setFaultType("BATTERY");
+            batteryCheck.setBatteryPercent(15.0);
+            batteryCheck.setFailureReason("Battery critically low");
+            batteryCheck.setDrone(faultyDrone);
+
+            MissionPlan plan = feasiblePlan("m-bat-empty");
+            when(missionPlanRepository.findByMissionId("m-bat-empty")).thenReturn(Optional.of(plan));
+            when(missionRepository.findById("m-bat-empty")).thenReturn(Optional.of(mission));
+            when(droneRepository.findByDroneCode("DRONE-DEAD")).thenReturn(Optional.of(faultyDrone));
+            when(preflightCheckService.run("DRONE-DEAD", "m-bat-empty")).thenReturn(batteryCheck);
+            when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-bat-empty"))
+                    .thenReturn(Optional.empty());
+            // No available drone in pool
+            when(droneRepository.findFirstAvailableExcluding(eq(DroneStatus.AVAILABLE), eq(faultyDrone.getId())))
+                    .thenReturn(Optional.empty());
+            when(preflightCheckMapper.toResponse(any(), any())).thenReturn(
+                    com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse.builder()
+                            .overallPassed(false).build()
+            );
+
+            missionService.runPreflightCheck("m-bat-empty", "DRONE-DEAD");
+
+            // Faulty drone MAINTENANCE, mission falls back to RESOURCE_ASSIGNING for manager
+            assertThat(faultyDrone.getStatus()).isEqualTo(DroneStatus.MAINTENANCE);
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
         }
     }
 
@@ -677,6 +959,31 @@ class MissionServiceTest {
         m.setMissionCode("MC-" + id);
         m.setStatus(status);
         return m;
+    }
+
+    private MissionOperatorAssignment operatorAssignment(Mission mission, String operatorId, String status) {
+        MissionOperatorAssignment assignment = new MissionOperatorAssignment();
+        assignment.setMission(mission);
+        assignment.setOperatorId(operatorId);
+        assignment.setStatus(status);
+        assignment.setIsCurrent(true);
+        return assignment;
+    }
+
+    private MissionPlan feasiblePlan(String missionId) {
+        MissionPlan plan = new MissionPlan();
+        plan.setId("plan-" + missionId);
+        plan.setPlanningAlgorithm(PlanningAlgorithm.ASTAR_ENERGY_AWARE);
+        plan.setFeasibilityStatus(FeasibilityStatus.FEASIBLE);
+        plan.setPlannedDistanceM(218.5269119345814);
+        plan.setPlannedDurationSec(119.36345596729069);
+        plan.setMaxPlannedAltitudeM(19.5);
+        plan.setEstimatedEnergyMah(187.97194661669408);
+        plan.setEstimatedBatteryUsedPercent(3.759438932333882);
+        plan.setSafetyReservePercent(20.0);
+        plan.setRequiredBatteryPercent(23.759438932333882);
+        plan.setPlanningTimeMs(42L);
+        return plan;
     }
 
     private Drone buildDrone(String code, DroneStatus status) {

@@ -22,6 +22,11 @@ public class AuthOutboxService {
     }
 
     @Transactional
+    public void scheduleAccountStatusSync(String username, boolean active) {
+        repository.save(AuthOutboxEvent.cognitoAccountStatus(username, active));
+    }
+
+    @Transactional
     public Optional<AuthOutboxEvent> claimNext() {
         Instant now = Instant.now();
         return repository.findNextBatch(AuthOutboxStatus.PENDING, now,

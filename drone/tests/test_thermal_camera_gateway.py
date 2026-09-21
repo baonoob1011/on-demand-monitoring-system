@@ -219,6 +219,21 @@ class ThermalCameraGatewayTest(unittest.TestCase):
         self.assertAlmostEqual(247.8, status["maxTemperatureC"], places=1)
         self.assertTrue(status["hotspotDetected"])
 
+    def test_db_thermal_source_overrides_cold_native_frame(self) -> None:
+        temperatures = np.full((2, 2), 21.9, dtype=np.float32)
+        raw = np.rint((temperatures + 273.15) / thermal_module.THERMAL_LINEAR_RESOLUTION_K).astype("<u2")
+        self.assertTrue(self.gateway.ingest_native_frame(2, 2, raw.tobytes(), "L_INT16"))
+
+        with self.patch_sources([source(temp=110.0)]):
+            self.gateway.update_pose(0.0, -280.0, 30.0)
+            self.gateway.toggle()
+            status = self.gateway.status()
+
+        self.assertEqual("DB_THERMAL_SOURCE", status["thermalMode"])
+        self.assertEqual(110.0, status["maxTemperatureC"])
+        self.assertEqual(110.0, status["hotspotTemperatureC"])
+        self.assertTrue(status["hotspotDetected"])
+
     def test_palette_changes_visualization_without_changing_temperatures(self) -> None:
         temperatures = np.array([[20.0, 60.0], [120.0, 250.0]], dtype=np.float32)
         normalized = thermal_module._normalize_temperatures(temperatures, 20.0, 300.0)

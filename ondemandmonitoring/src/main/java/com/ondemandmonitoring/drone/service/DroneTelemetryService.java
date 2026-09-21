@@ -6,6 +6,7 @@ import com.ondemandmonitoring.drone.domain.DroneTelemetry;
 import com.ondemandmonitoring.drone.enums.DroneStatus;
 import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
+import com.ondemandmonitoring.environment.service.EnvironmentalMeasurementService;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,7 @@ public class DroneTelemetryService {
 
     DroneTelemetryRepository droneTelemetryRepository;
     DroneRepository droneRepository;
+    EnvironmentalMeasurementService environmentalMeasurementService;
 
     @Transactional
     public DroneTelemetry save(String droneCode, TelemetryRequest request) {
@@ -35,6 +37,8 @@ public class DroneTelemetryService {
         telemetry.setAltitude(request.getAltitude());
         telemetry.setAbsoluteAltitude(request.getAbsoluteAltitude());
         telemetry.setRelativeAltitude(request.getRelativeAltitude());
+        telemetry.setSimX(request.getSimX());
+        telemetry.setSimY(request.getSimY());
         telemetry.setBatteryPercent(request.getBatteryPercent());
         telemetry.setSpeed(request.getSpeed());
         telemetry.setGpsFixType(request.getGpsFixType());
@@ -65,7 +69,9 @@ public class DroneTelemetryService {
         telemetry.setGeofenceConfigured(request.getGeofenceConfigured());
         telemetry.setGeofencePassed(request.getGeofencePassed());
 
-        return droneTelemetryRepository.save(telemetry);
+        DroneTelemetry saved = droneTelemetryRepository.save(telemetry);
+        environmentalMeasurementService.recordAirPressure(drone, droneCode, request);
+        return saved;
     }
 
     private Drone getOrCreateDrone(String droneCode) {

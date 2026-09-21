@@ -18,6 +18,7 @@ import time
 import tty
 import sys
 import grpc
+import httpx
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from mavsdk import System
 from mavsdk.action import ActionError
@@ -30,12 +31,19 @@ from battery_simulator import BatterySimulator, preflight_battery_check
 from media_uploader import BackendUrlResolver, MediaUploader
 from thermal_camera_gateway import ThermalCameraGateway
 
-PROJECT_ROOT = Path(
-    os.getenv(
-        "PROJECT_PATH",
-        "/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system",
-    )
-)
+def resolve_project_root() -> Path:
+    configured = os.getenv("PROJECT_PATH")
+    if configured:
+        return Path(configured)
+
+    source_candidate = Path(__file__).resolve().parent.parent
+    if (source_candidate / "Forest3D").exists() and (source_candidate / "ondemandmonitoring").exists():
+        return source_candidate
+
+    return Path.cwd()
+
+
+PROJECT_ROOT = resolve_project_root()
 
 DRONE_DIR = PROJECT_ROOT / "drone"
 
@@ -79,6 +87,7 @@ else:
 
 class MotionOwner(Enum):
     MANUAL = "MANUAL"
+    AUTO_PLAN = "AUTO_PLAN"
     EMERGENCY = "EMERGENCY"
 
 
@@ -152,8 +161,17 @@ VERTICAL_SPEED_M_S = float(
     os.getenv("CONTROL_VERTICAL_SPEED_M_S", "500.0")
 )
 YAW_STEP_DEG = float(
-    os.getenv("CONTROL_YAW_STEP_DEG", "30.0")
+    os.getenv("CONTROL_YAW_STEP_DEG", "5.0")
 )
+AUTO_PLAN_REACHED_RADIUS_M = float(os.getenv("AUTO_PLAN_REACHED_RADIUS_M", "5.0"))
+AUTO_PLAN_ALTITUDE_TOLERANCE_M = float(os.getenv("AUTO_PLAN_ALTITUDE_TOLERANCE_M", "4.0"))
+AUTO_PLAN_MAX_SPEED_M_S = float(os.getenv("AUTO_PLAN_MAX_SPEED_M_S", "8.0"))
+AUTO_PLAN_MIN_SPEED_M_S = float(os.getenv("AUTO_PLAN_MIN_SPEED_M_S", "1.2"))
+AUTO_PLAN_SLOWDOWN_RADIUS_M = float(os.getenv("AUTO_PLAN_SLOWDOWN_RADIUS_M", "35.0"))
+AUTO_PLAN_VERTICAL_MAX_SPEED_M_S = float(os.getenv("AUTO_PLAN_VERTICAL_MAX_SPEED_M_S", "0.5"))
+AUTO_PLAN_VERTICAL_GAIN = float(os.getenv("AUTO_PLAN_VERTICAL_GAIN", "0.08"))
+AUTO_PLAN_SETPOINT_SMOOTHING = float(os.getenv("AUTO_PLAN_SETPOINT_SMOOTHING", "0.35"))
+AUTO_PLAN_ALTITUDE_RAMP_M = float(os.getenv("AUTO_PLAN_ALTITUDE_RAMP_M", "1.0"))
 
 SPEED_ADJUST_STEP_M_S = float(
     os.getenv("CONTROL_SPEED_ADJUST_STEP_M_S", "200.0")
@@ -983,6 +1001,128 @@ CONTROL_COMMAND_KEYS = {
 }
 
 
+def normalize_auto_plan_waypoints(payload: dict) -> list[dict]:
+    raw_points = payload.get("waypoints")
+    if not isinstance(raw_points, list):
+        return []
+    normalized = []
+    for index, point in enumerate(raw_points):
+        if not isinstance(point, dict):
+            continue
+        try:
+            sim_x = float(point["simX"])
+            sim_y = float(point["simY"])
+            altitude_m = float(point.get("altitudeM", 0.0))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not all(math.isfinite(value) for value in (sim_x, sim_y, altitude_m)):
+            continue
+        speed = point.get("speedMps")
+        try:
+            speed_mps = float(speed) if speed is not None else AUTO_PLAN_MAX_SPEED_M_S
+        except (TypeError, ValueError):
+            speed_mps = AUTO_PLAN_MAX_SPEED_M_S
+        if not math.isfinite(speed_mps) or speed_mps <= 0.0:
+            speed_mps = AUTO_PLAN_MAX_SPEED_M_S
+        normalized.append(
+            {
+                "sequence": int(point.get("sequence", index)),
+                "simX": sim_x,
+                "simY": sim_y,
+                "altitudeM": max(0.0, altitude_m),
+                "speedMps": min(speed_mps, AUTO_PLAN_MAX_SPEED_M_S),
+                "reason": str(point.get("reason", "CRUISE")),
+            }
+        )
+    return sorted(normalized, key=lambda item: item["sequence"])
+
+
+class PreflightPersistenceBridge:
+    def __init__(self, backend_urls: BackendUrlResolver, mission_id: str) -> None:
+        self.backend_urls = backend_urls
+        self.mission_id = mission_id
+        self.run_id: str | None = None
+        self.base_url: str | None = None
+        self.sent_items: dict[str, tuple[str, str]] = {}
+        self.warned_unavailable = False
+
+    def start(self) -> str | None:
+        self.run_id = None
+        self.base_url = None
+        self.sent_items.clear()
+
+        for base_url in self.backend_urls.candidates():
+            try:
+                response = httpx.post(
+                    f"{base_url}/api/missions/{self.mission_id}/preflight-checks",
+                    timeout=1.5,
+                )
+                if response.status_code >= 400:
+                    continue
+
+                payload = response.json()
+                data = payload.get("data") if isinstance(payload, dict) else None
+                run_id = data.get("id") if isinstance(data, dict) else None
+                if not run_id:
+                    continue
+
+                self.run_id = str(run_id)
+                self.base_url = base_url
+                self.warned_unavailable = False
+                print(
+                    f"[PREFLIGHT-DB] Created run={self.run_id} mission={self.mission_id}",
+                    flush=True,
+                )
+                return self.run_id
+            except (httpx.HTTPError, ValueError):
+                continue
+
+        if not self.warned_unavailable:
+            print(
+                f"[PREFLIGHT-DB] Not saved. Backend unavailable or mission missing: {self.mission_id}",
+                flush=True,
+            )
+            self.warned_unavailable = True
+        return None
+
+    def sync(self, payload: dict) -> None:
+        if not self.run_id or not self.base_url:
+            return
+
+        for item in payload.get("checks", []):
+            check_type = str(item.get("key", "")).strip()
+            status = self._to_backend_status(str(item.get("status", "")).strip().upper())
+            message = str(item.get("message", "")).strip()
+
+            if not check_type or status is None:
+                continue
+
+            state = (status, message)
+            if self.sent_items.get(check_type) == state:
+                continue
+
+            try:
+                response = httpx.patch(
+                    f"{self.base_url}/api/preflight-checks/{self.run_id}/items/{check_type}",
+                    json={"status": status, "message": message},
+                    timeout=1.0,
+                )
+                if response.status_code < 400:
+                    self.sent_items[check_type] = state
+            except httpx.HTTPError:
+                return
+
+    @staticmethod
+    def _to_backend_status(status: str) -> str | None:
+        if status == "PASS":
+            return "PASSED"
+        if status in {"FAIL", "WARN"}:
+            return "FAILED"
+        if status in {"PENDING", "CHECKING"}:
+            return status
+        return None
+
+
 class FlightControlApi:
     def __init__(
         self,
@@ -990,12 +1130,14 @@ class FlightControlApi:
         commands: "queue.Queue[str]",
         status_provider=None,
         preflight_provider=None,
+        preflight_persistence=None,
         thermal: ThermalCameraGateway | None = None,
     ) -> None:
         self.camera = camera
         self.commands = commands
         self.status_provider = status_provider
         self.preflight_provider = preflight_provider
+        self.preflight_persistence = preflight_persistence
         self.thermal = thermal
         self.preflight_check_id: str | None = None
         self.preflight_started_at_s: float | None = None
@@ -1089,7 +1231,11 @@ class FlightControlApi:
 
             def do_POST(self) -> None:
                 if self.path.startswith("/api/preflight/check"):
-                    owner.preflight_check_id = f"PF-{int(time.time() * 1000)}"
+                    persisted_check_id = None
+                    if owner.preflight_persistence is not None:
+                        persisted_check_id = owner.preflight_persistence.start()
+
+                    owner.preflight_check_id = persisted_check_id or f"PF-{int(time.time() * 1000)}"
                     owner.preflight_started_at_s = time.monotonic()
                     payload = {
                         "checkId": owner.preflight_check_id,
@@ -1112,12 +1258,21 @@ class FlightControlApi:
                     payload = {}
 
                 command = str(payload.get("command", "")).strip().lower()
+                if command == "auto_plan_start":
+                    waypoints = normalize_auto_plan_waypoints(payload)
+                    if len(waypoints) < 1:
+                        self._write_json(400, {"ok": False, "error": "missing waypoints"})
+                        return
+                    owner.commands.put({"type": "auto_plan_start", "waypoints": waypoints})
+                    self._write_json(202, {"ok": True, "command": command, "waypoints": len(waypoints)})
+                    return
+
                 key = CONTROL_COMMAND_KEYS.get(command)
                 if key is None:
                     self._write_json(400, {"ok": False, "error": "unknown command"})
                     return
 
-                owner.commands.put(key)
+                owner.commands.put({"type": "key", "key": key})
                 self._write_json(202, {"ok": True, "command": command})
 
         try:
@@ -2107,6 +2262,7 @@ async def main() -> None:
     connection_manager = MavsdkConnectionManager()
     drone = await connection_manager.connect()
     backend_urls = BackendUrlResolver(BACKEND_BASE_URL)
+    preflight_persistence = PreflightPersistenceBridge(backend_urls, MISSION_ID)
     media_uploader = MediaUploader(
         backend_urls,
         DRONE_ID,
@@ -2197,6 +2353,7 @@ async def main() -> None:
     )
     avoidance = None
     lidar = None
+    lidar_ui_enabled = False
     safety_sensor_enabled = (
     os.getenv("SAFETY_SENSOR_ENABLED", "false").strip().lower()
         in {"1", "true", "yes", "on"}
@@ -2216,6 +2373,11 @@ async def main() -> None:
     current_health_update_s: float | None = None
     local_position_update_s: float | None = None
     local_position_ready = False
+    auto_plan_points: list[dict] = []
+    auto_plan_index = 0
+    auto_plan_active = False
+    auto_plan_status = "IDLE"
+    auto_plan_desired_altitude_m: float | None = None
     safety_speed_scale = 1.0
     simulated_battery = BatterySimulator(
         float(os.getenv("SIM_BATTERY_INITIAL_PERCENT", "100.0")),
@@ -2354,7 +2516,7 @@ async def main() -> None:
         completed = sum(1 for item in checks if item["status"] in {"PASS", "WARN", "FAIL"})
         critical_failures = [item for item in checks if item["critical"] and item["status"] == "FAIL"]
         overall = "FAILED" if critical_failures else "READY"
-        return {
+        payload = {
             "checkId": check_id,
             "status": overall,
             "progress": round((completed / len(checks)) * 100),
@@ -2362,6 +2524,8 @@ async def main() -> None:
             "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "checks": checks,
         }
+        preflight_persistence.sync(payload)
+        return payload
 
     def api_status() -> dict:
         battery_snapshot = simulated_battery.snapshot()
@@ -2422,12 +2586,54 @@ async def main() -> None:
                 "rightMps": current_right_m_s,
                 "downMps": current_down_m_s,
             },
+            "autoPlan": {
+                "active": auto_plan_active,
+                "status": auto_plan_status,
+                "currentIndex": auto_plan_index,
+                "total": len(auto_plan_points),
+            },
             "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
+        if lidar is not None and hasattr(lidar, "snapshot"):
+            lidar_state, lidar_status, lidar_direction = lidar.snapshot()
+            if lidar_state is not None:
+                status["lidar"] = {
+                    "enabled": lidar_ui_enabled or safety_sensor_enabled,
+                    "available": bool(getattr(lidar, "available", False)),
+                    "status": lidar_status,
+                    "direction": lidar_direction,
+                    "rangeMaxM": float(os.getenv("LIDAR_MAX_RANGE_M", "500.0")),
+                    "frontM": lidar_state.front,
+                    "frontLeftM": lidar_state.front_left,
+                    "frontRightM": lidar_state.front_right,
+                    "leftM": lidar_state.left,
+                    "rightM": lidar_state.right,
+                    "backM": lidar_state.back,
+                    "nearestM": lidar_state.nearest_distance,
+                    "nearestAngleDeg": lidar_state.nearest_angle,
+                    "nearestDirection": lidar_state.nearest_direction,
+                    "scanAgeS": lidar.latest_scan_age_s() if hasattr(lidar, "latest_scan_age_s") else None,
+                }
+        elif lidar_ui_enabled:
+            status["lidar"] = {
+                "enabled": True,
+                "available": False,
+                "status": "STARTING",
+                "direction": "NONE",
+                "rangeMaxM": float(os.getenv("LIDAR_MAX_RANGE_M", "500.0")),
+                "scanAgeS": None,
+            }
         status.update(thermal.status())
         return status
 
-    control_api = FlightControlApi(camera, api_commands, api_status, build_preflight_status, thermal)
+    control_api = FlightControlApi(
+        camera,
+        api_commands,
+        api_status,
+        build_preflight_status,
+        preflight_persistence,
+        thermal,
+    )
     control_api.start()
     print(
         f"[SAFETY] Sensor default -> "
@@ -2550,6 +2756,156 @@ async def main() -> None:
     def force_manual_control() -> None:
         set_motion_owner(MotionOwner.MANUAL)
 
+    def stop_auto_plan(reason: str = "stopped") -> None:
+        nonlocal auto_plan_active, auto_plan_points, auto_plan_index, auto_plan_status
+        nonlocal auto_plan_desired_altitude_m
+        if auto_plan_active:
+            print(f"[AUTO-PLAN] {reason}", flush=True)
+        auto_plan_active = False
+        auto_plan_points = []
+        auto_plan_index = 0
+        auto_plan_status = reason
+        auto_plan_desired_altitude_m = None
+
+    def start_auto_plan(points: list[dict]) -> None:
+        nonlocal auto_plan_active, auto_plan_points, auto_plan_index, auto_plan_status
+        nonlocal auto_plan_desired_altitude_m
+        auto_plan_points = list(points)
+        auto_plan_index = 0
+        auto_plan_desired_altitude_m = max(0.0, -current_local_down_m)
+        if local_position_ready and auto_plan_points:
+            sim_x_m, sim_y_m = px4_ned_to_sim_xy(current_local_north_m, current_local_east_m)
+            nearest_index = min(
+                range(len(auto_plan_points)),
+                key=lambda index: math.hypot(
+                    auto_plan_points[index]["simX"] - sim_x_m,
+                    auto_plan_points[index]["simY"] - sim_y_m,
+                ),
+            )
+            nearest = auto_plan_points[nearest_index]
+            nearest_distance = math.hypot(nearest["simX"] - sim_x_m, nearest["simY"] - sim_y_m)
+            auto_plan_index = (
+                min(nearest_index + 1, len(auto_plan_points) - 1)
+                if nearest_distance <= AUTO_PLAN_REACHED_RADIUS_M
+                else nearest_index
+            )
+        auto_plan_active = True
+        auto_plan_status = "RUNNING"
+        set_motion_owner(MotionOwner.AUTO_PLAN)
+        print(
+            f"[AUTO-PLAN] Started with {len(auto_plan_points)} waypoint(s), "
+            f"current target index={auto_plan_index}",
+            flush=True,
+        )
+
+    async def update_auto_plan() -> None:
+        nonlocal auto_plan_index
+        nonlocal current_forward_m_s, current_right_m_s
+        nonlocal current_north_m_s, current_east_m_s, current_down_m_s, current_yaw_deg
+        nonlocal auto_plan_desired_altitude_m
+
+        if not auto_plan_active:
+            return
+        if not local_position_ready:
+            print("[AUTO-PLAN] Waiting for local position", flush=True)
+            return
+        if auto_plan_index >= len(auto_plan_points):
+            stop_auto_plan("complete")
+            active_drone = await set_motion(connection_manager, 0.0, 0.0, 0.0, current_yaw_deg)
+            if active_drone is not None and avoidance is not None:
+                avoidance.set_drone(active_drone)
+            set_motion_owner(MotionOwner.MANUAL)
+            return
+
+        sim_x_m, sim_y_m = px4_ned_to_sim_xy(current_local_north_m, current_local_east_m)
+        altitude_m = max(0.0, -current_local_down_m)
+        target = auto_plan_points[auto_plan_index]
+        dx = target["simX"] - sim_x_m
+        dy = target["simY"] - sim_y_m
+        horizontal_distance = math.hypot(dx, dy)
+        if auto_plan_desired_altitude_m is None:
+            auto_plan_desired_altitude_m = altitude_m
+        altitude_target_delta = target["altitudeM"] - auto_plan_desired_altitude_m
+        if abs(altitude_target_delta) <= AUTO_PLAN_ALTITUDE_RAMP_M:
+            auto_plan_desired_altitude_m = target["altitudeM"]
+        else:
+            auto_plan_desired_altitude_m += math.copysign(AUTO_PLAN_ALTITUDE_RAMP_M, altitude_target_delta)
+        altitude_error = auto_plan_desired_altitude_m - altitude_m
+
+        if (
+                horizontal_distance <= AUTO_PLAN_REACHED_RADIUS_M
+                and abs(altitude_error) <= AUTO_PLAN_ALTITUDE_TOLERANCE_M
+        ):
+            print(
+                f"[AUTO-PLAN] Reached waypoint {target['sequence']} "
+                f"dist={horizontal_distance:.1f}m alt_err={altitude_error:.1f}m",
+                flush=True,
+            )
+            auto_plan_index += 1
+            return
+
+        plan_speed = min(float(target["speedMps"]), control_speed_m_s, AUTO_PLAN_MAX_SPEED_M_S)
+        if horizontal_distance <= AUTO_PLAN_REACHED_RADIUS_M:
+            speed = 0.0
+        else:
+            slowdown_span = max(1.0, AUTO_PLAN_SLOWDOWN_RADIUS_M - AUTO_PLAN_REACHED_RADIUS_M)
+            slowdown_ratio = min(
+                1.0,
+                max(0.0, (horizontal_distance - AUTO_PLAN_REACHED_RADIUS_M) / slowdown_span),
+            )
+            speed = AUTO_PLAN_MIN_SPEED_M_S + (plan_speed - AUTO_PLAN_MIN_SPEED_M_S) * slowdown_ratio
+            speed = min(plan_speed, max(AUTO_PLAN_MIN_SPEED_M_S, speed))
+
+        if horizontal_distance <= AUTO_PLAN_REACHED_RADIUS_M:
+            north_m_s = 0.0
+            east_m_s = 0.0
+        else:
+            east_m_s = (dx / horizontal_distance) * speed
+            north_m_s = (dy / horizontal_distance) * speed
+
+        if abs(altitude_error) <= AUTO_PLAN_ALTITUDE_TOLERANCE_M:
+            down_m_s = 0.0
+        else:
+            vertical_speed = min(
+                AUTO_PLAN_VERTICAL_MAX_SPEED_M_S,
+                control_vertical_speed_m_s,
+                max(0.15, abs(altitude_error) * AUTO_PLAN_VERTICAL_GAIN),
+            )
+            down_m_s = -vertical_speed if altitude_error > 0.0 else vertical_speed
+
+        smoothing = min(1.0, max(0.0, AUTO_PLAN_SETPOINT_SMOOTHING))
+        north_m_s = current_north_m_s + (north_m_s - current_north_m_s) * smoothing
+        east_m_s = current_east_m_s + (east_m_s - current_east_m_s) * smoothing
+        down_m_s = current_down_m_s + (down_m_s - current_down_m_s) * smoothing
+        if abs(down_m_s) < 0.08:
+            down_m_s = 0.0
+
+        if horizontal_distance > 0.001:
+            current_yaw_deg = (math.degrees(math.atan2(east_m_s, north_m_s)) + 360.0) % 360.0
+        current_forward_m_s = math.hypot(north_m_s, east_m_s)
+        current_right_m_s = 0.0
+        current_north_m_s = north_m_s
+        current_east_m_s = east_m_s
+        current_down_m_s = down_m_s
+
+        try:
+            active_drone = await set_motion(
+                connection_manager,
+                current_north_m_s,
+                current_east_m_s,
+                current_down_m_s,
+                current_yaw_deg,
+            )
+            if active_drone is not None and avoidance is not None:
+                avoidance.set_drone(active_drone)
+        except OffboardError as exc:
+            print_command_denied("auto plan", exc)
+            stop_auto_plan("offboard rejected")
+            set_motion_owner(MotionOwner.MANUAL)
+        except grpc.aio.AioRpcError as exc:
+            print_mavsdk_unavailable("auto plan", exc)
+            stop_auto_plan("mavsdk unavailable")
+            set_motion_owner(MotionOwner.MANUAL)
 
     def current_saved_motion():
         if not has_manual_motion():
@@ -2708,21 +3064,36 @@ async def main() -> None:
     while True:
 
         try:
-            key = api_commands.get_nowait()
+            command_message = api_commands.get_nowait()
         except queue.Empty:
-            key = await asyncio.to_thread(read_key_timeout, 0.1)
-            if key is None:
+            command_message = await asyncio.to_thread(read_key_timeout, 0.1)
+            if command_message is None:
+                if auto_plan_active and motion_owner == MotionOwner.AUTO_PLAN:
+                    await update_auto_plan()
                 continue
+
+        if isinstance(command_message, dict):
+            if command_message.get("type") == "auto_plan_start":
+                start_auto_plan(command_message.get("waypoints", []))
+                continue
+            key = str(command_message.get("key", ""))
+        else:
+            key = str(command_message)
 
         if (
                 motion_owner != MotionOwner.MANUAL
                 and not safety_sensor_enabled
+                and motion_owner != MotionOwner.AUTO_PLAN
         ):
             force_manual_control()
 
         if key in WEATHER_KEY_PRESETS:
             await asyncio.to_thread(apply_weather_key, key)
             continue
+
+        if key in {"w", "a", "s", "d", "f", "v", "q", "e", "k", "h", "l"} and auto_plan_active:
+            stop_auto_plan("manual override")
+            set_motion_owner(MotionOwner.MANUAL)
 
         if key in {"w", "a", "s", "d", "f", "v", "q", "e"} and motion_owner != MotionOwner.MANUAL:
             print("[CONTROL] Obstacle stop active - hover until path is clear", flush=True)
@@ -2997,11 +3368,19 @@ async def main() -> None:
                 "downward_camera_viewer.py|wsl-camera-view.sh",
             )
         elif key == "4":
-            toggle_monitor_window(
-                "LiDAR monitor",
-                "wsl-sensor-monitor.sh",
-                "drone.visualization.sensor_dashboard|wsl-sensor-monitor.sh",
-            )
+            lidar_ui_enabled = not lidar_ui_enabled
+            if lidar_ui_enabled:
+                if LidarGateway is None:
+                    lidar_ui_enabled = False
+                    print(f"[LIDAR] Disabled: {LIDAR_IMPORT_ERROR}", flush=True)
+                elif lidar is None:
+                    lidar = LidarGateway()
+                    lidar.start()
+                    print("[LIDAR] UI monitor -> ON (web dashboard only)", flush=True)
+                else:
+                    print("[LIDAR] UI monitor -> ON (web dashboard only)", flush=True)
+            else:
+                print("[LIDAR] UI monitor -> OFF", flush=True)
         elif key == "5":
             toggle_monitor_window(
                 "Telemetry monitor",
@@ -3012,18 +3391,12 @@ async def main() -> None:
             enabled = thermal.toggle()
             set_native_thermal_subscription(enabled)
             print(f"[THERMAL] {'ON' if enabled else 'OFF'}", flush=True)
-            if enabled:
-                open_monitor_window_if_needed(
-                    "Thermal camera",
-                    "wsl-thermal-view.sh",
-                    "wsl-thermal-view.sh|thermal_debug_viewer.py",
-                )
-        elif key == "7":
-            toggle_monitor_window(
+            stop_monitor_window(
                 "Thermal camera",
-                "wsl-thermal-view.sh",
-                "wsl-thermal-view.sh|thermal_debug_viewer.py",
+                "wsl-thermal-view.sh|thermal_debug_viewer.py|sensor_dashboard.*--thermal-view",
             )
+        elif key == "7":
+            print("[THERMAL] Viewer disabled; use UI thermal stream only", flush=True)
         elif key == "thermal_palette_next":
             print(f"[THERMAL] Palette -> {thermal.cycle_palette()}", flush=True)
         elif key == "thermal_isotherm_toggle":

@@ -22,26 +22,21 @@ import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.impl.OrderService;
 import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.user.domain.User;
-import com.ondemandmonitoring.user.repository.UserRepository;
-import com.ondemandmonitoring.user.service.UserIdentityService;
+import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import com.ondemandmonitoring.warehouse.domain.PreferredTime;
 import com.ondemandmonitoring.warehouse.repository.PreferredTimeRepository;
 import com.ondemandmonitoring.zone.domain.Zone;
 import com.ondemandmonitoring.zone.repository.ZoneRepository;
 import java.time.LocalDate;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.Polygon;
 import org.locationtech.jts.geom.PrecisionModel;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
 
 class OrderServiceTest {
 
@@ -49,8 +44,7 @@ class OrderServiceTest {
     private CategoryServiceRepository categoryServiceRepository;
     private PreferredTimeRepository preferredTimeRepository;
     private ZoneRepository zoneRepository;
-    private UserRepository userRepository;
-    private UserIdentityService userIdentityService;
+    private AuthenticatedUserResolver authenticatedUserResolver;
     private OrderMapper orderMapper;
     private OrderService orderService;
     private GeometryFactory geometryFactory;
@@ -61,8 +55,7 @@ class OrderServiceTest {
         categoryServiceRepository = mock(CategoryServiceRepository.class);
         preferredTimeRepository = mock(PreferredTimeRepository.class);
         zoneRepository = mock(ZoneRepository.class);
-        userRepository = mock(UserRepository.class);
-        userIdentityService = mock(UserIdentityService.class);
+        authenticatedUserResolver = mock(AuthenticatedUserResolver.class);
         IMissionService missionService = mock(IMissionService.class);
         orderMapper = new OrderMapperImpl();
         geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
@@ -72,23 +65,14 @@ class OrderServiceTest {
                 categoryServiceRepository,
                 preferredTimeRepository,
                 zoneRepository,
-                userRepository,
-                userIdentityService,
+                authenticatedUserResolver,
                 missionService,
                 orderMapper
         );
 
         UUID userId = UUID.randomUUID();
         User mockUser = User.builder().id(userId).fullName("Test Customer").email("test@example.com").build();
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(userId.toString(), "credentials", Collections.emptyList())
-        );
-        when(userRepository.findById(userId)).thenReturn(Optional.of(mockUser));
-    }
-
-    @AfterEach
-    void tearDown() {
-        SecurityContextHolder.clearContext();
+        when(authenticatedUserResolver.getCurrentUser()).thenReturn(mockUser);
     }
 
     private Polygon createSquarePolygon(double minX, double minY, double maxX, double maxY) {

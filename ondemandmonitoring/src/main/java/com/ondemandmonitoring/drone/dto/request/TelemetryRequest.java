@@ -30,6 +30,10 @@ public class TelemetryRequest {
 
     Double relativeAltitude;
 
+    Double simX;
+
+    Double simY;
+
     @DecimalMin(value = "0.0")
     @DecimalMax(value = "100.0")
     Double batteryPercent;

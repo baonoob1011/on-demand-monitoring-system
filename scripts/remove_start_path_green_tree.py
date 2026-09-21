@@ -6,7 +6,7 @@ import bpy
 from mathutils import Vector
 
 
-ROOT = Path(r"C:/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system")
+ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "uav-monitoring-compact-world-v6-roads-export-source_20260907_095003.blend"
 BACKUP = ROOT / "uav-monitoring-compact-world-v6-roads-export-source_20260907_095003.before-start-tree-removal.blend"
 HOME_GLB = ROOT / "Forest3D" / "models" / "compact_home" / "meshes" / "compact_home.glb"

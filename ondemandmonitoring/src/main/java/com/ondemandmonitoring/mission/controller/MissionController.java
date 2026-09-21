@@ -9,6 +9,7 @@ import com.ondemandmonitoring.mission.dto.request.DroneReplacementRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionFailRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionRejectRequest;
 import com.ondemandmonitoring.mission.dto.request.PostFlightStatusRequest;
+import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.service.IMissionMediaUploadService;
 import com.ondemandmonitoring.mission.service.IMissionService;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 
 /**
  * REST entry point for all Flow 3 (Drone Operator) mission lifecycle use cases.
@@ -45,6 +47,24 @@ public class MissionController {
     // Query
     // ------------------------------------------------------------------
 
+    /**
+     * GET /api/missions?operatorId={id}
+     * List all missions assigned to a drone operator, sorted by scheduledStartAt desc.
+     */
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<MissionResponse>>> listByOperator(
+            @RequestParam String operatorId) {
+        List<MissionResponse> missions = missionService.getByOperatorId(operatorId);
+        return ResponseEntity.ok(ApiResponse.ok(missions));
+    }
+
+    /** GET /api/missions/code/{missionCode} – retrieve mission details by code */
+    @GetMapping("/code/{missionCode}")
+    public ResponseEntity<ApiResponse<MissionResponse>> getByCode(@PathVariable String missionCode) {
+        MissionResponse response = missionService.getByCodeResponse(missionCode);
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
     /** GET /api/missions/{id} – retrieve mission details */
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<MissionResponse>> getById(@PathVariable String id) {
@@ -52,7 +72,19 @@ public class MissionController {
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
+    /** GET /api/missions/{id}/plan – retrieve generated operational MissionPlan */
+    @GetMapping("/{id}/plan")
+    public ResponseEntity<ApiResponse<MissionPlanResponse>> getPlan(@PathVariable String id) {
+        MissionPlanResponse response = missionService.getMissionPlan(id);
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
     // ------------------------------------------------------------------
+    @GetMapping("/pending-assignment")
+    public ResponseEntity<ApiResponse<List<MissionResponse>>> getPendingAssignment() {
+        return ResponseEntity.ok(ApiResponse.ok(missionService.getPendingAssignmentMissions()));
+    }
+
     // F2 – Manager Assignment (Flow 2)
     // ------------------------------------------------------------------
 
@@ -87,7 +119,7 @@ public class MissionController {
     /**
      * PATCH /api/missions/{id}/accept
      * Drone Operator confirms they accept the mission.
-     * Transitions: WAITING_OPERATOR_ACCEPTANCE → SCHEDULED
+     * Transitions: WAITING_OPERATOR_ACCEPTANCE → ASTAR_ENERGY_AWARE planning → SCHEDULED
      */
     @PatchMapping("/{id}/accept")
     public ResponseEntity<ApiResponse<MissionResponse>> accept(
@@ -111,10 +143,6 @@ public class MissionController {
         return ResponseEntity.ok(ApiResponse.ok("Mission đã bị từ chối, hệ thống sẽ phân công lại", response));
     }
 
-    // ------------------------------------------------------------------
-    // F3.2 – Pre-flight check & drone replacement
-    // ------------------------------------------------------------------
-
     /**
      * POST /api/missions/{id}/connect
      * Confirm telemetry link with GCS app (powerOnAndPairWithGCSApp).
@@ -127,9 +155,29 @@ public class MissionController {
     }
 
     /**
-     * POST /api/missions/{id}/preflight-check?droneCode=DRONE-01
-     * Runs digital preflight checklist (Battery >= 80%, GPS >= 8 sats, Camera/Gimbal, Storage, Weather).
+     * POST /api/missions/{id}/disconnect
+     * Normal or explicit disconnection from GCS app.
      */
+    @PostMapping("/{id}/disconnect")
+    public ResponseEntity<ApiResponse<MissionResponse>> disconnectGcs(
+            @PathVariable String id,
+            @RequestParam(required = false, defaultValue = "NORMAL") String reason) {
+        MissionResponse response = missionService.disconnectGcs(id, reason);
+        return ResponseEntity.ok(ApiResponse.ok("GCS session disconnected (DISCONNECTED)", response));
+    }
+
+    /**
+     * POST /api/missions/{id}/gcs-lost
+     * Report GCS telemetry signal loss (LOST), triggering automatic Return-To-Launch (RTL).
+     */
+    @PostMapping("/{id}/gcs-lost")
+    public ResponseEntity<ApiResponse<MissionResponse>> reportGcsLost(
+            @PathVariable String id,
+            @RequestParam(required = false, defaultValue = "SIGNAL_LOSS") String reason) {
+        MissionResponse response = missionService.handleGcsSessionLost(id, reason);
+        return ResponseEntity.ok(ApiResponse.ok("GCS signal LOST – Return-To-Launch (RTL) triggered", response));
+    }
+
     @PostMapping("/{id}/preflight-check")
     public ResponseEntity<ApiResponse<PreflightCheckResponse>> runPreflightCheck(
             @PathVariable String id,

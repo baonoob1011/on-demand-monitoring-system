@@ -12,6 +12,8 @@ import httpx
 from dotenv import load_dotenv
 from mavsdk import System
 
+from geofence_monitor import px4_ned_to_sim_xy
+
 from sitl_battery_sim import (
     BatteryInputs,
     SitlBatterySimulator,
@@ -20,12 +22,19 @@ from sitl_battery_sim import (
 )
 
 
-PROJECT_ROOT = Path(
-    os.getenv(
-        "PROJECT_PATH",
-        "/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system",
-    )
-)
+def resolve_project_root() -> Path:
+    configured = os.getenv("PROJECT_PATH")
+    if configured:
+        return Path(configured)
+
+    source_candidate = Path(__file__).resolve().parent.parent
+    if (source_candidate / "Forest3D").exists() and (source_candidate / "ondemandmonitoring").exists():
+        return source_candidate
+
+    return Path.cwd()
+
+
+PROJECT_ROOT = resolve_project_root()
 ENV_FILE = PROJECT_ROOT / "ondemandmonitoring" / ".env"
 load_dotenv(ENV_FILE, override=True)
 
@@ -52,6 +61,9 @@ class TelemetryState:
     longitude: float | None = None
     absolute_altitude: float | None = None
     relative_altitude: float | None = None
+    local_north: float | None = None
+    local_east: float | None = None
+    local_down: float | None = None
 
     gps_fix_type: str | None = None
     gps_satellite_count: int | None = None
@@ -111,6 +123,11 @@ class TelemetryState:
 
     async def snapshot(self) -> dict[str, Any]:
         async with self.lock:
+            sim_x = None
+            sim_y = None
+            if self.local_north is not None and self.local_east is not None:
+                sim_x, sim_y = px4_ned_to_sim_xy(self.local_north, self.local_east)
+
             return {
                 "batteryPercent": self.battery_percent,
                 "batteryLevel": self.battery_level,
@@ -119,6 +136,8 @@ class TelemetryState:
                 "absoluteAltitude": self.absolute_altitude,
                 "relativeAltitude": self.relative_altitude,
                 "altitude": self.relative_altitude,
+                "simX": sim_x,
+                "simY": sim_y,
                 "gpsFixType": self.gps_fix_type,
                 "gpsSatelliteCount": self.gps_satellite_count,
                 "gyrometerOk": self.gyrometer_ok,
@@ -392,6 +411,33 @@ async def watch_velocity(drone: System) -> None:
     await run_stream("velocity_ned", drone.telemetry.velocity_ned, handle)
 
 
+async def watch_local_position_velocity(drone: System) -> None:
+    async def handle(sample: Any) -> None:
+        position = sample.position
+        velocity = sample.velocity
+        north = number_or_none(position.north_m)
+        east = number_or_none(position.east_m)
+        down = number_or_none(position.down_m)
+        velocity_north = number_or_none(velocity.north_m_s)
+        velocity_east = number_or_none(velocity.east_m_s)
+        velocity_down = number_or_none(velocity.down_m_s)
+        ground_speed = None
+        if velocity_north is not None and velocity_east is not None:
+            ground_speed = math.sqrt(velocity_north**2 + velocity_east**2)
+
+        await state.update(
+            local_north=north,
+            local_east=east,
+            local_down=down,
+            velocity_north=velocity_north,
+            velocity_east=velocity_east,
+            velocity_down=velocity_down,
+            ground_speed=round(ground_speed, 3) if ground_speed is not None else None,
+        )
+
+    await run_stream("position_velocity_ned", drone.telemetry.position_velocity_ned, handle)
+
+
 async def watch_armed(drone: System) -> None:
     async def handle(armed: bool) -> None:
         await state.update(armed=armed)
@@ -440,7 +486,7 @@ async def send_telemetry() -> None:
     if not backend_telemetry_enabled:
         return
 
-    url = f"{BACKEND_BASE_URL}/api/devices/{DEVICE_CODE}/telemetry"
+    url = f"{BACKEND_BASE_URL}/api/drones/{DEVICE_CODE}/telemetry"
     timeout = httpx.Timeout(5.0)
     sent_count = 0
 
@@ -500,7 +546,7 @@ async def run_telemetry_stream_generation(drone: System, generation: int) -> Non
         asyncio.create_task(watch_position(drone), name=f"position-{generation}"),
         asyncio.create_task(watch_gps_info(drone), name=f"gps_info-{generation}"),
         asyncio.create_task(watch_health(drone), name=f"health-{generation}"),
-        asyncio.create_task(watch_velocity(drone), name=f"velocity_ned-{generation}"),
+        asyncio.create_task(watch_local_position_velocity(drone), name=f"position_velocity_ned-{generation}"),
         asyncio.create_task(watch_armed(drone), name=f"armed-{generation}"),
         asyncio.create_task(watch_in_air(drone), name=f"in_air-{generation}"),
     ]

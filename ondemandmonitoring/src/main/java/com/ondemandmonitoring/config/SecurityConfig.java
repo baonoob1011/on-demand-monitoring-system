@@ -13,6 +13,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -35,10 +36,10 @@ public class SecurityConfig {
             RoleCode.SYSTEM_OPERATOR.name(),
             RoleCode.ADMIN.name());
 
-    @Value("${app.cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174}")
+    @Value("${cors.address:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174}")
     private String allowedOrigins;
 
-    private static final String[] PUBLIC_ENDPOINTS = {
+    static final String[] PUBLIC_ENDPOINTS = {
             "/api/v1/auth/register",
             "/api/v1/auth/verify-otp",
             "/api/v1/auth/resend-otp",
@@ -60,6 +61,10 @@ public class SecurityConfig {
             "/api/thermal-sources/**",
             "/api/simulation-map",
             "/api/simulation-map/**",
+            "/api/planning/environment",
+            "/api/planning/environment/**",
+            "/api/missions",
+            "/api/missions/**",
             "/api/missions/*/images",
             "/api/missions/*/media",
             "/swagger-ui/**",
@@ -69,7 +74,8 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
-            @Qualifier("cognitoAccessTokenDecoder") JwtDecoder cognitoAccessTokenDecoder) throws Exception {
+            @Qualifier("cognitoAccessTokenDecoder") JwtDecoder cognitoAccessTokenDecoder,
+            ActiveAccountFilter activeAccountFilter) throws Exception {
         return http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf
@@ -87,6 +93,8 @@ public class SecurityConfig {
                                 "/api/zones/**",
                                 "/api/thermal-sources/**",
                                 "/api/simulation-map/**",
+                                "/api/planning/environment/**",
+                                "/api/missions/**",
                                 "/api/missions/*/images",
                                 "/api/missions/*/media"))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -98,6 +106,7 @@ public class SecurityConfig {
                         .jwt(jwt -> jwt
                                 .decoder(cognitoAccessTokenDecoder)
                                 .jwtAuthenticationConverter(jwtAuthenticationConverter())))
+                .addFilterAfter(activeAccountFilter, BearerTokenAuthenticationFilter.class)
                 .build();
     }
 
@@ -106,7 +115,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(List.of(allowedOrigins.split(",")));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Operator-Id"));
         configuration.setExposedHeaders(List.of("Authorization"));
         configuration.setAllowCredentials(true);
 

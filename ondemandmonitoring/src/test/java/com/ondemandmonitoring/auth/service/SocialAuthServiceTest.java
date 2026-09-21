@@ -4,6 +4,7 @@ import com.ondemandmonitoring.auth.dto.request.SocialSyncRequest;
 import com.ondemandmonitoring.auth.enumeration.AuthProvider;
 import com.ondemandmonitoring.auth.enumeration.SocialAuthIntent;
 import com.ondemandmonitoring.auth.infrastructure.outbox.AuthOutboxService;
+import com.ondemandmonitoring.auth.mapper.AuthenticatedUserMapper;
 import com.ondemandmonitoring.auth.port.out.AuthenticationTokens;
 import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
 import com.ondemandmonitoring.auth.port.out.SocialAuthenticationResult;
@@ -18,6 +19,7 @@ import com.ondemandmonitoring.user.service.IUserService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mapstruct.factory.Mappers;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -41,7 +43,9 @@ class SocialAuthServiceTest {
         outbox = mock(AuthOutboxService.class);
         users = mock(IUserService.class);
         cookies = mock(RefreshTokenCookieService.class);
-        service = new SocialAuthService(socialProvider, cognito, outbox, users, cookies);
+        service = new SocialAuthService(
+                socialProvider, cognito, outbox, users, cookies,
+                Mappers.getMapper(AuthenticatedUserMapper.class));
     }
 
     @Test

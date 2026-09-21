@@ -10,6 +10,12 @@
   "maxY": 686.497,
   "widthM": 902.0,
   "heightM": 1101.4969999999998,
+  "imageBounds": {
+    "minX": -573.7784399999999,
+    "maxX": 571.7784399999999,
+    "minY": -437.0299399999999,
+    "maxY": 708.5269399999999
+  },
   "coordinateSystem": "LOCAL_SIMULATION_METERS_GAZEBO_XY",
   "imageOrientation": {
     "xIncreasesRight": true,
