@@ -6,6 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.ondemandmonitoring.auth.infrastructure.outbox.AuthOutboxService;
 import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
@@ -48,6 +49,12 @@ class UserManagementServiceImplTest {
     @Mock
     private CustomerProfileRepository customerProfileRepository;
 
+    @Mock
+    private AuthenticatedUserResolver authenticatedUserResolver;
+
+    @Mock
+    private AuthOutboxService authOutboxService;
+
     private UserManagementServiceImpl userManagementService;
 
     @BeforeEach
@@ -56,7 +63,9 @@ class UserManagementServiceImplTest {
                 userRepository,
                 userIdentityRepository,
                 customerProfileRepository,
-                new UserManagementMapper());
+                new UserManagementMapper(),
+                authenticatedUserResolver,
+                authOutboxService);
     }
 
     @Test
@@ -178,5 +187,103 @@ class UserManagementServiceImplTest {
                 .isInstanceOfSatisfying(ApiException.class,
                         exception -> assertThat(exception.getErrorCode())
                                 .isEqualTo(ErrorCode.USER_NOT_FOUND));
+    }
+
+    @Test
+    void updateStatus_changesLocalStatusAndSchedulesUniqueIdentitySync() {
+        User actor = adminUser(UUID.randomUUID(), true);
+        User target = customerUser(UUID.randomUUID(), true);
+        List<UserIdentity> identities = List.of(
+                identity("local-user"),
+                identity("google-user"),
+                identity("google-user"));
+        when(authenticatedUserResolver.getCurrentUser()).thenReturn(actor);
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(userIdentityRepository.findAllByUserId(target.getId())).thenReturn(identities);
+        when(customerProfileRepository.findById(target.getId())).thenReturn(Optional.empty());
+
+        UserManagementDetailResponse response = userManagementService.updateStatus(
+                target.getId(), false);
+
+        assertThat(response.isActive()).isFalse();
+        assertThat(target.getIsActive()).isFalse();
+        verify(userRepository).save(target);
+        verify(authOutboxService).scheduleAccountStatusSync("local-user", false);
+        verify(authOutboxService).scheduleAccountStatusSync("google-user", false);
+    }
+
+    @Test
+    void updateStatus_sameStatusIsIdempotent() {
+        User actor = adminUser(UUID.randomUUID(), true);
+        User target = customerUser(UUID.randomUUID(), false);
+        when(authenticatedUserResolver.getCurrentUser()).thenReturn(actor);
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(userIdentityRepository.findAllByUserId(target.getId())).thenReturn(List.of());
+        when(customerProfileRepository.findById(target.getId())).thenReturn(Optional.empty());
+
+        UserManagementDetailResponse response = userManagementService.updateStatus(
+                target.getId(), false);
+
+        assertThat(response.isActive()).isFalse();
+        verify(userRepository, never()).save(target);
+        verify(authOutboxService, never()).scheduleAccountStatusSync(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @Test
+    void updateStatus_rejectsSelfDeactivation() {
+        UUID adminId = UUID.randomUUID();
+        User actor = adminUser(adminId, true);
+        when(authenticatedUserResolver.getCurrentUser()).thenReturn(actor);
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(actor));
+
+        assertThatThrownBy(() -> userManagementService.updateStatus(adminId, false))
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.SELF_DEACTIVATION_NOT_ALLOWED));
+        verify(userRepository, never()).save(actor);
+    }
+
+    @Test
+    void updateStatus_unknownTargetThrowsUserNotFound() {
+        UUID userId = UUID.randomUUID();
+        when(authenticatedUserResolver.getCurrentUser())
+                .thenReturn(adminUser(UUID.randomUUID(), true));
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userManagementService.updateStatus(userId, false))
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.USER_NOT_FOUND));
+    }
+
+    private User adminUser(UUID id, boolean active) {
+        return User.builder()
+                .id(id)
+                .fullName("Admin")
+                .email("admin@example.com")
+                .role(Role.builder().code(RoleCode.ADMIN).build())
+                .isActive(active)
+                .build();
+    }
+
+    private User customerUser(UUID id, boolean active) {
+        return User.builder()
+                .id(id)
+                .fullName("Customer")
+                .email("customer@example.com")
+                .role(Role.builder().code(RoleCode.CUSTOMER).build())
+                .isActive(active)
+                .emailVerified(true)
+                .build();
+    }
+
+    private UserIdentity identity(String username) {
+        return UserIdentity.builder()
+                .provider(IdentityProvider.LOCAL)
+                .cognitoUsername(username)
+                .cognitoSub(UUID.randomUUID().toString())
+                .build();
     }
 }

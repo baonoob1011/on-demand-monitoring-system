@@ -3,9 +3,11 @@ package com.ondemandmonitoring.user.service.impl;
 import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
+import com.ondemandmonitoring.auth.infrastructure.outbox.AuthOutboxService;
 import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.domain.CustomerProfile;
+import com.ondemandmonitoring.user.domain.UserIdentity;
 import com.ondemandmonitoring.user.dto.response.UserManagementDetailResponse;
 import com.ondemandmonitoring.user.dto.response.UserManagementSummaryResponse;
 import com.ondemandmonitoring.user.mapper.UserManagementMapper;
@@ -13,6 +15,8 @@ import com.ondemandmonitoring.user.repository.CustomerProfileRepository;
 import com.ondemandmonitoring.user.repository.UserIdentityRepository;
 import com.ondemandmonitoring.user.repository.UserRepository;
 import com.ondemandmonitoring.user.service.IUserManagementService;
+import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +44,8 @@ public class UserManagementServiceImpl implements IUserManagementService {
     private final UserIdentityRepository userIdentityRepository;
     private final CustomerProfileRepository customerProfileRepository;
     private final UserManagementMapper userManagementMapper;
+    private final AuthenticatedUserResolver authenticatedUserResolver;
+    private final AuthOutboxService authOutboxService;
 
     @Override
     @Transactional(readOnly = true)
@@ -60,13 +66,45 @@ public class UserManagementServiceImpl implements IUserManagementService {
     public UserManagementDetailResponse getUser(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
+        return toDetail(user);
+    }
+
+    @Override
+    @Transactional
+    public UserManagementDetailResponse updateStatus(UUID userId, boolean active) {
+        User actor = authenticatedUserResolver.getCurrentUser();
+        User target = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
+        if (!active && actor.getId().equals(target.getId())) {
+            throw new ApiException(ErrorCode.SELF_DEACTIVATION_NOT_ALLOWED);
+        }
+        if (Boolean.TRUE.equals(target.getIsActive()) == active) {
+            return toDetail(target);
+        }
+
+        target.setIsActive(active);
+        userRepository.save(target);
+        List<UserIdentity> identities = userIdentityRepository.findAllByUserId(userId);
+        identities.stream()
+                .map(UserIdentity::getCognitoUsername)
+                .filter(username -> username != null && !username.isBlank())
+                .distinct()
+                .forEach(username -> authOutboxService.scheduleAccountStatusSync(username, active));
+        return toDetail(target, identities);
+    }
+
+    private UserManagementDetailResponse toDetail(User user) {
+        return toDetail(user, userIdentityRepository.findAllByUserId(user.getId()));
+    }
+
+    private UserManagementDetailResponse toDetail(User user, List<UserIdentity> identities) {
         CustomerProfile customerProfile = null;
         if (user.getRole().getCode() == RoleCode.CUSTOMER) {
-            customerProfile = customerProfileRepository.findById(userId).orElse(null);
+            customerProfile = customerProfileRepository.findById(user.getId()).orElse(null);
         }
         return userManagementMapper.toDetail(
                 user,
-                userIdentityRepository.findAllByUserId(userId),
+                identities,
                 customerProfile);
     }
 

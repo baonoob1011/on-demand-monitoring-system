@@ -5,7 +5,9 @@ import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.user.dto.response.UserManagementSummaryResponse;
 import com.ondemandmonitoring.user.dto.response.UserManagementDetailResponse;
+import com.ondemandmonitoring.user.dto.request.UserStatusUpdateRequest;
 import com.ondemandmonitoring.user.service.IUserManagementService;
+import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -15,6 +17,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -43,5 +47,14 @@ public class UserManagementController {
     public ResponseEntity<ApiResponse<UserManagementDetailResponse>> getUser(
             @PathVariable UUID userId) {
         return ResponseEntity.ok(ApiResponse.ok(userManagementService.getUser(userId)));
+    }
+
+    @PatchMapping("/{userId}/status")
+    public ResponseEntity<ApiResponse<UserManagementDetailResponse>> updateStatus(
+            @PathVariable UUID userId,
+            @Valid @RequestBody UserStatusUpdateRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                "Account status updated successfully",
+                userManagementService.updateStatus(userId, request.getActive())));
     }
 }

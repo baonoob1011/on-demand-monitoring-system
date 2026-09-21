@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -111,5 +113,36 @@ class UserManagementControllerTest {
                 .andExpect(jsonPath("$.data.linkedProviders[0]").value("LOCAL"))
                 .andExpect(jsonPath("$.data.customerProfile.companyName")
                         .value("Customer Company"));
+    }
+
+    @Test
+    void updateStatus_returnsUpdatedAccount() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(userManagementService.updateStatus(userId, false)).thenReturn(
+                UserManagementDetailResponse.builder()
+                        .id(userId)
+                        .fullName("Customer Name")
+                        .email("customer@example.com")
+                        .role(RoleCode.CUSTOMER)
+                        .active(false)
+                        .emailVerified(true)
+                        .linkedProviders(List.of(IdentityProvider.LOCAL))
+                        .build());
+
+        mockMvc.perform(patch("/api/v1/admin/users/{userId}/status", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"active\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Account status updated successfully"))
+                .andExpect(jsonPath("$.data.id").value(userId.toString()))
+                .andExpect(jsonPath("$.data.active").value(false));
+    }
+
+    @Test
+    void updateStatus_rejectsMissingStatus() throws Exception {
+        mockMvc.perform(patch("/api/v1/admin/users/{userId}/status", UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
     }
 }
