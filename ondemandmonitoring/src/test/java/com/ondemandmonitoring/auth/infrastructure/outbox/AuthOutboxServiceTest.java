@@ -33,6 +33,23 @@ class AuthOutboxServiceTest {
     }
 
     @Test
+    void scheduleAccountStatusCreatesEnableAndDisableEvents() {
+        when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.scheduleAccountStatusSync("enabled-user", true);
+        service.scheduleAccountStatusSync("disabled-user", false);
+
+        verify(repository).save(argThat(event ->
+                AuthOutboxEvent.COGNITO_USER_ENABLE.equals(event.getEventType())
+                        && "enabled-user".equals(event.getTargetUsername())
+                        && event.getStatus() == AuthOutboxStatus.PENDING));
+        verify(repository).save(argThat(event ->
+                AuthOutboxEvent.COGNITO_USER_DISABLE.equals(event.getEventType())
+                        && "disabled-user".equals(event.getTargetUsername())
+                        && event.getStatus() == AuthOutboxStatus.PENDING));
+    }
+
+    @Test
     void claimMovesPendingEventToProcessingAndIncrementsAttempts() {
         AuthOutboxEvent event = AuthOutboxEvent.cognitoCleanup("username", "sub");
         when(repository.findNextBatch(eq(AuthOutboxStatus.PENDING), any(), any(), any(Pageable.class)))

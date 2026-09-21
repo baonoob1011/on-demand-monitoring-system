@@ -87,6 +87,7 @@ else:
 
 class MotionOwner(Enum):
     MANUAL = "MANUAL"
+    AUTO_PLAN = "AUTO_PLAN"
     EMERGENCY = "EMERGENCY"
 
 
@@ -160,8 +161,17 @@ VERTICAL_SPEED_M_S = float(
     os.getenv("CONTROL_VERTICAL_SPEED_M_S", "500.0")
 )
 YAW_STEP_DEG = float(
-    os.getenv("CONTROL_YAW_STEP_DEG", "30.0")
+    os.getenv("CONTROL_YAW_STEP_DEG", "5.0")
 )
+AUTO_PLAN_REACHED_RADIUS_M = float(os.getenv("AUTO_PLAN_REACHED_RADIUS_M", "5.0"))
+AUTO_PLAN_ALTITUDE_TOLERANCE_M = float(os.getenv("AUTO_PLAN_ALTITUDE_TOLERANCE_M", "4.0"))
+AUTO_PLAN_MAX_SPEED_M_S = float(os.getenv("AUTO_PLAN_MAX_SPEED_M_S", "8.0"))
+AUTO_PLAN_MIN_SPEED_M_S = float(os.getenv("AUTO_PLAN_MIN_SPEED_M_S", "1.2"))
+AUTO_PLAN_SLOWDOWN_RADIUS_M = float(os.getenv("AUTO_PLAN_SLOWDOWN_RADIUS_M", "35.0"))
+AUTO_PLAN_VERTICAL_MAX_SPEED_M_S = float(os.getenv("AUTO_PLAN_VERTICAL_MAX_SPEED_M_S", "0.5"))
+AUTO_PLAN_VERTICAL_GAIN = float(os.getenv("AUTO_PLAN_VERTICAL_GAIN", "0.08"))
+AUTO_PLAN_SETPOINT_SMOOTHING = float(os.getenv("AUTO_PLAN_SETPOINT_SMOOTHING", "0.35"))
+AUTO_PLAN_ALTITUDE_RAMP_M = float(os.getenv("AUTO_PLAN_ALTITUDE_RAMP_M", "1.0"))
 
 SPEED_ADJUST_STEP_M_S = float(
     os.getenv("CONTROL_SPEED_ADJUST_STEP_M_S", "200.0")
@@ -991,6 +1001,42 @@ CONTROL_COMMAND_KEYS = {
 }
 
 
+def normalize_auto_plan_waypoints(payload: dict) -> list[dict]:
+    raw_points = payload.get("waypoints")
+    if not isinstance(raw_points, list):
+        return []
+    normalized = []
+    for index, point in enumerate(raw_points):
+        if not isinstance(point, dict):
+            continue
+        try:
+            sim_x = float(point["simX"])
+            sim_y = float(point["simY"])
+            altitude_m = float(point.get("altitudeM", 0.0))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not all(math.isfinite(value) for value in (sim_x, sim_y, altitude_m)):
+            continue
+        speed = point.get("speedMps")
+        try:
+            speed_mps = float(speed) if speed is not None else AUTO_PLAN_MAX_SPEED_M_S
+        except (TypeError, ValueError):
+            speed_mps = AUTO_PLAN_MAX_SPEED_M_S
+        if not math.isfinite(speed_mps) or speed_mps <= 0.0:
+            speed_mps = AUTO_PLAN_MAX_SPEED_M_S
+        normalized.append(
+            {
+                "sequence": int(point.get("sequence", index)),
+                "simX": sim_x,
+                "simY": sim_y,
+                "altitudeM": max(0.0, altitude_m),
+                "speedMps": min(speed_mps, AUTO_PLAN_MAX_SPEED_M_S),
+                "reason": str(point.get("reason", "CRUISE")),
+            }
+        )
+    return sorted(normalized, key=lambda item: item["sequence"])
+
+
 class PreflightPersistenceBridge:
     def __init__(self, backend_urls: BackendUrlResolver, mission_id: str) -> None:
         self.backend_urls = backend_urls
@@ -1212,12 +1258,21 @@ class FlightControlApi:
                     payload = {}
 
                 command = str(payload.get("command", "")).strip().lower()
+                if command == "auto_plan_start":
+                    waypoints = normalize_auto_plan_waypoints(payload)
+                    if len(waypoints) < 1:
+                        self._write_json(400, {"ok": False, "error": "missing waypoints"})
+                        return
+                    owner.commands.put({"type": "auto_plan_start", "waypoints": waypoints})
+                    self._write_json(202, {"ok": True, "command": command, "waypoints": len(waypoints)})
+                    return
+
                 key = CONTROL_COMMAND_KEYS.get(command)
                 if key is None:
                     self._write_json(400, {"ok": False, "error": "unknown command"})
                     return
 
-                owner.commands.put(key)
+                owner.commands.put({"type": "key", "key": key})
                 self._write_json(202, {"ok": True, "command": command})
 
         try:
@@ -2318,6 +2373,11 @@ async def main() -> None:
     current_health_update_s: float | None = None
     local_position_update_s: float | None = None
     local_position_ready = False
+    auto_plan_points: list[dict] = []
+    auto_plan_index = 0
+    auto_plan_active = False
+    auto_plan_status = "IDLE"
+    auto_plan_desired_altitude_m: float | None = None
     safety_speed_scale = 1.0
     simulated_battery = BatterySimulator(
         float(os.getenv("SIM_BATTERY_INITIAL_PERCENT", "100.0")),
@@ -2526,6 +2586,12 @@ async def main() -> None:
                 "rightMps": current_right_m_s,
                 "downMps": current_down_m_s,
             },
+            "autoPlan": {
+                "active": auto_plan_active,
+                "status": auto_plan_status,
+                "currentIndex": auto_plan_index,
+                "total": len(auto_plan_points),
+            },
             "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
         if lidar is not None and hasattr(lidar, "snapshot"):
@@ -2690,6 +2756,156 @@ async def main() -> None:
     def force_manual_control() -> None:
         set_motion_owner(MotionOwner.MANUAL)
 
+    def stop_auto_plan(reason: str = "stopped") -> None:
+        nonlocal auto_plan_active, auto_plan_points, auto_plan_index, auto_plan_status
+        nonlocal auto_plan_desired_altitude_m
+        if auto_plan_active:
+            print(f"[AUTO-PLAN] {reason}", flush=True)
+        auto_plan_active = False
+        auto_plan_points = []
+        auto_plan_index = 0
+        auto_plan_status = reason
+        auto_plan_desired_altitude_m = None
+
+    def start_auto_plan(points: list[dict]) -> None:
+        nonlocal auto_plan_active, auto_plan_points, auto_plan_index, auto_plan_status
+        nonlocal auto_plan_desired_altitude_m
+        auto_plan_points = list(points)
+        auto_plan_index = 0
+        auto_plan_desired_altitude_m = max(0.0, -current_local_down_m)
+        if local_position_ready and auto_plan_points:
+            sim_x_m, sim_y_m = px4_ned_to_sim_xy(current_local_north_m, current_local_east_m)
+            nearest_index = min(
+                range(len(auto_plan_points)),
+                key=lambda index: math.hypot(
+                    auto_plan_points[index]["simX"] - sim_x_m,
+                    auto_plan_points[index]["simY"] - sim_y_m,
+                ),
+            )
+            nearest = auto_plan_points[nearest_index]
+            nearest_distance = math.hypot(nearest["simX"] - sim_x_m, nearest["simY"] - sim_y_m)
+            auto_plan_index = (
+                min(nearest_index + 1, len(auto_plan_points) - 1)
+                if nearest_distance <= AUTO_PLAN_REACHED_RADIUS_M
+                else nearest_index
+            )
+        auto_plan_active = True
+        auto_plan_status = "RUNNING"
+        set_motion_owner(MotionOwner.AUTO_PLAN)
+        print(
+            f"[AUTO-PLAN] Started with {len(auto_plan_points)} waypoint(s), "
+            f"current target index={auto_plan_index}",
+            flush=True,
+        )
+
+    async def update_auto_plan() -> None:
+        nonlocal auto_plan_index
+        nonlocal current_forward_m_s, current_right_m_s
+        nonlocal current_north_m_s, current_east_m_s, current_down_m_s, current_yaw_deg
+        nonlocal auto_plan_desired_altitude_m
+
+        if not auto_plan_active:
+            return
+        if not local_position_ready:
+            print("[AUTO-PLAN] Waiting for local position", flush=True)
+            return
+        if auto_plan_index >= len(auto_plan_points):
+            stop_auto_plan("complete")
+            active_drone = await set_motion(connection_manager, 0.0, 0.0, 0.0, current_yaw_deg)
+            if active_drone is not None and avoidance is not None:
+                avoidance.set_drone(active_drone)
+            set_motion_owner(MotionOwner.MANUAL)
+            return
+
+        sim_x_m, sim_y_m = px4_ned_to_sim_xy(current_local_north_m, current_local_east_m)
+        altitude_m = max(0.0, -current_local_down_m)
+        target = auto_plan_points[auto_plan_index]
+        dx = target["simX"] - sim_x_m
+        dy = target["simY"] - sim_y_m
+        horizontal_distance = math.hypot(dx, dy)
+        if auto_plan_desired_altitude_m is None:
+            auto_plan_desired_altitude_m = altitude_m
+        altitude_target_delta = target["altitudeM"] - auto_plan_desired_altitude_m
+        if abs(altitude_target_delta) <= AUTO_PLAN_ALTITUDE_RAMP_M:
+            auto_plan_desired_altitude_m = target["altitudeM"]
+        else:
+            auto_plan_desired_altitude_m += math.copysign(AUTO_PLAN_ALTITUDE_RAMP_M, altitude_target_delta)
+        altitude_error = auto_plan_desired_altitude_m - altitude_m
+
+        if (
+                horizontal_distance <= AUTO_PLAN_REACHED_RADIUS_M
+                and abs(altitude_error) <= AUTO_PLAN_ALTITUDE_TOLERANCE_M
+        ):
+            print(
+                f"[AUTO-PLAN] Reached waypoint {target['sequence']} "
+                f"dist={horizontal_distance:.1f}m alt_err={altitude_error:.1f}m",
+                flush=True,
+            )
+            auto_plan_index += 1
+            return
+
+        plan_speed = min(float(target["speedMps"]), control_speed_m_s, AUTO_PLAN_MAX_SPEED_M_S)
+        if horizontal_distance <= AUTO_PLAN_REACHED_RADIUS_M:
+            speed = 0.0
+        else:
+            slowdown_span = max(1.0, AUTO_PLAN_SLOWDOWN_RADIUS_M - AUTO_PLAN_REACHED_RADIUS_M)
+            slowdown_ratio = min(
+                1.0,
+                max(0.0, (horizontal_distance - AUTO_PLAN_REACHED_RADIUS_M) / slowdown_span),
+            )
+            speed = AUTO_PLAN_MIN_SPEED_M_S + (plan_speed - AUTO_PLAN_MIN_SPEED_M_S) * slowdown_ratio
+            speed = min(plan_speed, max(AUTO_PLAN_MIN_SPEED_M_S, speed))
+
+        if horizontal_distance <= AUTO_PLAN_REACHED_RADIUS_M:
+            north_m_s = 0.0
+            east_m_s = 0.0
+        else:
+            east_m_s = (dx / horizontal_distance) * speed
+            north_m_s = (dy / horizontal_distance) * speed
+
+        if abs(altitude_error) <= AUTO_PLAN_ALTITUDE_TOLERANCE_M:
+            down_m_s = 0.0
+        else:
+            vertical_speed = min(
+                AUTO_PLAN_VERTICAL_MAX_SPEED_M_S,
+                control_vertical_speed_m_s,
+                max(0.15, abs(altitude_error) * AUTO_PLAN_VERTICAL_GAIN),
+            )
+            down_m_s = -vertical_speed if altitude_error > 0.0 else vertical_speed
+
+        smoothing = min(1.0, max(0.0, AUTO_PLAN_SETPOINT_SMOOTHING))
+        north_m_s = current_north_m_s + (north_m_s - current_north_m_s) * smoothing
+        east_m_s = current_east_m_s + (east_m_s - current_east_m_s) * smoothing
+        down_m_s = current_down_m_s + (down_m_s - current_down_m_s) * smoothing
+        if abs(down_m_s) < 0.08:
+            down_m_s = 0.0
+
+        if horizontal_distance > 0.001:
+            current_yaw_deg = (math.degrees(math.atan2(east_m_s, north_m_s)) + 360.0) % 360.0
+        current_forward_m_s = math.hypot(north_m_s, east_m_s)
+        current_right_m_s = 0.0
+        current_north_m_s = north_m_s
+        current_east_m_s = east_m_s
+        current_down_m_s = down_m_s
+
+        try:
+            active_drone = await set_motion(
+                connection_manager,
+                current_north_m_s,
+                current_east_m_s,
+                current_down_m_s,
+                current_yaw_deg,
+            )
+            if active_drone is not None and avoidance is not None:
+                avoidance.set_drone(active_drone)
+        except OffboardError as exc:
+            print_command_denied("auto plan", exc)
+            stop_auto_plan("offboard rejected")
+            set_motion_owner(MotionOwner.MANUAL)
+        except grpc.aio.AioRpcError as exc:
+            print_mavsdk_unavailable("auto plan", exc)
+            stop_auto_plan("mavsdk unavailable")
+            set_motion_owner(MotionOwner.MANUAL)
 
     def current_saved_motion():
         if not has_manual_motion():
@@ -2848,21 +3064,36 @@ async def main() -> None:
     while True:
 
         try:
-            key = api_commands.get_nowait()
+            command_message = api_commands.get_nowait()
         except queue.Empty:
-            key = await asyncio.to_thread(read_key_timeout, 0.1)
-            if key is None:
+            command_message = await asyncio.to_thread(read_key_timeout, 0.1)
+            if command_message is None:
+                if auto_plan_active and motion_owner == MotionOwner.AUTO_PLAN:
+                    await update_auto_plan()
                 continue
+
+        if isinstance(command_message, dict):
+            if command_message.get("type") == "auto_plan_start":
+                start_auto_plan(command_message.get("waypoints", []))
+                continue
+            key = str(command_message.get("key", ""))
+        else:
+            key = str(command_message)
 
         if (
                 motion_owner != MotionOwner.MANUAL
                 and not safety_sensor_enabled
+                and motion_owner != MotionOwner.AUTO_PLAN
         ):
             force_manual_control()
 
         if key in WEATHER_KEY_PRESETS:
             await asyncio.to_thread(apply_weather_key, key)
             continue
+
+        if key in {"w", "a", "s", "d", "f", "v", "q", "e", "k", "h", "l"} and auto_plan_active:
+            stop_auto_plan("manual override")
+            set_motion_owner(MotionOwner.MANUAL)
 
         if key in {"w", "a", "s", "d", "f", "v", "q", "e"} and motion_owner != MotionOwner.MANUAL:
             print("[CONTROL] Obstacle stop active - hover until path is clear", flush=True)

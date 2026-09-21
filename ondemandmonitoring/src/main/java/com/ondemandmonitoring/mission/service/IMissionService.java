@@ -6,6 +6,8 @@ import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 
+import java.util.List;
+
 /**
  * Application service interface for mission lifecycle and assignment orchestration (Flow 3).
  * Returns DTOs (MissionResponse) to decouple domain entities from presentation/controller layers.
@@ -15,6 +17,11 @@ public interface IMissionService {
     MissionResponse getByIdResponse(String missionId);
 
     MissionResponse getByCodeResponse(String missionCode);
+
+    List<MissionResponse> getByOperatorId(String operatorId);
+    
+    List<MissionResponse> getPendingAssignmentMissions();
+
     MissionPlanResponse getMissionPlan(String missionId);
     MissionResponse createMissionForOrder(String orderId);
     MissionResponse assignDrone(String missionId, String droneId);

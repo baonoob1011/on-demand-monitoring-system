@@ -29,6 +29,8 @@ public interface MissionRepository extends JpaRepository<Mission, String> {
             """)
     List<Mission> findByOperatorIdAndStatusIn(@Param("operatorId") String operatorId, @Param("statuses") List<MissionStatus> statuses);
 
+    List<Mission> findByStatusIn(List<MissionStatus> statuses);
+
     /**
      * Find missions assigned to a drone whose scheduled window overlaps [startAt, endAt].
      * Used to validate drone replacement availability / schedule conflict.

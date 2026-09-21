@@ -24,6 +24,9 @@ public class MissionDemoDataInitializer {
     static final String ORDER_ID = "ORD-78234";
     static final String MISSION_ID = "MSN-2024-0891";
     static final String MISSION_PLAN_ID = "FP-2024-0891-A";
+    static final String ASSIGNMENT_TEST_DRONE_ID = "30000000-0000-0000-0000-000000000006";
+    static final String ASSIGNMENT_TEST_ORDER_ID = "ORD-78235";
+    static final String ASSIGNMENT_TEST_MISSION_ID = "MSN-2024-0902";
 
     JdbcTemplate jdbcTemplate;
 
@@ -34,8 +37,11 @@ public class MissionDemoDataInitializer {
             seedService();
             seedPreferredTime();
             seedDrone();
+            seedAssignmentTestDrone();
             seedOrder();
+            seedAssignmentTestOrder();
             seedMission();
+            seedAssignmentTestMission();
             seedAssignments();
             seedPlan();
             seedWaypoints();
@@ -147,6 +153,97 @@ public class MissionDemoDataInitializer {
                 """, ORDER_ID, CUSTOMER_ID, SERVICE_ID, Date.valueOf("2026-09-19"));
     }
 
+    private void seedAssignmentTestDrone() {
+        jdbcTemplate.update("""
+                INSERT INTO drones (
+                    id, drone_code, drone_name, serial_number, model_id, payload_id,
+                    status, last_seen_at, created_at, updated_at, version
+                )
+                VALUES (
+                    ?, 'DRN-0048', 'Eagle-48', 'SIM-X500-DRN-0048',
+                    (SELECT id FROM drone_models WHERE model_code = 'X500-SITL'),
+                    ?, 'AVAILABLE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0
+                )
+                ON CONFLICT (drone_code) DO UPDATE SET
+                    drone_name = EXCLUDED.drone_name,
+                    serial_number = EXCLUDED.serial_number,
+                    model_id = EXCLUDED.model_id,
+                    payload_id = EXCLUDED.payload_id,
+                    status = EXCLUDED.status,
+                    last_seen_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                """, ASSIGNMENT_TEST_DRONE_ID, DRONE_PAYLOAD_ID);
+    }
+
+    private void seedAssignmentTestOrder() {
+        jdbcTemplate.update("""
+                INSERT INTO orders (
+                    id, user_id, title, purpose, service_id, description, address, point,
+                    preferred_date, preferred_time_id, media_type, duration_of_video,
+                    number_of_photo, order_status, created_at, updated_at, version
+                )
+                VALUES (
+                    ?, CAST(? AS uuid), 'Planner Generation Test - Compact Map',
+                    'Assignment flow test for auto-generated mission planning',
+                    ?, 'Assign this mission to a simulation drone and operator, then accept it to generate a fresh A* energy-aware plan.',
+                    'Forest Monitoring Compact Simulation Area - Test Target',
+                    ST_SetSRID(ST_MakePoint(-178.0, 190.0), 0),
+                    ?, (SELECT id FROM preferred_times WHERE code = 'MORNING'), 'VIDEO', 30, 12, 'IN_PROGRESS',
+                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0
+                )
+                ON CONFLICT (id) DO UPDATE SET
+                    title = EXCLUDED.title,
+                    purpose = EXCLUDED.purpose,
+                    service_id = EXCLUDED.service_id,
+                    description = EXCLUDED.description,
+                    address = EXCLUDED.address,
+                    point = EXCLUDED.point,
+                    preferred_date = EXCLUDED.preferred_date,
+                    preferred_time_id = EXCLUDED.preferred_time_id,
+                    media_type = EXCLUDED.media_type,
+                    duration_of_video = EXCLUDED.duration_of_video,
+                    number_of_photo = EXCLUDED.number_of_photo,
+                    order_status = EXCLUDED.order_status,
+                    updated_at = CURRENT_TIMESTAMP
+                """, ASSIGNMENT_TEST_ORDER_ID, CUSTOMER_ID, SERVICE_ID, Date.valueOf("2026-09-21"));
+    }
+
+    private void seedAssignmentTestMission() {
+        jdbcTemplate.update("""
+                INSERT INTO missions (
+                    id, mission_code, status, order_id, scheduled_start_at, started_at,
+                    description, preflight_retry_count, preflight_passed, preflight_checked_at,
+                    created_at, updated_at, version
+                )
+                VALUES (
+                    ?, ?, 'RESOURCE_ASSIGNING', ?, CURRENT_TIMESTAMP, NULL,
+                    'Seed mission for staff assignment and fresh planner generation testing.',
+                    0, false, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0
+                )
+                ON CONFLICT (id) DO UPDATE SET
+                    mission_code = EXCLUDED.mission_code,
+                    status = EXCLUDED.status,
+                    order_id = EXCLUDED.order_id,
+                    scheduled_start_at = EXCLUDED.scheduled_start_at,
+                    started_at = EXCLUDED.started_at,
+                    description = EXCLUDED.description,
+                    preflight_retry_count = EXCLUDED.preflight_retry_count,
+                    preflight_passed = EXCLUDED.preflight_passed,
+                    preflight_checked_at = EXCLUDED.preflight_checked_at,
+                    updated_at = CURRENT_TIMESTAMP
+                """, ASSIGNMENT_TEST_MISSION_ID, ASSIGNMENT_TEST_MISSION_ID, ASSIGNMENT_TEST_ORDER_ID);
+
+        jdbcTemplate.update("""
+                DELETE FROM plan_waypoints
+                WHERE mission_plan_id IN (
+                    SELECT id FROM mission_plans WHERE mission_id = ?
+                )
+                """, ASSIGNMENT_TEST_MISSION_ID);
+        jdbcTemplate.update("DELETE FROM mission_plans WHERE mission_id = ?", ASSIGNMENT_TEST_MISSION_ID);
+        jdbcTemplate.update("DELETE FROM mission_operator_assignments WHERE mission_id = ?", ASSIGNMENT_TEST_MISSION_ID);
+        jdbcTemplate.update("DELETE FROM mission_drone_assignments WHERE mission_id = ?", ASSIGNMENT_TEST_MISSION_ID);
+    }
+
     private void seedMission() {
         jdbcTemplate.update("""
                 INSERT INTO missions (
@@ -247,13 +344,17 @@ public class MissionDemoDataInitializer {
                 WHERE mission_id = ?
                 """, String.class, MISSION_ID);
 
+        jdbcTemplate.update("""
+                DELETE FROM plan_waypoints
+                WHERE mission_plan_id = ?
+                """, missionPlanId);
+
         Object[][] waypoints = {
-                {"WP-2024-0891-00", 0, 0.0, 0.0, 12.0, 4.0, "START"},
+                {"WP-2024-0891-00", 0, 0.0, -280.0, 12.0, 4.0, "START"},
                 {"WP-2024-0891-01", 1, -42.0, 76.0, 35.0, 5.5, "CRUISE"},
                 {"WP-2024-0891-02", 2, -92.0, 132.0, 48.0, 5.5, "TERRAIN_CLEARANCE"},
                 {"WP-2024-0891-03", 3, -142.0, 168.0, 55.0, 4.5, "TARGET_APPROACH"},
-                {"WP-2024-0891-04", 4, -178.0, 190.0, 60.0, 3.5, "TARGET"},
-                {"WP-2024-0891-05", 5, -54.0, 42.0, 30.0, 5.5, "RETURN"}
+                {"WP-2024-0891-04", 4, -178.0, 190.0, 60.0, 3.5, "TARGET"}
         };
 
         for (Object[] waypoint : waypoints) {

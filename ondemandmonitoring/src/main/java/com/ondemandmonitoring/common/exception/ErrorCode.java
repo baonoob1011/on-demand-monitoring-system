@@ -25,6 +25,7 @@ public enum ErrorCode {
     INVALID_CREDENTIALS("Email hoặc mật khẩu không đúng", HttpStatus.UNAUTHORIZED),
     USER_NOT_CONFIRMED("Tài khoản chưa được xác thực email", HttpStatus.FORBIDDEN),
     ACCOUNT_DISABLED("Tài khoản đã bị vô hiệu hóa", HttpStatus.FORBIDDEN),
+    SELF_DEACTIVATION_NOT_ALLOWED("Không thể vô hiệu hóa tài khoản của chính bạn", HttpStatus.CONFLICT),
     OTP_INVALID("Mã OTP không hợp lệ", HttpStatus.BAD_REQUEST),
     OTP_EXPIRED("Mã OTP đã hết hạn", HttpStatus.BAD_REQUEST),
     USER_ALREADY_CONFIRMED("Tài khoản đã được xác thực", HttpStatus.CONFLICT),

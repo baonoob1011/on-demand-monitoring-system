@@ -130,4 +130,13 @@ public class OrderService implements IOrderService {
                             point.getX(), point.getY()));
         }
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderCreateResponse> getPendingOrders() {
+        return orderRepository.findByOrderStatusOrderByCreatedAtAsc(OrderStatus.PENDING)
+                .stream()
+                .map(orderMapper::toResponse)
+                .toList();
+    }
 }

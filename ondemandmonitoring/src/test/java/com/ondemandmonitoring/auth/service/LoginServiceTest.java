@@ -106,6 +106,7 @@ class LoginServiceTest {
     @Test
     void refreshUsesTokenAndCognitoUsernameFromCookie() {
         HttpServletRequest request = mock(HttpServletRequest.class);
+        when(users.findByCognitoUsername("uuid-user")).thenReturn(activeUser());
         when(cookies.read(request)).thenReturn(Optional.of(
                 new RefreshTokenCookieService.RefreshToken("refresh", "uuid-user")));
         when(identityProvider.refresh("refresh", "uuid-user"))
@@ -115,6 +116,37 @@ class LoginServiceTest {
 
         assertEquals("new-access", result.getAccessToken());
         verify(identityProvider).refresh("refresh", "uuid-user");
+    }
+
+    @Test
+    void disabledUserCannotRefreshToken() {
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        User user = activeUser();
+        user.setIsActive(false);
+        when(cookies.read(request)).thenReturn(Optional.of(
+                new RefreshTokenCookieService.RefreshToken("refresh", "uuid-user")));
+        when(users.findByCognitoUsername("uuid-user")).thenReturn(user);
+
+        ApiException exception = assertThrows(ApiException.class,
+                () -> service.refresh(request));
+
+        assertEquals(ErrorCode.ACCOUNT_DISABLED, exception.getErrorCode());
+        verify(identityProvider, never()).refresh(anyString(), anyString());
+    }
+
+    @Test
+    void refreshWithUnknownIdentity_returnsInvalidRefreshToken() {
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        when(cookies.read(request)).thenReturn(Optional.of(
+                new RefreshTokenCookieService.RefreshToken("refresh", "missing-user")));
+        when(users.findByCognitoUsername("missing-user"))
+                .thenThrow(new ApiException(ErrorCode.USER_NOT_FOUND));
+
+        ApiException exception = assertThrows(ApiException.class,
+                () -> service.refresh(request));
+
+        assertEquals(ErrorCode.REFRESH_TOKEN_INVALID, exception.getErrorCode());
+        verify(identityProvider, never()).refresh(anyString(), anyString());
     }
 
     @Test

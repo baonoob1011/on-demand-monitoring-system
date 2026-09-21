@@ -42,4 +42,10 @@ public class OrderController {
         orderService.approveOrder(orderId);
         return ResponseEntity.ok(ApiResponse.ok("Order approved and mission created successfully", null));
     }
+
+    @Operation(summary = "Get pending orders", description = "Manager views pending orders")
+    @org.springframework.web.bind.annotation.GetMapping("/pending")
+    public ResponseEntity<ApiResponse<java.util.List<OrderCreateResponse>>> getPendingOrders() {
+        return ResponseEntity.ok(ApiResponse.ok("Pending orders retrieved", orderService.getPendingOrders()));
+    }
 }

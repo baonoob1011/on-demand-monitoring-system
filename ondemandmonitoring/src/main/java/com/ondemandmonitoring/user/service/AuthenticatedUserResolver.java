@@ -32,9 +32,7 @@ public class AuthenticatedUserResolver {
         User user = authentication.getPrincipal() instanceof Jwt jwt
                 ? resolveJwtUser(jwt)
                 : resolveByAuthenticationName(authentication.getName());
-        if (!Boolean.TRUE.equals(user.getIsActive())) {
-            throw new ApiException(ErrorCode.ACCOUNT_DISABLED);
-        }
+        ensureActive(user);
         return user;
     }
 
@@ -81,5 +79,11 @@ public class AuthenticatedUserResolver {
     private ApiException unresolvedIdentity() {
         return new ApiException(
                 ErrorCode.USER_NOT_FOUND, "Authenticated user identity could not be resolved");
+    }
+
+    private void ensureActive(User user) {
+        if (!Boolean.TRUE.equals(user.getIsActive())) {
+            throw new ApiException(ErrorCode.ACCOUNT_DISABLED);
+        }
     }
 }

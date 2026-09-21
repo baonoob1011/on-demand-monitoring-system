@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 
 /**
  * REST entry point for all Flow 3 (Drone Operator) mission lifecycle use cases.
@@ -46,7 +47,18 @@ public class MissionController {
     // Query
     // ------------------------------------------------------------------
 
-    /** GET /api/missions/{id} – retrieve mission details */
+    /**
+     * GET /api/missions?operatorId={id}
+     * List all missions assigned to a drone operator, sorted by scheduledStartAt desc.
+     */
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<MissionResponse>>> listByOperator(
+            @RequestParam String operatorId) {
+        List<MissionResponse> missions = missionService.getByOperatorId(operatorId);
+        return ResponseEntity.ok(ApiResponse.ok(missions));
+    }
+
+    /** GET /api/missions/code/{missionCode} – retrieve mission details by code */
     @GetMapping("/code/{missionCode}")
     public ResponseEntity<ApiResponse<MissionResponse>> getByCode(@PathVariable String missionCode) {
         MissionResponse response = missionService.getByCodeResponse(missionCode);
@@ -68,6 +80,11 @@ public class MissionController {
     }
 
     // ------------------------------------------------------------------
+@GetMapping("/pending-assignment")
+    public ResponseEntity<ApiResponse<List<MissionResponse>>> getPendingAssignment() {
+        return ResponseEntity.ok(ApiResponse.ok(missionService.getPendingAssignmentMissions()));
+    }
+
     // F2 – Manager Assignment (Flow 2)
     // ------------------------------------------------------------------
 
