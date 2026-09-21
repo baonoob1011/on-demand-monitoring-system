@@ -31,7 +31,8 @@ public class OrderController {
     @Operation(summary = "Create a new order", description = "Creates a new monitoring order after validating customer login, service existence, preferred time existence, media attributes, and location point inside zone polygon")
     @PreAuthorize("hasRole('CUSTOMER')")
     @PostMapping
-    public ResponseEntity<ApiResponse<OrderCreateResponse>> createOrder(@Valid @RequestBody OrderCreateRequest request) {
+    public ResponseEntity<ApiResponse<OrderCreateResponse>> createOrder(
+            @Valid @RequestBody OrderCreateRequest request) {
         OrderCreateResponse response = orderService.createOrder(request);
         return ResponseEntity
                 .status(HttpStatus.CREATED)

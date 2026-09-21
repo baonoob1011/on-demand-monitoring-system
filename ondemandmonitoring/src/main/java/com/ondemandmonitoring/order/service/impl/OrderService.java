@@ -51,14 +51,14 @@ public class OrderService implements IOrderService {
     public void approveOrder(String orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
-        
+
         if (order.getOrderStatus() != OrderStatus.PENDING) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Only PENDING orders can be approved");
         }
-        
+
         order.setOrderStatus(OrderStatus.APPROVED);
         orderRepository.save(order);
-        
+
         // Flow 2: Create mission for the approved order
         missionService.createMissionForOrder(orderId);
     }
@@ -119,7 +119,8 @@ public class OrderService implements IOrderService {
                     String email = jwt.getClaimAsString("email");
                     if (email != null && !email.isBlank()) {
                         return userRepository.findByEmailIgnoreCase(email)
-                                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, "User not found for email: " + email));
+                                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND,
+                                        "User not found for email: " + email));
                     }
                     throw e;
                 }
@@ -131,10 +132,12 @@ public class OrderService implements IOrderService {
             try {
                 UUID userId = UUID.fromString(name);
                 return userRepository.findById(userId)
-                        .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, "User not found with id: " + userId));
+                        .orElseThrow(
+                                () -> new ApiException(ErrorCode.USER_NOT_FOUND, "User not found with id: " + userId));
             } catch (IllegalArgumentException ignored) {
                 return userRepository.findByEmailIgnoreCase(name)
-                        .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, "User not found with identifier: " + name));
+                        .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND,
+                                "User not found with identifier: " + name));
             }
         }
 
