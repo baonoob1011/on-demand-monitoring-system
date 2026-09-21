@@ -146,6 +146,12 @@ public class UserServiceImpl implements IUserService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public User findByCognitoUsername(String cognitoUsername) {
+        return userIdentityService.findUserByCognitoUsername(cognitoUsername);
+    }
+
+    @Override
     @Transactional
     public void linkLocalIdentity(User user, String cognitoUsername, String cognitoSub) {
         userIdentityService.link(user, IdentityProvider.LOCAL, cognitoUsername, cognitoSub);

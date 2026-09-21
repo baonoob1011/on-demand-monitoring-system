@@ -98,6 +98,7 @@ public class LoginService {
     public AuthResponse refresh(HttpServletRequest request) {
         RefreshTokenCookieService.RefreshToken cookie = refreshTokenCookieService.read(request)
                 .orElseThrow(() -> new ApiException(ErrorCode.REFRESH_TOKEN_INVALID));
+        ensureActive(resolveRefreshUser(cookie.username()));
         try {
             AuthenticationTokens tokens = identityProvider.refresh(cookie.token(), cookie.username());
             return AuthResponse.builder()
@@ -128,11 +129,26 @@ public class LoginService {
     }
 
     private void ensureCanLogin(User user) {
+        ensureActive(user);
+        if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+            throw new ApiException(ErrorCode.USER_NOT_CONFIRMED);
+        }
+    }
+
+    private void ensureActive(User user) {
         if (!Boolean.TRUE.equals(user.getIsActive())) {
             throw new ApiException(ErrorCode.ACCOUNT_DISABLED);
         }
-        if (!Boolean.TRUE.equals(user.getEmailVerified())) {
-            throw new ApiException(ErrorCode.USER_NOT_CONFIRMED);
+    }
+
+    private User resolveRefreshUser(String cognitoUsername) {
+        try {
+            return userService.findByCognitoUsername(cognitoUsername);
+        } catch (ApiException exception) {
+            if (exception.getErrorCode() == ErrorCode.USER_NOT_FOUND) {
+                throw new ApiException(ErrorCode.REFRESH_TOKEN_INVALID);
+            }
+            throw exception;
         }
     }
 

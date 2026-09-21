@@ -35,6 +35,8 @@ public interface IUserService {
 
     User findByCognitoSub(String cognitoSub);
 
+    User findByCognitoUsername(String cognitoUsername);
+
     void linkLocalIdentity(User user, String cognitoUsername, String cognitoSub);
 
 }

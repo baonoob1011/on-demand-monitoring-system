@@ -29,11 +29,11 @@ public class AuthenticatedUserResolver {
             throw new ApiException(ErrorCode.UNAUTHORIZED, "User authentication is required");
         }
 
-        if (authentication.getPrincipal() instanceof Jwt jwt) {
-            return resolveJwtUser(jwt);
-        }
-
-        return resolveByAuthenticationName(authentication.getName());
+        User user = authentication.getPrincipal() instanceof Jwt jwt
+                ? resolveJwtUser(jwt)
+                : resolveByAuthenticationName(authentication.getName());
+        ensureActive(user);
+        return user;
     }
 
     private User resolveJwtUser(Jwt jwt) {
@@ -79,5 +79,11 @@ public class AuthenticatedUserResolver {
     private ApiException unresolvedIdentity() {
         return new ApiException(
                 ErrorCode.USER_NOT_FOUND, "Authenticated user identity could not be resolved");
+    }
+
+    private void ensureActive(User user) {
+        if (!Boolean.TRUE.equals(user.getIsActive())) {
+            throw new ApiException(ErrorCode.ACCOUNT_DISABLED);
+        }
     }
 }
