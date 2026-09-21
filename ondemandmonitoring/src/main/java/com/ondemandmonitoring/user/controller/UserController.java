@@ -3,7 +3,7 @@ package com.ondemandmonitoring.user.controller;
 import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.user.dto.request.UserProfileUpdateRequest;
 import com.ondemandmonitoring.user.dto.response.UserProfileResponse;
-import com.ondemandmonitoring.user.service.UserProfileService;
+import com.ondemandmonitoring.user.service.IUserProfileService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class UserController {
 
-    private final UserProfileService userProfileService;
+    private final IUserProfileService userProfileService;
 
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<UserProfileResponse>> getCurrentProfile() {

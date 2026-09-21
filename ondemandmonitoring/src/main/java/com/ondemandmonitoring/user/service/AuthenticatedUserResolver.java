@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthenticatedUserResolver {
 
     private final UserRepository userRepository;
-    private final UserIdentityService userIdentityService;
+    private final IUserIdentityService userIdentityService;
 
     @Transactional(readOnly = true)
     public User getCurrentUser() {

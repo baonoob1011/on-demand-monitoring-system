@@ -2,17 +2,13 @@ package com.ondemandmonitoring.auth.mapper;
 
 import com.ondemandmonitoring.auth.dto.response.AuthenticatedUserResponse;
 import com.ondemandmonitoring.user.domain.User;
-import org.springframework.stereotype.Component;
+import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
+import org.mapstruct.MappingConstants;
 
-@Component
-public class AuthenticatedUserMapper {
+@Mapper(componentModel = MappingConstants.ComponentModel.SPRING)
+public interface AuthenticatedUserMapper {
 
-    public AuthenticatedUserResponse toResponse(User user) {
-        return AuthenticatedUserResponse.builder()
-                .id(user.getId())
-                .fullName(user.getFullName())
-                .email(user.getEmail())
-                .role(user.getRole().getCode())
-                .build();
-    }
+    @Mapping(source = "role.code", target = "role")
+    AuthenticatedUserResponse toResponse(User user);
 }

@@ -34,7 +34,7 @@ class UserServiceImplTest {
     private RoleService roleService;
 
     @Mock
-    private UserIdentityService userIdentityService;
+    private IUserIdentityService userIdentityService;
 
     @Mock
     private CustomerProfileRepository customerProfileRepository;

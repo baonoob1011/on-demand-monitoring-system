@@ -16,6 +16,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mapstruct.factory.Mappers;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -34,7 +35,8 @@ class LoginServiceTest {
         users = mock(IUserService.class);
         identityProvider = mock(IdentityProviderPort.class);
         cookies = mock(RefreshTokenCookieService.class);
-        service = new LoginService(users, identityProvider, cookies, new AuthenticatedUserMapper());
+        service = new LoginService(users, identityProvider, cookies,
+                Mappers.getMapper(AuthenticatedUserMapper.class));
     }
 
     @Test

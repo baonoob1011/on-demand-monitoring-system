@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.user.service;
+package com.ondemandmonitoring.user.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
@@ -6,28 +6,33 @@ import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.user.domain.CustomerProfile;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.dto.request.UserProfileUpdateRequest;
-import com.ondemandmonitoring.user.dto.response.CustomerProfileResponse;
 import com.ondemandmonitoring.user.dto.response.UserProfileResponse;
+import com.ondemandmonitoring.user.mapper.UserProfileMapper;
 import com.ondemandmonitoring.user.repository.CustomerProfileRepository;
 import com.ondemandmonitoring.user.repository.UserRepository;
+import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
+import com.ondemandmonitoring.user.service.IUserProfileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-public class UserProfileService {
+public class UserProfileServiceImpl implements IUserProfileService {
 
     private final AuthenticatedUserResolver authenticatedUserResolver;
     private final CustomerProfileRepository customerProfileRepository;
     private final UserRepository userRepository;
+    private final UserProfileMapper userProfileMapper;
 
+    @Override
     @Transactional(readOnly = true)
     public UserProfileResponse getCurrentProfile() {
         User user = authenticatedUserResolver.getCurrentUser();
-        return toResponse(user, findCustomerProfile(user));
+        return userProfileMapper.toResponse(user, findCustomerProfile(user));
     }
 
+    @Override
     @Transactional
     public UserProfileResponse updateCurrentProfile(UserProfileUpdateRequest request) {
         validateUpdateRequest(request);
@@ -50,7 +55,7 @@ public class UserProfileService {
             customerProfileRepository.save(customerProfile);
         }
 
-        return toResponse(user, customerProfile);
+        return userProfileMapper.toResponse(user, customerProfile);
     }
 
     private void validateUpdateRequest(UserProfileUpdateRequest request) {
@@ -68,9 +73,7 @@ public class UserProfileService {
                 || request.getCompanyName() != null;
     }
 
-    private void applyCustomerUpdates(
-            CustomerProfile customerProfile,
-            UserProfileUpdateRequest request) {
+    private void applyCustomerUpdates(CustomerProfile customerProfile, UserProfileUpdateRequest request) {
         if (request.getPhoneNumber() != null) {
             customerProfile.setPhoneNumber(trimToNull(request.getPhoneNumber()));
         }
@@ -95,27 +98,5 @@ public class UserProfileService {
         return customerProfileRepository.findById(user.getId())
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.RESOURCE_NOT_FOUND, "Customer profile not found"));
-    }
-
-    private UserProfileResponse toResponse(User user, CustomerProfile customerProfile) {
-        return UserProfileResponse.builder()
-                .id(user.getId())
-                .fullName(user.getFullName())
-                .email(user.getEmail())
-                .role(user.getRole().getCode())
-                .customerProfile(toCustomerResponse(customerProfile))
-                .build();
-    }
-
-    private CustomerProfileResponse toCustomerResponse(CustomerProfile customerProfile) {
-        if (customerProfile == null) {
-            return null;
-        }
-
-        return CustomerProfileResponse.builder()
-                .phoneNumber(customerProfile.getPhoneNumber())
-                .address(customerProfile.getAddress())
-                .companyName(customerProfile.getCompanyName())
-                .build();
     }
 }

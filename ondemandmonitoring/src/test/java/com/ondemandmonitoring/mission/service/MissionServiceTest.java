@@ -21,6 +21,8 @@ import com.ondemandmonitoring.mission.mapper.MissionMapper;
 import com.ondemandmonitoring.drone.mapper.PreflightCheckMapper;
 import com.ondemandmonitoring.mission.repository.FlightTokenRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
+import com.ondemandmonitoring.mission.service.impl.DeviceConnectionService;
+import com.ondemandmonitoring.mission.service.impl.FlightTokenService;
 import com.ondemandmonitoring.mission.service.impl.MissionService;
 import com.ondemandmonitoring.planning.service.MissionPlanningService;
 
@@ -61,6 +63,9 @@ class MissionServiceTest {
     MaintenanceTicketRepository maintenanceTicketRepository;
     com.ondemandmonitoring.order.repository.OrderRepository orderRepository;
 
+    DeviceConnectionService deviceConnectionService;
+    FlightTokenService flightTokenService;
+
     MissionService missionService;
 
     @BeforeEach
@@ -82,6 +87,20 @@ class MissionServiceTest {
         maintenanceTicketRepository          = mock(MaintenanceTicketRepository.class);
         orderRepository                      = mock(com.ondemandmonitoring.order.repository.OrderRepository.class);
 
+        deviceConnectionService = new DeviceConnectionService(
+                missionRepository,
+                gcsSessionRepository,
+                missionDroneAssignmentRepository,
+                missionOperatorAssignmentRepository,
+                droneRepository,
+                missionMapper
+        );
+
+        flightTokenService = new FlightTokenService(
+                flightTokenRepository,
+                missionOperatorAssignmentRepository
+        );
+
         missionService = new MissionService(
                 missionRepository,
                 droneRepository,
@@ -98,7 +117,9 @@ class MissionServiceTest {
                 controlHandoverRepository,
                 postflightCheckRepository,
                 maintenanceTicketRepository,
-                orderRepository
+                orderRepository,
+                deviceConnectionService,
+                flightTokenService
         );
 
         when(missionMapper.toResponse(any())).thenAnswer(inv -> {
@@ -344,6 +365,58 @@ class MissionServiceTest {
             assertThatThrownBy(() -> missionService.connectGcs("m-gcs3"))
                     .isInstanceOf(ApiException.class)
                     .hasMessageContaining("SCHEDULED state");
+        }
+
+        @Test
+        @DisplayName("3b. disconnectGcs updates active GCS session status to DISCONNECTED")
+        void disconnectGcs_success_updatesSessionToDisconnected() {
+            Mission mission = buildMission("m-disc", MissionStatus.CONNECTED);
+            com.ondemandmonitoring.mission.domain.GcsSession session = new com.ondemandmonitoring.mission.domain.GcsSession();
+            session.setConnectionStatus("CONNECTED");
+            session.setTelemetryActive(true);
+
+            when(missionRepository.findById("m-disc")).thenReturn(Optional.of(mission));
+            when(gcsSessionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc("m-disc", "CONNECTED"))
+                    .thenReturn(Optional.of(session));
+            when(gcsSessionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            MissionResponse response = missionService.disconnectGcs("m-disc", "OPERATOR_EXIT");
+
+            assertThat(response).isNotNull();
+            assertThat(session.getConnectionStatus()).isEqualTo("DISCONNECTED");
+            assertThat(session.getTelemetryActive()).isFalse();
+            assertThat(session.getDisconnectReason()).isEqualTo("OPERATOR_EXIT");
+        }
+
+        @Test
+        @DisplayName("3c. handleGcsSessionLost updates GCS session status to LOST and triggers RTL (RETURNING)")
+        void handleGcsSessionLost_updatesSessionToLost_andTriggersRTL() {
+            Mission mission = buildMission("m-lost", MissionStatus.IN_FLIGHT);
+            Drone drone = buildDrone("DRONE-01", DroneStatus.ACTIVE_MISSION);
+            com.ondemandmonitoring.mission.domain.MissionDroneAssignment mda = new com.ondemandmonitoring.mission.domain.MissionDroneAssignment();
+            mda.setDrone(drone);
+            when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-lost")).thenReturn(Optional.of(mda));
+
+            com.ondemandmonitoring.mission.domain.GcsSession session = new com.ondemandmonitoring.mission.domain.GcsSession();
+            session.setConnectionStatus("CONNECTED");
+            session.setTelemetryActive(true);
+
+            when(missionRepository.findById("m-lost")).thenReturn(Optional.of(mission));
+            when(gcsSessionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc("m-lost", "CONNECTED"))
+                    .thenReturn(Optional.of(session));
+            when(gcsSessionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            MissionResponse response = missionService.handleGcsSessionLost("m-lost", "SIGNAL_LOSS");
+
+            assertThat(response).isNotNull();
+            assertThat(session.getConnectionStatus()).isEqualTo("LOST");
+            assertThat(session.getTelemetryActive()).isFalse();
+            assertThat(session.getDisconnectReason()).isEqualTo("SIGNAL_LOSS");
+            // AC: Trigger RTL signal when status=LOST
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.RETURNING);
+            assertThat(drone.getStatus()).isEqualTo(DroneStatus.RETURNING);
         }
 
         @Test

@@ -80,7 +80,7 @@ public class MissionController {
     }
 
     // ------------------------------------------------------------------
-@GetMapping("/pending-assignment")
+    @GetMapping("/pending-assignment")
     public ResponseEntity<ApiResponse<List<MissionResponse>>> getPendingAssignment() {
         return ResponseEntity.ok(ApiResponse.ok(missionService.getPendingAssignmentMissions()));
     }
@@ -143,10 +143,6 @@ public class MissionController {
         return ResponseEntity.ok(ApiResponse.ok("Mission đã bị từ chối, hệ thống sẽ phân công lại", response));
     }
 
-    // ------------------------------------------------------------------
-    // F3.2 – Pre-flight check & drone replacement
-    // ------------------------------------------------------------------
-
     /**
      * POST /api/missions/{id}/connect
      * Confirm telemetry link with GCS app (powerOnAndPairWithGCSApp).
@@ -159,9 +155,29 @@ public class MissionController {
     }
 
     /**
-     * POST /api/missions/{id}/preflight-check?droneCode=DRONE-01
-     * Runs digital preflight checklist (Battery >= 80%, GPS >= 8 sats, Camera/Gimbal, Storage, Weather).
+     * POST /api/missions/{id}/disconnect
+     * Normal or explicit disconnection from GCS app.
      */
+    @PostMapping("/{id}/disconnect")
+    public ResponseEntity<ApiResponse<MissionResponse>> disconnectGcs(
+            @PathVariable String id,
+            @RequestParam(required = false, defaultValue = "NORMAL") String reason) {
+        MissionResponse response = missionService.disconnectGcs(id, reason);
+        return ResponseEntity.ok(ApiResponse.ok("GCS session disconnected (DISCONNECTED)", response));
+    }
+
+    /**
+     * POST /api/missions/{id}/gcs-lost
+     * Report GCS telemetry signal loss (LOST), triggering automatic Return-To-Launch (RTL).
+     */
+    @PostMapping("/{id}/gcs-lost")
+    public ResponseEntity<ApiResponse<MissionResponse>> reportGcsLost(
+            @PathVariable String id,
+            @RequestParam(required = false, defaultValue = "SIGNAL_LOSS") String reason) {
+        MissionResponse response = missionService.handleGcsSessionLost(id, reason);
+        return ResponseEntity.ok(ApiResponse.ok("GCS signal LOST – Return-To-Launch (RTL) triggered", response));
+    }
+
     @PostMapping("/{id}/preflight-check")
     public ResponseEntity<ApiResponse<PreflightCheckResponse>> runPreflightCheck(
             @PathVariable String id,

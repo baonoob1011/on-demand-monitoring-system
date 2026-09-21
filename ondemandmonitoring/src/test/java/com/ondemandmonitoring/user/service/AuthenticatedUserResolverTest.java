@@ -34,7 +34,7 @@ class AuthenticatedUserResolverTest {
     private UserRepository userRepository;
 
     @Mock
-    private UserIdentityService userIdentityService;
+    private IUserIdentityService userIdentityService;
 
     @InjectMocks
     private AuthenticatedUserResolver resolver;
