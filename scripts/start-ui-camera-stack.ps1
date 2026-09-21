@@ -250,20 +250,28 @@ $packagedWorldName = "forest_monitoring_compact"
 $downTopic = "/world/forest_monitoring_compact/model/x500_mono_cam_down_0/link/camera_link/sensor/camera_down/image"
 $frontTopic = "/world/forest_monitoring_compact/model/x500_mono_cam_down_0/link/camera_link/sensor/camera_front/image"
 
-if (-not (Test-Path $backendRoot)) { throw "Backend folder not found: $backendRoot" }
-if (-not (Test-Path $webRoot)) { throw "Frontend folder not found: $webRoot" }
+if (-not (Test-Path $backendRoot)) {
+    Write-Host "Backend folder not found, skipping backend startup: $backendRoot" -ForegroundColor Yellow
+    $SkipBackend = $true
+}
+if (-not (Test-Path $webRoot)) {
+    Write-Host "Frontend folder not found, skipping frontend startup: $webRoot" -ForegroundColor Yellow
+    $SkipFrontend = $true
+}
 $forest3DPath = Resolve-Forest3DPath $systemRoot
 Assert-CompactMapAssets $systemRoot $forest3DPath
 
-$backendEnvFile = Join-Path $backendRoot ".env"
-$droneEnvExample = Join-Path $systemRoot "drone\.env.example"
-Initialize-StackEnv $backendEnvFile $droneEnvExample
-Set-EnvValue $backendEnvFile "SIM_WORLD" $packagedWorld
-Set-EnvValue $backendEnvFile "FOREST3D_WEB_ONLY" "1"
-Set-EnvValue $backendEnvFile "GAZEBO_CAMERA_TOPIC" $downTopic
-Set-EnvValue $backendEnvFile "GAZEBO_CAMERA_DOWN_TOPIC" $downTopic
-Set-EnvValue $backendEnvFile "GAZEBO_CAMERA_FRONT_TOPIC" $frontTopic
-Set-EnvValue $backendEnvFile "CAMERA_DEFAULT_VIEW" "DOWN"
+if (-not $SkipBackend) {
+    $backendEnvFile = Join-Path $backendRoot ".env"
+    $droneEnvExample = Join-Path $systemRoot "drone\.env.example"
+    Initialize-StackEnv $backendEnvFile $droneEnvExample
+    Set-EnvValue $backendEnvFile "SIM_WORLD" $packagedWorld
+    Set-EnvValue $backendEnvFile "FOREST3D_WEB_ONLY" "1"
+    Set-EnvValue $backendEnvFile "GAZEBO_CAMERA_TOPIC" $downTopic
+    Set-EnvValue $backendEnvFile "GAZEBO_CAMERA_DOWN_TOPIC" $downTopic
+    Set-EnvValue $backendEnvFile "GAZEBO_CAMERA_FRONT_TOPIC" $frontTopic
+    Set-EnvValue $backendEnvFile "CAMERA_DEFAULT_VIEW" "DOWN"
+}
 
 Write-Host "========================================" -ForegroundColor Green
 Write-Host " OMSS UI Camera Stack" -ForegroundColor Green
@@ -278,23 +286,27 @@ Write-Host "Mode    : Web UI camera only, no separate Gazebo camera window"
 Ensure-WindowsBuildTools
 
 if (-not $SkipBuild) {
-    Invoke-Checked `
-        -Label "Building Backend API" `
-        -FilePath (Join-Path $backendRoot "mvnw.cmd") `
-        -Arguments @("-DskipTests", "package") `
-        -WorkingDirectory $backendRoot
+    if (-not $SkipBackend) {
+        Invoke-Checked `
+            -Label "Building Backend API" `
+            -FilePath (Join-Path $backendRoot "mvnw.cmd") `
+            -Arguments @("-DskipTests", "package") `
+            -WorkingDirectory $backendRoot
+    }
 
-    Invoke-Checked `
-        -Label "Installing Frontend packages" `
-        -FilePath "npm.cmd" `
-        -Arguments @("install") `
-        -WorkingDirectory $webRoot
+    if (-not $SkipFrontend) {
+        Invoke-Checked `
+            -Label "Installing Frontend packages" `
+            -FilePath "npm.cmd" `
+            -Arguments @("install") `
+            -WorkingDirectory $webRoot
 
-    Invoke-Checked `
-        -Label "Building Frontend UI" `
-        -FilePath "npm.cmd" `
-        -Arguments @("run", "build") `
-        -WorkingDirectory $webRoot
+        Invoke-Checked `
+            -Label "Building Frontend UI" `
+            -FilePath "npm.cmd" `
+            -Arguments @("run", "build") `
+            -WorkingDirectory $webRoot
+    }
 }
 
 if (-not $SkipBackend) {
@@ -342,7 +354,7 @@ Start-WslTab -Title "CTRL - Flight Control Stream" -Command $controlCommand
 Start-Sleep -Seconds 1
 Start-WslWindow -Title "WEATHER - Controls" -Command $weatherCommand
 
-if (-not $NoBrowser) {
+if ((-not $NoBrowser) -and (-not $SkipFrontend)) {
     Write-Step "Waiting for UI, then opening Mission Control"
     if (Wait-HttpOk "http://localhost:5173" 90) {
         Start-Process "http://localhost:5173/#portal/drone-operator"
