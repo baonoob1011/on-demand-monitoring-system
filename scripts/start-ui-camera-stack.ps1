@@ -184,6 +184,29 @@ function Invoke-Checked([string]$Label, [string]$FilePath, [string[]]$Arguments,
     }
 }
 
+function Update-Forest3DAssetsFromGit([string]$Root) {
+    $gitDir = Join-Path $Root ".git"
+    if (-not (Test-Path $gitDir)) { return }
+    if (-not (Get-Command git.exe -ErrorAction SilentlyContinue)) { return }
+
+    Write-Host "Forest3D compact assets are missing. Trying to download latest Git assets..." -ForegroundColor Yellow
+    Push-Location $Root
+    try {
+        & git.exe pull --ff-only
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "git pull did not complete. Continuing with local files." -ForegroundColor Yellow
+            return
+        }
+
+        & git.exe lfs version *> $null
+        if ($LASTEXITCODE -eq 0) {
+            & git.exe lfs pull
+        }
+    } finally {
+        Pop-Location
+    }
+}
+
 function Resolve-Forest3DPath([string]$Root) {
     $rootParent = Split-Path -Parent $Root
     $candidates = @(
@@ -194,6 +217,13 @@ function Resolve-Forest3DPath([string]$Root) {
         (Join-Path $rootParent "on-demand-monitoring-system\Forest3D")
     ) | Select-Object -Unique
 
+    foreach ($candidate in $candidates) {
+        if (Test-Path (Join-Path $candidate "models\compact_terrain\model.config")) {
+            return (Resolve-Path $candidate).Path
+        }
+    }
+
+    Update-Forest3DAssetsFromGit $Root
     foreach ($candidate in $candidates) {
         if (Test-Path (Join-Path $candidate "models\compact_terrain\model.config")) {
             return (Resolve-Path $candidate).Path
