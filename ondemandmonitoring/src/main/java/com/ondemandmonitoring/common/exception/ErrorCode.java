@@ -60,6 +60,14 @@ public enum ErrorCode {
     DELIVERABLE_TYPE_NOT_FOUND("Deliverable type not found", HttpStatus.NOT_FOUND),
     DELIVERABLE_TYPE_ALREADY_EXISTS("Deliverable type already exists", HttpStatus.CONFLICT),
     SERVICE_DELIVERABLE_ALREADY_EXISTS("Service deliverable link already exists", HttpStatus.CONFLICT);
+     *  Device Error Codes
+     */
+    DEVICE_TYPE_NOT_FOUND("Device type not found", HttpStatus.NOT_FOUND),
+    DEVICE_TYPE_CODE_EXISTS("Device type code already exists", HttpStatus.CONFLICT),
+    DEVICE_MODEL_NOT_FOUND("Device model not found", HttpStatus.NOT_FOUND),
+    DEVICE_MODEL_CODE_EXISTS("Device model code already exists", HttpStatus.CONFLICT),
+    DEVICE_NOT_FOUND("Device not found", HttpStatus.NOT_FOUND),
+    DEVICE_SERIAL_NUMBER_EXISTS("Device serial number already exists", HttpStatus.CONFLICT);
 
     String message;
     HttpStatus status;

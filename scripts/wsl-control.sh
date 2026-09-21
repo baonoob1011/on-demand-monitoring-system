@@ -6,7 +6,8 @@ sleep 35
 
 PROJECT_PATH="${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 REPO_CONTROLLER="$PROJECT_PATH/drone"
-ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
+ENV_FILE="$PROJECT_PATH/.env"
+LEGACY_ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
 DRONE_WORKDIR="${DRONE_WORKDIR:-$HOME/drone-controller}"
 DRONE_ENV="${DRONE_ENV:-$HOME/drone-env}"
 
@@ -20,6 +21,10 @@ cp "$REPO_CONTROLLER/thermal_camera_gateway.py" thermal_camera_gateway.py
 mkdir -p video
 cp "$REPO_CONTROLLER/video/__init__.py" video/__init__.py
 cp "$REPO_CONTROLLER/video/video_recorder.py" video/video_recorder.py
+
+if [ ! -f "$ENV_FILE" ] && [ -f "$LEGACY_ENV_FILE" ]; then
+    ENV_FILE="$LEGACY_ENV_FILE"
+fi
 
 if [ -f "$ENV_FILE" ]; then
     set -a
