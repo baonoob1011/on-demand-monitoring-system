@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.service.service;
+package com.ondemandmonitoring.service.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
@@ -7,6 +7,7 @@ import com.ondemandmonitoring.service.dto.request.DeliverableTypeRequest;
 import com.ondemandmonitoring.service.dto.response.DeliverableTypeResponse;
 import com.ondemandmonitoring.service.mapper.DeliverableTypeMapper;
 import com.ondemandmonitoring.service.repository.DeliverableTypeRepository;
+import com.ondemandmonitoring.service.service.IDeliverableTypeService;
 import java.util.List;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -17,11 +18,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-public class DeliverableTypeService {
+public class DeliverableTypeServiceImpl implements IDeliverableTypeService {
 
     DeliverableTypeRepository deliverableTypeRepository;
     DeliverableTypeMapper deliverableTypeMapper;
 
+    @Override
     @Transactional
     public DeliverableTypeResponse create(DeliverableTypeRequest request) {
         if (deliverableTypeRepository.existsByNameIgnoreCase(request.getName())) {
@@ -36,12 +38,14 @@ public class DeliverableTypeService {
         return deliverableTypeMapper.toResponse(saved);
     }
 
+    @Override
     @Transactional(readOnly = true)
     public DeliverableTypeResponse getById(String id) {
         DeliverableType entity = getEntityById(id);
         return deliverableTypeMapper.toResponse(entity);
     }
 
+    @Override
     @Transactional(readOnly = true)
     public List<DeliverableTypeResponse> getAll() {
         return deliverableTypeRepository.findAll().stream()
@@ -49,6 +53,7 @@ public class DeliverableTypeService {
                 .toList();
     }
 
+    @Override
     @Transactional(readOnly = true)
     public List<DeliverableTypeResponse> getAllActive() {
         return deliverableTypeRepository.findAllByIsActiveTrue().stream()
@@ -56,6 +61,7 @@ public class DeliverableTypeService {
                 .toList();
     }
 
+    @Override
     @Transactional
     public DeliverableTypeResponse update(String id, DeliverableTypeRequest request) {
         DeliverableType entity = getEntityById(id);
@@ -64,6 +70,7 @@ public class DeliverableTypeService {
         return deliverableTypeMapper.toResponse(saved);
     }
 
+    @Override
     @Transactional
     public void delete(String id) {
         DeliverableType entity = getEntityById(id);
@@ -71,6 +78,7 @@ public class DeliverableTypeService {
         deliverableTypeRepository.save(entity);
     }
 
+    @Override
     @Transactional(readOnly = true)
     public DeliverableType getEntityById(String id) {
         return deliverableTypeRepository.findById(id)

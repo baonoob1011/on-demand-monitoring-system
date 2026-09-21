@@ -3,7 +3,7 @@ package com.ondemandmonitoring.service.controller;
 import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.service.dto.request.ServiceDeliverableRequest;
 import com.ondemandmonitoring.service.dto.response.ServiceDeliverableResponse;
-import com.ondemandmonitoring.service.service.ServiceDeliverableService;
+import com.ondemandmonitoring.service.service.IServiceDeliverableService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class ServiceDeliverableController {
 
-    ServiceDeliverableService serviceDeliverableService;
+    IServiceDeliverableService serviceDeliverableService;
 
     @Operation(summary = "Create service-deliverable link",
             description = "Links a monitoring service with a deliverable type")

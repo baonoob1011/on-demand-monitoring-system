@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.service.service;
+package com.ondemandmonitoring.service.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
@@ -9,6 +9,9 @@ import com.ondemandmonitoring.service.dto.request.ServiceDeliverableRequest;
 import com.ondemandmonitoring.service.dto.response.ServiceDeliverableResponse;
 import com.ondemandmonitoring.service.mapper.ServiceDeliverableMapper;
 import com.ondemandmonitoring.service.repository.ServiceDeliverableRepository;
+import com.ondemandmonitoring.service.service.IDeliverableTypeService;
+import com.ondemandmonitoring.service.service.IServiceDeliverableService;
+import com.ondemandmonitoring.service.service.IServiceService;
 import java.util.List;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -18,13 +21,14 @@ import org.springframework.transaction.annotation.Transactional;
 @org.springframework.stereotype.Service
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-public class ServiceDeliverableService {
+public class ServiceDeliverableServiceImpl implements IServiceDeliverableService {
 
     ServiceDeliverableRepository serviceDeliverableRepository;
     ServiceDeliverableMapper serviceDeliverableMapper;
-    ServiceService serviceService;
-    DeliverableTypeService deliverableTypeService;
+    IServiceService serviceService;
+    IDeliverableTypeService deliverableTypeService;
 
+    @Override
     @Transactional
     public ServiceDeliverableResponse create(ServiceDeliverableRequest request) {
         // Validate existence of both referenced entities
@@ -46,6 +50,7 @@ public class ServiceDeliverableService {
         return serviceDeliverableMapper.toResponse(saved);
     }
 
+    @Override
     @Transactional(readOnly = true)
     public List<ServiceDeliverableResponse> getAll() {
         return serviceDeliverableRepository.findAll().stream()
@@ -53,6 +58,7 @@ public class ServiceDeliverableService {
                 .toList();
     }
 
+    @Override
     @Transactional(readOnly = true)
     public List<ServiceDeliverableResponse> getByServiceId(String serviceId) {
         return serviceDeliverableRepository.findAllByServiceId(serviceId).stream()
@@ -60,6 +66,7 @@ public class ServiceDeliverableService {
                 .toList();
     }
 
+    @Override
     @Transactional(readOnly = true)
     public List<ServiceDeliverableResponse> getByDeliverableTypeId(String deliverableTypeId) {
         return serviceDeliverableRepository.findAllByDeliverableTypeId(deliverableTypeId).stream()
@@ -67,6 +74,7 @@ public class ServiceDeliverableService {
                 .toList();
     }
 
+    @Override
     @Transactional
     public void delete(String id) {
         ServiceDeliverable entity = serviceDeliverableRepository.findById(id)

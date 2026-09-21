@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.service.service;
+package com.ondemandmonitoring.service.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
@@ -7,6 +7,7 @@ import com.ondemandmonitoring.service.dto.request.ServiceRequest;
 import com.ondemandmonitoring.service.dto.response.ServiceResponse;
 import com.ondemandmonitoring.service.mapper.ServiceMapper;
 import com.ondemandmonitoring.service.repository.ServiceRepository;
+import com.ondemandmonitoring.service.service.IServiceService;
 import java.util.List;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -16,11 +17,12 @@ import org.springframework.transaction.annotation.Transactional;
 @org.springframework.stereotype.Service
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-public class ServiceService {
+public class ServiceServiceImpl implements IServiceService {
 
     ServiceRepository serviceRepository;
     ServiceMapper serviceMapper;
 
+    @Override
     @Transactional
     public ServiceResponse create(ServiceRequest request) {
         if (serviceRepository.existsByNameIgnoreCase(request.getName())) {
@@ -35,12 +37,14 @@ public class ServiceService {
         return serviceMapper.toResponse(saved);
     }
 
+    @Override
     @Transactional(readOnly = true)
     public ServiceResponse getById(String id) {
         Service entity = getEntityById(id);
         return serviceMapper.toResponse(entity);
     }
 
+    @Override
     @Transactional(readOnly = true)
     public List<ServiceResponse> getAll() {
         return serviceRepository.findAll().stream()
@@ -48,6 +52,7 @@ public class ServiceService {
                 .toList();
     }
 
+    @Override
     @Transactional(readOnly = true)
     public List<ServiceResponse> getAllActive() {
         return serviceRepository.findAllByIsActiveTrue().stream()
@@ -55,6 +60,7 @@ public class ServiceService {
                 .toList();
     }
 
+    @Override
     @Transactional
     public ServiceResponse update(String id, ServiceRequest request) {
         Service entity = getEntityById(id);
@@ -63,6 +69,7 @@ public class ServiceService {
         return serviceMapper.toResponse(saved);
     }
 
+    @Override
     @Transactional
     public void delete(String id) {
         Service entity = getEntityById(id);
@@ -70,6 +77,7 @@ public class ServiceService {
         serviceRepository.save(entity);
     }
 
+    @Override
     @Transactional(readOnly = true)
     public Service getEntityById(String id) {
         return serviceRepository.findById(id)
