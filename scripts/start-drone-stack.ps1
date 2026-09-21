@@ -30,11 +30,50 @@ function Start-WslWindow([string]$Title, [string]$Command) {
     Start-Process cmd.exe -ArgumentList @("/k", $cmdLine) -WindowStyle Normal
 }
 
-function Assert-DronePackage([string]$Root, [string]$World) {
+function Write-Utf8NoBomLines([string]$Path, [string[]]$Lines) {
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllLines($Path, $Lines, $encoding)
+}
+
+function Initialize-StackEnv([string]$Root) {
+    $backendEnvFile = Join-Path $Root "ondemandmonitoring\.env"
+    if (Test-Path $backendEnvFile) { return }
+
+    $droneEnvExample = Join-Path $Root "drone\.env.example"
+    if (Test-Path $droneEnvExample) {
+        $lines = @(Get-Content -Path $droneEnvExample -ErrorAction Stop)
+        Write-Utf8NoBomLines $backendEnvFile $lines
+        return
+    }
+
+    New-Item -ItemType File -Path $backendEnvFile -Force | Out-Null
+}
+
+function Resolve-Forest3DPath([string]$Root) {
+    $rootParent = Split-Path -Parent $Root
+    $candidates = @(
+        (Join-Path $Root "Forest3D"),
+        (Join-Path $Root "drone\Forest3D"),
+        (Join-Path $Root "on-demand-monitoring-system\Forest3D"),
+        (Join-Path $rootParent "Forest3D"),
+        (Join-Path $rootParent "on-demand-monitoring-system\Forest3D")
+    ) | Select-Object -Unique
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path (Join-Path $candidate "models\compact_terrain\model.config")) {
+            return (Resolve-Path $candidate).Path
+        }
+    }
+
+    $checked = ($candidates | ForEach-Object { "  - $_" }) -join [Environment]::NewLine
+    throw "Cannot find Forest3D compact Gazebo assets. Make sure the package includes Forest3D\models\compact_terrain\model.config. Checked:$([Environment]::NewLine)$checked"
+}
+
+function Assert-DronePackage([string]$Forest3DPath, [string]$World) {
     if ($World -ne "compact") { return }
 
-    $worldFile = Join-Path $Root "Forest3D\worlds\forest_monitoring_compact.sdf"
-    $modelRoot = Join-Path $Root "Forest3D\models"
+    $worldFile = Join-Path $Forest3DPath "worlds\forest_monitoring_compact.sdf"
+    $modelRoot = Join-Path $Forest3DPath "models"
     $requiredModels = @(
         "compact_terrain",
         "compact_water",
@@ -62,17 +101,20 @@ function Assert-DronePackage([string]$Root, [string]$World) {
 
 $ubuntuDistro = "Ubuntu-24.04"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-Assert-DronePackage $repoRoot $SimWorld
+$forest3DPath = Resolve-Forest3DPath $repoRoot
+Assert-DronePackage $forest3DPath $SimWorld
+Initialize-StackEnv $repoRoot
 
 if (-not $SkipBootstrap) {
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "bootstrap-drone-stack.ps1") -UbuntuDistro $ubuntuDistro
 }
 
 $repoRootWsl = ConvertTo-WslPath $repoRoot
+$forest3DPathWsl = ConvertTo-WslPath $forest3DPath
 $scriptRoot = "$repoRootWsl/scripts"
 $simArg = $SimWorld
 $webOnly = if ($ShowGazeboGui) { "0" } else { "1" }
-$baseWslEnv = "PROJECT_PATH='$repoRootWsl' CONTROL_YAW_STEP_DEG='$YawStepDeg'"
+$baseWslEnv = "PROJECT_PATH='$repoRootWsl' FOREST3D_PATH='$forest3DPathWsl' CONTROL_YAW_STEP_DEG='$YawStepDeg'"
 $simCommand = "$baseWslEnv FOREST3D_WEB_ONLY=${webOnly} SIM_WORLD=${simArg} exec ${scriptRoot}/wsl-sim-pane.sh ${simArg}"
 
 wsl.exe -d $ubuntuDistro -- bash -lc "$baseWslEnv exec ${scriptRoot}/wsl-clean-drone-stack.sh" | Out-Null

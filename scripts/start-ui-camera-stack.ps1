@@ -54,6 +54,17 @@ function Set-EnvValue([string]$Path, [string]$Name, [string]$Value) {
     Write-Utf8NoBomLines $Path $nextLines
 }
 
+function Initialize-StackEnv([string]$BackendEnvFile, [string]$DroneEnvExample) {
+    if (Test-Path $BackendEnvFile) { return }
+    if (Test-Path $DroneEnvExample) {
+        $lines = @(Get-Content -Path $DroneEnvExample -ErrorAction Stop)
+        Write-Utf8NoBomLines $BackendEnvFile $lines
+        return
+    }
+
+    New-Item -ItemType File -Path $BackendEnvFile -Force | Out-Null
+}
+
 function Start-TerminalTab([string]$Title, [string]$Command, [string]$WorkingDirectory) {
     $escapedCommand = $Command.Replace('"', '\"')
     $escapedDirectory = $WorkingDirectory.Replace('"', '\"')
@@ -173,11 +184,31 @@ function Invoke-Checked([string]$Label, [string]$FilePath, [string[]]$Arguments,
     }
 }
 
-function Assert-CompactMapAssets([string]$Root) {
-    $worldFile = Join-Path $Root "Forest3D\worlds\forest_monitoring_compact.sdf"
+function Resolve-Forest3DPath([string]$Root) {
+    $rootParent = Split-Path -Parent $Root
+    $candidates = @(
+        (Join-Path $Root "Forest3D"),
+        (Join-Path $Root "drone\Forest3D"),
+        (Join-Path $Root "on-demand-monitoring-system\Forest3D"),
+        (Join-Path $rootParent "Forest3D"),
+        (Join-Path $rootParent "on-demand-monitoring-system\Forest3D")
+    ) | Select-Object -Unique
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path (Join-Path $candidate "models\compact_terrain\model.config")) {
+            return (Resolve-Path $candidate).Path
+        }
+    }
+
+    $checked = ($candidates | ForEach-Object { "  - $_" }) -join [Environment]::NewLine
+    throw "Cannot find Forest3D compact Gazebo assets. Make sure the package includes Forest3D\models\compact_terrain\model.config. Checked:$([Environment]::NewLine)$checked"
+}
+
+function Assert-CompactMapAssets([string]$Root, [string]$Forest3DPath) {
+    $worldFile = Join-Path $Forest3DPath "worlds\forest_monitoring_compact.sdf"
     $mapImage = Join-Path $Root "ondemandmonitoring\src\main\resources\static\simulation-viewer\simulation_map_top.png"
     $mapMeta = Join-Path $Root "ondemandmonitoring\src\main\resources\static\simulation-viewer\simulation-map.json"
-    $modelRoot = Join-Path $Root "Forest3D\models"
+    $modelRoot = Join-Path $Forest3DPath "models"
     $requiredModels = @(
         "compact_terrain",
         "compact_water",
@@ -221,9 +252,12 @@ $frontTopic = "/world/forest_monitoring_compact/model/x500_mono_cam_down_0/link/
 
 if (-not (Test-Path $backendRoot)) { throw "Backend folder not found: $backendRoot" }
 if (-not (Test-Path $webRoot)) { throw "Frontend folder not found: $webRoot" }
-Assert-CompactMapAssets $systemRoot
+$forest3DPath = Resolve-Forest3DPath $systemRoot
+Assert-CompactMapAssets $systemRoot $forest3DPath
 
 $backendEnvFile = Join-Path $backendRoot ".env"
+$droneEnvExample = Join-Path $systemRoot "drone\.env.example"
+Initialize-StackEnv $backendEnvFile $droneEnvExample
 Set-EnvValue $backendEnvFile "SIM_WORLD" $packagedWorld
 Set-EnvValue $backendEnvFile "FOREST3D_WEB_ONLY" "1"
 Set-EnvValue $backendEnvFile "GAZEBO_CAMERA_TOPIC" $downTopic
@@ -285,6 +319,7 @@ if (-not $SkipBootstrap) {
 }
 
 $systemRootWsl = ConvertTo-WslPath $systemRoot
+$forest3DPathWsl = ConvertTo-WslPath $forest3DPath
 $scriptRootWsl = "$systemRootWsl/scripts"
 
 if ($SkipDrone) {
@@ -293,12 +328,13 @@ if ($SkipDrone) {
 }
 
 Write-Step "Cleaning old PX4/Gazebo/MAVSDK processes"
-& wsl.exe -d $UbuntuDistro -- bash -lc "PROJECT_PATH='$systemRootWsl' exec '$scriptRootWsl/wsl-clean-drone-stack.sh'" | Out-Null
+& wsl.exe -d $UbuntuDistro -- bash -lc "PROJECT_PATH='$systemRootWsl' FOREST3D_PATH='$forest3DPathWsl' exec '$scriptRootWsl/wsl-clean-drone-stack.sh'" | Out-Null
 
 Write-Step "Starting PX4/Gazebo, Flight Control, and Weather Controls"
-$simCommand = "PROJECT_PATH='$systemRootWsl' FOREST3D_WEB_ONLY=1 SIM_WORLD=$packagedWorld exec '$scriptRootWsl/wsl-sim-pane.sh' '$packagedWorld'"
-$controlCommand = "PROJECT_PATH='$systemRootWsl' FOREST3D_WEB_ONLY=1 SIM_WORLD=$packagedWorld exec '$scriptRootWsl/wsl-control.sh'"
-$weatherCommand = "PROJECT_PATH='$systemRootWsl' SIM_WORLD=$packagedWorld exec '$scriptRootWsl/wsl-weather-control.sh'"
+$baseWslEnv = "PROJECT_PATH='$systemRootWsl' FOREST3D_PATH='$forest3DPathWsl'"
+$simCommand = "$baseWslEnv FOREST3D_WEB_ONLY=1 SIM_WORLD=$packagedWorld exec '$scriptRootWsl/wsl-sim-pane.sh' '$packagedWorld'"
+$controlCommand = "$baseWslEnv FOREST3D_WEB_ONLY=1 SIM_WORLD=$packagedWorld exec '$scriptRootWsl/wsl-control.sh'"
+$weatherCommand = "$baseWslEnv SIM_WORLD=$packagedWorld exec '$scriptRootWsl/wsl-weather-control.sh'"
 
 Start-WslTab -Title "SIM - PX4 + Gazebo Headless" -Command $simCommand
 Start-Sleep -Seconds 3
