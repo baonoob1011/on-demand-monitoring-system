@@ -54,4 +54,5 @@ bin/
 .DS_Store
 drone/.env.example
 *.example
+!.env.example
 evd/
