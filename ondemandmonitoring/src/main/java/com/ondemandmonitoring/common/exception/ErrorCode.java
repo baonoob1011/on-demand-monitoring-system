@@ -50,10 +50,16 @@ public enum ErrorCode {
     MEDIA_UPLOAD_FAILED("File upload failed after 3 attempts", HttpStatus.BAD_GATEWAY),
     DRONE_MODEL_NOT_FOUND("Drone model not found", HttpStatus.NOT_FOUND),
     DRONE_PAYLOAD_NOT_FOUND("Drone payload not found", HttpStatus.NOT_FOUND),
-    DRONE_NOT_FOUND("Drone not found", HttpStatus.NOT_FOUND);
+    DRONE_NOT_FOUND("Drone not found", HttpStatus.NOT_FOUND),
 
-
-
+    /**
+     * Service & DeliverableType Error Codes
+     */
+    SERVICE_NOT_FOUND("Service not found", HttpStatus.NOT_FOUND),
+    SERVICE_ALREADY_EXISTS("Service already exists", HttpStatus.CONFLICT),
+    DELIVERABLE_TYPE_NOT_FOUND("Deliverable type not found", HttpStatus.NOT_FOUND),
+    DELIVERABLE_TYPE_ALREADY_EXISTS("Deliverable type already exists", HttpStatus.CONFLICT),
+    SERVICE_DELIVERABLE_ALREADY_EXISTS("Service deliverable link already exists", HttpStatus.CONFLICT);
 
     String message;
     HttpStatus status;
