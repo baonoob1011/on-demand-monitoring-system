@@ -59,8 +59,9 @@ public class CognitoConfig {
     @Bean("cognitoIdTokenDecoder")
     JwtDecoder cognitoIdTokenDecoder(
             CognitoProperties properties,
-            @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuerUri) {
-        NimbusJwtDecoder decoder = NimbusJwtDecoder.withIssuerLocation(issuerUri).build();
+            @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuerUri,
+            @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri:}") String jwkSetUri) {
+        NimbusJwtDecoder decoder = jwtDecoder(issuerUri, jwkSetUri);
         OAuth2TokenValidator<Jwt> issuerValidator = JwtValidators.createDefaultWithIssuer(issuerUri);
         OAuth2TokenValidator<Jwt> tokenUseValidator = claimEqualsValidator(
                 "token_use", "id", "The token is not a Cognito ID token");
@@ -89,8 +90,9 @@ public class CognitoConfig {
     @Bean("cognitoAccessTokenDecoder")
     JwtDecoder cognitoAccessTokenDecoder(
             CognitoProperties properties,
-            @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuerUri) {
-        NimbusJwtDecoder decoder = NimbusJwtDecoder.withIssuerLocation(issuerUri).build();
+            @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuerUri,
+            @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri:}") String jwkSetUri) {
+        NimbusJwtDecoder decoder = jwtDecoder(issuerUri, jwkSetUri);
         OAuth2TokenValidator<Jwt> issuerValidator = JwtValidators.createDefaultWithIssuer(issuerUri);
         OAuth2TokenValidator<Jwt> tokenUseValidator = claimEqualsValidator(
                 "token_use", "access", "The token is not a Cognito access token");
@@ -114,6 +116,14 @@ public class CognitoConfig {
                         "invalid_token",
                         errorDescription,
                         null));
+    }
+
+    private NimbusJwtDecoder jwtDecoder(String issuerUri, String jwkSetUri) {
+        if (StringUtils.hasText(jwkSetUri)) {
+            return NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
+        }
+
+        return NimbusJwtDecoder.withIssuerLocation(issuerUri).build();
     }
 
 }

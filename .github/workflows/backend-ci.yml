@@ -60,6 +60,7 @@ jobs:
       AWS_COGNITO_CLIENT_SECRET: test-client-secret
       AWS_COGNITO_DOMAIN: https://example.auth.ap-southeast-1.amazoncognito.com
       COGNITO_ISSUER_URI: https://cognito-idp.ap-southeast-1.amazonaws.com/ap-southeast-1_TESTPOOL
+      COGNITO_JWK_SET_URI: https://example.com/.well-known/jwks.json
       CORS_ADDRESS: http://localhost:5173
     defaults:
       run:
