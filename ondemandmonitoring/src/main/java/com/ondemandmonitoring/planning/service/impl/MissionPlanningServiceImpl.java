@@ -157,6 +157,7 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         missionPlan.setPlannedCruiseSpeedMps(null);
         missionPlan.setEstimatedEnergyMah(null);
         missionPlan.setEstimatedBatteryUsedPercent(null);
+        missionPlan.setBatteryCapacityMah(null);
         missionPlan.setAvailableBatteryPercentAtPlanning(null);
         missionPlan.setSafetyReservePercent(null);
         missionPlan.setRequiredBatteryPercent(null);
@@ -170,9 +171,30 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         missionPlan.setPlannedCruiseSpeedMps(energyEstimate.cruiseSpeedMps());
         missionPlan.setEstimatedEnergyMah(energyEstimate.estimatedEnergyMah());
         missionPlan.setEstimatedBatteryUsedPercent(energyEstimate.estimatedBatteryUsedPercent());
-        missionPlan.setAvailableBatteryPercentAtPlanning(resolveAvailableBatteryPercent(missionId).orElse(null));
+        missionPlan.setBatteryCapacityMah(energyEstimate.batteryCapacityMah());
+        BatterySnapshot batterySnapshot = resolveBatterySnapshot(missionId);
+        missionPlan.setAvailableBatteryPercentAtPlanning(batterySnapshot.batteryPercent().orElse(null));
         missionPlan.setSafetyReservePercent(energyEstimate.safetyReservePercent());
         missionPlan.setRequiredBatteryPercent(energyEstimate.requiredBatteryPercent());
+        missionPlan.setFeasibilityStatus(resolveBatteryFeasibility(batterySnapshot, energyEstimate));
+    }
+
+    private FeasibilityStatus resolveBatteryFeasibility(
+            BatterySnapshot batterySnapshot,
+            EnergyEstimate energyEstimate) {
+        if (!batterySnapshot.hasAssignedDrone()) {
+            return FeasibilityStatus.FEASIBLE;
+        }
+        if (batterySnapshot.batteryPercent().isEmpty()) {
+            return FeasibilityStatus.BATTERY_DATA_UNAVAILABLE;
+        }
+
+        double currentBatteryPercent = batterySnapshot.batteryPercent().get();
+        double estimatedRemainingPercent = currentBatteryPercent - energyEstimate.estimatedBatteryUsedPercent();
+        if (estimatedRemainingPercent + 1.0e-9 < energyEstimate.safetyReservePercent()) {
+            return FeasibilityStatus.INSUFFICIENT_BATTERY;
+        }
+        return FeasibilityStatus.FEASIBLE;
     }
 
     private double resolveHomeWorldZ(SimulationPoint home) {
@@ -185,16 +207,23 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         return homeSample.surfaceElevationM();
     }
 
-    private Optional<Double> resolveAvailableBatteryPercent(String missionId) {
+    private BatterySnapshot resolveBatterySnapshot(String missionId) {
         if (missionId == null) {
-            return Optional.empty();
+            return new BatterySnapshot(false, Optional.empty());
         }
-        return missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+        Optional<MissionDroneAssignment> assignment =
+                missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId);
+        if (assignment.isEmpty()) {
+            return new BatterySnapshot(false, Optional.empty());
+        }
+
+        Optional<Double> batteryPercent = assignment
                 .map(MissionDroneAssignment::getDrone)
                 .filter(drone -> drone.getDroneCode() != null && !drone.getDroneCode().isBlank())
                 .flatMap(drone -> droneTelemetryRepository.findByDroneCode(drone.getDroneCode()))
                 .map(DroneTelemetry::getBatteryPercent)
                 .filter(this::isValidBatteryPercent);
+        return new BatterySnapshot(true, batteryPercent);
     }
 
     private boolean isValidBatteryPercent(Double value) {
@@ -275,5 +304,10 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
             Mission mission,
             SimulationPoint home,
             SimulationPoint target) {
+    }
+
+    private record BatterySnapshot(
+            boolean hasAssignedDrone,
+            Optional<Double> batteryPercent) {
     }
 }

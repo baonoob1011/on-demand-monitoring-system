@@ -152,6 +152,14 @@ public class MissionPlan extends BaseEntity {
     Double estimatedBatteryUsedPercent;
 
     /*
+     * Battery capacity snapshot used for the planning calculation, đơn vị mAh.
+     *
+     * estimatedBatteryUsedPercent = estimatedEnergyMah / batteryCapacityMah * 100.
+     */
+    @Column(name = "battery_capacity_mah")
+    Double batteryCapacityMah;
+
+    /*
      * Phần trăm pin thực tế đang có tại thời điểm tạo plan.
      *
      * Đây là snapshot để planner đánh giá mission có đủ pin

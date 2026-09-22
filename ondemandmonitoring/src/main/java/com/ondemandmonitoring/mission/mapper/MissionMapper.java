@@ -94,7 +94,9 @@ public abstract class MissionMapper {
                 .maxPlannedAltitudeM(plan.getMaxPlannedAltitudeM())
                 .estimatedEnergyMah(plan.getEstimatedEnergyMah())
                 .estimatedBatteryUsedPercent(plan.getEstimatedBatteryUsedPercent())
+                .batteryCapacityMah(plan.getBatteryCapacityMah())
                 .availableBatteryPercentAtPlanning(plan.getAvailableBatteryPercentAtPlanning())
+                .estimatedRemainingBatteryPercent(estimatedRemainingBatteryPercent(plan))
                 .safetyReservePercent(plan.getSafetyReservePercent())
                 .requiredBatteryPercent(plan.getRequiredBatteryPercent())
                 .feasibilityStatus(plan.getFeasibilityStatus())
@@ -104,6 +106,15 @@ public abstract class MissionMapper {
                         .map(this::toWaypointResponse)
                         .toList())
                 .build();
+    }
+
+    protected Double estimatedRemainingBatteryPercent(MissionPlan plan) {
+        if (plan.getAvailableBatteryPercentAtPlanning() == null
+                || plan.getEstimatedBatteryUsedPercent() == null) {
+            return null;
+        }
+        double remaining = plan.getAvailableBatteryPercentAtPlanning() - plan.getEstimatedBatteryUsedPercent();
+        return Math.max(0.0, Math.min(100.0, remaining));
     }
 
     protected PlanWaypointResponse toWaypointResponse(PlanWaypoint waypoint) {

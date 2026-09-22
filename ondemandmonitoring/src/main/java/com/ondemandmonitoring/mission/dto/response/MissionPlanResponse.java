@@ -21,7 +21,9 @@ public class MissionPlanResponse {
     Double maxPlannedAltitudeM;
     Double estimatedEnergyMah;
     Double estimatedBatteryUsedPercent;
+    Double batteryCapacityMah;
     Double availableBatteryPercentAtPlanning;
+    Double estimatedRemainingBatteryPercent;
     Double safetyReservePercent;
     Double requiredBatteryPercent;
     FeasibilityStatus feasibilityStatus;
