@@ -4,6 +4,8 @@ import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.media.dto.response.MediaAssetResponse;
 import com.ondemandmonitoring.media.dto.response.MediaResponse;
 import com.ondemandmonitoring.media.domain.MediaAsset;
+import com.ondemandmonitoring.common.exception.ApiException;
+import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.media.service.IMediaAssetService;
 import com.ondemandmonitoring.media.service.IMediaAssetService.MediaContent;
 import com.ondemandmonitoring.media.mapper.MediaAssetMapper;
@@ -56,6 +58,7 @@ public class MediaController {
     @GetMapping("/api/media/{mediaId}")
     public ResponseEntity<ApiResponse<MediaResponse>> getMedia(@PathVariable String mediaId) {
         MediaAsset image = mediaAssetService.getById(mediaId);
+        requireLegacyMedia(image);
         String presignedUrl = mediaAssetService.createPresignedGetUrl(image);
 
         return ResponseEntity.ok(ApiResponse.ok(mediaAssetMapper.toMediaResponse(
@@ -71,6 +74,7 @@ public class MediaController {
             @RequestParam(required = false) String mediaType) {
         List<MediaAssetResponse> media = mediaAssetService.listByMission(missionId, mediaType)
                 .stream()
+                .filter(asset -> asset.getMediaStatus() == null)
                 .map(mediaAssetMapper::toResponse)
                 .toList();
 
@@ -81,6 +85,7 @@ public class MediaController {
     @GetMapping("/api/media/{mediaId}/file")
     public ResponseEntity<InputStreamResource> getMediaFile(@PathVariable String mediaId) {
         MediaAsset image = mediaAssetService.getById(mediaId);
+        requireLegacyMedia(image);
         MediaContent mediaContent = mediaAssetService.openMedia(image);
         MediaType contentType = MediaType.parseMediaType(mediaContent.contentType());
 
@@ -92,5 +97,11 @@ public class MediaController {
                         .build()
                         .toString())
                 .body(new InputStreamResource(mediaContent.inputStream()));
+    }
+
+    private void requireLegacyMedia(MediaAsset asset) {
+        if (asset.getMediaStatus() != null) {
+            throw new ApiException(ErrorCode.MEDIA_NOT_FOUND);
+        }
     }
 }
