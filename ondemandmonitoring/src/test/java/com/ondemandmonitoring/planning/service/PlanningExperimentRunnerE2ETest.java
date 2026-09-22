@@ -214,16 +214,13 @@ class PlanningExperimentRunnerE2ETest {
         Order order = new Order();
         order.setCustomer(source.getCustomer());
         order.setTitle("E2E_EXPERIMENT_READ_ONLY_ORDER");
-        order.setPurpose(source.getPurpose());
         order.setService(source.getService());
         order.setDescription("Temporary transactional experiment proof record");
         order.setAddress("LOCAL_SIMULATION_METERS_GAZEBO_XY");
         order.setPoint(target);
-        order.setPreferredDate(source.getPreferredDate());
+        order.setPreferredDateFrom(source.getPreferredDateFrom());
+        order.setPreferredDateTo(source.getPreferredDateTo());
         order.setPreferredTime(source.getPreferredTime());
-        order.setMediaType(source.getMediaType());
-        order.setDurationOfVideo(source.getDurationOfVideo());
-        order.setNumberOfPhoto(source.getNumberOfPhoto());
         order.setOrderStatus(source.getOrderStatus());
         return order;
     }

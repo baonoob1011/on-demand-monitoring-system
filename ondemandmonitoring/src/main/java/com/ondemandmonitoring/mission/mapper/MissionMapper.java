@@ -35,7 +35,7 @@ public abstract class MissionMapper {
     @Mapping(source = "order.title", target = "orderTitle")
     @Mapping(source = "order.customer.fullName", target = "customerName")
     @Mapping(source = "order.address", target = "address")
-    @Mapping(source = "order.mediaType", target = "mediaType")
+    @Mapping(target = "mediaType", ignore = true)
     @Mapping(target = "latitude", expression = "java(getLatitude(mission))")
     @Mapping(target = "longitude", expression = "java(getLongitude(mission))")
     @Mapping(target = "plan", expression = "java(getPlan(mission))")

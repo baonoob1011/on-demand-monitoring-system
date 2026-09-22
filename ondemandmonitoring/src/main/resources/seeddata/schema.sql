@@ -3,6 +3,19 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 ALTER TABLE IF EXISTS public.zones
     ADD COLUMN IF NOT EXISTS restricted BOOLEAN NOT NULL DEFAULT FALSE;
 
+ALTER TABLE IF EXISTS public.orders
+    ALTER COLUMN preferred_date DROP NOT NULL;
+ALTER TABLE IF EXISTS public.orders
+    ALTER COLUMN purpose DROP NOT NULL;
+ALTER TABLE IF EXISTS public.orders
+    ALTER COLUMN duration_of_video DROP NOT NULL;
+ALTER TABLE IF EXISTS public.orders
+    ALTER COLUMN number_of_photo DROP NOT NULL;
+ALTER TABLE IF EXISTS public.orders
+    ADD COLUMN IF NOT EXISTS preferred_date_from DATE;
+ALTER TABLE IF EXISTS public.orders
+    ADD COLUMN IF NOT EXISTS preferred_date_to DATE;
+
 CREATE TABLE IF NOT EXISTS public.atmosphere_profiles (
     id VARCHAR(255) PRIMARY KEY,
     source_world VARCHAR(120) NOT NULL,
