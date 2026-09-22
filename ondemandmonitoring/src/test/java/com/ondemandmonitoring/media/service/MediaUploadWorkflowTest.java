@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -90,6 +91,7 @@ class MediaUploadWorkflowTest {
         var request = request("IMAGE", "image/jpeg");
         MediaAsset existing = new MediaAsset();
         existing.setId("media-id");
+        existing.setMissionId("mission-id");
         existing.setType("IMAGE");
         existing.setContentType("image/jpeg");
         existing.setFileSize(100L);
@@ -111,6 +113,38 @@ class MediaUploadWorkflowTest {
         assertThat(result.mediaId()).isEqualTo("media-id");
         assertThat(result.attemptId()).isEqualTo("attempt-id");
         verify(media, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void completedMissionAllowsItsReleasedOperatorAndDrone() {
+        Mission mission = missions.findById("mission-id").orElseThrow();
+        mission.setStatus(MissionStatus.COMPLETED);
+        when(operatorAssignments.findByMissionIdAndIsCurrentTrue("mission-id"))
+                .thenReturn(Optional.empty());
+        when(droneAssignments.findByMissionIdAndIsCurrentTrue("mission-id"))
+                .thenReturn(Optional.empty());
+        MissionOperatorAssignment operator = new MissionOperatorAssignment();
+        operator.setOperatorId(userResolver.getCurrentUser().getId().toString());
+        operator.setStatus("COMPLETED");
+        when(operatorAssignments.findByMissionId("mission-id")).thenReturn(List.of(operator));
+        MissionDroneAssignment assignment = new MissionDroneAssignment();
+        assignment.setDrone(drones.findByDroneCode("DRONE-01").orElseThrow());
+        assignment.setReleaseReason("MISSION_COMPLETE");
+        when(droneAssignments.findByMissionId("mission-id")).thenReturn(List.of(assignment));
+        MediaAsset existing = new MediaAsset();
+        existing.setId("media-id");
+        existing.setMissionId("mission-id");
+        existing.setType("IMAGE");
+        existing.setContentType("image/jpeg");
+        existing.setFileSize(100L);
+        existing.setChecksumSha256("a".repeat(64));
+        existing.setMediaStatus(MediaStatus.AVAILABLE);
+        when(media.findByMissionIdAndDroneCodeAndLocalMediaId("mission-id", "DRONE-01", "capture-1"))
+                .thenReturn(Optional.of(existing));
+        when(media.findById("media-id")).thenReturn(Optional.of(existing));
+
+        assertThat(service.prepare("mission-id", request("IMAGE", "image/jpeg")).status())
+                .isEqualTo(MediaStatus.AVAILABLE);
     }
 
     private PrepareMediaUploadRequest request(String type, String contentType) {
