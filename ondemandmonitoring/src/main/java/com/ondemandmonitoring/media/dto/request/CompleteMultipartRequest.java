@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.media.dto;
+package com.ondemandmonitoring.media.dto.request;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;

@@ -1,7 +1,10 @@
 package com.ondemandmonitoring.media.controller;
 
 import com.ondemandmonitoring.common.api.ApiResponse;
-import com.ondemandmonitoring.media.dto.*;
+import com.ondemandmonitoring.media.dto.request.CompleteMultipartRequest;
+import com.ondemandmonitoring.media.dto.request.PrepareMediaUploadRequest;
+import com.ondemandmonitoring.media.dto.request.ReportUploadFailureRequest;
+import com.ondemandmonitoring.media.dto.response.MediaUploadResponse;
 import com.ondemandmonitoring.media.service.IMediaUploadService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

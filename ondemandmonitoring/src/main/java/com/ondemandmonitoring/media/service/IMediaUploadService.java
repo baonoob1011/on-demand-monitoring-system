@@ -1,6 +1,9 @@
 package com.ondemandmonitoring.media.service;
 
-import com.ondemandmonitoring.media.dto.*;
+import com.ondemandmonitoring.media.dto.request.CompleteMultipartRequest;
+import com.ondemandmonitoring.media.dto.request.PrepareMediaUploadRequest;
+import com.ondemandmonitoring.media.dto.request.ReportUploadFailureRequest;
+import com.ondemandmonitoring.media.dto.response.MediaUploadResponse;
 
 public interface IMediaUploadService {
     MediaUploadResponse prepare(String missionId, PrepareMediaUploadRequest request);

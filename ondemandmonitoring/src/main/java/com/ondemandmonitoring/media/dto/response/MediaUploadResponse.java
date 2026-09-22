@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.media.dto;
+package com.ondemandmonitoring.media.dto.response;
 
 import com.ondemandmonitoring.media.domain.MediaStatus;
 import java.time.Instant;

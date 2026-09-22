@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.media.service;
 
-import com.ondemandmonitoring.media.dto.CustomerMediaNotificationResponse;
-import com.ondemandmonitoring.media.dto.CustomerMediaResponse;
+import com.ondemandmonitoring.media.dto.response.CustomerMediaNotificationResponse;
+import com.ondemandmonitoring.media.dto.response.CustomerMediaResponse;
 import java.util.List;
 
 public interface ICustomerMediaService {

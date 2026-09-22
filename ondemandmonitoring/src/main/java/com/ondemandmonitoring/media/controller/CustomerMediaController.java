@@ -1,8 +1,8 @@
 package com.ondemandmonitoring.media.controller;
 
 import com.ondemandmonitoring.common.api.ApiResponse;
-import com.ondemandmonitoring.media.dto.CustomerMediaNotificationResponse;
-import com.ondemandmonitoring.media.dto.CustomerMediaResponse;
+import com.ondemandmonitoring.media.dto.response.CustomerMediaNotificationResponse;
+import com.ondemandmonitoring.media.dto.response.CustomerMediaResponse;
 import com.ondemandmonitoring.media.service.ICustomerMediaService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;

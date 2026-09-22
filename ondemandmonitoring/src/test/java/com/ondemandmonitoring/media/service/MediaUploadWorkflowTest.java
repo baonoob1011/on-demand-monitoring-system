@@ -9,7 +9,7 @@ import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.drone.domain.Drone;
 import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.media.domain.*;
-import com.ondemandmonitoring.media.dto.PrepareMediaUploadRequest;
+import com.ondemandmonitoring.media.dto.request.PrepareMediaUploadRequest;
 import com.ondemandmonitoring.media.repository.*;
 import com.ondemandmonitoring.media.service.impl.MediaUploadServiceImpl;
 import com.ondemandmonitoring.mission.domain.*;

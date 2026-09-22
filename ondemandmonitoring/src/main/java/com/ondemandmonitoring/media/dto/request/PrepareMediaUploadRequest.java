@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.media.dto;
+package com.ondemandmonitoring.media.dto.request;
 
 import jakarta.validation.constraints.*;
 import java.time.Instant;
