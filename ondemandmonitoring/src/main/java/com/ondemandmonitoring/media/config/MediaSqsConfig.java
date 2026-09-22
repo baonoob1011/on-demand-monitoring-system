@@ -13,6 +13,10 @@ public class MediaSqsConfig {
     @Bean
     @ConditionalOnProperty(name = "app.media.sqs.enabled", havingValue = "true")
     SqsClient mediaSqsClient(Environment environment, AwsCredentialsProvider credentials) {
+        String queueUrl = environment.getRequiredProperty("app.media.sqs.queue-url");
+        if (queueUrl.isBlank()) {
+            throw new IllegalStateException("MEDIA_SQS_QUEUE_URL is required when MEDIA_SQS_ENABLED=true");
+        }
         return SqsClient.builder().region(Region.of(environment.getRequiredProperty("aws.region")))
                 .credentialsProvider(credentials).build();
     }
