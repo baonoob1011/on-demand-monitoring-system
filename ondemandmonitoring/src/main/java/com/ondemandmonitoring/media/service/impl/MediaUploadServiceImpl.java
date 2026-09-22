@@ -33,7 +33,8 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     private static final long MULTIPART_THRESHOLD = 16L * 1024 * 1024;
     private static final int MAX_AUTOMATIC_ATTEMPTS = 3;
     private static final Set<MissionStatus> CAPTURE_STATUSES = Set.of(
-            MissionStatus.IN_FLIGHT, MissionStatus.IN_PROGRESS, MissionStatus.RETURNING);
+            MissionStatus.IN_FLIGHT, MissionStatus.IN_PROGRESS, MissionStatus.RETURNING,
+            MissionStatus.POSTFLIGHT_CHECKING, MissionStatus.COMPLETED);
 
     private final MissionRepository missions;
     private final MissionDroneAssignmentRepository droneAssignments;
