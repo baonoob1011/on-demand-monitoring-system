@@ -3,6 +3,7 @@ package com.ondemandmonitoring.user.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -37,6 +38,8 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
+import org.mockito.ArgumentCaptor;
 
 @ExtendWith(MockitoExtension.class)
 class UserManagementServiceImplTest {
@@ -81,8 +84,7 @@ class UserManagementServiceImplTest {
                 .emailVerified(true)
                 .createdAt(OffsetDateTime.now())
                 .build();
-        when(userRepository.findForManagement(
-                "customer", RoleCode.CUSTOMER, true, true, pageable))
+        when(userRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(user), pageable, 1));
 
         PageResponse<UserManagementSummaryResponse> response = userManagementService.getUsers(
@@ -93,17 +95,26 @@ class UserManagementServiceImplTest {
         assertThat(response.getItems().getFirst().getRole()).isEqualTo(RoleCode.CUSTOMER);
         assertThat(response.getItems().getFirst().isActive()).isTrue();
         assertThat(response.getTotalItems()).isEqualTo(1);
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(userRepository).findAll(any(Specification.class), pageableCaptor.capture());
+        assertThat(pageableCaptor.getValue().getSort().toList())
+                .extracting(Sort.Order::getProperty)
+                .containsExactly("createdAt", "id");
     }
 
     @Test
-    void getUsers_blankSearchBecomesNull() {
+    void getUsers_withoutFiltersQueriesAllUsers() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(userRepository.findForManagement(null, null, null, null, pageable))
+        when(userRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(), pageable, 0));
 
         userManagementService.getUsers(pageable, "   ", null, null, null);
 
-        verify(userRepository).findForManagement(null, null, null, null, pageable);
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(userRepository).findAll(any(Specification.class), pageableCaptor.capture());
+        assertThat(pageableCaptor.getValue().getSort().toList())
+                .extracting(Sort.Order::getProperty)
+                .containsExactly("id");
     }
 
     @Test
@@ -115,8 +126,7 @@ class UserManagementServiceImplTest {
                 .isInstanceOfSatisfying(ApiException.class,
                         exception -> assertThat(exception.getErrorCode())
                                 .isEqualTo(ErrorCode.INVALID_REQUEST));
-        verify(userRepository, never()).findForManagement(
-                null, null, null, null, pageable);
+        verify(userRepository, never()).findAll(any(Specification.class), any(Pageable.class));
     }
 
     @Test

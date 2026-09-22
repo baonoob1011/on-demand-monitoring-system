@@ -23,6 +23,7 @@ import java.util.List;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+
 import org.locationtech.jts.geom.Point;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,14 +46,14 @@ public class OrderService implements IOrderService {
     public void approveOrder(String orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
-        
+
         if (order.getOrderStatus() != OrderStatus.PENDING) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Only PENDING orders can be approved");
         }
-        
+
         order.setOrderStatus(OrderStatus.APPROVED);
         orderRepository.save(order);
-        
+
         // Flow 2: Create mission for the approved order
         missionService.createMissionForOrder(orderId);
     }
