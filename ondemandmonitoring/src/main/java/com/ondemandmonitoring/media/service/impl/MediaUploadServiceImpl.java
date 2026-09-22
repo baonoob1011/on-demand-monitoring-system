@@ -336,6 +336,11 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
         boolean assigned = droneAssignments.findByMissionIdAndIsCurrentTrue(mission.getId())
                 .map(MissionDroneAssignment::getDrone).map(Drone::getId)
                 .filter(drone.getId()::equals).isPresent();
+        if (!assigned && mission.getStatus() == MissionStatus.COMPLETED) {
+            assigned = droneAssignments.findByMissionId(mission.getId()).stream()
+                    .anyMatch(entry -> entry.getDrone().getId().equals(drone.getId())
+                            && "MISSION_COMPLETE".equals(entry.getReleaseReason()));
+        }
         if (!assigned) {
             throw new ApiException(ErrorCode.ACCESS_DENIED, "Drone is not assigned to mission");
         }
@@ -353,6 +358,11 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
         String userId = currentUser.getCurrentUser().getId().toString();
         boolean assigned = operatorAssignments.findByMissionIdAndIsCurrentTrue(mission.getId())
                 .map(MissionOperatorAssignment::getOperatorId).filter(userId::equals).isPresent();
+        if (!assigned && mission.getStatus() == MissionStatus.COMPLETED) {
+            assigned = operatorAssignments.findByMissionId(mission.getId()).stream()
+                    .anyMatch(entry -> userId.equals(entry.getOperatorId())
+                            && "COMPLETED".equals(entry.getStatus()));
+        }
         if (!privileged && !assigned) {
             throw new ApiException(ErrorCode.ACCESS_DENIED, "Operator is not assigned to mission");
         }
