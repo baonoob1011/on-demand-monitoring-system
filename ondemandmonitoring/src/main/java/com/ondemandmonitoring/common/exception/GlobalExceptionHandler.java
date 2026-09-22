@@ -3,6 +3,8 @@ package com.ondemandmonitoring.common.exception;
 import com.ondemandmonitoring.common.api.ApiResponse;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -49,7 +51,17 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse<Void>> handleUnexpectedException(Exception exception) {
+    public ResponseEntity<ApiResponse<Void>> handleUnexpectedException(Exception exception, HttpServletRequest request, HttpServletResponse response) {
+        if (isClientDisconnect(exception)) {
+            log.debug("Client disconnected while streaming media: {} {}", request.getMethod(), request.getRequestURI());
+            return null;
+        }
+
+        if (response.isCommitted()) {
+            log.warn("Response already committed, cannot send JSON error response for: {} {}. Error: {}", request.getMethod(), request.getRequestURI(), exception.getMessage());
+            return null;
+        }
+
         log.error("Unexpected API error", exception);
         return ResponseEntity
                 .status(ErrorCode.INTERNAL_SERVER_ERROR.getStatus())
@@ -57,4 +69,17 @@ public class GlobalExceptionHandler {
                         ErrorCode.INTERNAL_SERVER_ERROR.name(),
                         ErrorCode.INTERNAL_SERVER_ERROR.getMessage()));
     }
+    private boolean isClientDisconnect(Throwable ex) {
+        Throwable cause = ex;
+        while (cause != null) {
+            String className = cause.getClass().getName();
+            String message = cause.getMessage() != null ? cause.getMessage().toLowerCase() : "";
+            if (className.contains("ClientAbortException") || message.contains("broken pipe") || message.contains("connection reset by peer") || message.contains("an established connection was aborted by the software in your host machine")) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+        return false;
+    }
 }
+

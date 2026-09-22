@@ -54,15 +54,16 @@ function Set-EnvValue([string]$Path, [string]$Name, [string]$Value) {
     Write-Utf8NoBomLines $Path $nextLines
 }
 
-function Initialize-StackEnv([string]$RootEnvFile, [string]$RootEnvExample) {
-    if (Test-Path $RootEnvFile) { return }
-    if (Test-Path $RootEnvExample) {
-        $lines = @(Get-Content -Path $RootEnvExample -ErrorAction Stop)
-        Write-Utf8NoBomLines $RootEnvFile $lines
-        return
+function Initialize-StackEnv([string]$RootEnvFile) {
+    if (-not (Test-Path $RootEnvFile)) {
+        throw "Shared environment file is missing: $RootEnvFile"
     }
+}
 
-    New-Item -ItemType File -Path $RootEnvFile -Force | Out-Null
+function Get-EnvValue([string]$Path, [string]$Name, [string]$Default) {
+    $line = Get-Content -Path $Path | Where-Object { $_ -match "^$([regex]::Escape($Name))=" } | Select-Object -First 1
+    if ($null -eq $line) { return $Default }
+    return ($line -replace "^$([regex]::Escape($Name))=", '').Trim()
 }
 
 function Start-TerminalTab([string]$Title, [string]$Command, [string]$WorkingDirectory) {
@@ -292,8 +293,7 @@ $forest3DPath = Resolve-Forest3DPath $systemRoot
 Assert-CompactMapAssets $systemRoot $forest3DPath
 
 $rootEnvFile = Join-Path $systemRoot ".env"
-$rootEnvExample = Join-Path $systemRoot ".env.example"
-Initialize-StackEnv $rootEnvFile $rootEnvExample
+Initialize-StackEnv $rootEnvFile
 Set-EnvValue $rootEnvFile "SIM_WORLD" $packagedWorld
 Set-EnvValue $rootEnvFile "FOREST3D_WEB_ONLY" "1"
 Set-EnvValue $rootEnvFile "GAZEBO_CAMERA_TOPIC" $downTopic
@@ -346,8 +346,8 @@ if (-not $SkipFrontend) {
     Write-Step "Preparing and starting Frontend UI"
     $envFile = Join-Path $webRoot ".env.local"
     Write-Utf8NoBomLines $envFile @(
-        "VITE_API_BASE_URL=http://localhost:8080",
-        "VITE_FLIGHT_CONTROL_API_URL=http://localhost:8090"
+        "VITE_API_BASE_URL=$(Get-EnvValue $rootEnvFile 'VITE_API_BASE_URL' 'http://localhost:8080')",
+        "VITE_FLIGHT_CONTROL_API_URL=$(Get-EnvValue $rootEnvFile 'VITE_FLIGHT_CONTROL_API_URL' 'http://localhost:8090')"
     )
     Start-TerminalTab -Title "FE - OMSS UI" -WorkingDirectory $webRoot -Command "if (-not (Test-Path node_modules)) { npm install }; npm run dev -- --host 0.0.0.0 --port 5173"
 }

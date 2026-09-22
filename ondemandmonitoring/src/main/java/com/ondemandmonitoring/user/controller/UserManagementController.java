@@ -10,6 +10,7 @@ import com.ondemandmonitoring.user.service.IUserManagementService;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
@@ -33,6 +34,7 @@ public class UserManagementController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<UserManagementSummaryResponse>>> getUsers(
+            @ParameterObject
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
             Pageable pageable,
             @RequestParam(required = false) String search,

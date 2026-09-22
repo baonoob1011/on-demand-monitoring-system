@@ -37,16 +37,9 @@ function Write-Utf8NoBomLines([string]$Path, [string[]]$Lines) {
 
 function Initialize-StackEnv([string]$Root) {
     $rootEnvFile = Join-Path $Root ".env"
-    if (Test-Path $rootEnvFile) { return }
-
-    $rootEnvExample = Join-Path $Root ".env.example"
-    if (Test-Path $rootEnvExample) {
-        $lines = @(Get-Content -Path $rootEnvExample -ErrorAction Stop)
-        Write-Utf8NoBomLines $rootEnvFile $lines
-        return
+    if (-not (Test-Path $rootEnvFile)) {
+        throw "Shared environment file is missing: $rootEnvFile"
     }
-
-    New-Item -ItemType File -Path $rootEnvFile -Force | Out-Null
 }
 
 function Update-Forest3DAssetsFromGit([string]$Root) {

@@ -195,6 +195,7 @@ class MissionPlanningServiceTest {
         assertThat(missionPlan.getPlannedCruiseSpeedMps()).isEqualTo(2.0);
         assertThat(missionPlan.getEstimatedEnergyMah()).isEqualTo(480.0);
         assertThat(missionPlan.getEstimatedBatteryUsedPercent()).isEqualTo(9.6);
+        assertThat(missionPlan.getBatteryCapacityMah()).isEqualTo(5000.0);
         assertThat(missionPlan.getSafetyReservePercent()).isEqualTo(20.0);
         assertThat(missionPlan.getRequiredBatteryPercent()).isEqualTo(29.6);
         assertThat(missionPlan.getAvailableBatteryPercentAtPlanning()).isNull();
@@ -318,6 +319,72 @@ class MissionPlanningServiceTest {
         MissionPlan missionPlan = service.generateDirectPlan("mission-1");
 
         assertThat(missionPlan.getAvailableBatteryPercentAtPlanning()).isEqualTo(72.5);
+    }
+
+    @Test
+    void assignedDroneWithNinetyPercentBatteryIsFeasibleForEighteenPercentMissionUseAndTwentyPercentReserve() {
+        MissionPlan missionPlan = planWithAssignedDroneBattery(90.0, energyEstimateWithBatteryUse(18.0));
+
+        assertThat(missionPlan.getFeasibilityStatus()).isEqualTo(FeasibilityStatus.FEASIBLE);
+        assertThat(missionPlan.getAvailableBatteryPercentAtPlanning()).isEqualTo(90.0);
+        assertThat(missionPlan.getEstimatedBatteryUsedPercent()).isEqualTo(18.0);
+        assertThat(missionPlan.getSafetyReservePercent()).isEqualTo(20.0);
+        assertThat(missionPlan.getRequiredBatteryPercent()).isEqualTo(38.0);
+    }
+
+    @Test
+    void assignedDroneWithThirtyPercentBatteryIsInsufficientForEighteenPercentMissionUseAndTwentyPercentReserve() {
+        MissionPlan missionPlan = planWithAssignedDroneBattery(30.0, energyEstimateWithBatteryUse(18.0));
+
+        assertThat(missionPlan.getFeasibilityStatus()).isEqualTo(FeasibilityStatus.INSUFFICIENT_BATTERY);
+        assertThat(missionPlan.getAvailableBatteryPercentAtPlanning()).isEqualTo(30.0);
+    }
+
+    @Test
+    void assignedDroneWithBatteryExactlyEqualToUsePlusReserveIsFeasibleAtBoundary() {
+        MissionPlan missionPlan = planWithAssignedDroneBattery(38.0, energyEstimateWithBatteryUse(18.0));
+
+        assertThat(missionPlan.getFeasibilityStatus()).isEqualTo(FeasibilityStatus.FEASIBLE);
+        assertThat(missionPlan.getRequiredBatteryPercent()).isEqualTo(38.0);
+    }
+
+    @Test
+    void assignedDroneWithoutTelemetryDoesNotAssumeFullBattery() {
+        Mission mission = missionWithOrder(point(260.0, 230.0));
+        mission.setId("mission-1");
+        Drone drone = new Drone();
+        drone.setDroneCode("DRONE-01");
+        MissionDroneAssignment assignment = new MissionDroneAssignment();
+        assignment.setMission(mission);
+        assignment.setDrone(drone);
+
+        arrangeFeasiblePlanning(mission, energyEstimateWithBatteryUse(18.0));
+        when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1")).thenReturn(Optional.of(assignment));
+        when(droneTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.empty());
+
+        MissionPlan missionPlan = service.generateDirectPlan("mission-1");
+
+        assertThat(missionPlan.getFeasibilityStatus()).isEqualTo(FeasibilityStatus.BATTERY_DATA_UNAVAILABLE);
+        assertThat(missionPlan.getAvailableBatteryPercentAtPlanning()).isNull();
+    }
+
+    @Test
+    void invalidAssignedDroneBatteryTelemetryDoesNotAssumeFullBattery() {
+        MissionPlan negative = planWithAssignedDroneBattery(-1.0, energyEstimateWithBatteryUse(18.0));
+        assertThat(negative.getFeasibilityStatus()).isEqualTo(FeasibilityStatus.BATTERY_DATA_UNAVAILABLE);
+        assertThat(negative.getAvailableBatteryPercentAtPlanning()).isNull();
+
+        MissionPlan overFull = planWithAssignedDroneBattery(101.0, energyEstimateWithBatteryUse(18.0));
+        assertThat(overFull.getFeasibilityStatus()).isEqualTo(FeasibilityStatus.BATTERY_DATA_UNAVAILABLE);
+        assertThat(overFull.getAvailableBatteryPercentAtPlanning()).isNull();
+    }
+
+    @Test
+    void estimatedEnergyGreaterThanAvailableBatteryEnergyIsInsufficient() {
+        MissionPlan missionPlan = planWithAssignedDroneBattery(90.0, energyEstimateWithBatteryUse(95.0));
+
+        assertThat(missionPlan.getFeasibilityStatus()).isEqualTo(FeasibilityStatus.INSUFFICIENT_BATTERY);
+        assertThat(missionPlan.getRequiredBatteryPercent()).isEqualTo(115.0);
     }
 
     @Test
@@ -616,6 +683,51 @@ class MissionPlanningServiceTest {
                 29.6);
     }
 
+    private MissionPlan planWithAssignedDroneBattery(double batteryPercent, EnergyEstimate estimate) {
+        Mission mission = missionWithOrder(point(260.0, 230.0));
+        mission.setId("mission-1");
+        Drone drone = new Drone();
+        drone.setDroneCode("DRONE-01");
+        MissionDroneAssignment assignment = new MissionDroneAssignment();
+        assignment.setMission(mission);
+        assignment.setDrone(drone);
+        DroneTelemetry telemetry = new DroneTelemetry();
+        telemetry.setBatteryPercent(batteryPercent);
+
+        arrangeFeasiblePlanning(mission, estimate);
+        when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1")).thenReturn(Optional.of(assignment));
+        when(droneTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(telemetry));
+
+        return service.generateDirectPlan("mission-1");
+    }
+
+    private void arrangeFeasiblePlanning(Mission mission, EnergyEstimate estimate) {
+        when(missionRepository.findByIdWithOrder("mission-1")).thenReturn(Optional.of(mission));
+        when(missionPlanRepository.findByMissionId("mission-1")).thenReturn(Optional.empty());
+        when(simulationHomeProvider.home()).thenReturn(new SimulationPoint(0.0, -280.0));
+        when(planningEnvironment.sample(0.0, -280.0)).thenReturn(homeSample(12.0));
+        when(directRoutePlanner.plan(0.0, -280.0, 260.0, 230.0)).thenReturn(feasibleRoute());
+        when(missionEnergyEstimator.estimate(Mockito.any())).thenReturn(estimate);
+        when(missionPlanRepository.save(Mockito.any(MissionPlan.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    }
+
+    private static EnergyEstimate energyEstimateWithBatteryUse(double estimatedBatteryUsedPercent) {
+        double capacityMah = 5000.0;
+        double estimatedEnergyMah = capacityMah * estimatedBatteryUsedPercent / 100.0;
+        double reservePercent = 20.0;
+        return new EnergyEstimate(
+                120.0,
+                100.0,
+                20.0,
+                0.0,
+                estimatedEnergyMah,
+                estimatedBatteryUsedPercent,
+                2.0,
+                capacityMah,
+                reservePercent,
+                estimatedBatteryUsedPercent + reservePercent);
+    }
+
     private static EnvironmentSample homeSample(double surfaceElevationM) {
         return new EnvironmentSample(0.0, -280.0, true, surfaceElevationM, 0.0, surfaceElevationM, false, null, null);
     }
@@ -653,6 +765,7 @@ class MissionPlanningServiceTest {
         assertThat(missionPlan.getPlannedCruiseSpeedMps()).isNull();
         assertThat(missionPlan.getEstimatedEnergyMah()).isNull();
         assertThat(missionPlan.getEstimatedBatteryUsedPercent()).isNull();
+        assertThat(missionPlan.getBatteryCapacityMah()).isNull();
         assertThat(missionPlan.getAvailableBatteryPercentAtPlanning()).isNull();
         assertThat(missionPlan.getSafetyReservePercent()).isNull();
         assertThat(missionPlan.getRequiredBatteryPercent()).isNull();
