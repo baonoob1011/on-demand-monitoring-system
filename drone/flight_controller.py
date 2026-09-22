@@ -1188,17 +1188,41 @@ class FlightControlApi:
                     try:
                         item = owner.media_library.get(local_id)
                         source = Path(item["localPath"])
-                        self.send_response(200)
+                        size = source.stat().st_size
+                        start, end = 0, size - 1
+                        range_header = self.headers.get("Range")
+                        if range_header:
+                            if not range_header.startswith("bytes=") or "," in range_header:
+                                self._write_json(416, {"error": "Invalid range"})
+                                return
+                            first, _, last = range_header[6:].partition("-")
+                            if not first:
+                                self._write_json(416, {"error": "Invalid range"})
+                                return
+                            start = int(first)
+                            end = int(last) if last else size - 1
+                            if start < 0 or end < start or end >= size:
+                                self._write_json(416, {"error": "Range outside media"})
+                                return
+                        self.send_response(206 if range_header else 200)
                         self._cors()
                         self.send_header("Content-Type", item["contentType"])
-                        self.send_header("Content-Length", str(source.stat().st_size))
+                        self.send_header("Content-Length", str(end - start + 1))
+                        self.send_header("Accept-Ranges", "bytes")
+                        if range_header:
+                            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
                         self.send_header("Cache-Control", "no-store")
                         self.end_headers()
                         with source.open("rb") as media_file:
-                            while chunk := media_file.read(1024 * 1024):
+                            media_file.seek(start)
+                            remaining = end - start + 1
+                            while remaining and (chunk := media_file.read(min(1024 * 1024, remaining))):
                                 self.wfile.write(chunk)
+                                remaining -= len(chunk)
                     except (KeyError, FileNotFoundError):
                         self._write_json(404, {"error": "Media not found"})
+                    except ValueError:
+                        self._write_json(416, {"error": "Invalid range"})
                     except (BrokenPipeError, ConnectionResetError):
                         pass
                     return
