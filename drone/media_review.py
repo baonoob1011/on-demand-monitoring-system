@@ -95,6 +95,7 @@ class LocalMediaLibrary:
         method = plan.get("uploadMethod")
         with self.lock:
             self.items[local_id]["status"] = "UPLOADING"
+            self.items[local_id]["backendMediaId"] = plan["mediaId"]
             self._persist()
         try:
             if method == "PUT":
@@ -111,7 +112,6 @@ class LocalMediaLibrary:
             raise
         with self.lock:
             self.items[local_id]["status"] = "VALIDATING"
-            self.items[local_id]["backendMediaId"] = plan["mediaId"]
             self._persist()
         return result
 
