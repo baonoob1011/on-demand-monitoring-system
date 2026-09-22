@@ -6,7 +6,6 @@ sleep 22
 PROJECT_PATH="${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 REPO_CONTROLLER="$PROJECT_PATH/drone"
 ENV_FILE="$PROJECT_PATH/.env"
-LEGACY_ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
 DRONE_WORKDIR="${DRONE_WORKDIR:-$HOME/drone-controller}"
 DRONE_ENV="${DRONE_ENV:-$HOME/drone-env}"
 
@@ -14,10 +13,6 @@ mkdir -p "$DRONE_WORKDIR"
 cd "$DRONE_WORKDIR"
 cp "$REPO_CONTROLLER/telemetry_sender.py" telemetry_sender.py
 cp "$REPO_CONTROLLER/sitl_battery_sim.py" sitl_battery_sim.py
-
-if [ ! -f "$ENV_FILE" ] && [ -f "$LEGACY_ENV_FILE" ]; then
-    ENV_FILE="$LEGACY_ENV_FILE"
-fi
 
 if [ -f "$ENV_FILE" ]; then
     set -a

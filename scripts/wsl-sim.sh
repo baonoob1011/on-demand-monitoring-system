@@ -35,17 +35,12 @@ FOREST3D_PATH="$(resolve_forest3d_path)"
 FOREST3D_MODELS_PATH="${FOREST3D_MODELS_PATH:-$FOREST3D_PATH/models}"
 FOREST3D_DRONE_MODEL_PATH="${FOREST3D_DRONE_MODEL_PATH:-$FOREST3D_PATH/models/x500_mono_cam_down}"
 ENV_FILE="$PROJECT_PATH/.env"
-LEGACY_ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
 PX4_ROOT="$HOME/PX4-Autopilot"
 PX4_BUILD="$PX4_ROOT/build/px4_sitl_default"
 PX4_GZ_PLUGIN_PATH="$PX4_BUILD/src/modules/simulation/gz_plugins"
 FOREST3D_GZ_GUI_CONFIG="$FOREST3D_PATH/gui/forest_monitoring_gui.config"
 SIM_WORLD="${1:-${SIM_WORLD:-legacy}}"
 PX4_MAVLINK_RC="$PX4_ROOT/ROMFS/px4fmu_common/init.d-posix/px4-rc.mavlink"
-
-if [ ! -f "$ENV_FILE" ] && [ -f "$LEGACY_ENV_FILE" ]; then
-    ENV_FILE="$LEGACY_ENV_FILE"
-fi
 
 if [ -f "$ENV_FILE" ]; then
     set -a

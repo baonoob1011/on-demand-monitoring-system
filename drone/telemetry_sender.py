@@ -36,8 +36,6 @@ def resolve_project_root() -> Path:
 
 PROJECT_ROOT = resolve_project_root()
 ENV_FILE = PROJECT_ROOT / ".env"
-if not ENV_FILE.exists():
-    ENV_FILE = PROJECT_ROOT / "ondemandmonitoring" / ".env"
 load_dotenv(ENV_FILE, override=True)
 
 PX4_SYSTEM_ADDRESS = os.getenv("PX4_SYSTEM_ADDRESS", "udp://:14540")

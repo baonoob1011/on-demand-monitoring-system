@@ -26,10 +26,12 @@ import com.ondemandmonitoring.planning.service.PlanningEnvironment;
 import com.ondemandmonitoring.planning.service.RoutePlanner;
 import com.ondemandmonitoring.planning.service.SimulationHomeProvider;
 import java.util.Optional;
+import java.time.Instant;
 import org.locationtech.jts.geom.Point;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.transaction.annotation.Transactional;
+import com.ondemandmonitoring.replanning.domain.ReplanningReason;
 
 @Service
 public class MissionPlanningServiceImpl implements MissionPlanningService {
@@ -96,6 +98,72 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         return generatePlan(missionId, aStarEnergyAwareRoutePlanner, PlanningAlgorithm.ASTAR_ENERGY_AWARE);
     }
 
+    @Override
+    @Transactional
+    public MissionPlan replanAStarEnergyAwareFromCurrentPosition(
+            String missionId,
+            double currentSimX,
+            double currentSimY,
+            ReplanningReason reason) {
+        if (!Double.isFinite(currentSimX) || !Double.isFinite(currentSimY)) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Replan start position must contain finite simX/simY.");
+        }
+        PlanningContext context = resolvePlanningContext(missionId);
+        SimulationPoint currentPosition = new SimulationPoint(currentSimX, currentSimY);
+
+        long startedAtNanos = System.nanoTime();
+        PlannedRoute route = planRoute(currentPosition, context.target(), aStarEnergyAwareRoutePlanner);
+        long planningTimeMs = Math.max(0L, (System.nanoTime() - startedAtNanos) / 1_000_000L);
+
+        MissionPlan missionPlan = missionPlanRepository.findByMissionId(missionId)
+                .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REQUEST, "Mission has no active plan to replan: " + missionId));
+        int nextVersion = Math.max(1, Optional.ofNullable(missionPlan.getPlanVersion()).orElse(1)) + 1;
+
+        if (!route.feasible()) {
+            missionPlan.setReplanningReason(reason.name());
+            missionPlan.setReplanningStatus("NO_ROUTE_FOUND");
+            missionPlan.setReplannedAt(Instant.now());
+            return missionPlanRepository.save(missionPlan);
+        }
+
+        EnergyEstimate energyEstimate = missionEnergyEstimator.estimate(new EnergyEstimateRequest(
+                route.distanceM(),
+                resolveHomeWorldZ(currentPosition),
+                route.requiredWorldZM(),
+                true,
+                false));
+        BatterySnapshot batterySnapshot = resolveBatterySnapshot(context.mission().getId());
+        FeasibilityStatus batteryFeasibility = resolveBatteryFeasibility(batterySnapshot, energyEstimate);
+        if (batteryFeasibility != FeasibilityStatus.FEASIBLE) {
+            missionPlan.setReplanningReason(reason.name());
+            missionPlan.setReplanningStatus(batteryFeasibility.name());
+            missionPlan.setReplannedAt(Instant.now());
+            return missionPlanRepository.save(missionPlan);
+        }
+
+        missionPlan.setMission(context.mission());
+        clearPlanningResult(missionPlan);
+        missionPlan.setPlanningAlgorithm(PlanningAlgorithm.ASTAR_ENERGY_AWARE);
+        missionPlan.setPlanVersion(nextVersion);
+        missionPlan.setReplanningReason(reason.name());
+        missionPlan.setReplanningStatus("BACKEND_PLAN_APPLIED");
+        missionPlan.setReplannedAt(Instant.now());
+        missionPlan.setPlannedDistanceM(route.distanceM());
+        missionPlan.setMaxPlannedAltitudeM(route.requiredWorldZM());
+        missionPlan.setFeasibilityStatus(route.feasible()
+                ? FeasibilityStatus.FEASIBLE
+                : FeasibilityStatus.NO_SAFE_ROUTE);
+        missionPlan.setPlanningTimeMs(planningTimeMs);
+
+        applyEnergyEstimate(missionPlan, energyEstimate, context.mission().getId());
+
+        for (int sequence = 0; sequence < route.points().size(); sequence++) {
+            missionPlan.getWaypoints().add(toWaypoint(missionPlan, sequence, route.points().get(sequence), route.points().size()));
+        }
+
+        return missionPlanRepository.save(missionPlan);
+    }
+
     private MissionPlan generatePlan(
             String missionId,
             RoutePlanner routePlanner,
@@ -116,6 +184,12 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         missionPlan.setMission(context.mission());
         clearPlanningResult(missionPlan);
         missionPlan.setPlanningAlgorithm(planningAlgorithm);
+        if (missionPlan.getPlanVersion() == null) {
+            missionPlan.setPlanVersion(1);
+        }
+        missionPlan.setReplanningReason(null);
+        missionPlan.setReplanningStatus(null);
+        missionPlan.setReplannedAt(null);
         missionPlan.setPlannedDistanceM(route.distanceM());
         missionPlan.setMaxPlannedAltitudeM(route.requiredWorldZM());
         missionPlan.setFeasibilityStatus(route.feasible()
@@ -256,6 +330,17 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
                 context.home().y(),
                 context.target().x(),
                 context.target().y());
+    }
+
+    private PlannedRoute planRoute(
+            SimulationPoint start,
+            SimulationPoint target,
+            RoutePlanner routePlanner) {
+        return routePlanner.plan(
+                start.x(),
+                start.y(),
+                target.x(),
+                target.y());
     }
 
     private PlanWaypoint toWaypoint(

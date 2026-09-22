@@ -7,10 +7,12 @@ import com.ondemandmonitoring.drone.enums.DroneStatus;
 import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
 import com.ondemandmonitoring.environment.service.EnvironmentalMeasurementService;
+import com.ondemandmonitoring.replanning.event.DroneTelemetrySavedEvent;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +24,7 @@ public class DroneTelemetryService {
     DroneTelemetryRepository droneTelemetryRepository;
     DroneRepository droneRepository;
     EnvironmentalMeasurementService environmentalMeasurementService;
+    ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public DroneTelemetry save(String droneCode, TelemetryRequest request) {
@@ -71,6 +74,7 @@ public class DroneTelemetryService {
 
         DroneTelemetry saved = droneTelemetryRepository.save(telemetry);
         environmentalMeasurementService.recordAirPressure(drone, droneCode, request);
+        eventPublisher.publishEvent(new DroneTelemetrySavedEvent(saved.getId(), droneCode));
         return saved;
     }
 
