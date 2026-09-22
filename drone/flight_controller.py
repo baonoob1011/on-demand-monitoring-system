@@ -28,7 +28,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from video.video_recorder import RecordingResult, VideoRecorder
 from battery_simulator import BatterySimulator, preflight_battery_check
-from media_uploader import BackendUrlResolver, MediaUploader
+from media_uploader import BackendUrlResolver
 from media_review import LocalMediaLibrary
 from thermal_camera_gateway import ThermalCameraGateway
 
@@ -325,7 +325,6 @@ VIDEO_RECORDING_DIR = Path(
 )
 VIDEO_RECORDING_FPS = float(os.getenv("VIDEO_RECORDING_FPS", "15.0"))
 VIDEO_RECORDING_QUEUE_SIZE = int(os.getenv("VIDEO_RECORDING_QUEUE_SIZE", "4"))
-VIDEO_UPLOAD_TIMEOUT_S = float(os.getenv("VIDEO_UPLOAD_TIMEOUT_S", "120.0"))
 CAMERA_STREAM_FPS = float(os.getenv("CAMERA_STREAM_FPS", "15.0"))
 CAMERA_STREAM_MAX_WIDTH = int(os.getenv("CAMERA_STREAM_MAX_WIDTH", "0"))
 CAMERA_LEGACY_DOWN_SENSOR_ENABLED = (
@@ -591,7 +590,6 @@ class CameraGateway:
     def __init__(
         self,
         video_recorder: VideoRecorder | None = None,
-        media_uploader: MediaUploader | None = None,
         media_library: LocalMediaLibrary | None = None,
     ) -> None:
         self.latest_frames: dict[str, GzImage] = {}
@@ -602,7 +600,6 @@ class CameraGateway:
         self.lock = threading.Lock()
         self.node = None
         self.video_recorder = video_recorder
-        self.media_uploader = media_uploader
         self.media_library = media_library
 
     def start(self) -> None:
@@ -697,7 +694,7 @@ class CameraGateway:
                 self.latest_jpegs[cache_key] = (version, jpeg)
         return jpeg
 
-    async def capture_and_upload(self) -> None:
+    async def capture_for_review(self) -> None:
         print("[CAMERA] Drone camera capture requested")
         jpeg = await asyncio.to_thread(self._latest_jpeg)
         if jpeg is None:
@@ -710,7 +707,7 @@ class CameraGateway:
         item = await asyncio.to_thread(self.media_library.capture_image, jpeg)
         print(f"[CAMERA] Captured for operator review id={item['localMediaId']}", flush=True)
 
-    async def upload_recorded_video(self, recording: RecordingResult) -> None:
+    async def retain_recorded_video(self, recording: RecordingResult) -> None:
         if self.media_library is None:
             print("[VIDEO] Local media library unavailable", flush=True)
             return
@@ -2337,12 +2334,6 @@ async def main() -> None:
     drone = await connection_manager.connect()
     backend_urls = BackendUrlResolver(BACKEND_BASE_URL)
     preflight_persistence = PreflightPersistenceBridge(backend_urls, MISSION_ID)
-    media_uploader = MediaUploader(
-        backend_urls,
-        DRONE_ID,
-        MISSION_ID,
-        VIDEO_UPLOAD_TIMEOUT_S,
-    )
     media_library = LocalMediaLibrary(
         Path(os.getenv("LOCAL_MEDIA_DIR", "/tmp/forest3d_drone_media")), MISSION_ID, DRONE_ID)
 
@@ -2351,7 +2342,7 @@ async def main() -> None:
         fps=VIDEO_RECORDING_FPS,
         queue_size=VIDEO_RECORDING_QUEUE_SIZE,
     )
-    camera = CameraGateway(video_recorder, media_uploader, media_library)
+    camera = CameraGateway(video_recorder, media_library)
     camera.start()
     thermal = ThermalCameraGateway(backend_urls.candidates())
     thermal_node = None
@@ -3062,17 +3053,17 @@ async def main() -> None:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def cleanup_controller(upload_video: bool = True) -> None:
+    async def cleanup_controller(retain_video: bool = True) -> None:
         print("[SHUTDOWN] Cleaning up...", flush=True)
         control_api.stop()
-        stop_video_recording(upload=upload_video)
+        stop_video_recording(retain=retain_video)
         await connection_manager.stop_offboard_sender()
         await connection_manager.stop_connection_monitor()
         await cancel_owned_tasks()
         await wait_for_media_tasks()
         print("[SHUTDOWN] Cleanup complete", flush=True)
 
-    def stop_video_recording(upload: bool = True) -> RecordingResult | None:
+    def stop_video_recording(retain: bool = True) -> RecordingResult | None:
         if not video_recorder.is_recording():
             return None
         print("[VIDEO] Stopping recording...", flush=True)
@@ -3089,11 +3080,11 @@ async def main() -> None:
             f"size={result.width}x{result.height} dropped={result.dropped_frames}",
             flush=True,
         )
-        if upload and result.frames_written > 0:
-            task = asyncio.create_task(camera.upload_recorded_video(result))
+        if retain and result.frames_written > 0:
+            task = asyncio.create_task(camera.retain_recorded_video(result))
             track_background_task(task, "VIDEO")
         elif result.frames_written <= 0:
-            print("[VIDEO] Upload skipped - no frames were recorded", flush=True)
+            print("[VIDEO] Local review skipped - no frames were recorded", flush=True)
         return result
 
     # ================================================================
@@ -3483,11 +3474,11 @@ async def main() -> None:
         elif key == "thermal_range_toggle":
             print(f"[THERMAL] Display range -> {thermal.toggle_display_range()}", flush=True)
         elif key == "p":
-            task = asyncio.create_task(camera.capture_and_upload())
+            task = asyncio.create_task(camera.capture_for_review())
             track_background_task(task, "CAMERA")
         elif key == "r":
             if video_recorder.is_recording():
-                stop_video_recording(upload=True)
+                stop_video_recording(retain=True)
             else:
                 try:
                     path = video_recorder.start_recording(MISSION_ID)
@@ -3500,7 +3491,7 @@ async def main() -> None:
                     )
         elif key == "l":
             print("[CMD] land")
-            stop_video_recording(upload=True)
+            stop_video_recording(retain=True)
             await connection_manager.stop_offboard_sender()
             active_drone = await connection_manager.get_drone()
             if active_drone is None:
@@ -3532,7 +3523,7 @@ async def main() -> None:
             await wait_for_media_tasks()
         elif key == "x":
             print("[SHUTDOWN] Stopped by user")
-            await cleanup_controller(upload_video=True)
+            await cleanup_controller(retain_video=True)
             return
 
 
