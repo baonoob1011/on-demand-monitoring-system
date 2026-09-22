@@ -29,6 +29,7 @@ from dotenv import load_dotenv
 from video.video_recorder import RecordingResult, VideoRecorder
 from battery_simulator import BatterySimulator, preflight_battery_check
 from media_uploader import BackendUrlResolver, MediaUploader
+from media_review import LocalMediaLibrary
 from thermal_camera_gateway import ThermalCameraGateway
 
 def resolve_project_root() -> Path:
@@ -591,6 +592,7 @@ class CameraGateway:
         self,
         video_recorder: VideoRecorder | None = None,
         media_uploader: MediaUploader | None = None,
+        media_library: LocalMediaLibrary | None = None,
     ) -> None:
         self.latest_frames: dict[str, GzImage] = {}
         self.latest_frame_time_s: dict[str, float] = {}
@@ -601,6 +603,7 @@ class CameraGateway:
         self.node = None
         self.video_recorder = video_recorder
         self.media_uploader = media_uploader
+        self.media_library = media_library
 
     def start(self) -> None:
         if Node is None or GzImage is None:
@@ -701,18 +704,18 @@ class CameraGateway:
             print("[CAMERA] No camera frame available")
             return
 
-        if self.media_uploader is None:
-            print("[CAMERA] Media uploader unavailable")
+        if self.media_library is None:
+            print("[CAMERA] Local media library unavailable")
             return
-
-        await self.media_uploader.upload_image(jpeg)
+        item = await asyncio.to_thread(self.media_library.capture_image, jpeg)
+        print(f"[CAMERA] Captured for operator review id={item['localMediaId']}", flush=True)
 
     async def upload_recorded_video(self, recording: RecordingResult) -> None:
-        if self.media_uploader is None:
-            print("[VIDEO] Media uploader unavailable", flush=True)
+        if self.media_library is None:
+            print("[VIDEO] Local media library unavailable", flush=True)
             return
-
-        await self.media_uploader.upload_video(recording)
+        item = await asyncio.to_thread(self.media_library.register_video, recording.path)
+        print(f"[VIDEO] Captured for operator review id={item['localMediaId']}", flush=True)
 
 
 class CameraOrientationController:
@@ -1134,6 +1137,7 @@ class FlightControlApi:
         preflight_provider=None,
         preflight_persistence=None,
         thermal: ThermalCameraGateway | None = None,
+        media_library: LocalMediaLibrary | None = None,
     ) -> None:
         self.camera = camera
         self.commands = commands
@@ -1141,6 +1145,7 @@ class FlightControlApi:
         self.preflight_provider = preflight_provider
         self.preflight_persistence = preflight_persistence
         self.thermal = thermal
+        self.media_library = media_library
         self.preflight_check_id: str | None = None
         self.preflight_started_at_s: float | None = None
         self.server: ThreadingHTTPServer | None = None
@@ -1175,6 +1180,28 @@ class FlightControlApi:
                 self.end_headers()
 
             def do_GET(self) -> None:
+                if self.path == "/api/media/local":
+                    self._write_json(200, {"media": owner.media_library.list_items() if owner.media_library else []})
+                    return
+                if self.path.startswith("/api/media/local/") and self.path.endswith("/preview"):
+                    local_id = self.path.split("/")[4]
+                    try:
+                        item = owner.media_library.get(local_id)
+                        source = Path(item["localPath"])
+                        self.send_response(200)
+                        self._cors()
+                        self.send_header("Content-Type", item["contentType"])
+                        self.send_header("Content-Length", str(source.stat().st_size))
+                        self.send_header("Cache-Control", "no-store")
+                        self.end_headers()
+                        with source.open("rb") as media_file:
+                            while chunk := media_file.read(1024 * 1024):
+                                self.wfile.write(chunk)
+                    except (KeyError, FileNotFoundError):
+                        self._write_json(404, {"error": "Media not found"})
+                    except (BrokenPipeError, ConnectionResetError):
+                        pass
+                    return
                 if self.path.startswith("/api/control/status"):
                     status = {"online": True}
                     if owner.status_provider is not None:
@@ -1232,6 +1259,27 @@ class FlightControlApi:
                         return
 
             def do_POST(self) -> None:
+                if self.path.startswith("/api/media/local/"):
+                    local_id = self.path.split("/")[4]
+                    try:
+                        length = int(self.headers.get("Content-Length", "0"))
+                        if length > 200000:
+                            self._write_json(413, {"error": "Upload plan too large"})
+                            return
+                        payload = json.loads(self.rfile.read(length) or b"{}")
+                        if self.path.endswith("/discard"):
+                            owner.media_library.discard(local_id)
+                            self._write_json(200, {"ok": True})
+                        elif self.path.endswith("/transfer"):
+                            result = owner.media_library.transfer(local_id, payload)
+                            self._write_json(200, {"ok": True, **result})
+                        else:
+                            self._write_json(404, {"error": "Unknown media action"})
+                    except KeyError:
+                        self._write_json(404, {"error": "Media not found"})
+                    except (ValueError, httpx.HTTPError) as exc:
+                        self._write_json(400, {"error": str(exc)[:500]})
+                    return
                 if self.path.startswith("/api/preflight/check"):
                     persisted_check_id = None
                     if owner.preflight_persistence is not None:
@@ -2271,13 +2319,15 @@ async def main() -> None:
         MISSION_ID,
         VIDEO_UPLOAD_TIMEOUT_S,
     )
+    media_library = LocalMediaLibrary(
+        Path(os.getenv("LOCAL_MEDIA_DIR", "/tmp/forest3d_drone_media")), MISSION_ID, DRONE_ID)
 
     video_recorder = VideoRecorder(
         VIDEO_RECORDING_DIR,
         fps=VIDEO_RECORDING_FPS,
         queue_size=VIDEO_RECORDING_QUEUE_SIZE,
     )
-    camera = CameraGateway(video_recorder, media_uploader)
+    camera = CameraGateway(video_recorder, media_uploader, media_library)
     camera.start()
     thermal = ThermalCameraGateway(backend_urls.candidates())
     thermal_node = None
@@ -2635,6 +2685,7 @@ async def main() -> None:
         build_preflight_status,
         preflight_persistence,
         thermal,
+        media_library,
     )
     control_api.start()
     print(
