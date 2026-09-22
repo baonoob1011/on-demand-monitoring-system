@@ -19,6 +19,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class CustomerMediaController {
     private final ICustomerMediaService customerMedia;
 
+    @GetMapping("/customer/available-media")
+    public ApiResponse<List<CustomerMediaResponse>> allAvailable() {
+        return ApiResponse.ok(customerMedia.listAllAvailable());
+    }
+
+    @GetMapping("/customer/media-notifications")
+    public ApiResponse<List<CustomerMediaNotificationResponse>> allNotifications() {
+        return ApiResponse.ok(customerMedia.listAllNotifications());
+    }
+
     @GetMapping("/missions/{missionId}/available-media")
     public ApiResponse<List<CustomerMediaResponse>> list(@PathVariable String missionId) {
         return ApiResponse.ok(customerMedia.listAvailable(missionId));

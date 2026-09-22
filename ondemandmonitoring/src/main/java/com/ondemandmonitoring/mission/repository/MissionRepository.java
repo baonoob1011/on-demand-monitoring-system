@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 public interface MissionRepository extends JpaRepository<Mission, String> {
     @Override
@@ -19,6 +20,8 @@ public interface MissionRepository extends JpaRepository<Mission, String> {
     Optional<Mission> findByIdWithOrder(@Param("id") String id);
 
     Optional<Mission> findByMissionCode(String missionCode);
+
+    List<Mission> findByOrder_Customer_Id(UUID customerId);
 
     @Query("""
             SELECT m FROM Mission m

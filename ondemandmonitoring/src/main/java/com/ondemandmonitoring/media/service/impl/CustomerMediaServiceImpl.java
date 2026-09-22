@@ -38,6 +38,15 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<CustomerMediaResponse> listAllAvailable() {
+        List<String> missionIds = ownMissionIds();
+        if (missionIds.isEmpty()) return List.of();
+        return media.findByMissionIdInAndMediaStatusOrderByCapturedAtDesc(missionIds, MediaStatus.AVAILABLE)
+                .stream().map(this::toResponse).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public CustomerMediaResponse getAvailable(String mediaId) {
         MediaAsset asset = media.findById(mediaId)
                 .orElseThrow(() -> new ApiException(ErrorCode.MEDIA_NOT_FOUND));
@@ -57,6 +66,23 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
                 .map(event -> new CustomerMediaNotificationResponse(event.getId(), event.getMedia().getId(),
                         mission.getId(), event.getEventType(), event.getCreatedAt()))
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CustomerMediaNotificationResponse> listAllNotifications() {
+        List<String> missionIds = ownMissionIds();
+        if (missionIds.isEmpty()) return List.of();
+        return notifications.findByMedia_MissionIdInOrderByCreatedAtDesc(missionIds).stream()
+                .filter(event -> event.getMedia().getMediaStatus() == MediaStatus.AVAILABLE)
+                .map(event -> new CustomerMediaNotificationResponse(event.getId(), event.getMedia().getId(),
+                        event.getMedia().getMissionId(), event.getEventType(), event.getCreatedAt()))
+                .toList();
+    }
+
+    private List<String> ownMissionIds() {
+        return missions.findByOrder_Customer_Id(currentUser.getCurrentUser().getId()).stream()
+                .map(Mission::getId).toList();
     }
 
     private Mission authorize(String identifier) {
