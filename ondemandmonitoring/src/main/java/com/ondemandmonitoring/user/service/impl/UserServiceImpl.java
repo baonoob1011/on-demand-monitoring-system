@@ -12,7 +12,9 @@ import com.ondemandmonitoring.user.service.IUserService;
 import com.ondemandmonitoring.user.service.IUserIdentityService;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,12 +27,13 @@ import java.util.UUID;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class UserServiceImpl implements IUserService {
 
-    private final UserRepository userRepository;
-    private final RoleService roleService;
-    private final IUserIdentityService userIdentityService;
-    private final CustomerProfileRepository customerProfileRepository;
+    UserRepository userRepository;
+    RoleService roleService;
+    IUserIdentityService userIdentityService;
+    CustomerProfileRepository customerProfileRepository;
 
     @Override
     public User findByEmail(String email) {

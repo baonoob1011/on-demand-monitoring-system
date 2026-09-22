@@ -41,7 +41,7 @@ class UserControllerTest {
                         .build())
                 .build());
 
-        mockMvc.perform(get("/api/v1/users/me"))
+        mockMvc.perform(get("/api/users/me"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.id").value(userId.toString()))
@@ -66,7 +66,7 @@ class UserControllerTest {
                                 .build())
                         .build());
 
-        mockMvc.perform(patch("/api/v1/users/me")
+        mockMvc.perform(patch("/api/users/me")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -84,7 +84,7 @@ class UserControllerTest {
 
     @Test
     void updateCurrentProfile_rejectsBlankFullName() throws Exception {
-        mockMvc.perform(patch("/api/v1/users/me")
+        mockMvc.perform(patch("/api/users/me")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fullName\":\"   \"}"))
                 .andExpect(status().isBadRequest());

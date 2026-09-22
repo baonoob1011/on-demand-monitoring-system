@@ -58,7 +58,7 @@ class CustomerMediaServiceTest {
         var result = service.listAvailable("mission-1");
 
         assertThat(result).hasSize(1);
-        assertThat(result.getFirst().mediaId()).isEqualTo("ready-1");
+        assertThat(result.getFirst().getMediaId()).isEqualTo("ready-1");
         verify(storage, times(1)).createPresignedGetUrl("bucket", "final/ready-1.jpg");
     }
 

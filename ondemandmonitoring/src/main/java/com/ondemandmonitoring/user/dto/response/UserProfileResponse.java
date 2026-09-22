@@ -2,25 +2,26 @@ package com.ondemandmonitoring.user.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.ondemandmonitoring.role.domain.RoleCode;
-import lombok.*;
-
 import java.util.UUID;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.experimental.FieldDefaults;
 
-@Getter
+@Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class UserProfileResponse {
 
-    private UUID id;
-
-    private String fullName;
-
-    private String email;
-
-    private RoleCode role;
-
-    private String avatarUrl;
-
-    private CustomerProfileResponse customerProfile;
-
+    UUID id;
+    String fullName;
+    String email;
+    RoleCode role;
+    String avatarUrl;
+    CustomerProfileResponse customerProfile;
 }

@@ -95,7 +95,7 @@ class MediaUploadWorkflowTest {
         existing.setType("IMAGE");
         existing.setContentType("image/jpeg");
         existing.setFileSize(100L);
-        existing.setChecksumSha256(request.checksumSha256());
+        existing.setChecksumSha256(request.getChecksumSha256());
         existing.setMediaStatus(MediaStatus.UPLOAD_PENDING);
         when(media.findByMissionIdAndDroneCodeAndLocalMediaId("mission-id", "DRONE-01", "capture-1"))
                 .thenReturn(Optional.of(existing));
@@ -110,8 +110,8 @@ class MediaUploadWorkflowTest {
 
         var result = service.prepare("mission-id", request);
 
-        assertThat(result.mediaId()).isEqualTo("media-id");
-        assertThat(result.attemptId()).isEqualTo("attempt-id");
+        assertThat(result.getMediaId()).isEqualTo("media-id");
+        assertThat(result.getAttemptId()).isEqualTo("attempt-id");
         verify(media, never()).saveAndFlush(any());
     }
 
@@ -143,7 +143,7 @@ class MediaUploadWorkflowTest {
                 .thenReturn(Optional.of(existing));
         when(media.findById("media-id")).thenReturn(Optional.of(existing));
 
-        assertThat(service.prepare("mission-id", request("IMAGE", "image/jpeg")).status())
+        assertThat(service.prepare("mission-id", request("IMAGE", "image/jpeg")).getStatus())
                 .isEqualTo(MediaStatus.AVAILABLE);
     }
 

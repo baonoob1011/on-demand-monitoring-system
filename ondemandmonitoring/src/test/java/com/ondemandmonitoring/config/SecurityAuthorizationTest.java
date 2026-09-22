@@ -56,7 +56,7 @@ class SecurityAuthorizationTest {
 
     @Test
     void unauthenticatedRequestReturns401() throws Exception {
-        mvc.perform(post("/api/v1/admin/accounts")
+        mvc.perform(post("/api/admin/accounts")
                         .with(csrf())
                         .contentType("application/json")
                         .content(requestBody()))
@@ -66,7 +66,7 @@ class SecurityAuthorizationTest {
     @ParameterizedTest
     @EnumSource(value = RoleCode.class, names = "ADMIN", mode = EnumSource.Mode.EXCLUDE)
     void everyNonAdminRoleReturns403(RoleCode role) throws Exception {
-        mvc.perform(post("/api/v1/admin/accounts")
+        mvc.perform(post("/api/admin/accounts")
                         .with(csrf())
                         .with(jwt().authorities(() -> "ROLE_" + role.name()))
                         .contentType("application/json")
@@ -76,7 +76,7 @@ class SecurityAuthorizationTest {
 
     @Test
     void adminCanCreateManagedAccount() throws Exception {
-        mvc.perform(post("/api/v1/admin/accounts")
+        mvc.perform(post("/api/admin/accounts")
                         .with(csrf())
                         .with(jwt().authorities(() -> "ROLE_ADMIN"))
                         .contentType("application/json")

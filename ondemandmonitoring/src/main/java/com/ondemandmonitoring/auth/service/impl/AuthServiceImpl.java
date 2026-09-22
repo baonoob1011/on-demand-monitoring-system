@@ -11,17 +11,20 @@ import com.ondemandmonitoring.auth.service.RegisterService;
 import com.ondemandmonitoring.auth.service.SocialAuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import lombok.experimental.FieldDefaults;
 import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class AuthServiceImpl implements IAuthService {
 
-    private final LoginService loginService;
-    private final RegisterService registerService;
-    private final PasswordService passwordService;
-    private final SocialAuthService socialAuthService;
+    LoginService loginService;
+    RegisterService registerService;
+    PasswordService passwordService;
+    SocialAuthService socialAuthService;
 
     @Override
     public RegisterResponse register(RegisterRequest request) {

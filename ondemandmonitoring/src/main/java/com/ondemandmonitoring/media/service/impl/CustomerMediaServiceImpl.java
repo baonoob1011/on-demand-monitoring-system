@@ -14,18 +14,23 @@ import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.s3.S3ObjectStorageService;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.util.List;
+
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import lombok.experimental.FieldDefaults;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class CustomerMediaServiceImpl implements ICustomerMediaService {
-    private final MissionRepository missions;
-    private final MediaAssetRepository media;
-    private final MediaNotificationOutboxRepository notifications;
-    private final S3ObjectStorageService storage;
-    private final AuthenticatedUserResolver currentUser;
+
+    MissionRepository missions;
+    MediaAssetRepository media;
+    MediaNotificationOutboxRepository notifications;
+    S3ObjectStorageService storage;
+    AuthenticatedUserResolver currentUser;
 
     @Override
     @Transactional(readOnly = true)
@@ -41,7 +46,8 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
     public List<CustomerMediaResponse> listAllAvailable() {
         List<String> missionIds = ownMissionIds();
         if (missionIds.isEmpty()) return List.of();
-        return media.findByMissionIdInAndMediaStatusOrderByCapturedAtDesc(missionIds, MediaStatus.AVAILABLE)
+        return media.findByMissionIdInAndMediaStatusOrderByCapturedAtDesc(missionIds,
+                        MediaStatus.AVAILABLE)
                 .stream().map(this::toResponse).toList();
     }
 
@@ -64,7 +70,9 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
         return notifications.findByMedia_MissionIdOrderByCreatedAtDesc(mission.getId()).stream()
                 .filter(event -> event.getMedia().getMediaStatus() == MediaStatus.AVAILABLE)
                 .map(event -> new CustomerMediaNotificationResponse(event.getId(), event.getMedia().getId(),
-                        mission.getId(), event.getEventType(), event.getCreatedAt()))
+                        mission.getId(),
+                        event.getEventType(),
+                        event.getCreatedAt()))
                 .toList();
     }
 
@@ -75,8 +83,12 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
         if (missionIds.isEmpty()) return List.of();
         return notifications.findByMedia_MissionIdInOrderByCreatedAtDesc(missionIds).stream()
                 .filter(event -> event.getMedia().getMediaStatus() == MediaStatus.AVAILABLE)
-                .map(event -> new CustomerMediaNotificationResponse(event.getId(), event.getMedia().getId(),
-                        event.getMedia().getMissionId(), event.getEventType(), event.getCreatedAt()))
+                .map(event -> new CustomerMediaNotificationResponse(
+                        event.getId(),
+                        event.getMedia().getId(),
+                        event.getMedia().getMissionId(),
+                        event.getEventType(),
+                        event.getCreatedAt()))
                 .toList();
     }
 
@@ -89,16 +101,24 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
         Mission mission = missions.findById(identifier).or(() -> missions.findByMissionCode(identifier))
                 .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
         if (mission.getOrder() == null || mission.getOrder().getCustomer() == null
-                || !mission.getOrder().getCustomer().getId().equals(currentUser.getCurrentUser().getId())) {
+                || !mission.getOrder().getCustomer().getId()
+                .equals(currentUser.getCurrentUser().getId())) {
             throw new ApiException(ErrorCode.ACCESS_DENIED);
         }
         return mission;
     }
 
     private CustomerMediaResponse toResponse(MediaAsset asset) {
-        return new CustomerMediaResponse(asset.getId(), asset.getMissionId(), asset.getDroneCode(),
-                asset.getType(), asset.getOriginalFileName(), asset.getContentType(), asset.getFileSize(),
-                asset.getCapturedAt(), asset.getAvailableAt(),
+        return new CustomerMediaResponse(
+                asset.getId(),
+                asset.getMissionId(),
+                asset.getDroneCode(),
+                asset.getType(),
+                asset.getOriginalFileName(),
+                asset.getContentType(),
+                asset.getFileSize(),
+                asset.getCapturedAt(),
+                asset.getAvailableAt(),
                 storage.createPresignedGetUrl(asset.getS3Bucket(), asset.getS3Key()));
     }
 }

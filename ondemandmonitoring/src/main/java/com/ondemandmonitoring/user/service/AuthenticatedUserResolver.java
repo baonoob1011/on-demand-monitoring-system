@@ -5,7 +5,10 @@ import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.repository.UserRepository;
 import java.util.UUID;
+
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import lombok.experimental.FieldDefaults;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -15,10 +18,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class AuthenticatedUserResolver {
 
-    private final UserRepository userRepository;
-    private final IUserIdentityService userIdentityService;
+    UserRepository userRepository;
+    IUserIdentityService userIdentityService;
 
     @Transactional(readOnly = true)
     public User getCurrentUser() {

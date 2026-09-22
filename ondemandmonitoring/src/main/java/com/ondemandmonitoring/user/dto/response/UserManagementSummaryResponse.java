@@ -3,26 +3,26 @@ package com.ondemandmonitoring.user.dto.response;
 import com.ondemandmonitoring.role.domain.RoleCode;
 import java.time.OffsetDateTime;
 import java.util.UUID;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Getter;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.experimental.FieldDefaults;
 
-@Getter
+@Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE)
 public class UserManagementSummaryResponse {
 
-    private UUID id;
-
-    private String fullName;
-
-    private String email;
-
-    private RoleCode role;
-
-    private boolean active;
-
-    private boolean emailVerified;
-
-    private OffsetDateTime createdAt;
-
-    private OffsetDateTime lastLoginAt;
+    UUID id;
+    String fullName;
+    String email;
+    RoleCode role;
+    boolean active;
+    boolean emailVerified;
+    OffsetDateTime createdAt;
+    OffsetDateTime lastLoginAt;
 }

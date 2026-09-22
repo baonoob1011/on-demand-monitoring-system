@@ -10,6 +10,7 @@ import lombok.Setter;
 @Entity
 @Table(name = "media_audit_logs")
 public class MediaAuditLog extends BaseEntity {
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "media_id", nullable = false)
     private MediaAsset media;

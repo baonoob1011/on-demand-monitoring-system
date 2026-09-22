@@ -7,11 +7,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.stereotype.Component;
 
 public final class UserManagementSpecifications {
 
     private UserManagementSpecifications() {
+        /* This utility class should not be instantiated */
     }
+
 
     public static Specification<User> filter(
             String search, RoleCode role, Boolean active, Boolean emailVerified) {

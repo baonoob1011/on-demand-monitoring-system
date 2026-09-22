@@ -15,6 +15,7 @@ import lombok.Setter;
 @Table(name = "media_storage_event_inbox", uniqueConstraints =
         @UniqueConstraint(name = "uk_media_storage_event", columnNames = "event_key"))
 public class StorageEventInbox extends BaseEntity {
+
     @Column(name = "event_key", nullable = false, length = 64)
     private String eventKey;
 

@@ -11,6 +11,7 @@ import lombok.Setter;
 @Table(name = "media_notification_outbox", uniqueConstraints =
         @UniqueConstraint(name = "uk_media_notification_type", columnNames = {"media_id", "event_type"}))
 public class MediaNotificationOutbox extends BaseEntity {
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "media_id", nullable = false)
     private MediaAsset media;

@@ -20,7 +20,10 @@ import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import lombok.experimental.FieldDefaults;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -30,10 +33,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class UserManagementServiceImpl implements IUserManagementService {
 
-    private static final int MAX_PAGE_SIZE = 100;
-    private static final Set<String> ALLOWED_SORT_PROPERTIES = Set.of(
+    static int MAX_PAGE_SIZE = 100;
+    static Set<String> ALLOWED_SORT_PROPERTIES = Set.of(
             "id",
             "fullName",
             "email",
@@ -43,12 +47,12 @@ public class UserManagementServiceImpl implements IUserManagementService {
             "createdAt",
             "lastLoginAt");
 
-    private final UserRepository userRepository;
-    private final UserIdentityRepository userIdentityRepository;
-    private final CustomerProfileRepository customerProfileRepository;
-    private final UserManagementMapper userManagementMapper;
-    private final AuthenticatedUserResolver authenticatedUserResolver;
-    private final AuthOutboxService authOutboxService;
+    UserRepository userRepository;
+    UserIdentityRepository userIdentityRepository;
+    CustomerProfileRepository customerProfileRepository;
+    UserManagementMapper userManagementMapper;
+    AuthenticatedUserResolver authenticatedUserResolver;
+    AuthOutboxService authOutboxService;
 
     @Override
     @Transactional(readOnly = true)

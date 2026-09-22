@@ -14,6 +14,7 @@ import lombok.Setter;
         @UniqueConstraint(name = "uk_media_attempt_storage_key", columnNames = "storage_key")
 })
 public class MediaUploadAttempt extends BaseEntity {
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "media_id", nullable = false)
     private MediaAsset media;

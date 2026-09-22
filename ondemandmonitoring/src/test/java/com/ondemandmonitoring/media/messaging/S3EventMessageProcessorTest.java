@@ -2,7 +2,7 @@ package com.ondemandmonitoring.media.messaging;
 
 import static org.mockito.Mockito.*;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.ondemandmonitoring.media.service.IMediaValidationService;
 import org.junit.jupiter.api.Test;
 

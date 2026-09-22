@@ -16,6 +16,7 @@ import software.amazon.awssdk.services.sqs.model.ReceiveMessageRequest;
 @ConditionalOnProperty(name = "app.media.sqs.enabled", havingValue = "true")
 @Slf4j
 public class SqsMediaEventConsumer implements SmartLifecycle {
+
     private final SqsClient sqs;
     private final S3EventMessageProcessor processor;
     private final AtomicBoolean running = new AtomicBoolean();
@@ -34,16 +35,23 @@ public class SqsMediaEventConsumer implements SmartLifecycle {
     private void poll() {
         while (running.get()) {
             try {
-                var response = sqs.receiveMessage(ReceiveMessageRequest.builder()
-                        .queueUrl(queueUrl).maxNumberOfMessages(5).waitTimeSeconds(20)
+                var response = sqs.receiveMessage(ReceiveMessageRequest
+                        .builder()
+                        .queueUrl(queueUrl)
+                        .maxNumberOfMessages(5)
+                        .waitTimeSeconds(20)
                         .visibilityTimeout(900).build());
+
                 for (var message : response.messages()) {
                     try {
                         processor.process(message.body());
+
                         sqs.deleteMessage(DeleteMessageRequest.builder()
                                 .queueUrl(queueUrl).receiptHandle(message.receiptHandle()).build());
+
                     } catch (Exception error) {
-                        log.error("Media event failed; SQS will retry messageId={}", message.messageId(), error);
+                        log.error("Media event failed; SQS will retry messageId={}",
+                                message.messageId(), error);
                     }
                 }
             } catch (RuntimeException error) {

@@ -14,7 +14,9 @@ import com.ondemandmonitoring.user.enumeration.IdentityProvider;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.transaction.Transactional;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import lombok.experimental.FieldDefaults;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.CognitoIdentityProviderException;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.InvalidPasswordException;
@@ -26,12 +28,13 @@ import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class LoginService {
 
-    private final IUserService userService;
-    private final IdentityProviderPort identityProvider;
-    private final RefreshTokenCookieService refreshTokenCookieService;
-    private final AuthenticatedUserMapper authenticatedUserMapper;
+    IUserService userService;
+    IdentityProviderPort identityProvider;
+    RefreshTokenCookieService refreshTokenCookieService;
+    AuthenticatedUserMapper authenticatedUserMapper;
 
     @Transactional
     public AuthResponse login(LoginRequest request, HttpServletResponse response) {

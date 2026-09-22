@@ -10,7 +10,10 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.*;
+
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,43 +23,53 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class MediaValidationServiceImpl implements IMediaValidationService {
-    private static final int MAX_AUTOMATIC_ATTEMPTS = 3;
-    private static final String AVAILABLE_EVENT = "CUSTOMER_MEDIA_AVAILABLE";
 
-    private final MediaUploadAttemptRepository attempts;
-    private final MediaAssetRepository media;
-    private final StorageEventInboxRepository inbox;
-    private final ManualUploadTaskRepository manualTasks;
-    private final MediaAuditLogRepository auditLogs;
-    private final MediaNotificationOutboxRepository outbox;
-    private final S3ObjectStorageService storage;
+    static int MAX_AUTOMATIC_ATTEMPTS = 3;
+    static String AVAILABLE_EVENT = "CUSTOMER_MEDIA_AVAILABLE";
+
+    MediaUploadAttemptRepository attempts;
+    MediaAssetRepository media;
+    StorageEventInboxRepository inbox;
+    ManualUploadTaskRepository manualTasks;
+    MediaAuditLogRepository auditLogs;
+    MediaNotificationOutboxRepository outbox;
+    S3ObjectStorageService storage;
 
     @Override
     @Transactional
     public void processObjectCreated(String bucket, String key, String eventIdentity) {
         String eventKey = sha256((bucket + "\n" + key + "\n" + eventIdentity).getBytes());
+
         if (inbox.existsByEventKey(eventKey)) {
             return;
         }
+
         Optional<MediaUploadAttempt> found = attempts.findByStorageKey(key);
+
         if (found.isEmpty() || !storage.bucket().equals(bucket)) {
             log.info("Ignoring unrelated storage event bucket={} key={}", bucket, key);
             return;
         }
+
         MediaUploadAttempt attempt = found.get();
         MediaAsset captured = attempt.getMedia();
         boolean latest = attempts.findFirstByMediaIdOrderByAttemptNumberDesc(captured.getId())
                 .map(current -> current.getId().equals(attempt.getId())).orElse(false);
+
         if (!latest || attempt.getStatus() == UploadAttemptStatus.FAILED) {
             recordEvent(eventKey, bucket, key);
             return;
         }
+
         if (attempt.getStatus() == UploadAttemptStatus.SUCCEEDED) {
             recordEvent(eventKey, bucket, key);
             return;
         }
+
         String failure = verifyObject(captured, key);
+
         if (failure != null) {
             attempt.setStatus(UploadAttemptStatus.FAILED);
             attempt.setFailureCode("STORAGE_VALIDATION_FAILED");
@@ -64,7 +77,8 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
             attempt.setCompletedAt(Instant.now());
             attempts.save(attempt);
             captured.setValidationError(failure);
-            if (attempts.countByMediaIdAndManualAttemptFalse(captured.getId()) >= MAX_AUTOMATIC_ATTEMPTS) {
+            if (attempts.countByMediaIdAndManualAttemptFalse(captured.getId())
+                    >= MAX_AUTOMATIC_ATTEMPTS) {
                 requireManualUpload(captured, failure);
             } else {
                 captured.setMediaStatus(MediaStatus.RETRY_REQUIRED);
@@ -76,9 +90,11 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
         }
 
         String finalKey = key.replaceFirst("(^|/)staging/", "$1final/");
+
         if (finalKey.equals(key)) {
             throw new IllegalStateException("Attempt key is outside staging prefix");
         }
+
         storage.copy(bucket, key, finalKey);
         Instant now = Instant.now();
         captured.setS3Key(finalKey);
@@ -96,14 +112,17 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
             task.setResolvedAt(now);
             manualTasks.save(task);
         });
+
         if (!outbox.existsByMediaIdAndEventType(captured.getId(), AVAILABLE_EVENT)) {
             MediaNotificationOutbox notification = new MediaNotificationOutbox();
             notification.setMedia(captured);
             notification.setEventType(AVAILABLE_EVENT);
             outbox.save(notification);
         }
+
         audit(captured, attempt, "AVAILABLE", null);
         recordEvent(eventKey, bucket, key);
+
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
@@ -116,32 +135,42 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
 
     private String verifyObject(MediaAsset captured, String key) {
         var object = storage.inspect(captured.getS3Bucket(), key);
+
         if (!captured.getFileSize().equals(object.contentLength())) {
             return "Object size differs from capture metadata";
         }
+
         if (!captured.getContentType().equalsIgnoreCase(object.contentType())) {
             return "Object content type differs from capture metadata";
         }
+
         if (!captured.getId().equals(object.metadata().get("media-id"))
                 || !captured.getChecksumSha256().equalsIgnoreCase(object.metadata().get("sha256"))) {
             return "Object metadata differs from upload request";
         }
+
         try (InputStream stream = storage.open(captured.getS3Bucket(), key).inputStream()) {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] signature = stream.readNBytes(12);
             digest.update(signature);
             byte[] buffer = new byte[64 * 1024];
             int read;
+
             while ((read = stream.read(buffer)) != -1) {
                 digest.update(buffer, 0, read);
             }
+
             if (!validSignature(captured.getContentType(), signature)) {
                 return "File signature differs from declared content type";
             }
-            if (!HexFormat.of().formatHex(digest.digest()).equalsIgnoreCase(captured.getChecksumSha256())) {
+
+            if (!HexFormat.of().formatHex(digest.digest())
+                    .equalsIgnoreCase(captured.getChecksumSha256())) {
                 return "SHA-256 checksum mismatch";
             }
+
             return null;
+
         } catch (IOException | NoSuchAlgorithmException error) {
             throw new IllegalStateException("Cannot inspect uploaded object", error);
         }
@@ -171,7 +200,8 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
         manualTasks.save(task);
     }
 
-    private void audit(MediaAsset captured, MediaUploadAttempt attempt, String action, String detail) {
+    private void audit(MediaAsset captured, MediaUploadAttempt attempt,
+                       String action, String detail) {
         MediaAuditLog entry = new MediaAuditLog();
         entry.setMedia(captured);
         entry.setAttemptId(attempt.getId());
@@ -192,7 +222,8 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
 
     private String sha256(byte[] bytes) {
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+            return HexFormat.of().formatHex(MessageDigest
+                    .getInstance("SHA-256").digest(bytes));
         } catch (NoSuchAlgorithmException error) {
             throw new IllegalStateException(error);
         }

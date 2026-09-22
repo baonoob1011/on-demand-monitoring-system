@@ -12,18 +12,21 @@ import com.ondemandmonitoring.user.repository.CustomerProfileRepository;
 import com.ondemandmonitoring.user.repository.UserRepository;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import com.ondemandmonitoring.user.service.IUserProfileService;
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import lombok.experimental.FieldDefaults;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class UserProfileServiceImpl implements IUserProfileService {
 
-    private final AuthenticatedUserResolver authenticatedUserResolver;
-    private final CustomerProfileRepository customerProfileRepository;
-    private final UserRepository userRepository;
-    private final UserProfileMapper userProfileMapper;
+    AuthenticatedUserResolver authenticatedUserResolver;
+    CustomerProfileRepository customerProfileRepository;
+    UserRepository userRepository;
+    UserProfileMapper userProfileMapper;
 
     @Override
     @Transactional(readOnly = true)

@@ -12,6 +12,7 @@ import lombok.Setter;
 @Table(name = "manual_upload_tasks", uniqueConstraints =
         @UniqueConstraint(name = "uk_manual_upload_media", columnNames = "media_id"))
 public class ManualUploadTask extends BaseEntity {
+
     @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "media_id", nullable = false)
     private MediaAsset media;
