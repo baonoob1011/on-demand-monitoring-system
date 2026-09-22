@@ -13,7 +13,9 @@ import java.time.Instant;
 @Getter
 @Setter
 @Entity
-@Table(name = "drone_media")
+@Table(name = "drone_media", uniqueConstraints =
+        @UniqueConstraint(name = "uk_drone_media_local_capture",
+                columnNames = {"mission_id", "drone_code", "local_media_id"}))
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class MediaAsset extends BaseEntity {
 

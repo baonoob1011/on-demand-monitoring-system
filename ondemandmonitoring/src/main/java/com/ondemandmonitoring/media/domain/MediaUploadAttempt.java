@@ -28,6 +28,12 @@ public class MediaUploadAttempt extends BaseEntity {
     @Column(name = "storage_key", nullable = false, length = 700)
     private String storageKey;
 
+    @Column(name = "multipart_upload_id", length = 500)
+    private String multipartUploadId;
+
+    @Column(name = "part_size_bytes")
+    private Long partSizeBytes;
+
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
