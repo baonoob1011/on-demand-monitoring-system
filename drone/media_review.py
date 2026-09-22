@@ -80,7 +80,7 @@ class LocalMediaLibrary:
     def discard(self, local_id: str) -> None:
         with self.lock:
             item = self.get(local_id)
-            if item["status"] not in {"REVIEW_PENDING", "UPLOAD_FAILED"}:
+            if item["status"] not in {"REVIEW_PENDING", "UPLOAD_FAILED", "VALIDATING"}:
                 raise ValueError("Media cannot be discarded during upload")
             Path(item["localPath"]).unlink(missing_ok=True)
             del self.items[local_id]

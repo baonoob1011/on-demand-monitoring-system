@@ -34,6 +34,15 @@ class LocalMediaLibraryTest(unittest.TestCase):
             self.assertEqual("UPLOAD_FAILED", library.get(saved["localMediaId"])["status"])
             self.assertTrue(Path(saved["localPath"]).exists())
 
+    def test_transfer_in_progress_cannot_be_discarded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            library = LocalMediaLibrary(Path(directory), "mission-1", "DRONE-01")
+            saved = library.capture_image(b"\xff\xd8\xfftest-jpeg")
+            library.items[saved["localMediaId"]]["status"] = "UPLOADING"
+            with self.assertRaises(ValueError):
+                library.discard(saved["localMediaId"])
+            self.assertTrue(Path(saved["localPath"]).exists())
+
 
 if __name__ == "__main__":
     unittest.main()
