@@ -92,7 +92,8 @@ public class GeoReader {
         } catch (ApiException e) {
             throw e;
         } catch (Exception e) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Failed to parse coverageArea GeoJSON: " + e.getMessage());
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Failed to parse coverageArea GeoJSON: " + e.getMessage());
         }
     }
 
