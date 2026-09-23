@@ -5,13 +5,13 @@ import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.drone.domain.Drone;
 import com.ondemandmonitoring.drone.enums.DroneStatus;
 import com.ondemandmonitoring.drone.repository.DroneRepository;
-import com.ondemandmonitoring.mission.domain.GcsSession;
+import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.mapper.MissionMapper;
-import com.ondemandmonitoring.mission.repository.GcsSessionRepository;
+import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
 import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionOperatorAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
@@ -24,7 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 
 /**
- * Service implementation managing device connection sessions (`gcs_sessions` / `device_connections`)
+ * Service implementation managing device connection sessions (`device_connections`)
  * and automated safety triggers (such as Return-To-Launch on signal loss).
  */
 @Slf4j
@@ -33,7 +33,7 @@ import java.time.Instant;
 public class DeviceConnectionService implements IDeviceConnectionService {
 
     private final MissionRepository missionRepository;
-    private final GcsSessionRepository gcsSessionRepository;
+    private final DeviceConnectionRepository deviceConnectionRepository;
     private final MissionDroneAssignmentRepository missionDroneAssignmentRepository;
     private final MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
     private final DroneRepository droneRepository;
@@ -57,14 +57,14 @@ public class DeviceConnectionService implements IDeviceConnectionService {
             device.setStatus(DroneStatus.PREFLIGHT);
             droneRepository.save(device);
 
-            GcsSession gcsSession = new GcsSession();
-            gcsSession.setMission(mission);
-            gcsSession.setDrone(device);
-            gcsSession.setOperatorId(getCurrentOperatorId(missionId));
-            gcsSession.setConnectionStatus("CONNECTED");
-            gcsSession.setTelemetryActive(true);
-            gcsSession.setConnectedAt(Instant.now());
-            gcsSessionRepository.save(gcsSession);
+            DeviceConnection connection = new DeviceConnection();
+            connection.setMission(mission);
+            connection.setDrone(device);
+            connection.setOperatorId(getCurrentOperatorId(missionId));
+            connection.setConnectionStatus("CONNECTED");
+            connection.setTelemetryActive(true);
+            connection.setConnectedAt(Instant.now());
+            deviceConnectionRepository.save(connection);
 
             missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
                     .orElseGet(() -> {
@@ -90,13 +90,13 @@ public class DeviceConnectionService implements IDeviceConnectionService {
         Mission mission = missionRepository.findById(missionId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission not found: " + missionId));
 
-        gcsSessionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED")
+        deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED")
                 .ifPresent(session -> {
                     session.setConnectionStatus("DISCONNECTED");
                     session.setTelemetryActive(false);
                     session.setDisconnectedAt(Instant.now());
                     session.setDisconnectReason(disconnectReason != null && !disconnectReason.isBlank() ? disconnectReason : "NORMAL");
-                    gcsSessionRepository.save(session);
+                    deviceConnectionRepository.save(session);
                     log.info("[DEVICE-DISCONNECT] Mission {} device session disconnected cleanly. Reason: {}", missionId, session.getDisconnectReason());
                 });
 
@@ -109,13 +109,13 @@ public class DeviceConnectionService implements IDeviceConnectionService {
         Mission mission = missionRepository.findById(missionId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission not found: " + missionId));
 
-        gcsSessionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED")
+        deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED")
                 .ifPresent(session -> {
                     session.setConnectionStatus("LOST");
                     session.setTelemetryActive(false);
                     session.setDisconnectedAt(Instant.now());
                     session.setDisconnectReason(reason != null && !reason.isBlank() ? reason : "SIGNAL_LOSS");
-                    gcsSessionRepository.save(session);
+                    deviceConnectionRepository.save(session);
                     log.warn("[DEVICE-LOST] Mission {} device telemetry signal LOST. Reason: {}", missionId, session.getDisconnectReason());
                 });
 

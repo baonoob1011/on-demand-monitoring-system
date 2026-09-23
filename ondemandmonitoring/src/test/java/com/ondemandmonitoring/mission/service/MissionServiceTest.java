@@ -57,7 +57,7 @@ class MissionServiceTest {
     MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
     MissionPlanRepository missionPlanRepository;
     MissionPlanningService missionPlanningService;
-    GcsSessionRepository gcsSessionRepository;
+    DeviceConnectionRepository deviceConnectionRepository;
     ControlHandoverRepository controlHandoverRepository;
     PostflightCheckRepository postflightCheckRepository;
     MaintenanceTicketRepository maintenanceTicketRepository;
@@ -81,7 +81,7 @@ class MissionServiceTest {
         missionOperatorAssignmentRepository  = mock(MissionOperatorAssignmentRepository.class);
         missionPlanRepository                = mock(MissionPlanRepository.class);
         missionPlanningService               = mock(MissionPlanningService.class);
-        gcsSessionRepository                  = mock(GcsSessionRepository.class);
+        deviceConnectionRepository            = mock(DeviceConnectionRepository.class);
         controlHandoverRepository             = mock(ControlHandoverRepository.class);
         postflightCheckRepository             = mock(PostflightCheckRepository.class);
         maintenanceTicketRepository          = mock(MaintenanceTicketRepository.class);
@@ -89,7 +89,7 @@ class MissionServiceTest {
 
         deviceConnectionService = new DeviceConnectionService(
                 missionRepository,
-                gcsSessionRepository,
+                deviceConnectionRepository,
                 missionDroneAssignmentRepository,
                 missionOperatorAssignmentRepository,
                 droneRepository,
@@ -113,7 +113,7 @@ class MissionServiceTest {
                 missionOperatorAssignmentRepository,
                 missionPlanRepository,
                 missionPlanningService,
-                gcsSessionRepository,
+                deviceConnectionRepository,
                 controlHandoverRepository,
                 postflightCheckRepository,
                 maintenanceTicketRepository,
@@ -371,14 +371,14 @@ class MissionServiceTest {
         @DisplayName("3b. disconnectGcs updates active GCS session status to DISCONNECTED")
         void disconnectGcs_success_updatesSessionToDisconnected() {
             Mission mission = buildMission("m-disc", MissionStatus.CONNECTED);
-            com.ondemandmonitoring.mission.domain.GcsSession session = new com.ondemandmonitoring.mission.domain.GcsSession();
+            com.ondemandmonitoring.mission.domain.DeviceConnection session = new com.ondemandmonitoring.mission.domain.DeviceConnection();
             session.setConnectionStatus("CONNECTED");
             session.setTelemetryActive(true);
 
             when(missionRepository.findById("m-disc")).thenReturn(Optional.of(mission));
-            when(gcsSessionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc("m-disc", "CONNECTED"))
+            when(deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc("m-disc", "CONNECTED"))
                     .thenReturn(Optional.of(session));
-            when(gcsSessionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(deviceConnectionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             MissionResponse response = missionService.disconnectGcs("m-disc", "OPERATOR_EXIT");
 
@@ -397,14 +397,14 @@ class MissionServiceTest {
             mda.setDrone(drone);
             when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-lost")).thenReturn(Optional.of(mda));
 
-            com.ondemandmonitoring.mission.domain.GcsSession session = new com.ondemandmonitoring.mission.domain.GcsSession();
+            com.ondemandmonitoring.mission.domain.DeviceConnection session = new com.ondemandmonitoring.mission.domain.DeviceConnection();
             session.setConnectionStatus("CONNECTED");
             session.setTelemetryActive(true);
 
             when(missionRepository.findById("m-lost")).thenReturn(Optional.of(mission));
-            when(gcsSessionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc("m-lost", "CONNECTED"))
+            when(deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc("m-lost", "CONNECTED"))
                     .thenReturn(Optional.of(session));
-            when(gcsSessionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(deviceConnectionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -869,12 +869,10 @@ class MissionServiceTest {
         }
 
         @Test
-        @DisplayName("AC-2. BATTERY preflight fault triggers auto-swap when a replacement drone is available")
-        void preflightFail_battery_autoSwapSucceeds() {
+        @DisplayName("AC-2. BATTERY preflight fault sets device to MAINTENANCE and requeues mission for Manager reassignment")
+        void preflightFail_battery_requeuesForManager() {
             Mission mission = buildMission("m-bat-swap", MissionStatus.CONNECTED);
             Drone faultyDrone = buildDrone("DRONE-LOW", DroneStatus.PREFLIGHT);
-            Drone replacementDrone = buildDrone("DRONE-GOOD", DroneStatus.AVAILABLE);
-            replacementDrone.setId("DRONE-GOOD-id");
 
             PreflightCheck batteryCheck = new PreflightCheck();
             batteryCheck.setOverallPassed(false);
@@ -892,11 +890,6 @@ class MissionServiceTest {
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-bat-swap"))
                     .thenReturn(Optional.empty());
-            // Auto-swap finds a replacement drone
-            when(droneRepository.findFirstAvailableExcluding(eq(DroneStatus.AVAILABLE), eq(faultyDrone.getId())))
-                    .thenReturn(Optional.of(replacementDrone));
-            when(missionRepository.findActiveByDroneId("DRONE-GOOD-id")).thenReturn(List.of());
-            when(missionDroneAssignmentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(preflightCheckMapper.toResponse(any(), any())).thenReturn(
                     com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse.builder()
                             .overallPassed(false).build()
@@ -904,11 +897,10 @@ class MissionServiceTest {
 
             missionService.runPreflightCheck("m-bat-swap", "DRONE-LOW");
 
-            // Faulty drone should be MAINTENANCE, replacement RESERVED, mission RESOURCE_ASSIGNING
+            // Faulty drone should be MAINTENANCE, mission RESOURCE_ASSIGNING for manager reassignment
             assertThat(faultyDrone.getStatus()).isEqualTo(DroneStatus.MAINTENANCE);
-            assertThat(replacementDrone.getStatus()).isEqualTo(DroneStatus.RESERVED);
             assertThat(mission.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
-            verify(missionDroneAssignmentRepository, atLeastOnce()).save(any());
+            verify(maintenanceTicketRepository, times(1)).save(any());
         }
 
         @Test

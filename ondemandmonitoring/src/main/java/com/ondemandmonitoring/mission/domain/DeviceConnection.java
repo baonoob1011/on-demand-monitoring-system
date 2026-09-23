@@ -13,9 +13,9 @@ import java.time.Instant;
 @Getter
 @Setter
 @Entity
-@Table(name = "gcs_sessions")
+@Table(name = "device_connections")
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class GcsSession extends BaseEntity {
+public class DeviceConnection extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "mission_id", nullable = false)
