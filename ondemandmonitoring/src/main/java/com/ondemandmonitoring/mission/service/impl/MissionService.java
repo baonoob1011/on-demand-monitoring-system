@@ -8,6 +8,8 @@ import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
 import com.ondemandmonitoring.drone.enums.DroneStatus;
 import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.drone.service.PreflightCheckService;
+import com.ondemandmonitoring.mission.domain.ControlHandover;
+import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.FlightToken;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionOperatorAssignment;
@@ -17,6 +19,8 @@ import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
+import com.ondemandmonitoring.mission.repository.ControlHandoverRepository;
+import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
 import com.ondemandmonitoring.mission.repository.FlightTokenRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.drone.mapper.PreflightCheckMapper;
@@ -68,7 +72,7 @@ public class MissionService implements IMissionService {
     MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
     MissionPlanRepository missionPlanRepository;
     MissionPlanningService missionPlanningService;
-    GcsSessionRepository gcsSessionRepository;
+    DeviceConnectionRepository deviceConnectionRepository;
     ControlHandoverRepository controlHandoverRepository;
     PostflightCheckRepository postflightCheckRepository;
     MaintenanceTicketRepository maintenanceTicketRepository;
@@ -423,7 +427,7 @@ public class MissionService implements IMissionService {
             log.warn("[MISSION-REQUEUE] Mission {} → RESOURCE_ASSIGNING (hardware fault, needs manager reassignment)", mission.getId());
 
         } else if ("BATTERY".equalsIgnoreCase(faultType)) {
-            // ── BATTERY fault: device goes to MAINTENANCE, auto-generate ticket & attempt auto-swap ─
+            // ── BATTERY fault: device goes to MAINTENANCE, auto-generate ticket & re-queue for Manager ─
             faultyDevice.setStatus(DroneStatus.MAINTENANCE);
             droneRepository.save(faultyDevice);
             log.warn("[PREFLIGHT-GATE] Device {} BATTERY low/failed ({}%). Status → MAINTENANCE.",
@@ -442,8 +446,10 @@ public class MissionService implements IMissionService {
             maintenanceTicketRepository.save(ticket);
             log.error("[MAINTENANCE] Auto-created battery ticket {} for device {}", ticket.getTicketCode(), faultyDevice.getDroneCode());
 
-            // ACCEPTANCE CRITERIA: BATTERY fault triggers automatic device swap
-            attemptAutoSwapDevice(mission, faultyDevice);
+            // Flow update: Re-queue mission to RESOURCE_ASSIGNING for Manager manual drone selection & reassignment
+            mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
+            releaseFaultyDeviceAssignment(mission, faultyDevice, "BATTERY_FAIL");
+            log.warn("[MISSION-REQUEUE] Mission {} → RESOURCE_ASSIGNING (battery fault, needs manager reassignment)", mission.getId());
 
         } else {
             // Unknown fault type — treat as HARDWARE for safety
@@ -620,13 +626,13 @@ public class MissionService implements IMissionService {
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.READY_TO_FLY);
 
-        // Record ControlHandover audit log linked to current GcsSession
-        GcsSession activeGcsSession = gcsSessionRepository
+        // Record ControlHandover audit log linked to current DeviceConnection
+        DeviceConnection activeConnection = deviceConnectionRepository
                 .findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED")
                 .orElse(null);
 
         ControlHandover handover = new ControlHandover();
-        handover.setGcsSession(activeGcsSession);
+        handover.setDeviceConnection(activeConnection);
         handover.setDrone(getCurrentDevice(missionId));
         handover.setOperatorId(operatorId);
         handover.setStatus("CONFIRMED");

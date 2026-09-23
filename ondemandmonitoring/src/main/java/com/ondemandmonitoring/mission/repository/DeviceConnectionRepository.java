@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface GcsSessionRepository extends JpaRepository<DeviceConnection, String> {
+public interface DeviceConnectionRepository extends JpaRepository<DeviceConnection, String> {
 
     List<DeviceConnection> findByMissionId(String missionId);
 

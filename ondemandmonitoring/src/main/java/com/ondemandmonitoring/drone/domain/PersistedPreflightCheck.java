@@ -2,7 +2,7 @@ package com.ondemandmonitoring.drone.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.drone.enums.PreflightCheckStatus;
-import com.ondemandmonitoring.mission.domain.GcsSession;
+import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -37,8 +37,8 @@ public class PersistedPreflightCheck extends BaseEntity {
     Mission mission;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "flight_connection_id")
-    GcsSession flightConnection;
+    @JoinColumn(name = "device_connection_id")
+    DeviceConnection deviceConnection;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
