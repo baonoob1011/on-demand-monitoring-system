@@ -16,8 +16,44 @@ import java.util.List;
 public class RagKnowledgeSearchServiceImpl implements RagKnowledgeSearchService {
 
     private final VectorStore vectorStore;
+    @Override
+    public List<Document> searchServiceKnowledge(
+            String query,
+            String serviceId
+    ) {
 
+        SearchRequest request = SearchRequest.builder()
+                .query(query)
+                .topK(6)
+                .similarityThresholdAll()
+                .filterExpression(
+                        "serviceId == '" + serviceId + "'"
+                )
+                .build();
 
+        return vectorStore.similaritySearch(request);
+    }
+    @Override
+    public List<Document> searchServices(String query) {
+
+        SearchRequest request = SearchRequest.builder()
+                .query(query)
+                .topK(3)
+                .similarityThresholdAll()
+                .filterExpression("type == 'SERVICE'")
+                .build();
+
+        List<Document> results =
+                vectorStore.similaritySearch(request);
+
+        log.info(
+                "RAG service search query='{}', results={}",
+                query,
+                results.size()
+        );
+
+        return results;
+    }
     @Override
     public List<Document> search(String query) {
 

@@ -4,6 +4,9 @@ import com.ondemandmonitoring.common.api.ApiResponse;
 import com.openai.errors.NotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+
+import java.io.InterruptedIOException;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
@@ -89,6 +92,29 @@ public class GlobalExceptionHandler {
                         ErrorCode.METHOD_NOT_ALLOWED.name(),
                         ErrorCode.METHOD_NOT_ALLOWED.getMessage()
                 ));
+    }
+    @ExceptionHandler(InterruptedIOException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInterruptedIOException(
+            InterruptedIOException ex,
+            HttpServletRequest request
+    ) {
+        log.warn(
+                "Request interrupted: {} {} - {}",
+                request.getMethod(),
+                request.getRequestURI(),
+                ex.getMessage()
+        );
+
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .code("REQUEST_INTERRUPTED")
+                .message("Yêu cầu đã bị gián đoạn")
+                .success(false)
+                .timestamp(Instant.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.REQUEST_TIMEOUT)
+                .body(response);
     }
 
     @ExceptionHandler(NotFoundException.class)

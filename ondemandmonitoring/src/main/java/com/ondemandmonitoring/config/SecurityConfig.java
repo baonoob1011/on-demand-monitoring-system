@@ -47,7 +47,6 @@ public class SecurityConfig {
             "/api/v1/auth/first-login/change-password",
             "/api/v1/auth/social/sync",
             "/api/v1/auth/refresh",
-            "/api/**",
             "/api/v1/auth/forgot-password",
             "/api/v1/auth/reset-password",
             "/api/v1/auth/csrf",

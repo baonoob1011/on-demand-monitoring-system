@@ -7,6 +7,8 @@ import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.user.domain.User;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -64,6 +66,7 @@ public class CustomerConsultation extends BaseEntity {
      *   "frequency": "ONE_TIME"
      * }
      */
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "requirement_data", columnDefinition = "jsonb")
     private String requirementData;
 
