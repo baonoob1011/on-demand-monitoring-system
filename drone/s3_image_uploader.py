@@ -8,7 +8,8 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 
-load_dotenv()
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 PICTURES_DIR = Path(os.getenv("GAZEBO_PICTURES_DIR", "/home/acer/.gz/gui/pictures")).expanduser()
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8080").rstrip("/")

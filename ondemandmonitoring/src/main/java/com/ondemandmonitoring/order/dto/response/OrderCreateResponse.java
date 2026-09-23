@@ -1,11 +1,11 @@
 package com.ondemandmonitoring.order.dto.response;
 
-import com.ondemandmonitoring.order.dto.GeoJsonPointDto;
-import com.ondemandmonitoring.order.enums.MediaTypeSp;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -32,24 +32,30 @@ public class OrderCreateResponse {
     String title;
     String serviceId;
     String serviceName;
-    String purpose;
     String description;
 
     // Location Info
     String address;
-    GeoJsonPointDto point;
+    Double longitude;
+    Double latitude;
+    Map<String, Object> coverageArea;
 
     // Schedule Info
-    LocalDate preferredDate;
+    LocalDate preferredDateFrom;
+    LocalDate preferredDateTo;
     String preferredTimeId;
     String preferredTimeName;
 
-    // Media Info
-    MediaTypeSp mediaType;
-    Integer durationOfVideo;
-    Integer numberOfPhoto;
-
+    // Status & Review Info
     OrderStatus orderStatus;
+    String rejectReason;
+    UUID reviewById;
+    String reviewByName;
+    Instant reviewAt;
+
+    // Deliverables
+    List<OrderDeliverableResponse> deliverables;
+
     Instant createdAt;
     Instant updatedAt;
 }

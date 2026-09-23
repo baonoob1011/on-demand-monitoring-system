@@ -1,40 +1,48 @@
 package com.ondemandmonitoring.order.service.impl;
 
-import com.ondemandmonitoring.categoryservice.domain.CategoryService;
-import com.ondemandmonitoring.categoryservice.repository.CategoryServiceRepository;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
+import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.order.domain.Order;
+import com.ondemandmonitoring.order.domain.OrderDeliverable;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
+import com.ondemandmonitoring.order.dto.request.OrderDeliverableRequest;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
-import com.ondemandmonitoring.order.enums.MediaTypeSp;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.mapper.OrderMapper;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.IOrderService;
-import com.ondemandmonitoring.mission.service.IMissionService;
+import com.ondemandmonitoring.order.util.GeoReader;
+import com.ondemandmonitoring.service.domain.DeliverableType;
+import com.ondemandmonitoring.service.domain.Service;
+import com.ondemandmonitoring.service.repository.DeliverableTypeRepository;
+import com.ondemandmonitoring.service.repository.ServiceDeliverableRepository;
+import com.ondemandmonitoring.service.repository.ServiceRepository;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import com.ondemandmonitoring.warehouse.domain.PreferredTime;
 import com.ondemandmonitoring.warehouse.repository.PreferredTimeRepository;
 import com.ondemandmonitoring.zone.domain.Zone;
 import com.ondemandmonitoring.zone.repository.ZoneRepository;
+import java.util.ArrayList;
 import java.util.List;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
-
 import org.locationtech.jts.geom.Point;
-import org.springframework.stereotype.Service;
+import org.locationtech.jts.geom.Polygon;
+import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-@Service
+@Component
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class OrderService implements IOrderService {
 
     OrderRepository orderRepository;
-    CategoryServiceRepository categoryServiceRepository;
+    ServiceRepository serviceRepository;
+    DeliverableTypeRepository deliverableTypeRepository;
+    ServiceDeliverableRepository serviceDeliverableRepository;
     PreferredTimeRepository preferredTimeRepository;
     ZoneRepository zoneRepository;
     AuthenticatedUserResolver authenticatedUserResolver;
@@ -65,50 +73,78 @@ public class OrderService implements IOrderService {
         // 1. Resolve Customer from logged-in user session
         User customer = authenticatedUserResolver.getCurrentUser();
 
-        // 2. Validate & fetch Category Service
-        CategoryService service = categoryServiceRepository.findById(request.getServiceId())
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
-                        "Category service not found with id: " + request.getServiceId()));
+        // 2. Validate & fetch Service
+        Service service = serviceRepository.findById(request.getServiceId())
+                .orElseThrow(() -> new ApiException(ErrorCode.SERVICE_NOT_FOUND,
+                        "Service not found with id: " + request.getServiceId()));
 
         // 3. Validate & fetch Preferred Time
         PreferredTime preferredTime = preferredTimeRepository.findById(request.getPreferredTimeId())
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
                         "Preferred time not found with id: " + request.getPreferredTimeId()));
 
-        // 4. Validate Media Type requirements
-        validateMediaType(request);
-
-        // 5. Convert & validate GeoJSON location point inside Zone polygon
-        Point point = orderMapper.toPoint(request.getPoint());
-        if (point == null) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Invalid location point coordinates");
+        // 4. Validate Date Range
+        if (request.getPreferredDateFrom().isAfter(request.getPreferredDateTo())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "preferredDateFrom must be before or equal to preferredDateTo");
         }
-        validatePointInsideZone(point);
 
-        // 6. Map and persist order
+        // 5. Convert & validate GeoJSON geometries
+        Point location = GeoReader.createPoint(request.getLongitude(), request.getLatitude());
+        if (location == null) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Invalid location coordinates");
+        }
+        Polygon targetArea = GeoReader.readPolygonFromCoverageArea(request.getCoverageArea());
+        if (targetArea == null) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Invalid coverageArea GeoJSON");
+        }
+
+        validatePointInsideZone(location);
+
+        // 6. Validate Deliverables requirement
+        if (request.getDeliverables() == null || request.getDeliverables().isEmpty()) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "At least one deliverable is required for this service");
+        }
+
+        List<OrderDeliverable> orderDeliverables = new ArrayList<>();
+        for (OrderDeliverableRequest delReq : request.getDeliverables()) {
+            DeliverableType delType = deliverableTypeRepository.findById(delReq.getDeliverableTypeId())
+                    .orElseThrow(() -> new ApiException(ErrorCode.DELIVERABLE_TYPE_NOT_FOUND,
+                            "Deliverable type not found with id: " + delReq.getDeliverableTypeId()));
+
+            boolean isAssociated = serviceDeliverableRepository.existsByServiceIdAndDeliverableTypeId(
+                    service.getId(), delType.getId());
+            if (!isAssociated) {
+                throw new ApiException(ErrorCode.INVALID_REQUEST,
+                        String.format("Deliverable type '%s' is not associated with service '%s'",
+                                delType.getName(), service.getName()));
+            }
+
+            OrderDeliverable orderDeliverable = OrderDeliverable.builder()
+                    .deliverableType(delType)
+                    .requirement(delReq.getRequirement())
+                    .build();
+
+            orderDeliverables.add(orderDeliverable);
+        }
+
+        // 7. Map and persist order
         Order order = orderMapper.toEntity(request);
         order.setCustomer(customer);
         order.setService(service);
         order.setPreferredTime(preferredTime);
-        order.setPoint(point);
+        order.setPoint(location);
+        order.setTargetArea(targetArea);
         order.setOrderStatus(OrderStatus.PENDING);
+        order.setReviewBy(null);
+        order.setReviewAt(null);
+
+        for (OrderDeliverable od : orderDeliverables) {
+            od.setOrder(order);
+        }
+        order.setDeliverables(orderDeliverables);
 
         Order savedOrder = orderRepository.save(order);
         return orderMapper.toResponse(savedOrder);
-    }
-
-    private void validateMediaType(OrderCreateRequest request) {
-        if (request.getMediaType() == MediaTypeSp.IMAGE) {
-            if (request.getNumberOfPhoto() == null || request.getNumberOfPhoto() <= 0) {
-                throw new ApiException(ErrorCode.INVALID_REQUEST,
-                        "Number of photo is required and must be greater than 0 when media type is IMAGE");
-            }
-        } else if (request.getMediaType() == MediaTypeSp.VIDEO) {
-            if (request.getDurationOfVideo() == null || request.getDurationOfVideo() <= 0) {
-                throw new ApiException(ErrorCode.INVALID_REQUEST,
-                        "Duration of video is required and must be greater than 0 when media type is VIDEO");
-            }
-        }
     }
 
     private void validatePointInsideZone(Point point) {

@@ -3,7 +3,9 @@ package com.ondemandmonitoring.user.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -22,7 +24,9 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
+import org.mockito.ArgumentCaptor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -88,6 +92,33 @@ class UserManagementControllerTest {
                 .andExpect(jsonPath("$.data.items[0].id").value(userId.toString()))
                 .andExpect(jsonPath("$.data.items[0].active").value(true))
                 .andExpect(jsonPath("$.data.totalItems").value(1));
+    }
+
+    @Test
+    void getUsers_withoutQueryParametersUsesDefaultPageAndNoFilters() throws Exception {
+        when(userManagementService.getUsers(any(Pageable.class),
+                isNull(), isNull(), isNull(), isNull()))
+                .thenReturn(PageResponse.<UserManagementSummaryResponse>builder()
+                        .items(List.of())
+                        .page(0)
+                        .size(20)
+                        .totalItems(0)
+                        .totalPages(0)
+                        .first(true)
+                        .last(true)
+                        .build());
+
+        mockMvc.perform(get("/api/v1/admin/users"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items").isEmpty());
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(userManagementService).getUsers(pageableCaptor.capture(),
+                isNull(), isNull(), isNull(), isNull());
+        assertThat(pageableCaptor.getValue().getPageNumber()).isZero();
+        assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(20);
+        assertThat(pageableCaptor.getValue().getSort().getOrderFor("createdAt").getDirection())
+                .isEqualTo(Sort.Direction.DESC);
     }
 
     @Test

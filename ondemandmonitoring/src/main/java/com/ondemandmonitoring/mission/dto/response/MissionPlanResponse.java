@@ -2,6 +2,7 @@ package com.ondemandmonitoring.mission.dto.response;
 
 import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
+import java.time.Instant;
 import java.util.List;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -21,10 +22,16 @@ public class MissionPlanResponse {
     Double maxPlannedAltitudeM;
     Double estimatedEnergyMah;
     Double estimatedBatteryUsedPercent;
+    Double batteryCapacityMah;
     Double availableBatteryPercentAtPlanning;
+    Double estimatedRemainingBatteryPercent;
     Double safetyReservePercent;
     Double requiredBatteryPercent;
     FeasibilityStatus feasibilityStatus;
     Long planningTimeMs;
+    Integer planVersion;
+    String replanningReason;
+    String replanningStatus;
+    Instant replannedAt;
     List<PlanWaypointResponse> waypoints;
 }
