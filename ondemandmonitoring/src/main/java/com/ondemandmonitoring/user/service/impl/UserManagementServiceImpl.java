@@ -75,7 +75,7 @@ public class UserManagementServiceImpl implements IUserManagementService {
 
     @Override
     @Transactional(readOnly = true)
-    public UserManagementDetailResponse getUser(UUID userId) {
+    public UserManagementDetailResponse getUser(String userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
         return toDetail(user);
@@ -83,7 +83,7 @@ public class UserManagementServiceImpl implements IUserManagementService {
 
     @Override
     @Transactional
-    public UserManagementDetailResponse updateStatus(UUID userId, boolean active) {
+    public UserManagementDetailResponse updateStatus(String userId, boolean active) {
         User actor = authenticatedUserResolver.getCurrentUser();
         User target = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));

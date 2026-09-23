@@ -148,27 +148,38 @@ class UserManagementControllerTest {
 
     @Test
     void updateStatus_returnsUpdatedAccount() throws Exception {
-        UUID userId = UUID.randomUUID();
-        when(userManagementService.updateStatus(userId, false)).thenReturn(
-                UserManagementDetailResponse.builder()
-                        .id(userId)
-                        .fullName("Customer Name")
-                        .email("customer@example.com")
-                        .role(RoleCode.CUSTOMER)
-                        .active(false)
-                        .emailVerified(true)
-                        .linkedProviders(List.of(IdentityProvider.LOCAL))
-                        .build());
+        String userId = "user-123";
 
-        mockMvc.perform(patch("/api/v1/admin/users/{userId}/status", userId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"active\":false}"))
+        when(userManagementService.updateStatus(userId, false))
+                .thenReturn(
+                        UserManagementDetailResponse.builder()
+                                .id(userId)
+                                .fullName("Customer Name")
+                                .email("customer@example.com")
+                                .role(RoleCode.CUSTOMER)
+                                .active(false)
+                                .emailVerified(true)
+                                .linkedProviders(List.of(IdentityProvider.LOCAL))
+                                .build()
+                );
+
+        mockMvc.perform(
+                        patch("/api/v1/admin/users/{userId}/status", userId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                    {
+                                      "active": false
+                                    }
+                                    """)
+                )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("Account status updated successfully"))
-                .andExpect(jsonPath("$.data.id").value(userId.toString()))
-                .andExpect(jsonPath("$.data.active").value(false));
+                .andExpect(jsonPath("$.message")
+                        .value("Account status updated successfully"))
+                .andExpect(jsonPath("$.data.id")
+                        .value(userId))
+                .andExpect(jsonPath("$.data.active")
+                        .value(false));
     }
-
     @Test
     void updateStatus_rejectsMissingStatus() throws Exception {
         mockMvc.perform(patch("/api/v1/admin/users/{userId}/status", UUID.randomUUID())

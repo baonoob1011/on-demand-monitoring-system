@@ -63,16 +63,23 @@ public class AuthenticatedUserResolver {
             throw unresolvedIdentity();
         }
 
+        String identifier = authenticationName.trim();
+
+        return userRepository.findById(identifier)
+                .orElseGet(() ->
+                        userRepository.findByEmailIgnoreCase(identifier)
+                                .orElseThrow(() -> new ApiException(
+                                        ErrorCode.USER_NOT_FOUND,
+                                        "User not found with identifier: " + identifier
+                                ))
+                );
+    }
+
+    private UUID tryParseUuid(String value) {
         try {
-            UUID userId = UUID.fromString(authenticationName);
-            return userRepository.findById(userId)
-                    .orElseThrow(() -> new ApiException(
-                            ErrorCode.USER_NOT_FOUND, "User not found with id: " + userId));
-        } catch (IllegalArgumentException ignored) {
-            return userRepository.findByEmailIgnoreCase(authenticationName)
-                    .orElseThrow(() -> new ApiException(
-                            ErrorCode.USER_NOT_FOUND,
-                            "User not found with identifier: " + authenticationName));
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 

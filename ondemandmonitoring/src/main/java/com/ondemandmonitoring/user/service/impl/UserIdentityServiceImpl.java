@@ -52,7 +52,7 @@ public class UserIdentityServiceImpl implements IUserIdentityService {
 
     @Override
     @Transactional(readOnly = true)
-    public String getUsername(UUID userId, IdentityProvider provider) {
+    public String getUsername(String userId, IdentityProvider provider) {
         return identityRepository.findByUserIdAndProvider(userId, provider)
                 .map(UserIdentity::getCognitoUsername)
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND,
@@ -61,7 +61,7 @@ public class UserIdentityServiceImpl implements IUserIdentityService {
 
     @Override
     @Transactional(readOnly = true)
-    public boolean hasIdentity(UUID userId, IdentityProvider provider) {
+    public boolean hasIdentity(String userId, IdentityProvider provider) {
         return identityRepository.findByUserIdAndProvider(userId, provider).isPresent();
     }
 

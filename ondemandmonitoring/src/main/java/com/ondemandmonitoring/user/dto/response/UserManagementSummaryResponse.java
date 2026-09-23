@@ -2,7 +2,6 @@ package com.ondemandmonitoring.user.dto.response;
 
 import com.ondemandmonitoring.role.domain.RoleCode;
 import java.time.OffsetDateTime;
-import java.util.UUID;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -10,7 +9,7 @@ import lombok.Getter;
 @Builder
 public class UserManagementSummaryResponse {
 
-    private UUID id;
+    private String id;
 
     private String fullName;
 

@@ -1,4 +1,5 @@
 package com.ondemandmonitoring.user.domain;
+import com.ondemandmonitoring.common.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -26,11 +27,8 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class CustomerProfile {
+public class CustomerProfile extends BaseEntity {
 
-    @Id
-    @Column(name = "user_id", nullable = false)
-    private UUID userId;
 
     @MapsId
     @OneToOne(fetch = FetchType.LAZY, optional = false)
@@ -46,15 +44,4 @@ public class CustomerProfile {
     @Column(name = "company_name", length = 200)
     private String companyName;
 
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private OffsetDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
-    private OffsetDateTime updatedAt;
-
-    @Version
-    @Column(name = "version", nullable = false)
-    private long version;
 }
