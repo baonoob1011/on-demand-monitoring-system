@@ -2,6 +2,7 @@ package com.ondemandmonitoring.service.repository;
 
 import com.ondemandmonitoring.service.domain.DeliverableType;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -9,6 +10,8 @@ import org.springframework.stereotype.Repository;
 public interface DeliverableTypeRepository extends JpaRepository<DeliverableType, String> {
 
     boolean existsByNameIgnoreCase(String name);
+
+    Optional<DeliverableType> findByNameIgnoreCase(String name);
 
     List<DeliverableType> findAllByIsActiveTrue();
 }

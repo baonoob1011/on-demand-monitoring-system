@@ -15,10 +15,12 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import com.ondemandmonitoring.role.domain.RoleCode;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collection;
 import java.util.List;
@@ -27,6 +29,7 @@ import java.util.Set;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@Slf4j
 public class SecurityConfig {
 
     private static final Set<String> BUSINESS_ROLE_GROUPS = Set.of(
@@ -64,6 +67,12 @@ public class SecurityConfig {
             "/api/simulation-map/**",
             "/api/planning/environment",
             "/api/planning/environment/**",
+            "/api/services",
+            "/api/services/**",
+            "/api/service-deliverables",
+            "/api/service-deliverables/**",
+            "/api/preferred-times",
+            "/api/preferred-times/**",
             "/api/missions",
             "/api/missions/**",
             "/api/missions/*/images",
@@ -106,11 +115,25 @@ public class SecurityConfig {
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
+                        .authenticationEntryPoint(authenticationEntryPoint())
                         .jwt(jwt -> jwt
                                 .decoder(cognitoAccessTokenDecoder)
                                 .jwtAuthenticationConverter(jwtAuthenticationConverter())))
                 .addFilterAfter(activeAccountFilter, BearerTokenAuthenticationFilter.class)
                 .build();
+    }
+
+    @Bean
+    AuthenticationEntryPoint authenticationEntryPoint() {
+        return (request, response, exception) -> {
+            log.warn(
+                    "Authentication failed. method={}, path={}, reason={}",
+                    request.getMethod(),
+                    request.getRequestURI(),
+                    exception.getMessage()
+            );
+            response.sendError(401);
+        };
     }
 
     @Bean

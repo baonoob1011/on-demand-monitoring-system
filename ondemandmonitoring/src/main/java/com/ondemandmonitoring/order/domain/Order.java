@@ -48,10 +48,10 @@ public class Order extends BaseEntity {
     @JoinColumn(name = "service_id", nullable = false)
     private Service service;
 
-    @Column(name = "description")
+    @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
-    @Column(name = "address")
+    @Column(name = "address", columnDefinition = "TEXT")
     private String address;
 
     @Column(name = "point", columnDefinition = "geometry(Point,4326)")
@@ -74,7 +74,7 @@ public class Order extends BaseEntity {
     @Column(name = "order_status", nullable = false)
     private OrderStatus orderStatus;
 
-    @Column(name = "reject_reason")
+    @Column(name = "reject_reason", columnDefinition = "TEXT")
     private String rejectReason;
 
     @ManyToOne(fetch = FetchType.LAZY)
