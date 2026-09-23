@@ -415,6 +415,122 @@ WEATHER_PRESETS = {
         "wind": "x: 14 y: 5 z: 0",
     },
 }
+CURRENT_WEATHER_PRESET = "CLEAR_DAY"
+CURRENT_WEATHER_LOCK = threading.Lock()
+
+
+WEATHER_METRICS = {
+    "CLEAR_DAY": {
+        "status": "PASS",
+        "windSpeedMps": 3.2,
+        "windGustMps": 4.5,
+        "precipitationMmH": 0.0,
+        "visibilityKm": 14.0,
+        "temperatureC": 30.0,
+        "humidityPercent": 62,
+        "advisory": "Trời quang, điều kiện bay mô phỏng ổn định.",
+    },
+    "SUNSET": {
+        "status": "PASS",
+        "windSpeedMps": 3.8,
+        "windGustMps": 5.2,
+        "precipitationMmH": 0.0,
+        "visibilityKm": 10.5,
+        "temperatureC": 28.0,
+        "humidityPercent": 68,
+        "advisory": "Ánh sáng thấp dần, vẫn đủ điều kiện bay mô phỏng.",
+    },
+    "NIGHT": {
+        "status": "WARN",
+        "windSpeedMps": 3.0,
+        "windGustMps": 4.0,
+        "precipitationMmH": 0.0,
+        "visibilityKm": 4.5,
+        "temperatureC": 25.0,
+        "humidityPercent": 72,
+        "advisory": "Bay đêm làm giảm tầm nhìn, cần bật đèn và giữ độ cao an toàn.",
+    },
+    "CLOUDY": {
+        "status": "PASS",
+        "windSpeedMps": 5.8,
+        "windGustMps": 7.9,
+        "precipitationMmH": 0.6,
+        "visibilityKm": 12.6,
+        "temperatureC": 29.0,
+        "humidityPercent": 76,
+        "advisory": "Nhiều mây nhẹ, đủ điều kiện bay mô phỏng.",
+    },
+    "FOGGY": {
+        "status": "WARN",
+        "windSpeedMps": 2.4,
+        "windGustMps": 3.5,
+        "precipitationMmH": 0.2,
+        "visibilityKm": 2.8,
+        "temperatureC": 26.0,
+        "humidityPercent": 88,
+        "advisory": "Sương mù làm giảm tầm nhìn, cần cân nhắc hoãn bay.",
+    },
+    "WINDY": {
+        "status": "WARN",
+        "windSpeedMps": 12.6,
+        "windGustMps": 15.2,
+        "precipitationMmH": 0.0,
+        "visibilityKm": 9.0,
+        "temperatureC": 28.0,
+        "humidityPercent": 70,
+        "advisory": "Gió mạnh, cần giảm trần bay hoặc hoãn nhiệm vụ.",
+    },
+    "LIGHT_RAIN": {
+        "status": "WARN",
+        "windSpeedMps": 6.1,
+        "windGustMps": 8.4,
+        "precipitationMmH": 1.8,
+        "visibilityKm": 6.8,
+        "temperatureC": 27.0,
+        "humidityPercent": 84,
+        "advisory": "Mưa nhẹ, kiểm tra camera/payload trước khi bay.",
+    },
+    "HEAVY_RAIN": {
+        "status": "FAIL",
+        "windSpeedMps": 14.8,
+        "windGustMps": 19.5,
+        "precipitationMmH": 8.6,
+        "visibilityKm": 2.0,
+        "temperatureC": 25.0,
+        "humidityPercent": 94,
+        "advisory": "Mưa lớn và gió mạnh, không đủ điều kiện cất cánh.",
+    },
+}
+
+
+def build_weather_preflight_status() -> dict:
+    with CURRENT_WEATHER_LOCK:
+        preset_name = CURRENT_WEATHER_PRESET
+    preset = WEATHER_PRESETS.get(preset_name, WEATHER_PRESETS["CLEAR_DAY"])
+    metrics = WEATHER_METRICS.get(preset_name, WEATHER_METRICS["CLEAR_DAY"])
+    status = metrics["status"]
+    safe_to_fly = status == "PASS"
+    summary = (
+        "Thời tiết phù hợp để cất cánh."
+        if safe_to_fly
+        else "Thời tiết trong mô phỏng cần chú ý trước khi cất cánh."
+    )
+    return {
+        "source": "flight-controller-simulation",
+        "weatherPreset": preset_name,
+        "weatherLabel": preset["label"],
+        "status": status,
+        "safeToFly": safe_to_fly,
+        "summary": summary,
+        "windSpeedMps": metrics["windSpeedMps"],
+        "windGustMps": metrics["windGustMps"],
+        "precipitationMmH": metrics["precipitationMmH"],
+        "visibilityKm": metrics["visibilityKm"],
+        "temperatureC": metrics["temperatureC"],
+        "humidityPercent": metrics["humidityPercent"],
+        "advisories": [metrics["advisory"]],
+        "checkedAt": datetime.now(timezone.utc).isoformat(),
+    }
 
 class MavsdkAckNoiseFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
@@ -581,6 +697,9 @@ def apply_weather_key(key: str) -> bool:
         print(f"[WEATHER] Applied {preset['label']} (lighting only)", flush=True)
     else:
         print(f"[WEATHER] Applied {preset['label']}", flush=True)
+    with CURRENT_WEATHER_LOCK:
+        global CURRENT_WEATHER_PRESET
+        CURRENT_WEATHER_PRESET = preset_name
     return True
 
 
@@ -1183,6 +1302,10 @@ class FlightControlApi:
                     self._write_json(200, status)
                     return
 
+                if self.path.startswith("/api/weather/preflight-check"):
+                    self._write_json(200, build_weather_preflight_status())
+                    return
+
                 if self.path.startswith("/api/preflight/"):
                     check_id = self.path.rstrip("/").rsplit("/", 1)[-1]
                     if owner.preflight_provider is None or check_id != owner.preflight_check_id:
@@ -1230,6 +1353,10 @@ class FlightControlApi:
                         return
 
             def do_POST(self) -> None:
+                if self.path.startswith("/api/weather/preflight-check"):
+                    self._write_json(200, build_weather_preflight_status())
+                    return
+
                 if self.path.startswith("/api/preflight/check"):
                     persisted_check_id = None
                     if owner.preflight_persistence is not None:
@@ -1258,6 +1385,35 @@ class FlightControlApi:
                     payload = {}
 
                 command = str(payload.get("command", "")).strip().lower()
+                if command == "weather_set":
+                    requested_preset = str(payload.get("preset", "")).strip().upper()
+                    requested_key = str(payload.get("weatherKey", "")).strip().lower()
+                    weather_key = requested_key or next(
+                        (
+                            key
+                            for key, preset_name in WEATHER_KEY_PRESETS.items()
+                            if preset_name == requested_preset
+                        ),
+                        "",
+                    )
+                    if weather_key not in WEATHER_KEY_PRESETS:
+                        self._write_json(400, {"ok": False, "error": "unknown weather preset"})
+                        return
+                    ok = apply_weather_key(weather_key)
+                    status = build_weather_preflight_status()
+                    self._write_json(
+                        202,
+                        {
+                            "ok": ok,
+                            "command": command,
+                            "weather": status,
+                            "message": "Weather preset stored"
+                            if ok
+                            else "Weather preset stored, but Gazebo visual update failed",
+                        },
+                    )
+                    return
+
                 if command == "auto_plan_start":
                     waypoints = normalize_auto_plan_waypoints(payload)
                     if len(waypoints) < 1:

@@ -67,6 +67,8 @@ public class SecurityConfig {
             "/api/simulation-map/**",
             "/api/planning/environment",
             "/api/planning/environment/**",
+            "/api/weather",
+            "/api/weather/**",
             "/api/services",
             "/api/services/**",
             "/api/service-deliverables",
