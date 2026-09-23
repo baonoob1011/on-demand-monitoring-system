@@ -21,22 +21,24 @@ public class RagKnowledgeSearchServiceImpl implements RagKnowledgeSearchService 
     @Override
     public List<Document> search(String query) {
 
+        long start = System.currentTimeMillis();
+
         SearchRequest request = SearchRequest.builder()
                 .query(query)
                 .topK(5)
                 .similarityThresholdAll()
                 .build();
 
-        log.info(
-                "RAG search: query='{}', topK={}, threshold={}",
-                query,
-                request.getTopK(),
-                request.getSimilarityThreshold()
-        );
-
         List<Document> results = vectorStore.similaritySearch(request);
 
-        log.info("RAG search returned {} documents", results.size());
+        long elapsed = System.currentTimeMillis() - start;
+
+        log.info(
+                "RAG search query='{}', results={}, elapsed={} ms",
+                query,
+                results.size(),
+                elapsed
+        );
 
         return results;
     }
