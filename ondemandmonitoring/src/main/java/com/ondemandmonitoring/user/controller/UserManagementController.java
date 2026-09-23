@@ -47,13 +47,13 @@ public class UserManagementController {
 
     @GetMapping("/{userId}")
     public ResponseEntity<ApiResponse<UserManagementDetailResponse>> getUser(
-            @PathVariable UUID userId) {
+            @PathVariable String userId) {
         return ResponseEntity.ok(ApiResponse.ok(userManagementService.getUser(userId)));
     }
 
     @PatchMapping("/{userId}/status")
     public ResponseEntity<ApiResponse<UserManagementDetailResponse>> updateStatus(
-            @PathVariable UUID userId,
+            @PathVariable String userId,
             @Valid @RequestBody UserStatusUpdateRequest request) {
         return ResponseEntity.ok(ApiResponse.ok(
                 "Account status updated successfully",

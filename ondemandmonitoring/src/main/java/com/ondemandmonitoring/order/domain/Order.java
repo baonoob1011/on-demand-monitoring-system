@@ -1,5 +1,6 @@
 package com.ondemandmonitoring.order.domain;
 
+import com.ondemandmonitoring.Consultation.domains.CustomerConsultation;
 import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.service.domain.Service;
@@ -82,6 +83,10 @@ public class Order extends BaseEntity {
 
     @Column(name = "review_at")
     private Instant reviewAt;
+
+    @Builder.Default
+    @OneToMany(mappedBy = "order", fetch = FetchType.LAZY)
+    private List<CustomerConsultation> consultations = new ArrayList<>();
 
     @Builder.Default
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)

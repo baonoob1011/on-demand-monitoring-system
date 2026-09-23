@@ -16,7 +16,7 @@ public interface IUserManagementService {
             Boolean active,
             Boolean emailVerified);
 
-    UserManagementDetailResponse getUser(UUID userId);
+    UserManagementDetailResponse getUser(String userId);
 
-    UserManagementDetailResponse updateStatus(UUID userId, boolean active);
+    UserManagementDetailResponse updateStatus(String userId, boolean active);
 }

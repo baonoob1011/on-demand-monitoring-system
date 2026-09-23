@@ -7,6 +7,9 @@ import com.ondemandmonitoring.user.dto.response.CustomerProfileResponse;
 import com.ondemandmonitoring.user.dto.response.UserManagementDetailResponse;
 import com.ondemandmonitoring.user.dto.response.UserManagementSummaryResponse;
 import com.ondemandmonitoring.user.enumeration.IdentityProvider;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Comparator;
 import java.util.List;
 import org.mapstruct.Mapper;
@@ -44,5 +47,9 @@ public interface UserManagementMapper {
                 .distinct()
                 .sorted(Comparator.comparing(Enum::name))
                 .toList();
+    }
+
+    default OffsetDateTime toOffsetDateTime(Instant instant) {
+        return instant != null ? instant.atOffset(ZoneOffset.UTC) : null;
     }
 }

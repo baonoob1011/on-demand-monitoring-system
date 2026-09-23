@@ -1,5 +1,6 @@
 package com.ondemandmonitoring.user.domain;
 
+import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.user.enumeration.IdentityProvider;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -33,12 +34,9 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class UserIdentity {
+public class UserIdentity extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(name = "identity_id")
-    private UUID id;
+
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
@@ -54,11 +52,5 @@ public class UserIdentity {
     @Column(name = "cognito_sub", nullable = false, length = 64)
     private String cognitoSub;
 
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private OffsetDateTime createdAt;
 
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
-    private OffsetDateTime updatedAt;
 }

@@ -113,7 +113,7 @@ public class UserServiceImpl implements IUserService {
 
     @Override
     @Transactional
-    public void recordLogin(UUID userId) {
+    public void recordLogin(String userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
         user.setLastLoginAt(OffsetDateTime.now());
@@ -135,7 +135,7 @@ public class UserServiceImpl implements IUserService {
 
     @Override
     @Transactional(readOnly = true)
-    public boolean hasIdentity(UUID userId, IdentityProvider provider) {
+    public boolean hasIdentity(String userId, IdentityProvider provider) {
         return userIdentityService.hasIdentity(userId, provider);
     }
 

@@ -30,6 +30,23 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: ${COGNITO_ISSUER_URI:}
+  ai:
+    openai:
+      api-key: ${AI_OPENROUTER_API_KEY}
+      base-url: https://openrouter.ai/api/v1
+
+      chat:
+        model: ${AI_OPENROUTER_CHAT_MODEL}
+
+      embedding:
+        model: ${AI_OPENROUTER_EMBEDDING_MODEL}
+
+    vectorstore:
+      pgvector:
+        initialize-schema: true
+        schema-name: public
+        table-name: vector_store
+        dimensions: 1536
 
 mybatis:
   mapper-locations: ${MYBATIS_MAPPER_LOCATIONS}

@@ -19,7 +19,7 @@ public enum ErrorCode {
 
     RESOURCE_NOT_FOUND("Không tìm thấy dữ liệu", HttpStatus.NOT_FOUND),
     RESOURCE_ALREADY_EXISTS("Dữ liệu đã tồn tại", HttpStatus.CONFLICT),
-
+    METHOD_NOT_ALLOWED("Phương thức HTTP không được hỗ trợ", HttpStatus.METHOD_NOT_ALLOWED),
     EMAIL_ALREADY_EXISTS("Email đã được đăng ký", HttpStatus.CONFLICT),
     USER_NOT_FOUND("Không tìm thấy người dùng", HttpStatus.NOT_FOUND),
     INVALID_CREDENTIALS("Email hoặc mật khẩu không đúng", HttpStatus.UNAUTHORIZED),

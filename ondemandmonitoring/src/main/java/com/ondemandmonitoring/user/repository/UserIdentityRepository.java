@@ -8,9 +8,9 @@ import java.util.Optional;
 import java.util.List;
 import java.util.UUID;
 
-public interface UserIdentityRepository extends JpaRepository<UserIdentity, UUID> {
+public interface UserIdentityRepository extends JpaRepository<UserIdentity, String> {
 
-    Optional<UserIdentity> findByUserIdAndProvider(UUID userId, IdentityProvider provider);
+    Optional<UserIdentity> findByUserIdAndProvider(String userId, IdentityProvider provider);
 
     Optional<UserIdentity> findByCognitoSub(String cognitoSub);
 
@@ -18,5 +18,5 @@ public interface UserIdentityRepository extends JpaRepository<UserIdentity, UUID
 
     boolean existsByCognitoSubAndProvider(String cognitoSub, IdentityProvider provider);
 
-    List<UserIdentity> findAllByUserId(UUID userId);
+    List<UserIdentity> findAllByUserId(String userId);
 }
