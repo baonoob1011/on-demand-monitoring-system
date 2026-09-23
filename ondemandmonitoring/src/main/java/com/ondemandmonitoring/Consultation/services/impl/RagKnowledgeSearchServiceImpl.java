@@ -17,16 +17,27 @@ public class RagKnowledgeSearchServiceImpl implements RagKnowledgeSearchService 
 
     private final VectorStore vectorStore;
 
+
     @Override
     public List<Document> search(String query) {
-        log.debug("Searching RAG knowledge base for query: {}", query);
-        
-        SearchRequest searchRequest = SearchRequest.builder()
+
+        SearchRequest request = SearchRequest.builder()
                 .query(query)
                 .topK(5)
-                .similarityThreshold(0.5)
+                .similarityThresholdAll()
                 .build();
-                
-        return vectorStore.similaritySearch(searchRequest);
+
+        log.info(
+                "RAG search: query='{}', topK={}, threshold={}",
+                query,
+                request.getTopK(),
+                request.getSimilarityThreshold()
+        );
+
+        List<Document> results = vectorStore.similaritySearch(request);
+
+        log.info("RAG search returned {} documents", results.size());
+
+        return results;
     }
 }

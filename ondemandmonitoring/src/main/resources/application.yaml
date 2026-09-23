@@ -46,7 +46,8 @@ spring:
         initialize-schema: true
         schema-name: public
         table-name: vector_store
-        dimensions: 1536
+        dimensions: 4096
+        index-type: NONE
 
 mybatis:
   mapper-locations: ${MYBATIS_MAPPER_LOCATIONS}

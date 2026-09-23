@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
 import java.util.List;
@@ -30,13 +31,15 @@ public class RagKnowledgeIndexServiceImpl implements RagKnowledgeIndexService {
     private final DeliverableTypeRepository deliverableTypeRepository;
     private final DronePayloadRepository dronePayloadRepository;
 
-    @Override
+    @Transactional
     public void indexAllKnowledge() {
         log.info("Starting centralized RAG knowledge indexing...");
+
         indexServices();
         indexDeliverableTypes();
         indexServiceDeliverables();
         indexDronePayloads();
+
         log.info("Finished centralized RAG knowledge indexing.");
     }
 
