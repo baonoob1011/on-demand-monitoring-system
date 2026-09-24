@@ -726,9 +726,7 @@ class CameraGateway:
             return
 
         self.node = Node()
-        topics = {"FRONT": CAMERA_FRONT_TOPIC}
-        if CAMERA_LEGACY_DOWN_SENSOR_ENABLED:
-            topics["DOWN"] = CAMERA_DOWN_TOPIC
+        topics = {"FRONT": CAMERA_FRONT_TOPIC, "DOWN": CAMERA_DOWN_TOPIC}
         for mode, topic in topics.items():
             self.node.subscribe(GzImage, topic, self._make_frame_handler(mode))
             print(f"[CAMERA] Listening to {mode.lower()} sensor: {topic}")
@@ -846,14 +844,8 @@ class CameraOrientationController:
             return
         self._last_toggle_s = now
 
-        next_pitch = self.current_pitch_deg + self._pitch_direction * CAMERA_PITCH_STEP_DEG
-        if next_pitch <= -90.0:
-            next_pitch = -90.0
-            self._pitch_direction = 1.0
-        elif next_pitch >= 0.0:
-            next_pitch = 0.0
-            self._pitch_direction = -1.0
-        self.set_pitch(next_pitch)
+        next_mode = "FRONT" if self.current_mode == "DOWN" else "DOWN"
+        self.set_mode(next_mode)
 
     def set_mode(self, mode: str) -> None:
         normalized = mode.strip().upper()
@@ -867,8 +859,7 @@ class CameraOrientationController:
             return
         normalized = "DOWN" if clamped_pitch <= -89.5 else "FRONT"
         if self.on_mode_change is not None:
-            # The movable front sensor supplies every intermediate angle.
-            self.on_mode_change("FRONT")
+            self.on_mode_change(normalized)
         self.current_mode = normalized
         self.current_pitch_deg = clamped_pitch
         self._write_state(normalized, clamped_pitch)
@@ -886,9 +877,14 @@ class CameraOrientationController:
             print(f"[CAMERA] State write failed: {exc}", flush=True)
 
     def request_pitch(self, pitch_deg: float) -> bool:
-        # UI pitch is expressed as 0..-90 degrees, while this Gazebo joint
-        # rotates in the positive Y direction to look downward.
-        joint_position = math.radians(-pitch_deg)
+        # UI pitch is expressed as 0..-90 degrees. Use the configured Gazebo
+        # joint positions so the sign matches the actual simulation model.
+        down_ratio = abs(max(-90.0, min(0.0, pitch_deg))) / 90.0
+        joint_position = (
+            CAMERA_FRONT_JOINT_POSITION_RAD
+            + (CAMERA_DOWN_JOINT_POSITION_RAD - CAMERA_FRONT_JOINT_POSITION_RAD)
+            * down_ratio
+        )
         topics = tuple(dict.fromkeys((GAZEBO_CAMERA_PITCH_TOPIC, GAZEBO_CAMERA_JOINT_TOPIC)))
         sent = False
         errors: list[str] = []

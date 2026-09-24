@@ -299,7 +299,7 @@ Set-EnvValue $rootEnvFile "FOREST3D_WEB_ONLY" "1"
 Set-EnvValue $rootEnvFile "GAZEBO_CAMERA_TOPIC" $downTopic
 Set-EnvValue $rootEnvFile "GAZEBO_CAMERA_DOWN_TOPIC" $downTopic
 Set-EnvValue $rootEnvFile "GAZEBO_CAMERA_FRONT_TOPIC" $frontTopic
-Set-EnvValue $rootEnvFile "CAMERA_DEFAULT_VIEW" "DOWN"
+Set-EnvValue $rootEnvFile "CAMERA_DEFAULT_VIEW" "FRONT"
 
 Write-Host "========================================" -ForegroundColor Green
 Write-Host " OMSS UI Camera Stack" -ForegroundColor Green
