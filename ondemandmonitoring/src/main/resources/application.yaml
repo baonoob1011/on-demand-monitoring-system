@@ -2,7 +2,7 @@ spring:
   application:
     name: ${SPRING_APPLICATION_NAME:ondemandmonitoring}
   config:
-    import: optional:file:../.env[.properties],optional:file:.env[.properties]
+    import: optional:file:.env[.properties],optional:file:ondemandmonitoring/.env[.properties]
   datasource:
     url: ${SPRING_DATASOURCE_URL}
     username: ${SPRING_DATASOURCE_USERNAME}
@@ -83,6 +83,14 @@ auth:
     secure: ${AUTH_REFRESH_COOKIE_SECURE:false}
     max-age-seconds: ${AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS:2592000}
     same-site: ${AUTH_REFRESH_COOKIE_SAME_SITE:Lax}
+
+app:
+  media:
+    max-image-bytes: ${MEDIA_MAX_IMAGE_BYTES:26214400}
+    max-video-bytes: ${MEDIA_MAX_VIDEO_BYTES:1073741824}
+    sqs:
+      enabled: ${MEDIA_SQS_ENABLED:false}
+      queue-url: ${MEDIA_SQS_QUEUE_URL:}
 
 mission:
   replanning:

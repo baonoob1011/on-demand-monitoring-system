@@ -6,7 +6,7 @@ sleep 35
 
 PROJECT_PATH="${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 REPO_CONTROLLER="$PROJECT_PATH/drone"
-ENV_FILE="$PROJECT_PATH/.env"
+ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
 DRONE_WORKDIR="${DRONE_WORKDIR:-$HOME/drone-controller}"
 DRONE_ENV="${DRONE_ENV:-$HOME/drone-env}"
 
@@ -14,6 +14,7 @@ mkdir -p "$DRONE_WORKDIR"
 cd "$DRONE_WORKDIR" || exit 1
 cp "$REPO_CONTROLLER/flight_controller.py" flight_controller.py
 cp "$REPO_CONTROLLER/media_uploader.py" media_uploader.py
+cp "$REPO_CONTROLLER/media_review.py" media_review.py
 cp "$REPO_CONTROLLER/battery_simulator.py" battery_simulator.py
 cp "$REPO_CONTROLLER/geofence_monitor.py" geofence_monitor.py
 cp "$REPO_CONTROLLER/thermal_camera_gateway.py" thermal_camera_gateway.py
@@ -29,6 +30,11 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 source "$DRONE_ENV/bin/activate"
+
+if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+    printf '%s\n' '[VIDEO] FFmpeg is required for browser-compatible previews. Install it with: sudo apt-get install ffmpeg' >&2
+    exit 1
+fi
 
 if ! python - <<'PY' >/dev/null 2>&1
 import cv2

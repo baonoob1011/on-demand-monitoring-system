@@ -30,7 +30,7 @@ class UserControllerTest {
 
     @Test
     void getCurrentProfile_returnsProfileEnvelope() throws Exception {
-        UUID userId = UUID.randomUUID();
+        String userId = UUID.randomUUID().toString();
         when(userProfileService.getCurrentProfile()).thenReturn(UserProfileResponse.builder()
                 .id(userId)
                 .fullName("Customer Name")
@@ -41,7 +41,7 @@ class UserControllerTest {
                         .build())
                 .build());
 
-        mockMvc.perform(get("/api/v1/users/me"))
+        mockMvc.perform(get("/api/users/me"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.id").value(userId.toString()))
@@ -57,7 +57,7 @@ class UserControllerTest {
     void updateCurrentProfile_returnsUpdatedProfileEnvelope() throws Exception {
         when(userProfileService.updateCurrentProfile(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(UserProfileResponse.builder()
-                        .id(UUID.randomUUID())
+                        .id(UUID.randomUUID().toString())
                         .fullName("Updated Name")
                         .email("customer@example.com")
                         .role(RoleCode.CUSTOMER)
@@ -66,7 +66,7 @@ class UserControllerTest {
                                 .build())
                         .build());
 
-        mockMvc.perform(patch("/api/v1/users/me")
+        mockMvc.perform(patch("/api/users/me")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -84,7 +84,7 @@ class UserControllerTest {
 
     @Test
     void updateCurrentProfile_rejectsBlankFullName() throws Exception {
-        mockMvc.perform(patch("/api/v1/users/me")
+        mockMvc.perform(patch("/api/users/me")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fullName\":\"   \"}"))
                 .andExpect(status().isBadRequest());

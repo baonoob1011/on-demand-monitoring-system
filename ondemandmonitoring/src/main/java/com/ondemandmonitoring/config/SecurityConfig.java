@@ -1,30 +1,29 @@
 package com.ondemandmonitoring.config;
 
+import com.ondemandmonitoring.role.domain.RoleCode;
+import lombok.extern.slf4j.Slf4j;
+import java.util.Collection;
+import java.util.List;
+import java.util.Set;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
-import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import com.ondemandmonitoring.role.domain.RoleCode;
-import lombok.extern.slf4j.Slf4j;
-
-import java.util.Collection;
-import java.util.List;
-import java.util.Set;
 
 @Configuration
 @EnableWebSecurity
@@ -43,6 +42,17 @@ public class SecurityConfig {
     private String allowedOrigins;
 
     static final String[] PUBLIC_ENDPOINTS = {
+            "/api/auth/register",
+            "/api/auth/verify-otp",
+            "/api/auth/resend-otp",
+            "/api/auth/login",
+            "/api/auth/first-login/change-password",
+            "/api/auth/social/sync",
+            "/api/auth/refresh",
+            "/api/auth/forgot-password",
+            "/api/auth/reset-password",
+            "/api/auth/csrf",
+            "/api/auth/logout",
             "/api/v1/auth/register",
             "/api/v1/auth/verify-otp",
             "/api/v1/auth/resend-otp",
@@ -55,7 +65,6 @@ public class SecurityConfig {
             "/api/v1/auth/csrf",
             "/api/v1/auth/logout",
             "/v3/api-docs/**",
-            "/api/dev/ai/knowledge/index",
             // Simulation Viewer – static assets and the APIs called by viewer.js
             "/simulation-viewer",
             "/simulation-viewer/**",
@@ -67,18 +76,7 @@ public class SecurityConfig {
             "/api/simulation-map/**",
             "/api/planning/environment",
             "/api/planning/environment/**",
-            "/api/weather",
-            "/api/weather/**",
-            "/api/services",
-            "/api/services/**",
-            "/api/service-deliverables",
-            "/api/service-deliverables/**",
-            "/api/preferred-times",
-            "/api/preferred-times/**",
-            "/api/missions",
-            "/api/missions/**",
-            "/api/missions/*/images",
-            "/api/missions/*/media",
+            "/api/internal/v1/drone-telemetry/*",
             "/swagger-ui/**",
             "/swagger-ui.html"
     };
@@ -93,21 +91,28 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                         .ignoringRequestMatchers(
+                                "/api/auth/register",
+                                "/api/auth/verify-otp",
+                                "/api/auth/resend-otp",
+                                "/api/auth/login",
+                                "/api/auth/first-login/change-password",
+                                "/api/auth/social/sync",
+                                "/api/auth/forgot-password",
+                                "/api/auth/reset-password",
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/verify-otp",
                                 "/api/v1/auth/resend-otp",
-                                "/api/**",
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/first-login/change-password",
                                 "/api/v1/auth/social/sync",
                                 "/api/v1/auth/forgot-password",
                                 "/api/v1/auth/reset-password",
-                                "/api/dev/ai/knowledge/index ",
                                 // Simulation Viewer APIs (PUT/POST/DELETE from browser JS)
                                 "/api/zones/**",
                                 "/api/thermal-sources/**",
                                 "/api/simulation-map/**",
                                 "/api/planning/environment/**",
+                                "/api/internal/v1/drone-telemetry/*",
                                 "/api/missions/**",
                                 "/api/missions/*/images",
                                 "/api/missions/*/media"))

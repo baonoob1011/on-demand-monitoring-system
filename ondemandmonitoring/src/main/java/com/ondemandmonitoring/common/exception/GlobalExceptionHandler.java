@@ -10,8 +10,9 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -74,6 +75,14 @@ public class GlobalExceptionHandler {
                         ErrorCode.RESOURCE_NOT_FOUND.name(),
                         ErrorCode.RESOURCE_NOT_FOUND.getMessage()
                 ));
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleConcurrentUpdate(ObjectOptimisticLockingFailureException exception) {
+        log.warn("Concurrent resource update rejected: {}", exception.getMessage());
+        return ResponseEntity
+                .status(ErrorCode.CONCURRENT_UPDATE.getStatus())
+                .body(ApiResponse.error(ErrorCode.CONCURRENT_UPDATE.name(), ErrorCode.CONCURRENT_UPDATE.getMessage()));
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)

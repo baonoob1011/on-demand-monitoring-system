@@ -41,7 +41,7 @@ class ActiveAccountFilterTest {
 
     @Test
     void protectedRequest_withActiveAccount_continuesChain() throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/users/me");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/users/me");
         MockHttpServletResponse response = new MockHttpServletResponse();
         FilterChain chain = mock(FilterChain.class);
 
@@ -53,7 +53,7 @@ class ActiveAccountFilterTest {
 
     @Test
     void protectedRequest_withInactiveAccount_delegatesAccountDisabledResponse() throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/users/me");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/users/me");
         MockHttpServletResponse response = new MockHttpServletResponse();
         FilterChain chain = mock(FilterChain.class);
         ApiException failure = new ApiException(ErrorCode.ACCOUNT_DISABLED);
@@ -67,7 +67,7 @@ class ActiveAccountFilterTest {
 
     @Test
     void publicAuthRequest_skipsAccountLookup() throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/logout");
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/logout");
         MockHttpServletResponse response = new MockHttpServletResponse();
         FilterChain chain = mock(FilterChain.class);
 

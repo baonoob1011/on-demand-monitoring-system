@@ -3,11 +3,14 @@ package com.ondemandmonitoring.mission.service.impl;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.drone.domain.Drone;
+import com.ondemandmonitoring.drone.domain.DroneTelemetry;
 import com.ondemandmonitoring.drone.domain.PreflightCheck;
 import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
 import com.ondemandmonitoring.drone.enums.DroneStatus;
 import com.ondemandmonitoring.drone.repository.DroneRepository;
+import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
 import com.ondemandmonitoring.drone.service.PreflightCheckService;
+import com.ondemandmonitoring.drone.service.DroneTelemetryFreshness;
 import com.ondemandmonitoring.mission.domain.ControlHandover;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.FlightToken;
@@ -17,8 +20,10 @@ import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.dto.response.FlightTokenResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
+import com.ondemandmonitoring.mission.dto.response.MissionTelemetryReadinessResponse;
 import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
+import com.ondemandmonitoring.mission.enums.InspectionResult;
 import com.ondemandmonitoring.mission.repository.ControlHandoverRepository;
 import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
 import com.ondemandmonitoring.mission.repository.FlightTokenRepository;
@@ -31,6 +36,10 @@ import com.ondemandmonitoring.mission.service.IFlightTokenService;
 import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.planning.service.MissionPlanningService;
+import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.user.domain.User;
+import com.ondemandmonitoring.user.repository.UserRepository;
+import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -40,6 +49,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import com.ondemandmonitoring.drone.domain.MaintenanceTicket;
@@ -61,6 +72,7 @@ public class MissionService implements IMissionService {
 
     MissionRepository missionRepository;
     DroneRepository droneRepository;
+    DroneTelemetryRepository droneTelemetryRepository;
     FlightTokenRepository flightTokenRepository;
     PreflightCheckService preflightCheckService;
     MissionMapper missionMapper;
@@ -79,6 +91,8 @@ public class MissionService implements IMissionService {
     OrderRepository orderRepository;
     IDeviceConnectionService deviceConnectionService;
     IFlightTokenService flightTokenService;
+    UserRepository userRepository;
+    AuthenticatedUserResolver authenticatedUserResolver;
 
     // =========================================================================
     // Query Methods
@@ -111,6 +125,12 @@ public class MissionService implements IMissionService {
                 ))
                 .map(missionMapper::toResponse)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MissionResponse> getCurrentOperatorMissions() {
+        return getByOperatorId(currentOperatorId());
     }
 
     @Override
@@ -231,16 +251,13 @@ public class MissionService implements IMissionService {
         }
 
         // If there was an old operator, release them
-        String currentOp = getCurrentOperatorId(missionId);
-        if (currentOp != null && !currentOp.equals(operatorId)) {
-            missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                    .ifPresent(moa -> {
-                        moa.setIsCurrent(false);
-                        moa.setStatus("RELEASED");
-                        moa.setReleasedAt(Instant.now());
-                        missionOperatorAssignmentRepository.save(moa);
-                    });
-        }
+        missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+                .ifPresent(moa -> {
+                    moa.setIsCurrent(false);
+                    moa.setStatus("RELEASED");
+                    moa.setReleasedAt(Instant.now());
+                    missionOperatorAssignmentRepository.save(moa);
+                });
 
         mission.setStatus(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
 
@@ -254,15 +271,37 @@ public class MissionService implements IMissionService {
         missionOperatorAssignmentRepository.save(newMoa);
 
         MissionPlan plan = missionPlanningService.generateAStarEnergyAwarePlan(missionId);
-        if (plan.getFeasibilityStatus() != FeasibilityStatus.FEASIBLE) {
-            throw new ApiException(
-                    ErrorCode.INVALID_REQUEST,
-                    "No safe route could be generated for this mission.");
-        }
+        requireFeasiblePlan(plan);
 
         log.info("Mission {} assigned to operator {}", missionId, operatorId);
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public MissionResponse assignResources(String missionId, String droneId, String operatorId) {
+        validateOperator(operatorId);
+        assignDrone(missionId, droneId);
+        return assignOperator(missionId, operatorId);
+    }
+
+    @Override
+    @Transactional
+    public MissionResponse acceptCurrentOperatorMission(String missionId) {
+        return acceptMission(missionId, currentOperatorId());
+    }
+
+    @Override
+    @Transactional
+    public MissionResponse rejectCurrentOperatorMission(String missionId, String reason) {
+        return rejectMission(missionId, currentOperatorId(), reason);
+    }
+
+    @Override
+    @Transactional
+    public MissionResponse handoverCurrentOperatorControl(String missionId) {
+        return handoverControl(missionId, currentOperatorId());
     }
 
     // =========================================================================
@@ -272,17 +311,19 @@ public class MissionService implements IMissionService {
     @Override
     @Transactional
     public MissionResponse acceptMission(String missionId, String operatorId) {
-        Mission mission = getOrThrow(missionId);
-        requireStatus(mission, MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+        Mission mission = missionRepository.findByIdForUpdate(missionId)
+                .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND,
+                        "Mission not found: " + missionId));
+        MissionOperatorAssignment assignment = findCurrentOperatorAssignment(missionId, operatorId);
 
-        MissionOperatorAssignment assignment = requireCurrentOperatorAssignment(missionId, operatorId);
+        if (mission.getStatus() == MissionStatus.SCHEDULED && "ACCEPTED".equals(assignment.getStatus())) {
+            return missionMapper.toResponse(mission);
+        }
+        requireStatus(mission, MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+        requirePendingAssignment(assignment);
 
         MissionPlan plan = missionPlanningService.generateAStarEnergyAwarePlan(missionId);
-        if (plan.getFeasibilityStatus() != FeasibilityStatus.FEASIBLE) {
-            throw new ApiException(
-                    ErrorCode.INVALID_REQUEST,
-                    "No safe route could be generated for this mission.");
-        }
+        requireFeasiblePlan(plan);
 
         // Update MissionOperatorAssignment audit
         assignment.setStatus("ACCEPTED");
@@ -301,6 +342,7 @@ public class MissionService implements IMissionService {
     public MissionResponse rejectMission(String missionId, String operatorId, String reason) {
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+        requireCurrentOperatorAssignment(missionId, operatorId);
 
         mission.setRejectionReason(reason);
         mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
@@ -341,6 +383,24 @@ public class MissionService implements IMissionService {
         Mission mission = getOrThrow(missionId);
         requireFeasiblePlan(missionId);
         return deviceConnectionService.connectGcs(missionId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public MissionTelemetryReadinessResponse getTelemetryReadiness(String missionId) {
+        getOrThrow(missionId);
+        Drone assignedDrone = getCurrentDevice(missionId);
+        if (assignedDrone == null) {
+            throw new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission has no assigned drone");
+        }
+
+        String droneCode = assignedDrone.getDroneCode();
+        DroneTelemetry telemetry = droneTelemetryRepository.readByDroneCode(droneCode).orElse(null);
+        Instant updatedAt = telemetry != null ? telemetry.getUpdatedAt() : null;
+        boolean ready = telemetry != null
+                && Boolean.TRUE.equals(telemetry.getConnected())
+                && DroneTelemetryFreshness.isFresh(updatedAt);
+        return new MissionTelemetryReadinessResponse(droneCode, ready, updatedAt);
     }
 
     @Override
@@ -539,6 +599,12 @@ public class MissionService implements IMissionService {
     }
 
     private MissionOperatorAssignment requireCurrentOperatorAssignment(String missionId, String operatorId) {
+        MissionOperatorAssignment assignment = findCurrentOperatorAssignment(missionId, operatorId);
+        requirePendingAssignment(assignment);
+        return assignment;
+    }
+
+    private MissionOperatorAssignment findCurrentOperatorAssignment(String missionId, String operatorId) {
         MissionOperatorAssignment assignment = missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.INVALID_REQUEST,
@@ -548,12 +614,15 @@ public class MissionService implements IMissionService {
                     ErrorCode.INVALID_REQUEST,
                     "Mission is assigned to another operator.");
         }
+        return assignment;
+    }
+
+    private void requirePendingAssignment(MissionOperatorAssignment assignment) {
         if (!"PENDING".equalsIgnoreCase(assignment.getStatus())) {
             throw new ApiException(
                     ErrorCode.INVALID_REQUEST,
                     "Mission operator assignment is not pending acceptance.");
         }
-        return assignment;
     }
 
     private void requireFeasiblePlan(String missionId) {
@@ -561,11 +630,26 @@ public class MissionService implements IMissionService {
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.INVALID_REQUEST,
                         "Mission must have a feasible plan before preflight."));
-        if (plan.getFeasibilityStatus() != FeasibilityStatus.FEASIBLE) {
-            throw new ApiException(
-                    ErrorCode.INVALID_REQUEST,
-                    "No safe route could be generated for this mission.");
+        requireFeasiblePlan(plan);
+    }
+
+    private void requireFeasiblePlan(MissionPlan plan) {
+        FeasibilityStatus status = plan.getFeasibilityStatus();
+        if (status == FeasibilityStatus.FEASIBLE) {
+            return;
         }
+        if (status == null) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Mission plan feasibility could not be determined.");
+        }
+        String message = switch (status) {
+            case BATTERY_DATA_UNAVAILABLE -> "Drone battery telemetry is unavailable. Connect the drone and refresh telemetry before assignment.";
+            case INSUFFICIENT_BATTERY -> "Drone battery is insufficient for this mission and its safety reserve.";
+            case INVALID_TARGET -> "Mission target is invalid for route planning.";
+            case NO_SAFE_ROUTE -> "No safe route could be generated for this mission.";
+            default -> "Mission plan feasibility could not be determined.";
+        };
+        throw new ApiException(ErrorCode.INVALID_REQUEST, message);
     }
 
     @Override
@@ -728,11 +812,17 @@ public class MissionService implements IMissionService {
     @Transactional
     public MissionResponse completeMission(String missionId) {
         Mission mission = getOrThrow(missionId);
-        if (mission.getStatus() != MissionStatus.IN_FLIGHT
-                && mission.getStatus() != MissionStatus.RETURNING
-                && mission.getStatus() != MissionStatus.POSTFLIGHT_CHECKING) {
+        if (mission.getStatus() == MissionStatus.COMPLETED
+                && postflightCheckRepository.findTopByMissionIdOrderByCheckedAtDesc(missionId).isPresent()) {
+            return missionMapper.toResponse(mission);
+        }
+        if (mission.getStatus() != MissionStatus.POSTFLIGHT_CHECKING) {
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID,
-                    "Mission must be IN_FLIGHT, RETURNING or POSTFLIGHT_CHECKING to complete but is " + mission.getStatus());
+                    "Mission must be POSTFLIGHT_CHECKING with a recorded inspection to complete but is " + mission.getStatus());
+        }
+        if (postflightCheckRepository.findTopByMissionIdOrderByCheckedAtDesc(missionId).isEmpty()) {
+            throw new ApiException(ErrorCode.MISSION_STATUS_INVALID,
+                    "A recorded post-flight inspection is required before mission completion");
         }
         mission.setStatus(MissionStatus.COMPLETED);
         mission.setCompletedAt(Instant.now());
@@ -746,6 +836,10 @@ public class MissionService implements IMissionService {
     @Transactional
     public MissionResponse failMission(String missionId, String reason) {
         Mission mission = getOrThrow(missionId);
+        if (mission.getStatus() == MissionStatus.IN_FLIGHT
+                || mission.getStatus() == MissionStatus.RETURNING) {
+            updateDroneStatus(mission, DroneStatus.MAINTENANCE);
+        }
         mission.setStatus(MissionStatus.FAILED);
         mission.setFailureReason(reason);
         releaseMissionResources(mission, "MISSION_FAILED");
@@ -761,6 +855,36 @@ public class MissionService implements IMissionService {
     @Override
     @Transactional
     public MissionResponse updatePostFlightStatus(String missionId, DroneStatus newDroneStatus, String notes) {
+        return savePostFlightStatus(missionId, newDroneStatus, notes, Map.of());
+    }
+
+    @Override
+    @Transactional
+    public MissionResponse recordPostFlightInspection(String missionId, DroneStatus newDroneStatus,
+                                                      String notes, Map<String, InspectionResult> results) {
+        Set<String> required = Set.of("a1", "a2", "p1", "p2", "e1", "e2", "e3", "d1");
+        if (results == null || !results.keySet().equals(required)
+                || results.values().stream().anyMatch(value -> value == null)) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "All eight inspection items must have a result");
+        }
+        boolean faultDetected = results.containsValue(InspectionResult.FAIL);
+        DroneStatus expected = faultDetected ? DroneStatus.MAINTENANCE : DroneStatus.AVAILABLE;
+        if (newDroneStatus != expected) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Drone status does not match the submitted inspection results");
+        }
+        Mission mission = getOrThrow(missionId);
+        requireStatus(mission, MissionStatus.POSTFLIGHT_CHECKING);
+        String summary = results.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> entry.getKey() + "=" + entry.getValue())
+                .collect(java.util.stream.Collectors.joining(", "));
+        String auditNotes = "Inspection: " + summary + ". " + (notes == null ? "" : notes.strip());
+        return savePostFlightStatus(missionId, newDroneStatus, auditNotes, results);
+    }
+
+    private MissionResponse savePostFlightStatus(String missionId, DroneStatus newDroneStatus,
+                                                 String notes, Map<String, InspectionResult> results) {
         Mission mission = getOrThrow(missionId);
         Drone device = getCurrentDevice(mission.getId());
         if (device == null) {
@@ -776,6 +900,13 @@ public class MissionService implements IMissionService {
         postflightCheck.setDrone(device);
         postflightCheck.setCheckedBy(getCurrentOperatorId(missionId));
         postflightCheck.setOverallOk(overallOk);
+        if (!results.isEmpty()) {
+            postflightCheck.setPhysicalConditionOk(passed(results, "a1", "a2", "e3"));
+            postflightCheck.setMotorOk(passed(results, "p1", "p2"));
+            postflightCheck.setBatteryOk(passed(results, "e1"));
+            postflightCheck.setCameraOk(passed(results, "e2"));
+            postflightCheck.setCommunicationOk(passed(results, "d1"));
+        }
         postflightCheck.setFaultType(overallOk ? null : "PHYSICAL_DAMAGE");
         postflightCheck.setNotes(notes);
         postflightCheck.setCheckedAt(Instant.now());
@@ -810,6 +941,15 @@ public class MissionService implements IMissionService {
         return missionMapper.toResponse(saved);
     }
 
+    private boolean passed(Map<String, InspectionResult> results, String... keys) {
+        for (String key : keys) {
+            if (results.get(key) == InspectionResult.FAIL) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // =========================================================================
     // Helpers
     // =========================================================================
@@ -818,6 +958,25 @@ public class MissionService implements IMissionService {
         return missionRepository.findById(missionId)
                 .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND,
                         "Mission not found: " + missionId));
+    }
+
+    private String currentOperatorId() {
+        User operator = authenticatedUserResolver.getCurrentUser();
+        if (operator.getRole() == null || operator.getRole().getCode() != RoleCode.DRONE_OPERATOR) {
+            throw new ApiException(ErrorCode.ACCESS_DENIED, "A drone operator account is required");
+        }
+        return operator.getId().toString();
+    }
+
+    private void validateOperator(String operatorId) {
+        User operator = userRepository.findById(operatorId)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, "Operator not found: " + operatorId));
+        if (operator.getRole() == null || operator.getRole().getCode() != RoleCode.DRONE_OPERATOR) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Selected user is not a drone operator");
+        }
+        if (!Boolean.TRUE.equals(operator.getIsActive())) {
+            throw new ApiException(ErrorCode.ACCOUNT_DISABLED, "Selected operator account is inactive");
+        }
     }
 
     private void requireStatus(Mission mission, MissionStatus expected) {
@@ -842,7 +1001,9 @@ public class MissionService implements IMissionService {
     private void releaseMissionResources(Mission mission, String reason) {
         Drone device = getCurrentDevice(mission.getId());
         if (device != null) {
-            device.setStatus(DroneStatus.AVAILABLE);
+            if (device.getStatus() != DroneStatus.MAINTENANCE) {
+                device.setStatus(DroneStatus.AVAILABLE);
+            }
             droneRepository.save(device);
         }
 

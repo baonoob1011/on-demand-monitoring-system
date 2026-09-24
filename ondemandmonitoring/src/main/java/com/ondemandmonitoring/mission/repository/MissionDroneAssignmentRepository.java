@@ -14,8 +14,9 @@ import java.util.Optional;
 public interface MissionDroneAssignmentRepository extends JpaRepository<MissionDroneAssignment, String> {
 
     List<MissionDroneAssignment> findByMissionId(String missionId);
-
     Optional<MissionDroneAssignment> findByMissionIdAndIsCurrentTrue(String missionId);
+
+    Optional<MissionDroneAssignment> findFirstByMissionIdOrderByAssignedAtDesc(String missionId);
 
     @Query("""
             SELECT mda FROM MissionDroneAssignment mda

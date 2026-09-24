@@ -1,6 +1,9 @@
 ondemandmonitoring/.env
 *.env
 *.env.*
+!.env.example
+!*.env.example
+
 ondemandmonitoring/.env
 ondemandmonitoring/uploads/
 __pycache__/
@@ -10,6 +13,8 @@ drone-controller/.venv/
 drone-controller/__pycache__/
 drone-controller/*.pyc
 Python/.venv/
+drone-controller/.env.example
+drone-controller/.env.example
 
 
 ### IntelliJ IDEA ###
@@ -47,5 +52,7 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+drone/.env.example
 *.example
+!.env.example
 evd/

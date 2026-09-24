@@ -57,7 +57,7 @@ class UserManagementControllerTest {
 
     @Test
     void getUsers_returnsFilteredPage() throws Exception {
-        UUID userId = UUID.randomUUID();
+        String userId = UUID.randomUUID().toString();
         PageResponse<UserManagementSummaryResponse> page = PageResponse.<UserManagementSummaryResponse>builder()
                 .items(List.of(UserManagementSummaryResponse.builder()
                         .id(userId)
@@ -82,7 +82,7 @@ class UserManagementControllerTest {
                 eq(true)))
                 .thenReturn(page);
 
-        mockMvc.perform(get("/api/v1/admin/users")
+        mockMvc.perform(get("/api/admin/users")
                         .param("search", "customer")
                         .param("role", "CUSTOMER")
                         .param("active", "true")
@@ -108,7 +108,7 @@ class UserManagementControllerTest {
                         .last(true)
                         .build());
 
-        mockMvc.perform(get("/api/v1/admin/users"))
+        mockMvc.perform(get("/api/admin/users"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items").isEmpty());
 
@@ -123,7 +123,7 @@ class UserManagementControllerTest {
 
     @Test
     void getUser_returnsManagementDetail() throws Exception {
-        UUID userId = UUID.randomUUID();
+        String userId = UUID.randomUUID().toString();
         when(userManagementService.getUser(userId)).thenReturn(
                 UserManagementDetailResponse.builder()
                         .id(userId)
@@ -138,7 +138,7 @@ class UserManagementControllerTest {
                                 .build())
                         .build());
 
-        mockMvc.perform(get("/api/v1/admin/users/{userId}", userId))
+        mockMvc.perform(get("/api/admin/users/{userId}", userId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(userId.toString()))
                 .andExpect(jsonPath("$.data.linkedProviders[0]").value("LOCAL"))
@@ -151,27 +151,19 @@ class UserManagementControllerTest {
         String userId = "user-123";
 
         when(userManagementService.updateStatus(userId, false))
-                .thenReturn(
-                        UserManagementDetailResponse.builder()
-                                .id(userId)
-                                .fullName("Customer Name")
-                                .email("customer@example.com")
-                                .role(RoleCode.CUSTOMER)
-                                .active(false)
-                                .emailVerified(true)
-                                .linkedProviders(List.of(IdentityProvider.LOCAL))
-                                .build()
-                );
+                .thenReturn(UserManagementDetailResponse.builder()
+                        .id(userId)
+                        .fullName("Customer Name")
+                        .email("customer@example.com")
+                        .role(RoleCode.CUSTOMER)
+                        .active(false)
+                        .emailVerified(true)
+                        .linkedProviders(List.of(IdentityProvider.LOCAL))
+                        .build());
 
-        mockMvc.perform(
-                        patch("/api/v1/admin/users/{userId}/status", userId)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
-                                    {
-                                      "active": false
-                                    }
-                                    """)
-                )
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"active\":false}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message")
                         .value("Account status updated successfully"))
@@ -182,7 +174,7 @@ class UserManagementControllerTest {
     }
     @Test
     void updateStatus_rejectsMissingStatus() throws Exception {
-        mockMvc.perform(patch("/api/v1/admin/users/{userId}/status", UUID.randomUUID())
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest());

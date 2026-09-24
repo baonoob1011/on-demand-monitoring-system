@@ -8,12 +8,11 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-load_dotenv(PROJECT_ROOT / ".env", override=True)
+load_dotenv(Path(__file__).resolve().parents[1] / "ondemandmonitoring" / ".env", override=True)
 
 PICTURES_DIR = Path(os.getenv("GAZEBO_PICTURES_DIR", "/home/acer/.gz/gui/pictures")).expanduser()
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8080").rstrip("/")
-DEVICE_CODE = os.getenv("DEVICE_CODE", "DRONE-01")
+FLIGHT_CONTROL_API_PORT = int(os.getenv("FLIGHT_CONTROL_API_PORT", "8090"))
 RETRY_SECONDS = float(os.getenv("IMAGE_UPLOAD_RETRY_SECONDS", "5"))
 
 
@@ -45,9 +44,6 @@ def content_type_for(path: Path) -> str:
 
 
 class BackendImageUploader:
-    def __init__(self) -> None:
-        self.url = f"{BACKEND_BASE_URL}/api/devices/{DEVICE_CODE}/images"
-
     def upload(self, path: Path, retry: bool = False) -> bool:
         if path.suffix.lower() not in (".png", ".jpg", ".jpeg"):
             return True
@@ -57,6 +53,16 @@ class BackendImageUploader:
             return False
 
         try:
+            status = httpx.get(
+                f"http://127.0.0.1:{FLIGHT_CONTROL_API_PORT}/api/control/status",
+                timeout=2.0,
+            )
+            status.raise_for_status()
+            session = status.json()
+            drone_code = str(session.get("deviceCode") or "").strip()
+            if not session.get("missionId") or not drone_code or len(drone_code) > 50:
+                print("[BACKEND] No verified mission binding; screenshot remains local")
+                return False
             with path.open("rb") as image_file:
                 files = {
                     "file": (
@@ -65,7 +71,11 @@ class BackendImageUploader:
                         content_type_for(path),
                     )
                 }
-                response = httpx.post(self.url, files=files, timeout=30.0)
+                response = httpx.post(
+                    f"{BACKEND_BASE_URL}/api/devices/{drone_code}/images",
+                    files=files,
+                    timeout=30.0,
+                )
         except httpx.ConnectError:
             print("[BACKEND] Unavailable - image upload retry later")
             return False
@@ -117,7 +127,7 @@ def main() -> None:
     print("========================================")
     print(f"Watch dir: {PICTURES_DIR}")
     print(f"Backend: {BACKEND_BASE_URL}")
-    print(f"Device: {DEVICE_CODE}")
+    print("Drone identity: verified mission binding in Flight Controller")
     print()
 
     if not PICTURES_DIR.exists():

@@ -21,17 +21,17 @@ import lombok.Setter;
 @Setter
 @Entity
 @Table(
-        name = "preflight_check_items",
+        name = "preflight_run_items",
         uniqueConstraints = @UniqueConstraint(
-                name = "uk_preflight_item_type",
-                columnNames = {"preflight_check_id", "check_type"}),
+                name = "uk_preflight_run_item_type",
+                columnNames = {"preflight_run_id", "check_type"}),
         indexes = @Index(
-                name = "idx_preflight_item_run",
-                columnList = "preflight_check_id"))
+                name = "idx_preflight_run_item_run",
+                columnList = "preflight_run_id"))
 public class PersistedPreflightCheckItem extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "preflight_check_id", nullable = false)
+    @JoinColumn(name = "preflight_run_id", nullable = false)
     PersistedPreflightCheck preflightCheck;
 
     @Column(name = "check_type", nullable = false, length = 50)

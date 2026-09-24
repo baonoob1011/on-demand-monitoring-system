@@ -54,7 +54,6 @@ class UserProfileServiceImplTest {
     void getCurrentProfile_customer_returnsCommonAndCustomerFields() {
         User user = user(RoleCode.CUSTOMER);
         CustomerProfile customerProfile = CustomerProfile.builder()
-                .userId(user.getId())
                 .user(user)
                 .phoneNumber("0901234567")
                 .address("Ho Chi Minh City")
@@ -103,7 +102,6 @@ class UserProfileServiceImplTest {
     void updateCurrentProfile_customer_updatesAndNormalizesProvidedFields() {
         User user = user(RoleCode.CUSTOMER);
         CustomerProfile customerProfile = CustomerProfile.builder()
-                .userId(user.getId())
                 .user(user)
                 .phoneNumber("0900000000")
                 .address("Old address")
@@ -135,7 +133,6 @@ class UserProfileServiceImplTest {
     void updateCurrentProfile_customerPartialUpdate_preservesUnspecifiedFields() {
         User user = user(RoleCode.CUSTOMER);
         CustomerProfile customerProfile = CustomerProfile.builder()
-                .userId(user.getId())
                 .user(user)
                 .phoneNumber("0900000000")
                 .address("Existing address")
@@ -193,11 +190,12 @@ class UserProfileServiceImplTest {
     }
 
     private User user(RoleCode roleCode) {
-        return User.builder()
-                .id(UUID.randomUUID())
+        User user = User.builder()
                 .email("user@example.com")
                 .fullName("User Name")
                 .role(Role.builder().code(roleCode).build())
                 .build();
+        user.setId(UUID.randomUUID().toString());
+        return user;
     }
 }

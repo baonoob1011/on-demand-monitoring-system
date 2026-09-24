@@ -5,19 +5,28 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.experimental.FieldDefaults;
 
 @Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE)
 public class CreateManagedAccountRequest {
 
     @NotBlank
     @Email
-    private String email;
+    String email;
 
     @NotBlank
     @Size(max = 100)
-    private String fullName;
+    String fullName;
 
     @NotNull
-    private RoleCode role;
+    RoleCode role;
 }

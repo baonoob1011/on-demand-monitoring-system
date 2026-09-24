@@ -8,6 +8,8 @@ import jakarta.persistence.MapsId;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import jakarta.persistence.AttributeOverride;
+import com.ondemandmonitoring.common.entity.BaseEntity;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
@@ -24,10 +26,10 @@ class CustomerProfileTest {
     @Test
     void buildsCustomerProfileWithoutDuplicatingAccountFields() {
         User user = User.builder()
-                .id(UUID.randomUUID())
                 .email("customer@example.com")
                 .fullName("Customer Name")
                 .build();
+        user.setId(UUID.randomUUID().toString());
 
         CustomerProfile profile = CustomerProfile.builder()
                 .user(user)
@@ -52,9 +54,12 @@ class CustomerProfileTest {
         assertNotNull(table);
         assertEquals("customer_profiles", table.name());
 
-        Field userId = CustomerProfile.class.getDeclaredField("userId");
-        assertNotNull(userId.getAnnotation(Id.class));
-        assertColumn(userId, "user_id", 255, false, true);
+        assertTrue(BaseEntity.class.isAssignableFrom(CustomerProfile.class));
+        assertNotNull(BaseEntity.class.getDeclaredField("id").getAnnotation(Id.class));
+        AttributeOverride idMapping = CustomerProfile.class.getAnnotation(AttributeOverride.class);
+        assertNotNull(idMapping);
+        assertEquals("id", idMapping.name());
+        assertEquals("user_id", idMapping.column().name());
 
         Field user = CustomerProfile.class.getDeclaredField("user");
         assertNotNull(user.getAnnotation(MapsId.class));
@@ -70,7 +75,7 @@ class CustomerProfileTest {
         assertColumn(CustomerProfile.class.getDeclaredField("phoneNumber"), "phone_number", 20, true, true);
         assertColumn(CustomerProfile.class.getDeclaredField("address"), "address", 500, true, true);
         assertColumn(CustomerProfile.class.getDeclaredField("companyName"), "company_name", 200, true, true);
-        assertNotNull(CustomerProfile.class.getDeclaredField("version").getAnnotation(Version.class));
+        assertNotNull(BaseEntity.class.getDeclaredField("version").getAnnotation(Version.class));
     }
 
     private void assertColumn(

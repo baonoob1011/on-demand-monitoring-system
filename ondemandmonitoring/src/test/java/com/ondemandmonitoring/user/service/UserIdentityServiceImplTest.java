@@ -29,7 +29,8 @@ class UserIdentityServiceImplTest {
 
     @Test
     void findUserByCognitoUsername_returnsLinkedUser() {
-        User expected = User.builder().id(UUID.randomUUID()).build();
+        User expected = User.builder().build();
+        expected.setId(UUID.randomUUID().toString());
         when(identityRepository.findByCognitoUsername("cognito-user"))
                 .thenReturn(Optional.of(UserIdentity.builder().user(expected).build()));
 

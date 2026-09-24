@@ -3,7 +3,7 @@ package com.ondemandmonitoring.drone.controller;
 import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.drone.dto.request.TelemetryRequest;
 import com.ondemandmonitoring.drone.domain.DroneTelemetry;
-import com.ondemandmonitoring.drone.service.DroneTelemetryService;
+import com.ondemandmonitoring.drone.service.IDroneTelemetryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class DroneTelemetryController {
 
-    DroneTelemetryService droneTelemetryService;
+    IDroneTelemetryService droneTelemetryService;
     
     @Operation(summary = "Receive drone telemetry", description = "Persists live telemetry snapshot (battery, GPS fix, sensors, altitude, speed) sent from drone")
     @PostMapping

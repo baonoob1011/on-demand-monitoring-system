@@ -2,11 +2,19 @@ package com.ondemandmonitoring.user.dto.response;
 
 import com.ondemandmonitoring.role.domain.RoleCode;
 import java.time.OffsetDateTime;
-import lombok.Builder;
-import lombok.Getter;
 
-@Getter
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.experimental.FieldDefaults;
+
+@Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE)
 public class UserManagementSummaryResponse {
 
     private String id;

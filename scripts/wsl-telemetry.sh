@@ -5,7 +5,7 @@ sleep 22
 
 PROJECT_PATH="${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 REPO_CONTROLLER="$PROJECT_PATH/drone"
-ENV_FILE="$PROJECT_PATH/.env"
+ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
 DRONE_WORKDIR="${DRONE_WORKDIR:-$HOME/drone-controller}"
 DRONE_ENV="${DRONE_ENV:-$HOME/drone-env}"
 
@@ -19,6 +19,12 @@ if [ -f "$ENV_FILE" ]; then
     # Strip Windows BOM/CRLF endings while keeping the source .env unchanged.
     source <(sed '1s/^\xEF\xBB\xBF//; s/\r$//' "$ENV_FILE")
     set +a
+fi
+
+if [ -z "${DRONE_TELEMETRY_SECRET:-}" ]; then
+    echo "[MAVSDK-TEL] ERROR: DRONE_TELEMETRY_SECRET is missing in $ENV_FILE"
+    echo "[MAVSDK-TEL] Backend preflight requires authenticated live telemetry."
+    exit 1
 fi
 
 source "$DRONE_ENV/bin/activate"

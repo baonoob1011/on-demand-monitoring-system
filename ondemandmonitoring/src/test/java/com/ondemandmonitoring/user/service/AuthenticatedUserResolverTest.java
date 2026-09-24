@@ -157,10 +157,11 @@ class AuthenticatedUserResolverTest {
     }
 
     private User user() {
-        return User.builder()
-                .id(UUID.randomUUID())
+        User user = User.builder()
                 .email("user@example.com")
                 .fullName("User Name")
                 .build();
+        user.setId(UUID.randomUUID().toString());
+        return user;
     }
 }

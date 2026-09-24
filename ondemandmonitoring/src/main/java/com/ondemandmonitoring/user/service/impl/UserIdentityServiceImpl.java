@@ -7,7 +7,9 @@ import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.domain.UserIdentity;
 import com.ondemandmonitoring.user.repository.UserIdentityRepository;
 import com.ondemandmonitoring.user.service.IUserIdentityService;
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import lombok.experimental.FieldDefaults;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,9 +17,10 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class UserIdentityServiceImpl implements IUserIdentityService {
 
-    private final UserIdentityRepository identityRepository;
+    UserIdentityRepository identityRepository;
 
     @Override
     @Transactional

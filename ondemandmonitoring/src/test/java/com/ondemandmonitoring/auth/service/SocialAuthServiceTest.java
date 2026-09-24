@@ -159,8 +159,10 @@ class SocialAuthServiceTest {
     }
 
     private User customer() {
-        return User.builder().id(UUID.randomUUID()).email("user@example.com").fullName("User")
+        User user = User.builder().email("user@example.com").fullName("User")
                 .emailVerified(true).isActive(true)
                 .role(Role.builder().code(RoleCode.CUSTOMER).build()).build();
+        user.setId(UUID.randomUUID().toString());
+        return user;
     }
 }

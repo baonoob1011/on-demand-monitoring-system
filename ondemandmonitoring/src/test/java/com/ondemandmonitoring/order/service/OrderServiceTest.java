@@ -79,8 +79,9 @@ class OrderServiceTest {
                 orderMapper
         );
 
-        UUID userId = UUID.randomUUID();
-        User mockUser = User.builder().id(userId).fullName("Test Customer").email("test@example.com").build();
+        String userId = UUID.randomUUID().toString();
+        User mockUser = User.builder().fullName("Test Customer").email("test@example.com").build();
+        mockUser.setId(userId);
         when(authenticatedUserResolver.getCurrentUser()).thenReturn(mockUser);
     }
 
