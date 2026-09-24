@@ -8,10 +8,14 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
 @Repository
 public interface DronePayloadRepository extends JpaRepository<DronePayload, String> {
 
     boolean existsByModelNameIgnoreCase(String modelName);
+
+    Optional<DronePayload> findByModelNameIgnoreCase(String modelName);
 
     @Query("SELECT p FROM DronePayload p WHERE " +
            "(:sensorType IS NULL OR LOWER(p.sensorType) LIKE LOWER(CONCAT('%', :sensorType, '%'))) AND " +
