@@ -183,14 +183,7 @@ public class AStarShortestRoutePlanner implements RoutePlanner {
             byte[] cellStates,
             double[] surfaceElevations) {
         List<Integer> rawPath = reconstructPath(startIndex, targetIndex, cameFrom);
-        List<Integer> simplifiedPath = simplify(rawPath, grid.width());
-
-        double maxSurface = Math.max(startSample.surfaceElevationM(), targetSample.surfaceElevationM());
-        for (int cellIndex : rawPath) {
-            isTraversable(cellIndex, environment, grid, cellStates, surfaceElevations);
-            maxSurface = Math.max(maxSurface, surfaceElevations[cellIndex]);
-        }
-        double requiredWorldZ = maxSurface + RoutePlanningPolicy.SAFETY_CLEARANCE_M;
+        List<Integer> simplifiedPath = simplify(rawPath, environment, grid);
 
         List<PlannedRoute.RoutePoint> points = new ArrayList<>(simplifiedPath.size());
         for (int cellIndex : simplifiedPath) {
@@ -199,19 +192,16 @@ public class AStarShortestRoutePlanner implements RoutePlanner {
             points.add(new PlannedRoute.RoutePoint(
                     grid.simXForColumn(column),
                     grid.simYForRow(row),
-                    requiredWorldZ));
+                    0.0));
         }
-        points.set(0, new PlannedRoute.RoutePoint(startX, startY, requiredWorldZ));
-        points.set(points.size() - 1, new PlannedRoute.RoutePoint(targetX, targetY, requiredWorldZ));
+        points.set(0, new PlannedRoute.RoutePoint(startX, startY, 0.0));
+        points.set(points.size() - 1, new PlannedRoute.RoutePoint(targetX, targetY, 0.0));
 
-        double startConnector = Math.hypot(
-                startX - grid.simXForColumn(startIndex % grid.width()),
-                startY - grid.simYForRow(startIndex / grid.width()));
-        double targetConnector = Math.hypot(
-                targetX - grid.simXForColumn(targetIndex % grid.width()),
-                targetY - grid.simYForRow(targetIndex / grid.width()));
-        double distance = gridDistance + startConnector + targetConnector;
-        PlannedRoute route = new PlannedRoute(true, distance, requiredWorldZ, points, null);
+        double requiredWorldZ = maxSurfaceAlongRoute(points, environment, grid)
+                + RoutePlanningPolicy.SAFETY_CLEARANCE_M;
+        List<PlannedRoute.RoutePoint> flightPoints = withWorldZ(points, requiredWorldZ);
+        double distance = routeDistance(flightPoints);
+        PlannedRoute route = new PlannedRoute(true, distance, requiredWorldZ, flightPoints, null);
         return new SearchResult(route, rawPath.size(), points.size(), expandedNodes);
     }
 
@@ -269,10 +259,15 @@ public class AStarShortestRoutePlanner implements RoutePlanner {
         return path;
     }
 
-    private List<Integer> simplify(List<Integer> rawPath, int width) {
+    private List<Integer> simplify(List<Integer> rawPath, PlanningEnvironment environment, PlanningGrid grid) {
         if (rawPath.size() <= 2) {
             return List.copyOf(rawPath);
         }
+        List<Integer> lineOfSightPath = simplifyByLineOfSight(rawPath, environment, grid);
+        if (lineOfSightPath.size() < rawPath.size()) {
+            return lineOfSightPath;
+        }
+        int width = grid.width();
         List<Integer> simplified = new ArrayList<>();
         simplified.add(rawPath.get(0));
         int previousRowDirection = direction(rawPath.get(1) / width - rawPath.get(0) / width);
@@ -290,6 +285,88 @@ public class AStarShortestRoutePlanner implements RoutePlanner {
         }
         simplified.add(rawPath.get(rawPath.size() - 1));
         return List.copyOf(simplified);
+    }
+
+    private List<Integer> simplifyByLineOfSight(
+            List<Integer> rawPath,
+            PlanningEnvironment environment,
+            PlanningGrid grid) {
+        List<Integer> simplified = new ArrayList<>();
+        int anchor = 0;
+        simplified.add(rawPath.get(anchor));
+        while (anchor < rawPath.size() - 1) {
+            int farthest = rawPath.size() - 1;
+            while (farthest > anchor + 1
+                    && !segmentTraversable(rawPath.get(anchor), rawPath.get(farthest), environment, grid)) {
+                farthest--;
+            }
+            simplified.add(rawPath.get(farthest));
+            anchor = farthest;
+        }
+        return List.copyOf(simplified);
+    }
+
+    private boolean segmentTraversable(
+            int fromCell,
+            int toCell,
+            PlanningEnvironment environment,
+            PlanningGrid grid) {
+        double fromX = grid.simXForColumn(fromCell % grid.width());
+        double fromY = grid.simYForRow(fromCell / grid.width());
+        double toX = grid.simXForColumn(toCell % grid.width());
+        double toY = grid.simYForRow(toCell / grid.width());
+        double distance = Math.hypot(toX - fromX, toY - fromY);
+        int segments = Math.max(1, (int) Math.ceil(distance / (grid.resolutionM() * 0.5)));
+        for (int segment = 0; segment <= segments; segment++) {
+            double t = (double) segment / segments;
+            EnvironmentSample sample = environment.sample(
+                    fromX + (toX - fromX) * t,
+                    fromY + (toY - fromY) * t);
+            if (!sample.insideWorldBounds() || sample.restricted() || sample.surfaceElevationM() == null) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private double maxSurfaceAlongRoute(
+            List<PlannedRoute.RoutePoint> points,
+            PlanningEnvironment environment,
+            PlanningGrid grid) {
+        double maxSurface = Double.NEGATIVE_INFINITY;
+        for (int i = 1; i < points.size(); i++) {
+            PlannedRoute.RoutePoint from = points.get(i - 1);
+            PlannedRoute.RoutePoint to = points.get(i);
+            double distance = Math.hypot(to.simX() - from.simX(), to.simY() - from.simY());
+            int segments = Math.max(1, (int) Math.ceil(distance / (grid.resolutionM() * 0.5)));
+            for (int segment = 0; segment <= segments; segment++) {
+                double t = (double) segment / segments;
+                EnvironmentSample sample = environment.sample(
+                        from.simX() + (to.simX() - from.simX()) * t,
+                        from.simY() + (to.simY() - from.simY()) * t);
+                if (!sample.insideWorldBounds() || sample.restricted() || sample.surfaceElevationM() == null) {
+                    throw new IllegalStateException("Simplified route segment became non-traversable.");
+                }
+                maxSurface = Math.max(maxSurface, sample.surfaceElevationM());
+            }
+        }
+        return maxSurface;
+    }
+
+    private List<PlannedRoute.RoutePoint> withWorldZ(List<PlannedRoute.RoutePoint> points, double worldZ) {
+        return points.stream()
+                .map(point -> new PlannedRoute.RoutePoint(point.simX(), point.simY(), worldZ))
+                .toList();
+    }
+
+    private double routeDistance(List<PlannedRoute.RoutePoint> points) {
+        double distance = 0.0;
+        for (int i = 1; i < points.size(); i++) {
+            PlannedRoute.RoutePoint from = points.get(i - 1);
+            PlannedRoute.RoutePoint to = points.get(i);
+            distance += Math.hypot(to.simX() - from.simX(), to.simY() - from.simY());
+        }
+        return distance;
     }
 
     private int direction(int value) {

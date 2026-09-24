@@ -168,6 +168,23 @@ class AStarShortestRoutePlannerTest {
     }
 
     @Test
+    void stairStepRouteIsCompressedWhenStraightSegmentIsSafe() {
+        GridEnvironment environment = environment(8, 4);
+
+        AStarShortestRoutePlanner.SearchResult result = planner(environment)
+                .planWithMetrics(0.0, 0.0, 7.0, 3.0);
+
+        assertThat(result.route().feasible()).isTrue();
+        assertThat(result.rawNodeCount()).isGreaterThan(2);
+        assertThat(result.simplifiedPointCount()).isEqualTo(2);
+        assertThat(result.route().points())
+                .extracting(PlannedRoute.RoutePoint::simX, PlannedRoute.RoutePoint::simY)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(0.0, 0.0),
+                        org.assertj.core.groups.Tuple.tuple(7.0, 3.0));
+    }
+
+    @Test
     void repeatedSearchProducesIdenticalRoute() {
         GridEnvironment environment = environment(6, 5);
         environment.restrict(1, 2).restrict(2, 2).restrict(3, 2);

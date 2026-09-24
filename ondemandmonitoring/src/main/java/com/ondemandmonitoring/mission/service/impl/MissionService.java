@@ -51,6 +51,9 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -117,9 +120,11 @@ public class MissionService implements IMissionService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public MissionResponse getByIdResponse(String missionId) {
-        return missionMapper.toResponse(getOrThrow(missionId));
+        Mission mission = getOrThrow(missionId);
+        ensureAcceptedMissionPlan(mission);
+        return missionMapper.toResponse(mission);
     }
 
     @Override
@@ -332,6 +337,8 @@ public class MissionService implements IMissionService {
         MissionOperatorAssignment assignment = findCurrentOperatorAssignment(missionId, operatorId);
 
         if (mission.getStatus() == MissionStatus.SCHEDULED && "ACCEPTED".equals(assignment.getStatus())) {
+            ensureScheduledStart(mission);
+            ensureAcceptedMissionPlan(mission);
             return missionMapper.toResponse(mission);
         }
         requireStatus(mission, MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
@@ -343,6 +350,8 @@ public class MissionService implements IMissionService {
         missionOperatorAssignmentRepository.save(assignment);
 
         mission.setStatus(MissionStatus.SCHEDULED);
+        ensureScheduledStart(mission);
+        ensureAcceptedMissionPlan(mission);
 
         log.info("Mission {} accepted by operator {}", missionId, operatorId);
         Mission saved = missionRepository.save(mission);
@@ -674,6 +683,41 @@ public class MissionService implements IMissionService {
             default -> "Mission plan feasibility could not be determined.";
         };
         throw new ApiException(ErrorCode.INVALID_REQUEST, message);
+    }
+
+    private void ensureScheduledStart(Mission mission) {
+        if (mission.getScheduledStartAt() != null || mission.getOrder() == null) {
+            return;
+        }
+
+        LocalDate date = mission.getOrder().getPreferredDateFrom();
+        LocalTime time = mission.getOrder().getPreferredTime() != null
+                ? mission.getOrder().getPreferredTime().getStartTime()
+                : null;
+        if (date == null || time == null) {
+            return;
+        }
+
+        mission.setScheduledStartAt(date.atTime(time)
+                .atZone(ZoneId.of("Asia/Ho_Chi_Minh"))
+                .toInstant());
+    }
+
+    private void ensureAcceptedMissionPlan(Mission mission) {
+        if (mission == null || mission.getId() == null) {
+            return;
+        }
+        if (mission.getStatus() == MissionStatus.CREATED
+                || mission.getStatus() == MissionStatus.RESOURCE_ASSIGNING
+                || mission.getStatus() == MissionStatus.WAITING_OPERATOR_ACCEPTANCE
+                || mission.getStatus() == MissionStatus.CANCELLED) {
+            return;
+        }
+        if (getCurrentDrone(mission.getId()) == null || missionPlanRepository.findByMissionId(mission.getId()).isPresent()) {
+            return;
+        }
+
+        missionPlanningService.generateAStarEnergyAwarePlan(mission.getId());
     }
 
     @Override
@@ -1068,4 +1112,3 @@ public class MissionService implements IMissionService {
                 .orElse(null);
     }
 }
-
