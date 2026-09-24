@@ -8,8 +8,12 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
 @Repository
 public interface DroneModelRepository extends JpaRepository<DroneModel, String> {
+
+    Optional<DroneModel> findByModelCode(String modelCode);
 
     @Query("SELECT d FROM DroneModel d WHERE " +
            "(:category IS NULL OR LOWER(d.category) LIKE LOWER(CONCAT('%', :category, '%'))) AND " +
