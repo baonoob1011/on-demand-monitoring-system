@@ -5,12 +5,7 @@ PROJECT_PATH="${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 FOREST3D_PATH="${FOREST3D_PATH:-$PROJECT_PATH/Forest3D}"
 PX4_ROOT="$HOME/PX4-Autopilot"
 SIM_WORLD="${SIM_WORLD:-compact}"
-ENV_FILE="$PROJECT_PATH/.env"
-LEGACY_ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
-
-if [ ! -f "$ENV_FILE" ] && [ -f "$LEGACY_ENV_FILE" ]; then
-    ENV_FILE="$LEGACY_ENV_FILE"
-fi
+ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
 
 if [ -f "$ENV_FILE" ]; then
     set -a

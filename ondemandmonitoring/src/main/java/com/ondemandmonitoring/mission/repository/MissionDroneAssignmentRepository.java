@@ -13,4 +13,6 @@ public interface MissionDroneAssignmentRepository extends JpaRepository<MissionD
     List<MissionDroneAssignment> findByMissionId(String missionId);
 
     Optional<MissionDroneAssignment> findByMissionIdAndIsCurrentTrue(String missionId);
+
+    Optional<MissionDroneAssignment> findFirstByMissionIdOrderByAssignedAtDesc(String missionId);
 }

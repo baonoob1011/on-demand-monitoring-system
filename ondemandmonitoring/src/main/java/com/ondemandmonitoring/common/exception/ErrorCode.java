@@ -43,6 +43,7 @@ public enum ErrorCode {
      */
     MISSION_NOT_FOUND("Mission not found", HttpStatus.NOT_FOUND),
     MISSION_STATUS_INVALID("Mission status is invalid for this operation", HttpStatus.CONFLICT),
+    CONCURRENT_UPDATE("Resource changed during this request; refresh and retry", HttpStatus.CONFLICT),
     DRONE_NOT_AVAILABLE("Drone is not available", HttpStatus.CONFLICT),
     SCHEDULE_CONFLICT("The drone is already scheduled for another mission during this time period",
             HttpStatus.CONFLICT),

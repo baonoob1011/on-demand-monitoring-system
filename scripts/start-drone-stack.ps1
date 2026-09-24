@@ -2,7 +2,7 @@ param(
     [ValidateSet("legacy", "compact")]
     [string]$SimWorld = "compact",
     [switch]$ShowGazeboGui,
-    [switch]$WithTelemetry,
+    [switch]$WithTelemetry = $true,
     [switch]$WithCamera,
     [switch]$WithSensors,
     [switch]$WithWeather,
@@ -28,25 +28,6 @@ function Start-WslWindow([string]$Title, [string]$Command) {
     $escapedCommand = $Command.Replace('"', '\"')
     $cmdLine = "title $Title && wsl.exe -d $ubuntuDistro -- bash -lc `"$escapedCommand`""
     Start-Process cmd.exe -ArgumentList @("/k", $cmdLine) -WindowStyle Normal
-}
-
-function Write-Utf8NoBomLines([string]$Path, [string[]]$Lines) {
-    $encoding = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllLines($Path, $Lines, $encoding)
-}
-
-function Initialize-StackEnv([string]$Root) {
-    $rootEnvFile = Join-Path $Root ".env"
-    if (Test-Path $rootEnvFile) { return }
-
-    $rootEnvExample = Join-Path $Root ".env.example"
-    if (Test-Path $rootEnvExample) {
-        $lines = @(Get-Content -Path $rootEnvExample -ErrorAction Stop)
-        Write-Utf8NoBomLines $rootEnvFile $lines
-        return
-    }
-
-    New-Item -ItemType File -Path $rootEnvFile -Force | Out-Null
 }
 
 function Update-Forest3DAssetsFromGit([string]$Root) {
@@ -133,7 +114,10 @@ $ubuntuDistro = "Ubuntu-24.04"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $forest3DPath = Resolve-Forest3DPath $repoRoot
 Assert-DronePackage $forest3DPath $SimWorld
-Initialize-StackEnv $repoRoot
+$backendEnvFile = Join-Path $repoRoot "ondemandmonitoring/.env"
+if (-not (Test-Path -LiteralPath $backendEnvFile -PathType Leaf)) {
+    throw "Missing shared backend and drone configuration: $backendEnvFile"
+}
 
 if (-not $SkipBootstrap) {
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "bootstrap-drone-stack.ps1") -UbuntuDistro $ubuntuDistro

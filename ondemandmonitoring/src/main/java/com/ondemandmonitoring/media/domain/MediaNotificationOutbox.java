@@ -16,6 +16,9 @@ public class MediaNotificationOutbox extends BaseEntity {
     @JoinColumn(name = "media_id", nullable = false)
     private MediaAsset media;
 
+    @Column(name = "mission_id", nullable = false, length = 255)
+    private String missionId;
+
     @Column(name = "event_type", nullable = false, length = 60)
     private String eventType;
 

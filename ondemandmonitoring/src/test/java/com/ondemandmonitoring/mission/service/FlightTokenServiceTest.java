@@ -59,6 +59,7 @@ class FlightTokenServiceTest {
         assertThat(token).isNotNull();
         assertThat(token.getMissionId()).isEqualTo(missionId);
         assertThat(token.getDroneCode()).isEqualTo(droneCode);
+        assertThat(token.getDeviceCode()).isEqualTo(droneCode);
         assertThat(token.getOperatorId()).isEqualTo(operatorId);
         assertThat(token.getExpiresAt()).isAfter(token.getIssuedAt());
         assertThat(token.getExpiresAt().getEpochSecond() - token.getIssuedAt().getEpochSecond())

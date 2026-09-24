@@ -6,21 +6,26 @@ from threading import RLock
 from urllib.parse import urlparse
 import hashlib
 import json
+import logging
 import os
+import subprocess
 import uuid
 
 import httpx
 
 
 class LocalMediaLibrary:
-    def __init__(self, root: Path, mission_id: str, drone_code: str) -> None:
+    def __init__(self, root: Path, mission_id: str | None, drone_code: str | None,
+                 mission_code: str | None = None) -> None:
         self.root = root
         self.mission_id = mission_id
+        self.mission_code = mission_code
         self.drone_code = drone_code
         self.lock = RLock()
         self.root.mkdir(parents=True, exist_ok=True)
         self.manifest = self.root / "media-index.json"
         self.items = self._load()
+        self._prepare_pending_videos()
 
     def _load(self) -> dict[str, dict]:
         if not self.manifest.exists():
@@ -36,6 +41,7 @@ class LocalMediaLibrary:
         os.replace(temp, self.manifest)
 
     def capture_image(self, jpeg: bytes) -> dict:
+        self._require_capture_session()
         if not jpeg.startswith(b"\xff\xd8\xff"):
             raise ValueError("Camera did not return a JPEG")
         local_id = str(uuid.uuid4())
@@ -44,24 +50,102 @@ class LocalMediaLibrary:
         return self._register(local_id, path, "IMAGE", "image/jpeg")
 
     def register_video(self, path: Path) -> dict:
+        self._require_capture_session()
         if not path.is_file() or path.stat().st_size == 0:
             raise ValueError("Recording is empty")
-        return self._register(str(uuid.uuid4()), path, "VIDEO", "video/mp4")
+        browser_path = self._browser_compatible_video(path)
+        return self._register(
+            str(uuid.uuid4()), browser_path, "VIDEO", "video/mp4",
+            original_path=path if browser_path != path else None,
+        )
 
-    def _register(self, local_id: str, path: Path, media_type: str, content_type: str) -> dict:
+    def _require_capture_session(self) -> None:
+        if not self.mission_id or not self.drone_code:
+            raise ValueError("Bind an assigned mission before capturing media")
+
+    def _prepare_pending_videos(self) -> None:
+        changed = False
+        for item in self.items.values():
+            if (item.get("mediaType") != "VIDEO"
+                    or item.get("status") != "REVIEW_PENDING"
+                    or item.get("backendMediaId")):
+                continue
+            source = Path(item["localPath"])
+            try:
+                browser_path = self._browser_compatible_video(source)
+            except RuntimeError as exc:
+                logging.warning("Local video preview conversion failed: %s", exc)
+                item["previewError"] = str(exc)
+                changed = True
+                continue
+            if browser_path == source:
+                continue
+            item.pop("previewError", None)
+            item["originalPath"] = str(source.resolve())
+            item["localPath"] = str(browser_path.resolve())
+            item["fileName"] = browser_path.name
+            item["fileSize"] = browser_path.stat().st_size
+            item["checksumSha256"] = self._sha256(browser_path)
+            changed = True
+        if changed:
+            self._persist()
+
+    @staticmethod
+    def _browser_compatible_video(path: Path) -> Path:
+        try:
+            probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-select_streams", "v:0",
+                 "-show_entries", "stream=codec_name", "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+                check=True, capture_output=True, text=True, timeout=20,
+            )
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            raise RuntimeError(f"Cannot inspect recorded video: {path}") from exc
+        if probe.stdout.strip() == "h264":
+            return path
+
+        output = path.with_name(f"{path.stem}-web.mp4")
+        if output.is_file() and output.stat().st_size > 0 and output.stat().st_mtime >= path.stat().st_mtime:
+            return output
+        temporary = output.with_name(f"{output.stem}-{uuid.uuid4().hex}.part.mp4")
+        try:
+            subprocess.run(
+                ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+                 "-i", str(path), "-an", "-c:v", "libx264", "-preset", "veryfast",
+                 "-crf", "23", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(temporary)],
+                check=True, capture_output=True, text=True, timeout=600,
+            )
+            if not temporary.is_file() or temporary.stat().st_size == 0:
+                raise RuntimeError("Video conversion produced an empty file")
+            os.replace(temporary, output)
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            raise RuntimeError(f"Cannot create browser-compatible video: {path}") from exc
+        finally:
+            temporary.unlink(missing_ok=True)
+        return output
+
+    @staticmethod
+    def _sha256(path: Path) -> str:
         digest = hashlib.sha256()
         with path.open("rb") as source:
             for chunk in iter(lambda: source.read(1024 * 1024), b""):
                 digest.update(chunk)
+        return digest.hexdigest()
+
+    def _register(self, local_id: str, path: Path, media_type: str, content_type: str,
+                  original_path: Path | None = None) -> dict:
         item = {
             "localMediaId": local_id, "missionId": self.mission_id,
             "droneCode": self.drone_code, "mediaType": media_type,
             "fileName": path.name, "localPath": str(path.resolve()),
             "contentType": content_type, "fileSize": path.stat().st_size,
-            "checksumSha256": digest.hexdigest(),
+            "checksumSha256": self._sha256(path),
             "capturedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "status": "REVIEW_PENDING",
         }
+        if self.mission_code:
+            item["missionCode"] = self.mission_code
+        if original_path is not None:
+            item["originalPath"] = str(original_path.resolve())
         with self.lock:
             self.items[local_id] = item
             self._persist()
@@ -83,6 +167,8 @@ class LocalMediaLibrary:
             if item["status"] not in {"REVIEW_PENDING", "UPLOAD_FAILED", "VALIDATING"}:
                 raise ValueError("Media cannot be discarded during upload")
             Path(item["localPath"]).unlink(missing_ok=True)
+            if item.get("originalPath"):
+                Path(item["originalPath"]).unlink(missing_ok=True)
             del self.items[local_id]
             self._persist()
 

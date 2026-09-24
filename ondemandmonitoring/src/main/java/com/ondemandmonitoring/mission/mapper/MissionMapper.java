@@ -6,11 +6,13 @@ import com.ondemandmonitoring.mission.domain.PlanWaypoint;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.dto.response.PlanWaypointResponse;
+import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.MissionPlanRepository;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
 import java.util.Comparator;
+import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
@@ -44,6 +46,9 @@ public abstract class MissionMapper {
     protected String getDroneId(Mission mission) {
         if (mission == null || mission.getId() == null) return null;
         return missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
+                .or(() -> isTerminal(mission)
+                        ? missionDroneAssignmentRepository.findFirstByMissionIdOrderByAssignedAtDesc(mission.getId())
+                        : Optional.empty())
                 .map(mda -> mda.getDrone() != null ? mda.getDrone().getId() : null)
                 .orElse(null);
     }
@@ -51,6 +56,9 @@ public abstract class MissionMapper {
     protected String getDroneCode(Mission mission) {
         if (mission == null || mission.getId() == null) return null;
         return missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
+                .or(() -> isTerminal(mission)
+                        ? missionDroneAssignmentRepository.findFirstByMissionIdOrderByAssignedAtDesc(mission.getId())
+                        : Optional.empty())
                 .map(mda -> mda.getDrone() != null ? mda.getDrone().getDroneCode() : null)
                 .orElse(null);
     }
@@ -58,8 +66,17 @@ public abstract class MissionMapper {
     protected String getOperatorId(Mission mission) {
         if (mission == null || mission.getId() == null) return null;
         return missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
+                .or(() -> isTerminal(mission)
+                        ? missionOperatorAssignmentRepository.findFirstByMissionIdOrderByAssignedAtDesc(mission.getId())
+                        : Optional.empty())
                 .map(com.ondemandmonitoring.mission.domain.MissionOperatorAssignment::getOperatorId)
                 .orElse(null);
+    }
+
+    private boolean isTerminal(Mission mission) {
+        return mission.getStatus() == MissionStatus.COMPLETED
+                || mission.getStatus() == MissionStatus.FAILED
+                || mission.getStatus() == MissionStatus.CANCELLED;
     }
 
     protected Double getLatitude(Mission mission) {

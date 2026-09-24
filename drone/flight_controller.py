@@ -54,9 +54,7 @@ if "/usr/lib/python3/dist-packages" not in sys.path:
 if str(DRONE_DIR) not in sys.path:
     sys.path.insert(0, str(DRONE_DIR))
 
-ENV_FILE = PROJECT_ROOT / ".env"
-if not ENV_FILE.exists():
-    ENV_FILE = PROJECT_ROOT / "ondemandmonitoring" / ".env"
+ENV_FILE = PROJECT_ROOT / "ondemandmonitoring" / ".env"
 
 load_dotenv(ENV_FILE, override=True)
 
@@ -265,21 +263,6 @@ BACKEND_BASE_URL = os.getenv(
     "BACKEND_BASE_URL",
     "http://localhost:8080",
 ).rstrip("/")
-
-DEVICE_CODE = os.getenv(
-    "DEVICE_CODE",
-    "DRONE-01",
-)
-
-DRONE_ID = os.getenv(
-    "DRONE_ID",
-    DEVICE_CODE,
-)
-
-MISSION_ID = os.getenv(
-    "MISSION_ID",
-    "MISSION_001",
-)
 
 SIM_WORLD = os.getenv(
     "SIM_WORLD",
@@ -1040,9 +1023,15 @@ def normalize_auto_plan_waypoints(payload: dict) -> list[dict]:
 
 
 class PreflightPersistenceBridge:
-    def __init__(self, backend_urls: BackendUrlResolver, mission_id: str) -> None:
+    def __init__(
+        self,
+        backend_urls: BackendUrlResolver,
+        mission_id: str,
+        access_token: str | None = None,
+    ) -> None:
         self.backend_urls = backend_urls
         self.mission_id = mission_id
+        self.access_token = access_token
         self.run_id: str | None = None
         self.base_url: str | None = None
         self.sent_items: dict[str, tuple[str, str]] = {}
@@ -1057,6 +1046,7 @@ class PreflightPersistenceBridge:
             try:
                 response = httpx.post(
                     f"{base_url}/api/missions/{self.mission_id}/preflight-checks",
+                    headers=self._headers(),
                     timeout=1.5,
                 )
                 if response.status_code >= 400:
@@ -1106,6 +1096,7 @@ class PreflightPersistenceBridge:
             try:
                 response = httpx.patch(
                     f"{self.base_url}/api/preflight-checks/{self.run_id}/items/{check_type}",
+                    headers=self._headers(),
                     json={"status": status, "message": message},
                     timeout=1.0,
                 )
@@ -1113,6 +1104,9 @@ class PreflightPersistenceBridge:
                     self.sent_items[check_type] = state
             except httpx.HTTPError:
                 return
+
+    def _headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self.access_token}"} if self.access_token else {}
 
     @staticmethod
     def _to_backend_status(status: str) -> str | None:
@@ -1135,6 +1129,7 @@ class FlightControlApi:
         preflight_persistence=None,
         thermal: ThermalCameraGateway | None = None,
         media_library: LocalMediaLibrary | None = None,
+        session_binder=None,
     ) -> None:
         self.camera = camera
         self.commands = commands
@@ -1143,6 +1138,7 @@ class FlightControlApi:
         self.preflight_persistence = preflight_persistence
         self.thermal = thermal
         self.media_library = media_library
+        self.session_binder = session_binder
         self.preflight_check_id: str | None = None
         self.preflight_started_at_s: float | None = None
         self.server: ThreadingHTTPServer | None = None
@@ -1280,6 +1276,22 @@ class FlightControlApi:
                         return
 
             def do_POST(self) -> None:
+                if self.path == "/api/control/session":
+                    try:
+                        length = int(self.headers.get("Content-Length", "0"))
+                        if length <= 0 or length > 16_384:
+                            self._write_json(400, {"error": "Invalid session payload"})
+                            return
+                        payload = json.loads(self.rfile.read(length))
+                        if owner.session_binder is None:
+                            self._write_json(503, {"error": "Session binding unavailable"})
+                            return
+                        result = owner.session_binder(payload)
+                        self._write_json(200, {"ok": True, **result})
+                    except (ValueError, json.JSONDecodeError) as exc:
+                        self._write_json(400, {"error": str(exc)[:500]})
+                    return
+
                 if self.path.startswith("/api/media/local/"):
                     local_id = self.path.split("/")[4]
                     try:
@@ -1329,6 +1341,11 @@ class FlightControlApi:
                     payload = {}
 
                 command = str(payload.get("command", "")).strip().lower()
+                if command in {"photo", "video_toggle"} and (
+                    owner.media_library is None or not owner.media_library.mission_id
+                ):
+                    self._write_json(409, {"ok": False, "error": "Bind an assigned mission before capturing media"})
+                    return
                 if command == "auto_plan_start":
                     waypoints = normalize_auto_plan_waypoints(payload)
                     if len(waypoints) < 1:
@@ -2333,9 +2350,12 @@ async def main() -> None:
     connection_manager = MavsdkConnectionManager()
     drone = await connection_manager.connect()
     backend_urls = BackendUrlResolver(BACKEND_BASE_URL)
-    preflight_persistence = PreflightPersistenceBridge(backend_urls, MISSION_ID)
+    active_mission_id = None
+    active_mission_code = None
+    active_drone_id = None
+    media_root = Path(os.getenv("LOCAL_MEDIA_DIR", "/tmp/forest3d_drone_media"))
     media_library = LocalMediaLibrary(
-        Path(os.getenv("LOCAL_MEDIA_DIR", "/tmp/forest3d_drone_media")), MISSION_ID, DRONE_ID)
+        media_root, active_mission_id, active_drone_id)
 
     video_recorder = VideoRecorder(
         VIDEO_RECORDING_DIR,
@@ -2591,7 +2611,8 @@ async def main() -> None:
             "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "checks": checks,
         }
-        preflight_persistence.sync(payload)
+        if control_api.preflight_persistence is not None:
+            control_api.preflight_persistence.sync(payload)
         return payload
 
     def api_status() -> dict:
@@ -2607,8 +2628,9 @@ async def main() -> None:
         )
         thermal.update_pose(sim_x_m, sim_y_m, max(0.0, -current_local_down_m))
         status = {
-            "missionId": MISSION_ID,
-            "deviceCode": DEVICE_CODE,
+            "missionId": active_mission_id,
+            "missionCode": active_mission_code,
+            "deviceCode": active_drone_id,
             "positionReady": local_position_ready,
             "positionNed": {
                 "northM": current_local_north_m,
@@ -2621,6 +2643,7 @@ async def main() -> None:
             },
             "yawDeg": current_yaw_deg,
             "altitudeM": max(0.0, -current_local_down_m),
+            "inAir": current_in_air,
             "speedMps": horizontal_speed,
             "batteryPercent": round(battery_snapshot.battery_percent, 1),
             "batteryState": battery_snapshot.battery_state,
@@ -2693,14 +2716,81 @@ async def main() -> None:
         status.update(thermal.status())
         return status
 
+    def bind_control_session(payload: dict) -> dict:
+        nonlocal active_mission_id, active_mission_code, active_drone_id, media_library
+        mission_id = str(payload.get("missionId", "")).strip()
+        drone_code = str(payload.get("droneCode", "")).strip()
+        access_token = str(payload.get("accessToken", "")).strip()
+        if not mission_id or len(mission_id) > 255:
+            raise ValueError("missionId is required")
+        if not drone_code or len(drone_code) > 50:
+            raise ValueError("droneCode is required")
+        if not access_token or len(access_token) > 4096 or any(char.isspace() for char in access_token):
+            raise ValueError("A valid operator access token is required")
+        if video_recorder.is_recording() or current_in_air:
+            if mission_id != active_mission_id or drone_code != active_drone_id:
+                raise ValueError("Cannot switch control session while recording or in flight")
+
+        assigned_mission = None
+        backend_reachable = False
+        token_rejected = False
+        for base_url in backend_urls.candidates():
+            try:
+                response = httpx.get(
+                    f"{base_url}/api/missions/mine",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    timeout=2.0,
+                )
+                if response.status_code in (401, 403):
+                    token_rejected = True
+                    continue
+                if response.status_code != 200:
+                    continue
+                backend_reachable = True
+                body = response.json()
+                missions = body.get("data", []) if isinstance(body, dict) else []
+                assigned_mission = next(
+                    (item for item in missions if str(item.get("id", "")) == mission_id),
+                    None,
+                )
+                if assigned_mission is not None:
+                    break
+            except (httpx.HTTPError, ValueError):
+                continue
+        if assigned_mission is None:
+            if not backend_reachable:
+                if token_rejected:
+                    raise ValueError("Backend rejected the operator access token; sign in again")
+                raise ValueError("Flight Controller cannot reach the backend mission API")
+            raise ValueError("Mission is not assigned to the authenticated operator")
+        assigned_drone = str(assigned_mission.get("droneCode") or "").strip()
+        if not assigned_drone:
+            raise ValueError("Mission has no assigned drone code in the backend")
+        if assigned_drone != drone_code:
+            raise ValueError("Drone does not match the mission assignment")
+
+        active_mission_id = mission_id
+        active_mission_code = str(assigned_mission.get("missionCode") or "").strip() or None
+        active_drone_id = assigned_drone
+        media_library = LocalMediaLibrary(media_root, mission_id, assigned_drone, active_mission_code)
+        camera.media_library = media_library
+        control_api.media_library = media_library
+        control_api.preflight_persistence = PreflightPersistenceBridge(
+            backend_urls, mission_id, access_token)
+        control_api.preflight_check_id = None
+        control_api.preflight_started_at_s = None
+        print(f"[SESSION] Bound mission={active_mission_code or mission_id} id={mission_id} drone={assigned_drone}", flush=True)
+        return {"missionId": mission_id, "missionCode": active_mission_code, "droneCode": assigned_drone}
+
     control_api = FlightControlApi(
         camera,
         api_commands,
         api_status,
         build_preflight_status,
-        preflight_persistence,
+        None,
         thermal,
         media_library,
+        bind_control_session,
     )
     control_api.start()
     print(
@@ -3474,19 +3564,24 @@ async def main() -> None:
         elif key == "thermal_range_toggle":
             print(f"[THERMAL] Display range -> {thermal.toggle_display_range()}", flush=True)
         elif key == "p":
-            task = asyncio.create_task(camera.capture_for_review())
-            track_background_task(task, "CAMERA")
+            if not active_mission_id:
+                print("[CAMERA] Bind an assigned mission before capturing media", flush=True)
+            else:
+                task = asyncio.create_task(camera.capture_for_review())
+                track_background_task(task, "CAMERA")
         elif key == "r":
             if video_recorder.is_recording():
                 stop_video_recording(retain=True)
+            elif not active_mission_id:
+                print("[VIDEO] Bind an assigned mission before recording", flush=True)
             else:
                 try:
-                    path = video_recorder.start_recording(MISSION_ID)
+                    path = video_recorder.start_recording(active_mission_id)
                 except RuntimeError as exc:
                     print(f"[VIDEO] Recording unavailable: {exc}", flush=True)
                 else:
                     print(
-                        f"[VIDEO] Recording started mission={MISSION_ID} path={path}",
+                        f"[VIDEO] Recording started mission={active_mission_id} path={path}",
                         flush=True,
                     )
         elif key == "l":

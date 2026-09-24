@@ -5,6 +5,7 @@ import com.ondemandmonitoring.drone.enums.DroneStatus;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
+import com.ondemandmonitoring.mission.dto.response.MissionTelemetryReadinessResponse;
 
 import java.util.List;
 
@@ -37,6 +38,8 @@ public interface IMissionService {
      * @return List of {@link MissionResponse}
      */
     List<MissionResponse> getByOperatorId(String operatorId);
+
+    List<MissionResponse> getCurrentOperatorMissions();
 
     /**
      * Retrieves all missions pending resource assignment (drone/operator).
@@ -78,6 +81,14 @@ public interface IMissionService {
      * @return {@link MissionResponse} Updated mission DTO
      */
     MissionResponse assignOperator(String missionId, String operatorId);
+
+    MissionResponse assignResources(String missionId, String droneId, String operatorId);
+
+    MissionResponse acceptCurrentOperatorMission(String missionId);
+
+    MissionResponse rejectCurrentOperatorMission(String missionId, String reason);
+
+    MissionResponse handoverCurrentOperatorControl(String missionId);
 
     /**
      * Finds and returns the raw Mission domain entity by ID.
@@ -142,6 +153,8 @@ public interface IMissionService {
      * @return {@link PreflightCheckResponse} Preflight diagnostics and issued flight token (if passed)
      */
     PreflightCheckResponse runPreflightCheck(String missionId, String droneCode);
+
+    MissionTelemetryReadinessResponse getTelemetryReadiness(String missionId);
 
     /**
      * Replaces faulty device with a new device for the mission.
@@ -220,4 +233,7 @@ public interface IMissionService {
      * @return {@link MissionResponse} Updated mission DTO
      */
     MissionResponse updatePostFlightStatus(String missionId, DroneStatus newDroneStatus, String notes);
+
+    MissionResponse recordPostFlightInspection(String missionId, DroneStatus newDroneStatus,
+                                               String notes, java.util.Map<String, com.ondemandmonitoring.mission.enums.InspectionResult> results);
 }

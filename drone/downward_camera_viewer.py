@@ -41,9 +41,7 @@ if GZ_PYTHON_DIST_PACKAGES not in sys.path:
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-ENV_FILE = PROJECT_ROOT / ".env"
-if not ENV_FILE.exists():
-    ENV_FILE = PROJECT_ROOT / "ondemandmonitoring" / ".env"
+ENV_FILE = PROJECT_ROOT / "ondemandmonitoring" / ".env"
 load_dotenv(ENV_FILE, override=True)
 
 DEFAULT_WORLD = "forest_monitoring_compact"

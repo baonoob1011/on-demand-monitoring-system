@@ -73,10 +73,7 @@ public class SecurityConfig {
             "/api/simulation-map/**",
             "/api/planning/environment",
             "/api/planning/environment/**",
-            "/api/missions",
-            "/api/missions/**",
-            "/api/missions/*/images",
-            "/api/missions/*/media",
+            "/api/internal/v1/drone-telemetry/*",
             "/swagger-ui/**",
             "/swagger-ui.html"
     };
@@ -112,6 +109,7 @@ public class SecurityConfig {
                                 "/api/thermal-sources/**",
                                 "/api/simulation-map/**",
                                 "/api/planning/environment/**",
+                                "/api/internal/v1/drone-telemetry/*",
                                 "/api/missions/**",
                                 "/api/missions/*/images",
                                 "/api/missions/*/media"))

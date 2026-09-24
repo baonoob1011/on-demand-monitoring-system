@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -46,6 +47,14 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(ErrorCode.RESOURCE_NOT_FOUND.getStatus())
                 .build();
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleConcurrentUpdate(ObjectOptimisticLockingFailureException exception) {
+        log.warn("Concurrent resource update rejected: {}", exception.getMessage());
+        return ResponseEntity
+                .status(ErrorCode.CONCURRENT_UPDATE.getStatus())
+                .body(ApiResponse.error(ErrorCode.CONCURRENT_UPDATE.name(), ErrorCode.CONCURRENT_UPDATE.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)

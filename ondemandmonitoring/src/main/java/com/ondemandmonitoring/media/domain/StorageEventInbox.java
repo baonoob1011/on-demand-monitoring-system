@@ -19,7 +19,7 @@ public class StorageEventInbox extends BaseEntity {
     @Column(name = "event_key", nullable = false, length = 64)
     private String eventKey;
 
-    @Column(name = "bucket", nullable = false)
+    @Column(name = "bucket_name", nullable = false)
     private String bucket;
 
     @Column(name = "object_key", nullable = false, length = 700)

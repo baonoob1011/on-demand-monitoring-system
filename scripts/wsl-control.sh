@@ -6,8 +6,7 @@ sleep 35
 
 PROJECT_PATH="${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 REPO_CONTROLLER="$PROJECT_PATH/drone"
-ENV_FILE="$PROJECT_PATH/.env"
-LEGACY_ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
+ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
 DRONE_WORKDIR="${DRONE_WORKDIR:-$HOME/drone-controller}"
 DRONE_ENV="${DRONE_ENV:-$HOME/drone-env}"
 
@@ -23,10 +22,6 @@ mkdir -p video
 cp "$REPO_CONTROLLER/video/__init__.py" video/__init__.py
 cp "$REPO_CONTROLLER/video/video_recorder.py" video/video_recorder.py
 
-if [ ! -f "$ENV_FILE" ] && [ -f "$LEGACY_ENV_FILE" ]; then
-    ENV_FILE="$LEGACY_ENV_FILE"
-fi
-
 if [ -f "$ENV_FILE" ]; then
     set -a
     # Strip Windows BOM/CRLF endings while keeping the source .env unchanged.
@@ -35,6 +30,11 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 source "$DRONE_ENV/bin/activate"
+
+if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+    printf '%s\n' '[VIDEO] FFmpeg is required for browser-compatible previews. Install it with: sudo apt-get install ffmpeg' >&2
+    exit 1
+fi
 
 if ! python - <<'PY' >/dev/null 2>&1
 import cv2

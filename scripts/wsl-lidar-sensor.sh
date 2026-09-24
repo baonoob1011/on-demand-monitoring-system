@@ -3,13 +3,8 @@ set -euo pipefail
 
 PROJECT_PATH="${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 SENSOR_DIR="$PROJECT_PATH/drone/obstacle_avoidance"
-ENV_FILE="$PROJECT_PATH/.env"
-LEGACY_ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
+ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
 LIDAR_TOPIC="${LIDAR_TOPIC:-/lidar}"
-
-if [ ! -f "$ENV_FILE" ] && [ -f "$LEGACY_ENV_FILE" ]; then
-    ENV_FILE="$LEGACY_ENV_FILE"
-fi
 
 if [ -f "$ENV_FILE" ]; then
     set -a

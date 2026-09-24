@@ -116,6 +116,7 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
         if (!outbox.existsByMediaIdAndEventType(captured.getId(), AVAILABLE_EVENT)) {
             MediaNotificationOutbox notification = new MediaNotificationOutbox();
             notification.setMedia(captured);
+            notification.setMissionId(captured.getMissionId());
             notification.setEventType(AVAILABLE_EVENT);
             outbox.save(notification);
         }

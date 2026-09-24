@@ -1,4 +1,6 @@
-package com.ondemandmonitoring.drone.service;
+package com.ondemandmonitoring.drone.service.impl;
+
+import com.ondemandmonitoring.drone.service.IPersistedPreflightCheckService;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
@@ -21,7 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-public class PersistedPreflightCheckService {
+public class PersistedPreflightCheckService implements IPersistedPreflightCheckService {
 
     private static final List<Definition> CHECKS = List.of(
             new Definition("GAZEBO", "Gazebo Simulation", PreflightCheckLevel.CRITICAL),
@@ -42,6 +44,7 @@ public class PersistedPreflightCheckService {
     private final MissionRepository missionRepository;
 
     @Transactional
+    @Override
     public PersistedPreflightCheckResponse start(String missionId) {
         Mission mission = missionRepository.findById(missionId)
                 .orElseThrow(() -> new ApiException(
@@ -69,6 +72,7 @@ public class PersistedPreflightCheckService {
     }
 
     @Transactional(readOnly = true)
+    @Override
     public List<PersistedPreflightCheckResponse> history(String missionId) {
         ensureMission(missionId);
 
@@ -79,6 +83,7 @@ public class PersistedPreflightCheckService {
     }
 
     @Transactional(readOnly = true)
+    @Override
     public PersistedPreflightCheckResponse current(String missionId) {
         ensureMission(missionId);
 
@@ -90,6 +95,7 @@ public class PersistedPreflightCheckService {
     }
 
     @Transactional(readOnly = true)
+    @Override
     public PersistedPreflightCheckResponse get(String id) {
         return PersistedPreflightCheckResponse.from(runRepository.findById(id)
                 .orElseThrow(() -> new ApiException(
@@ -98,6 +104,7 @@ public class PersistedPreflightCheckService {
     }
 
     @Transactional
+    @Override
     public PersistedPreflightCheckResponse update(String id, String type, PreflightItemUpdateRequest request) {
         PersistedPreflightCheck run = runRepository.findById(id)
                 .orElseThrow(() -> new ApiException(
@@ -155,3 +162,4 @@ public class PersistedPreflightCheckService {
 
     private record Definition(String type, String name, PreflightCheckLevel level) {}
 }
+

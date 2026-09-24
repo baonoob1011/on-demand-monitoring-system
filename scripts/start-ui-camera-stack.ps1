@@ -54,17 +54,6 @@ function Set-EnvValue([string]$Path, [string]$Name, [string]$Value) {
     Write-Utf8NoBomLines $Path $nextLines
 }
 
-function Initialize-StackEnv([string]$RootEnvFile, [string]$RootEnvExample) {
-    if (Test-Path $RootEnvFile) { return }
-    if (Test-Path $RootEnvExample) {
-        $lines = @(Get-Content -Path $RootEnvExample -ErrorAction Stop)
-        Write-Utf8NoBomLines $RootEnvFile $lines
-        return
-    }
-
-    New-Item -ItemType File -Path $RootEnvFile -Force | Out-Null
-}
-
 function Start-TerminalTab([string]$Title, [string]$Command, [string]$WorkingDirectory) {
     $escapedCommand = $Command.Replace('"', '\"')
     $escapedDirectory = $WorkingDirectory.Replace('"', '\"')
@@ -291,15 +280,16 @@ if (-not (Test-Path $webRoot)) {
 $forest3DPath = Resolve-Forest3DPath $systemRoot
 Assert-CompactMapAssets $systemRoot $forest3DPath
 
-$rootEnvFile = Join-Path $systemRoot ".env"
-$rootEnvExample = Join-Path $systemRoot ".env.example"
-Initialize-StackEnv $rootEnvFile $rootEnvExample
-Set-EnvValue $rootEnvFile "SIM_WORLD" $packagedWorld
-Set-EnvValue $rootEnvFile "FOREST3D_WEB_ONLY" "1"
-Set-EnvValue $rootEnvFile "GAZEBO_CAMERA_TOPIC" $downTopic
-Set-EnvValue $rootEnvFile "GAZEBO_CAMERA_DOWN_TOPIC" $downTopic
-Set-EnvValue $rootEnvFile "GAZEBO_CAMERA_FRONT_TOPIC" $frontTopic
-Set-EnvValue $rootEnvFile "CAMERA_DEFAULT_VIEW" "DOWN"
+$backendEnvFile = Join-Path $systemRoot "ondemandmonitoring/.env"
+if (-not (Test-Path -LiteralPath $backendEnvFile -PathType Leaf)) {
+    throw "Missing shared backend and drone configuration: $backendEnvFile"
+}
+Set-EnvValue $backendEnvFile "SIM_WORLD" $packagedWorld
+Set-EnvValue $backendEnvFile "FOREST3D_WEB_ONLY" "1"
+Set-EnvValue $backendEnvFile "GAZEBO_CAMERA_TOPIC" $downTopic
+Set-EnvValue $backendEnvFile "GAZEBO_CAMERA_DOWN_TOPIC" $downTopic
+Set-EnvValue $backendEnvFile "GAZEBO_CAMERA_FRONT_TOPIC" $frontTopic
+Set-EnvValue $backendEnvFile "CAMERA_DEFAULT_VIEW" "DOWN"
 
 Write-Host "========================================" -ForegroundColor Green
 Write-Host " OMSS UI Camera Stack" -ForegroundColor Green
