@@ -17,6 +17,7 @@ import threading
 import time
 import tty
 import sys
+import uuid
 import grpc
 import httpx
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -45,6 +46,7 @@ def resolve_project_root() -> Path:
 
 
 PROJECT_ROOT = resolve_project_root()
+RUNTIME_SESSION_ID = uuid.uuid4().hex
 
 DRONE_DIR = PROJECT_ROOT / "drone"
 
@@ -1084,6 +1086,10 @@ CONTROL_COMMAND_KEYS = {
     "speed_up": "1",
     "speed_down": "2",
     "camera_switch": "c",
+    "camera_front": "camera_front",
+    "camera_fpv": "camera_front",
+    "camera_reset": "camera_front",
+    "camera_down": "camera_down",
     "camera_monitor_toggle": "3",
     "lidar_monitor_toggle": "4",
     "telemetry_monitor_toggle": "5",
@@ -2617,6 +2623,7 @@ async def main() -> None:
     auto_plan_active = False
     auto_plan_status = "IDLE"
     auto_plan_desired_altitude_m: float | None = None
+    auto_plan_land_on_complete = False
     safety_speed_scale = 1.0
     simulated_battery = BatterySimulator(
         float(os.getenv("SIM_BATTERY_INITIAL_PERCENT", "100.0")),
@@ -2780,6 +2787,7 @@ async def main() -> None:
         )
         thermal.update_pose(sim_x_m, sim_y_m, max(0.0, -current_local_down_m))
         status = {
+            "runtimeSessionId": RUNTIME_SESSION_ID,
             "missionId": active_mission_id,
             "missionCode": active_mission_code,
             "deviceCode": active_drone_id,
@@ -3066,9 +3074,62 @@ async def main() -> None:
     def force_manual_control() -> None:
         set_motion_owner(MotionOwner.MANUAL)
 
+    def build_auto_plan_route(points: list[dict]) -> tuple[list[dict], bool]:
+        route = list(points)
+        if not route:
+            return route, False
+
+        home = next((point for point in route if str(point.get("reason", "")).upper() == "START"), route[0])
+        last = route[-1]
+        already_home = (
+            math.hypot(last["simX"] - home["simX"], last["simY"] - home["simY"])
+            <= AUTO_PLAN_REACHED_RADIUS_M
+        )
+        if not already_home:
+            route.append(
+                {
+                    **home,
+                    "sequence": max(point["sequence"] for point in route) + 1,
+                    "reason": "RETURN",
+                }
+            )
+        return route, True
+
+    async def land_current_drone(reason: str) -> None:
+        print(f"[AUTO-PLAN] {reason}: landing", flush=True)
+        stop_video_recording(retain=True)
+        await connection_manager.stop_offboard_sender()
+        active_drone = await connection_manager.get_drone()
+        if active_drone is None:
+            active_drone = await connection_manager.reconnect()
+        if active_drone is None:
+            print("[ERR] MAVSDK control bridge unavailable")
+            return
+        try:
+            await active_drone.offboard.stop()
+        except OffboardError:
+            pass
+        try:
+            await active_drone.action.land()
+        except ActionError as exc:
+            print_command_denied("land", exc)
+        except grpc.aio.AioRpcError as exc:
+            print_mavsdk_unavailable("land", exc)
+            if is_grpc_unavailable(exc):
+                new_drone = await connection_manager.reconnect()
+                if new_drone is not None and avoidance is not None:
+                    avoidance.set_drone(new_drone)
+                if new_drone is not None:
+                    try:
+                        await new_drone.action.land()
+                    except ActionError as retry_exc:
+                        print_command_denied("land", retry_exc)
+                    except grpc.aio.AioRpcError as retry_exc:
+                        print_mavsdk_unavailable("land retry", retry_exc)
+
     def stop_auto_plan(reason: str = "stopped") -> None:
         nonlocal auto_plan_active, auto_plan_points, auto_plan_index, auto_plan_status
-        nonlocal auto_plan_desired_altitude_m
+        nonlocal auto_plan_desired_altitude_m, auto_plan_land_on_complete
         if auto_plan_active:
             print(f"[AUTO-PLAN] {reason}", flush=True)
         auto_plan_active = False
@@ -3076,11 +3137,12 @@ async def main() -> None:
         auto_plan_index = 0
         auto_plan_status = reason
         auto_plan_desired_altitude_m = None
+        auto_plan_land_on_complete = False
 
     def start_auto_plan(points: list[dict]) -> None:
         nonlocal auto_plan_active, auto_plan_points, auto_plan_index, auto_plan_status
-        nonlocal auto_plan_desired_altitude_m
-        auto_plan_points = list(points)
+        nonlocal auto_plan_desired_altitude_m, auto_plan_land_on_complete
+        auto_plan_points, auto_plan_land_on_complete = build_auto_plan_route(points)
         auto_plan_index = 0
         auto_plan_desired_altitude_m = max(0.0, -current_local_down_m)
         if local_position_ready and auto_plan_points:
@@ -3109,7 +3171,7 @@ async def main() -> None:
         )
 
     async def update_auto_plan() -> None:
-        nonlocal auto_plan_index
+        nonlocal auto_plan_index, auto_plan_status
         nonlocal current_forward_m_s, current_right_m_s
         nonlocal current_north_m_s, current_east_m_s, current_down_m_s, current_yaw_deg
         nonlocal auto_plan_desired_altitude_m
@@ -3120,16 +3182,22 @@ async def main() -> None:
             print("[AUTO-PLAN] Waiting for local position", flush=True)
             return
         if auto_plan_index >= len(auto_plan_points):
+            should_land = auto_plan_land_on_complete
+            auto_plan_status = "LANDING" if should_land else "COMPLETE"
             stop_auto_plan("complete")
             active_drone = await set_motion(connection_manager, 0.0, 0.0, 0.0, current_yaw_deg)
             if active_drone is not None and avoidance is not None:
                 avoidance.set_drone(active_drone)
             set_motion_owner(MotionOwner.MANUAL)
+            if should_land:
+                auto_plan_status = "LANDING"
+                await land_current_drone("return complete")
             return
 
         sim_x_m, sim_y_m = px4_ned_to_sim_xy(current_local_north_m, current_local_east_m)
         altitude_m = max(0.0, -current_local_down_m)
         target = auto_plan_points[auto_plan_index]
+        auto_plan_status = "RETURNING" if str(target.get("reason", "")).upper() == "RETURN" else "RUNNING"
         dx = target["simX"] - sim_x_m
         dy = target["simY"] - sim_y_m
         horizontal_distance = math.hypot(dx, dy)
@@ -3671,6 +3739,10 @@ async def main() -> None:
             print(f"[SAFETY] Sensor toggle -> {state}", flush=True)
         elif key == "c":
             camera_orientation.toggle()
+        elif key == "camera_front":
+            camera_orientation.set_mode("FRONT")
+        elif key == "camera_down":
+            camera_orientation.set_mode("DOWN")
         elif key == "3":
             toggle_monitor_window(
                 "Camera monitor",

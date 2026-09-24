@@ -240,6 +240,10 @@ public interface IMissionService {
      */
     MissionResponse updatePostFlightStatus(String missionId, DroneStatus newDroneStatus, String notes);
 
-    MissionResponse recordPostFlightInspection(String missionId, DroneStatus newDroneStatus,
-                                               String notes, java.util.Map<String, com.ondemandmonitoring.mission.enums.InspectionResult> results);
+    MissionResponse recordPostFlightInspection(
+            String missionId,
+            DroneStatus newDroneStatus,
+            String notes,
+            java.util.Map<String, com.ondemandmonitoring.mission.enums.InspectionResult> results,
+            com.ondemandmonitoring.mission.dto.request.PostFlightStatusRequest.TelemetrySnapshot telemetrySnapshot);
 }

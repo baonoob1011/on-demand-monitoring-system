@@ -404,7 +404,11 @@ public class MissionController {
             @RequestParam String droneCode,
             @Valid @RequestBody PostFlightStatusRequest request) {
         MissionResponse response = missionService.recordPostFlightInspection(
-                id, request.getNewDroneStatus(), request.getNotes(), request.getInspectionResults());
+                id,
+                request.getNewDroneStatus(),
+                request.getNotes(),
+                request.getInspectionResults(),
+                request.getTelemetrySnapshot());
         return ResponseEntity.ok(ApiResponse.ok("Cập nhật trạng thái drone sau bay thành công", response));
     }
 }

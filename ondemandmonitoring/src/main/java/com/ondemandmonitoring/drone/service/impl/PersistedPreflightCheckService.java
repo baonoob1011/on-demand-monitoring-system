@@ -11,7 +11,6 @@ import com.ondemandmonitoring.drone.dto.response.PersistedPreflightCheckResponse
 import com.ondemandmonitoring.drone.enums.PreflightCheckLevel;
 import com.ondemandmonitoring.drone.enums.PreflightCheckStatus;
 import com.ondemandmonitoring.drone.enums.PreflightItemStatus;
-import com.ondemandmonitoring.drone.repository.PersistedPreflightCheckItemRepository;
 import com.ondemandmonitoring.drone.repository.PersistedPreflightCheckRepository;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
@@ -40,7 +39,6 @@ public class PersistedPreflightCheckService implements IPersistedPreflightCheckS
             new Definition("MODULES", "Module Check", PreflightCheckLevel.INFO));
 
     private final PersistedPreflightCheckRepository runRepository;
-    private final PersistedPreflightCheckItemRepository itemRepository;
     private final MissionRepository missionRepository;
 
     @Transactional
@@ -106,12 +104,14 @@ public class PersistedPreflightCheckService implements IPersistedPreflightCheckS
     @Transactional
     @Override
     public PersistedPreflightCheckResponse update(String id, String type, PreflightItemUpdateRequest request) {
-        PersistedPreflightCheck run = runRepository.findById(id)
+        PersistedPreflightCheck run = runRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.RESOURCE_NOT_FOUND,
                         "Preflight check not found: " + id));
 
-        PersistedPreflightCheckItem item = itemRepository.findByPreflightCheckIdAndCheckType(id, type)
+        PersistedPreflightCheckItem item = run.getItems().stream()
+                .filter(candidate -> type.equals(candidate.getCheckType()))
+                .findFirst()
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.RESOURCE_NOT_FOUND,
                         "Unknown check type: " + type));
@@ -119,7 +119,6 @@ public class PersistedPreflightCheckService implements IPersistedPreflightCheckS
         item.setStatus(request.getStatus());
         item.setMessage(request.getMessage());
         item.setCheckedAt(Instant.now());
-        itemRepository.save(item);
 
         int passed = (int) run.getItems().stream()
                 .filter(i -> i.getStatus() == PreflightItemStatus.PASSED)
@@ -162,4 +161,3 @@ public class PersistedPreflightCheckService implements IPersistedPreflightCheckS
 
     private record Definition(String type, String name, PreflightCheckLevel level) {}
 }
-

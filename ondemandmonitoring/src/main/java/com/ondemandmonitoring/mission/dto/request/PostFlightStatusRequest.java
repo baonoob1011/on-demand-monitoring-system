@@ -25,5 +25,23 @@ public class PostFlightStatusRequest {
 
     @Size(max = 500)
     String notes;
+
+    TelemetrySnapshot telemetrySnapshot;
+
+    @Getter
+    @Setter
+    @FieldDefaults(level = AccessLevel.PRIVATE)
+    public static class TelemetrySnapshot {
+        Boolean online;
+        String missionId;
+        String deviceCode;
+        Boolean inAir;
+        Boolean positionReady;
+        Double altitudeM;
+        Double speedMps;
+        Double batteryPercent;
+        String batteryState;
+        Double headingDeg;
+    }
 }
 

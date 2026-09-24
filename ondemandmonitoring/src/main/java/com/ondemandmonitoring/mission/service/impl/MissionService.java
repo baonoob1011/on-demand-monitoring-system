@@ -8,8 +8,10 @@ import com.ondemandmonitoring.drone.domain.DroneTelemetry;
 import com.ondemandmonitoring.drone.domain.PreflightCheck;
 import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
 import com.ondemandmonitoring.drone.enums.DroneStatus;
+import com.ondemandmonitoring.drone.enums.PreflightCheckStatus;
 import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
+import com.ondemandmonitoring.drone.repository.PersistedPreflightCheckRepository;
 import com.ondemandmonitoring.drone.service.PreflightCheckService;
 import com.ondemandmonitoring.drone.service.DroneTelemetryFreshness;
 import com.ondemandmonitoring.mission.domain.ControlHandover;
@@ -22,6 +24,7 @@ import com.ondemandmonitoring.mission.dto.response.FlightTokenResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionTelemetryReadinessResponse;
+import com.ondemandmonitoring.mission.dto.request.PostFlightStatusRequest;
 import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.enums.InspectionResult;
@@ -54,6 +57,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -80,6 +84,7 @@ public class MissionService implements IMissionService {
     MissionRepository missionRepository;
     DroneRepository droneRepository;
     DroneTelemetryRepository droneTelemetryRepository;
+    PersistedPreflightCheckRepository persistedPreflightCheckRepository;
     FlightTokenRepository flightTokenRepository;
     PreflightCheckService preflightCheckService;
     MissionMapper missionMapper;
@@ -451,25 +456,23 @@ public class MissionService implements IMissionService {
         // Lock the telemetry row before planning. Planning and the checklist read this same
         // entity again; a concurrent telemetry update between an unlocked read and a locked
         // read would put conflicting versions of it in this persistence context.
-        DroneTelemetry telemetry = droneTelemetryRepository.findByDroneCode(droneCode)
-                .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REQUEST,
-                        "Fresh drone telemetry is required before preflight."));
-        if (!Boolean.TRUE.equals(telemetry.getConnected())
-                || !DroneTelemetryFreshness.isFresh(telemetry.getUpdatedAt())) {
+        DroneTelemetry telemetry = droneTelemetryRepository.findByDroneCode(droneCode).orElse(null);
+        boolean freshTelemetry = telemetry != null
+                && Boolean.TRUE.equals(telemetry.getConnected())
+                && DroneTelemetryFreshness.isFresh(telemetry.getUpdatedAt());
+        boolean persistedPreflightPassed = hasRecentPersistedPreflightPass(missionId);
+        boolean livePreflightAvailable = freshTelemetry && hasValidBatteryTelemetry(telemetry);
+        if (!livePreflightAvailable && !persistedPreflightPassed) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
-                    "Fresh drone telemetry is required before preflight.");
-        }
-        Double batteryPercent = telemetry.getBatteryPercent();
-        if (batteryPercent == null || !Double.isFinite(batteryPercent)
-                || batteryPercent < 0 || batteryPercent > 100) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST,
-                    "Drone battery telemetry is unavailable. Refresh telemetry before preflight.");
+                    "Fresh drone telemetry or a completed runtime preflight PASS is required before preflight.");
         }
 
         MissionPlan plan = missionPlanningService.generateAStarEnergyAwarePlan(missionId);
-        requireFeasiblePlan(plan);
+        requireFeasiblePlan(plan, persistedPreflightPassed);
 
-        PreflightCheck check = preflightCheckService.run(droneCode, missionId);
+        PreflightCheck check = livePreflightAvailable
+                ? preflightCheckService.run(droneCode, missionId)
+                : passedPersistedPreflightCheck(device, telemetry, missionId);
         FlightTokenResponse tokenResponse = null;
 
         // Store preflight check diagnostics inline on Mission entity (per DB design)
@@ -496,6 +499,44 @@ public class MissionService implements IMissionService {
 
         missionRepository.save(mission);
         return preflightCheckMapper.toResponse(check, tokenResponse);
+    }
+
+    private boolean hasValidBatteryTelemetry(DroneTelemetry telemetry) {
+        if (telemetry == null) return false;
+        Double batteryPercent = telemetry.getBatteryPercent();
+        return batteryPercent != null
+                && Double.isFinite(batteryPercent)
+                && batteryPercent >= 0
+                && batteryPercent <= 100;
+    }
+
+    private boolean hasRecentPersistedPreflightPass(String missionId) {
+        return persistedPreflightCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId)
+                .filter(run -> run.getStatus() == PreflightCheckStatus.PASSED)
+                .filter(run -> run.getCompletedAt() == null
+                        || Duration.between(run.getCompletedAt(), Instant.now()).abs().toMinutes() <= 10)
+                .isPresent();
+    }
+
+    private PreflightCheck passedPersistedPreflightCheck(Drone drone, DroneTelemetry telemetry, String missionId) {
+        PreflightCheck check = new PreflightCheck();
+        check.setDrone(drone);
+        check.setMissionId(missionId);
+        check.setOverallPassed(true);
+        check.setConnected(true);
+        check.setInAir(false);
+        check.setBatteryPercent(telemetry != null ? telemetry.getBatteryPercent() : null);
+        check.setGpsFixType(telemetry != null ? telemetry.getGpsFixType() : null);
+        check.setGpsSatelliteCount(telemetry != null ? telemetry.getGpsSatelliteCount() : null);
+        check.setGyrometerOk(true);
+        check.setAccelerometerOk(true);
+        check.setMagnetometerOk(true);
+        check.setLocalPositionOk(true);
+        check.setGlobalPositionOk(true);
+        check.setHomePositionOk(true);
+        check.setArmable(true);
+        check.setCheckedAt(Instant.now());
+        return check;
     }
 
     private void handlePreflightFailure(Mission mission, Drone faultyDevice, PreflightCheck check) {
@@ -667,8 +708,15 @@ public class MissionService implements IMissionService {
     }
 
     private void requireFeasiblePlan(MissionPlan plan) {
+        requireFeasiblePlan(plan, false);
+    }
+
+    private void requireFeasiblePlan(MissionPlan plan, boolean allowRuntimePreflightBatteryFallback) {
         FeasibilityStatus status = plan.getFeasibilityStatus();
         if (status == FeasibilityStatus.FEASIBLE) {
+            return;
+        }
+        if (allowRuntimePreflightBatteryFallback && status == FeasibilityStatus.BATTERY_DATA_UNAVAILABLE) {
             return;
         }
         if (status == null) {
@@ -929,11 +977,12 @@ public class MissionService implements IMissionService {
     @Override
     @Transactional
     public MissionResponse recordPostFlightInspection(String missionId, DroneStatus newDroneStatus,
-                                                      String notes, Map<String, InspectionResult> results) {
-        Set<String> required = Set.of("a1", "a2", "p1", "p2", "e1", "e2", "e3", "d1");
+                                                      String notes, Map<String, InspectionResult> results,
+                                                      PostFlightStatusRequest.TelemetrySnapshot telemetrySnapshot) {
+        Set<String> required = Set.of("a1", "a2", "p1", "p2", "e1", "e2", "e3", "e4", "d1");
         if (results == null || !results.keySet().equals(required)
                 || results.values().stream().anyMatch(value -> value == null)) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "All eight inspection items must have a result");
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "All nine inspection items must have a result");
         }
         boolean faultDetected = results.containsValue(InspectionResult.FAIL);
         DroneStatus expected = faultDetected ? DroneStatus.MAINTENANCE : DroneStatus.AVAILABLE;
@@ -948,11 +997,17 @@ public class MissionService implements IMissionService {
                 .map(entry -> entry.getKey() + "=" + entry.getValue())
                 .collect(java.util.stream.Collectors.joining(", "));
         String auditNotes = "Inspection: " + summary + ". " + (notes == null ? "" : notes.strip());
-        return savePostFlightStatus(missionId, newDroneStatus, auditNotes, results);
+        return savePostFlightStatus(missionId, newDroneStatus, auditNotes, results, telemetrySnapshot);
     }
 
     private MissionResponse savePostFlightStatus(String missionId, DroneStatus newDroneStatus,
                                                  String notes, Map<String, InspectionResult> results) {
+        return savePostFlightStatus(missionId, newDroneStatus, notes, results, null);
+    }
+
+    private MissionResponse savePostFlightStatus(String missionId, DroneStatus newDroneStatus,
+                                                 String notes, Map<String, InspectionResult> results,
+                                                 PostFlightStatusRequest.TelemetrySnapshot telemetrySnapshot) {
         Mission mission = getOrThrow(missionId);
         Drone device = getCurrentDevice(mission.getId());
         if (device == null) {
@@ -971,9 +1026,17 @@ public class MissionService implements IMissionService {
         if (!results.isEmpty()) {
             postflightCheck.setPhysicalConditionOk(passed(results, "a1", "a2", "e3"));
             postflightCheck.setMotorOk(passed(results, "p1", "p2"));
-            postflightCheck.setBatteryOk(passed(results, "e1"));
+            postflightCheck.setBatteryOk(passed(results, "e1", "e4"));
             postflightCheck.setCameraOk(passed(results, "e2"));
             postflightCheck.setCommunicationOk(passed(results, "d1"));
+        }
+        if (telemetrySnapshot != null) {
+            postflightCheck.setLandingBatteryPercent(telemetrySnapshot.getBatteryPercent());
+            postflightCheck.setLandingBatteryState(telemetrySnapshot.getBatteryState());
+            postflightCheck.setLandingAltitudeM(telemetrySnapshot.getAltitudeM());
+            postflightCheck.setLandingSpeedMps(telemetrySnapshot.getSpeedMps());
+            postflightCheck.setLandingHeadingDeg(telemetrySnapshot.getHeadingDeg());
+            postflightCheck.setLandingTelemetryOnline(telemetrySnapshot.getOnline());
         }
         postflightCheck.setFaultType(overallOk ? null : "PHYSICAL_DAMAGE");
         postflightCheck.setNotes(notes);

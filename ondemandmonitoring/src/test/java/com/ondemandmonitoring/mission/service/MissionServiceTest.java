@@ -3,9 +3,11 @@ package com.ondemandmonitoring.mission.service;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.drone.domain.Drone;
 import com.ondemandmonitoring.drone.domain.DroneTelemetry;
+import com.ondemandmonitoring.drone.domain.PersistedPreflightCheck;
 import com.ondemandmonitoring.drone.domain.PreflightCheck;
 import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
 import com.ondemandmonitoring.drone.enums.DroneStatus;
+import com.ondemandmonitoring.drone.enums.PreflightCheckStatus;
 import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
 import com.ondemandmonitoring.drone.service.PreflightCheckService;
@@ -50,6 +52,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import com.ondemandmonitoring.drone.repository.MaintenanceTicketRepository;
+import com.ondemandmonitoring.drone.repository.PersistedPreflightCheckRepository;
 import com.ondemandmonitoring.mission.repository.*;
 
 class MissionServiceTest {
@@ -57,6 +60,7 @@ class MissionServiceTest {
     MissionRepository missionRepository;
     DroneRepository droneRepository;
     DroneTelemetryRepository droneTelemetryRepository;
+    PersistedPreflightCheckRepository persistedPreflightCheckRepository;
     FlightTokenRepository flightTokenRepository;
     PreflightCheckService preflightCheckService;
     MissionMapper missionMapper;
@@ -103,6 +107,7 @@ class MissionServiceTest {
         missionRepository                     = mock(MissionRepository.class);
         droneRepository                      = mock(DroneRepository.class);
         droneTelemetryRepository             = mock(DroneTelemetryRepository.class);
+        persistedPreflightCheckRepository    = mock(PersistedPreflightCheckRepository.class);
         flightTokenRepository                 = mock(FlightTokenRepository.class);
         preflightCheckService                 = mock(PreflightCheckService.class);
         missionMapper                         = mock(MissionMapper.class);
@@ -138,6 +143,7 @@ class MissionServiceTest {
                 missionRepository,
                 droneRepository,
                 droneTelemetryRepository,
+                persistedPreflightCheckRepository,
                 flightTokenRepository,
                 preflightCheckService,
                 missionMapper,
@@ -192,6 +198,8 @@ class MissionServiceTest {
                     .build();
         });
 
+        when(persistedPreflightCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(any()))
+                .thenReturn(Optional.empty());
         when(missionPlanRepository.findByMissionId(any())).thenAnswer(inv -> Optional.of(feasiblePlan(inv.getArgument(0))));
         when(missionPlanningService.generateAStarEnergyAwarePlan(any())).thenAnswer(inv -> feasiblePlan(inv.getArgument(0)));
     }
@@ -417,6 +425,77 @@ class MissionServiceTest {
                     .isInstanceOf(ApiException.class)
                     .hasMessageContaining("Fresh drone telemetry");
             verifyNoInteractions(missionPlanningService, preflightCheckService, flightTokenRepository);
+        }
+
+        @Test
+        void preflightUsesRecentRuntimePassWhenTelemetryReadinessIsStale() {
+            Mission mission = buildMission("m-runtime-pass", MissionStatus.CONNECTED);
+            Drone drone = buildDrone("DRONE-01", DroneStatus.PREFLIGHT);
+            when(missionRepository.findById("m-runtime-pass")).thenReturn(Optional.of(mission));
+            when(droneRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(drone));
+            stubFreshAssignedTelemetry("m-runtime-pass", drone, 100.0);
+            DroneTelemetry stale = new DroneTelemetry();
+            stale.setDroneCode("DRONE-01");
+            stale.setConnected(true);
+            stale.setBatteryPercent(100.0);
+            stale.setUpdatedAt(Instant.now().minusSeconds(120));
+            when(droneTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(stale));
+            PersistedPreflightCheck runtimePass = new PersistedPreflightCheck();
+            runtimePass.setStatus(PreflightCheckStatus.PASSED);
+            runtimePass.setCompletedAt(Instant.now());
+            when(persistedPreflightCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc("m-runtime-pass"))
+                    .thenReturn(Optional.of(runtimePass));
+            when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(flightTokenRepository.save(any())).thenAnswer(inv -> {
+                FlightToken token = inv.getArgument(0);
+                token.setId("ft-runtime-pass");
+                return token;
+            });
+
+            PreflightCheckResponse result = missionService.runPreflightCheck("m-runtime-pass", "DRONE-01");
+
+            assertThat(result.getOverallPassed()).isTrue();
+            assertThat(result.getFlightToken()).isNotNull();
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.READY_TO_FLY);
+            verifyNoInteractions(preflightCheckService);
+        }
+
+        @Test
+        void preflightUsesRecentRuntimePassWhenBatteryTelemetryIsUnavailable() {
+            Mission mission = buildMission("m-runtime-pass-no-battery", MissionStatus.CONNECTED);
+            Drone drone = buildDrone("DRONE-01", DroneStatus.PREFLIGHT);
+            when(missionRepository.findById("m-runtime-pass-no-battery")).thenReturn(Optional.of(mission));
+            when(droneRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(drone));
+            stubFreshAssignedTelemetry("m-runtime-pass-no-battery", drone, 100.0);
+            DroneTelemetry telemetry = new DroneTelemetry();
+            telemetry.setDroneCode("DRONE-01");
+            telemetry.setConnected(true);
+            telemetry.setUpdatedAt(Instant.now());
+            telemetry.setBatteryPercent(null);
+            when(droneTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(telemetry));
+            PersistedPreflightCheck runtimePass = new PersistedPreflightCheck();
+            runtimePass.setStatus(PreflightCheckStatus.PASSED);
+            runtimePass.setCompletedAt(Instant.now());
+            when(persistedPreflightCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc("m-runtime-pass-no-battery"))
+                    .thenReturn(Optional.of(runtimePass));
+            MissionPlan plan = feasiblePlan("m-runtime-pass-no-battery");
+            plan.setFeasibilityStatus(FeasibilityStatus.BATTERY_DATA_UNAVAILABLE);
+            when(missionPlanningService.generateAStarEnergyAwarePlan("m-runtime-pass-no-battery")).thenReturn(plan);
+            when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(flightTokenRepository.save(any())).thenAnswer(inv -> {
+                FlightToken token = inv.getArgument(0);
+                token.setId("ft-runtime-pass-no-battery");
+                return token;
+            });
+
+            PreflightCheckResponse result = missionService.runPreflightCheck("m-runtime-pass-no-battery", "DRONE-01");
+
+            assertThat(result.getOverallPassed()).isTrue();
+            assertThat(result.getFlightToken()).isNotNull();
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.READY_TO_FLY);
+            verifyNoInteractions(preflightCheckService);
         }
 
         @Test
