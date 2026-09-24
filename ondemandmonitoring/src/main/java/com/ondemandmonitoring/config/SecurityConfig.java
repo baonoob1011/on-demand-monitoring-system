@@ -65,6 +65,8 @@ public class SecurityConfig {
             "/api/v1/auth/csrf",
             "/api/v1/auth/logout",
             "/v3/api-docs/**",
+            "/ws",
+            "/ws/**",
             // Simulation Viewer – static assets and the APIs called by viewer.js
             "/simulation-viewer",
             "/simulation-viewer/**",
@@ -95,6 +97,8 @@ public class SecurityConfig {
                                 "/api/auth/verify-otp",
                                 "/api/auth/resend-otp",
                                 "/api/auth/login",
+                                "/ws",
+                                "/ws/**",
                                 "/api/auth/first-login/change-password",
                                 "/api/auth/social/sync",
                                 "/api/auth/forgot-password",
