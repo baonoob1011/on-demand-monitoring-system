@@ -30,6 +30,12 @@ public class DroneTelemetry extends BaseEntity {
     @Column(name = "relative_altitude")
     private Double relativeAltitude;
 
+    @Column(name = "sim_x")
+    private Double simX;
+
+    @Column(name = "sim_y")
+    private Double simY;
+
     @Column(name = "battery_percent")
     private Double batteryPercent;
 

@@ -1,6 +1,8 @@
 package com.ondemandmonitoring.auth.infrastructure.outbox;
 
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import lombok.experimental.FieldDefaults;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -12,13 +14,19 @@ import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class AuthOutboxService {
 
-    private final AuthOutboxRepository repository;
+    AuthOutboxRepository repository;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void scheduleCognitoCleanup(String username, String cognitoSub) {
         repository.save(AuthOutboxEvent.cognitoCleanup(username, cognitoSub));
+    }
+
+    @Transactional
+    public void scheduleAccountStatusSync(String username, boolean active) {
+        repository.save(AuthOutboxEvent.cognitoAccountStatus(username, active));
     }
 
     @Transactional

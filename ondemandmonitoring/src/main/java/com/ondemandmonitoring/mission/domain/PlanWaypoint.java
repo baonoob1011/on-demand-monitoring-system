@@ -46,6 +46,10 @@ public class PlanWaypoint extends BaseEntity {
     @Column(name = "sim_y", nullable = false)
     Double simY;
 
+    /*
+     * Planned Gazebo World Z in meters for the simulation planner.
+     * This is not PX4 relative altitude, terrain-relative altitude, or NED Down.
+     */
     @Column(name = "altitude_m", nullable = false)
     Double altitudeM;
 

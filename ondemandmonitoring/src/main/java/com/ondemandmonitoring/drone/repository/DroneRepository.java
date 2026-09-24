@@ -20,6 +20,16 @@ public interface DroneRepository extends JpaRepository<Drone, String> {
 
     Optional<Drone> findByDroneCode(String droneCode);
 
+    /**
+     * Find the first available drone from the pool, used for auto-swap after BATTERY preflight failure.
+     * Excludes a specific drone by id (the faulty one being replaced).
+     */
+    @Query("SELECT d FROM Drone d WHERE d.status = :status AND d.id <> :excludeId ORDER BY d.createdAt ASC")
+    Optional<Drone> findFirstAvailableExcluding(
+            @Param("status") DroneStatus status,
+            @Param("excludeId") String excludeId
+    );
+
     @Query("SELECT d FROM Drone d WHERE " +
            "(:modelId IS NULL OR d.droneModel.id = :modelId) AND " +
            "(:payloadId IS NULL OR (d.dronePayload IS NOT NULL AND d.dronePayload.id = :payloadId)) AND " +

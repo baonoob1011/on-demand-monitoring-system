@@ -3,6 +3,7 @@ import logging
 import math
 import os
 import socket
+import subprocess
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
@@ -12,6 +13,8 @@ import httpx
 from dotenv import load_dotenv
 from mavsdk import System
 
+from geofence_monitor import px4_ned_to_sim_xy
+
 from sitl_battery_sim import (
     BatteryInputs,
     SitlBatterySimulator,
@@ -20,12 +23,19 @@ from sitl_battery_sim import (
 )
 
 
-PROJECT_ROOT = Path(
-    os.getenv(
-        "PROJECT_PATH",
-        "/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system",
-    )
-)
+def resolve_project_root() -> Path:
+    configured = os.getenv("PROJECT_PATH")
+    if configured:
+        return Path(configured)
+
+    source_candidate = Path(__file__).resolve().parent.parent
+    if (source_candidate / "Forest3D").exists() and (source_candidate / "ondemandmonitoring").exists():
+        return source_candidate
+
+    return Path.cwd()
+
+
+PROJECT_ROOT = resolve_project_root()
 ENV_FILE = PROJECT_ROOT / "ondemandmonitoring" / ".env"
 load_dotenv(ENV_FILE, override=True)
 
@@ -34,7 +44,9 @@ MAVSDK_TELEMETRY_GRPC_PORT = int(os.getenv("MAVSDK_TELEMETRY_GRPC_PORT", "50052"
 MAVSDK_TELEMETRY_SYSID = int(os.getenv("MAVSDK_TELEMETRY_SYSID", "245"))
 MAVSDK_TELEMETRY_COMPID = int(os.getenv("MAVSDK_TELEMETRY_COMPID", "191"))
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8080").rstrip("/")
-DEVICE_CODE = os.getenv("DEVICE_CODE", "DRONE-01")
+DRONE_TELEMETRY_SECRET = os.getenv("DRONE_TELEMETRY_SECRET", "").strip()
+FLIGHT_CONTROL_API_PORT = int(os.getenv("FLIGHT_CONTROL_API_PORT", "8090"))
+FLIGHT_CONTROL_STATUS_URL = f"http://127.0.0.1:{FLIGHT_CONTROL_API_PORT}/api/control/status"
 TELEMETRY_INTERVAL_SECONDS = float(os.getenv("TELEMETRY_INTERVAL_SECONDS", "5"))
 MAVSDK_GRPC_READY_TIMEOUT_S = float(os.getenv("MAVSDK_GRPC_READY_TIMEOUT_S", "10.0"))
 MAVSDK_PX4_DISCOVERY_TIMEOUT_S = float(os.getenv("MAVSDK_PX4_DISCOVERY_TIMEOUT_S", "20.0"))
@@ -52,6 +64,9 @@ class TelemetryState:
     longitude: float | None = None
     absolute_altitude: float | None = None
     relative_altitude: float | None = None
+    local_north: float | None = None
+    local_east: float | None = None
+    local_down: float | None = None
 
     gps_fix_type: str | None = None
     gps_satellite_count: int | None = None
@@ -111,6 +126,11 @@ class TelemetryState:
 
     async def snapshot(self) -> dict[str, Any]:
         async with self.lock:
+            sim_x = None
+            sim_y = None
+            if self.local_north is not None and self.local_east is not None:
+                sim_x, sim_y = px4_ned_to_sim_xy(self.local_north, self.local_east)
+
             return {
                 "batteryPercent": self.battery_percent,
                 "batteryLevel": self.battery_level,
@@ -119,6 +139,8 @@ class TelemetryState:
                 "absoluteAltitude": self.absolute_altitude,
                 "relativeAltitude": self.relative_altitude,
                 "altitude": self.relative_altitude,
+                "simX": sim_x,
+                "simY": sim_y,
                 "gpsFixType": self.gps_fix_type,
                 "gpsSatelliteCount": self.gps_satellite_count,
                 "gyrometerOk": self.gyrometer_ok,
@@ -158,17 +180,26 @@ class TelemetryState:
                     self.longitude,
                     self.relative_altitude,
                     self.armed,
+                    self.battery_percent,
                 )
-            )
+            ) and self.connected is True
 
 
 state = TelemetryState()
 
-# Backend telemetry is intentionally disabled until a future Backend request
-# explicitly enables it.  The MAVSDK streams below remain active because they
-# provide flight-control, safety, and shared HUD state.
 backend_telemetry_enabled = False
 _backend_telemetry_task: asyncio.Task[None] | None = None
+
+
+def bound_drone_code(control_status: Any) -> str | None:
+    """Use only a drone identity bound to a backend-verified mission."""
+    if not isinstance(control_status, dict) or not control_status.get("missionId"):
+        return None
+    code = control_status.get("deviceCode")
+    if not isinstance(code, str):
+        return None
+    code = code.strip()
+    return code if 0 < len(code) <= 50 else None
 
 
 class MavsdkAckNoiseFilter(logging.Filter):
@@ -392,6 +423,33 @@ async def watch_velocity(drone: System) -> None:
     await run_stream("velocity_ned", drone.telemetry.velocity_ned, handle)
 
 
+async def watch_local_position_velocity(drone: System) -> None:
+    async def handle(sample: Any) -> None:
+        position = sample.position
+        velocity = sample.velocity
+        north = number_or_none(position.north_m)
+        east = number_or_none(position.east_m)
+        down = number_or_none(position.down_m)
+        velocity_north = number_or_none(velocity.north_m_s)
+        velocity_east = number_or_none(velocity.east_m_s)
+        velocity_down = number_or_none(velocity.down_m_s)
+        ground_speed = None
+        if velocity_north is not None and velocity_east is not None:
+            ground_speed = math.sqrt(velocity_north**2 + velocity_east**2)
+
+        await state.update(
+            local_north=north,
+            local_east=east,
+            local_down=down,
+            velocity_north=velocity_north,
+            velocity_east=velocity_east,
+            velocity_down=velocity_down,
+            ground_speed=round(ground_speed, 3) if ground_speed is not None else None,
+        )
+
+    await run_stream("position_velocity_ned", drone.telemetry.position_velocity_ned, handle)
+
+
 async def watch_armed(drone: System) -> None:
     async def handle(armed: bool) -> None:
         await state.update(armed=armed)
@@ -440,26 +498,63 @@ async def send_telemetry() -> None:
     if not backend_telemetry_enabled:
         return
 
-    url = f"{BACKEND_BASE_URL}/api/devices/{DEVICE_CODE}/telemetry"
+    candidates = [BACKEND_BASE_URL]
+    if BACKEND_BASE_URL in {"http://localhost:8080", "http://127.0.0.1:8080"}:
+        try:
+            route = subprocess.run(
+                ["ip", "route", "show", "default"],
+                capture_output=True, text=True, timeout=1.0, check=True,
+            ).stdout.split()
+            if "via" in route:
+                candidates.append(f"http://{route[route.index('via') + 1]}:8080")
+        except (OSError, subprocess.SubprocessError, IndexError):
+            pass
     timeout = httpx.Timeout(5.0)
     sent_count = 0
 
-    LOGGER.info("Sending telemetry for %s every %s seconds", DEVICE_CODE, TELEMETRY_INTERVAL_SECONDS)
+    LOGGER.info("Waiting for a backend-verified mission binding before publishing telemetry")
     async with httpx.AsyncClient(timeout=timeout) as client:
+        last_drone_code = None
         while backend_telemetry_enabled:
+            try:
+                status_response = await client.get(FLIGHT_CONTROL_STATUS_URL)
+                status_response.raise_for_status()
+                control_status = status_response.json()
+                drone_code = bound_drone_code(control_status)
+                mission_id = str(control_status.get("missionId") or "") if drone_code else ""
+            except (httpx.HTTPError, ValueError, TypeError, AttributeError):
+                drone_code = None
+
+            if not drone_code:
+                if last_drone_code is not None:
+                    LOGGER.warning("Mission binding unavailable; pausing backend telemetry")
+                    last_drone_code = None
+                await asyncio.sleep(TELEMETRY_INTERVAL_SECONDS)
+                continue
+            if drone_code != last_drone_code:
+                LOGGER.info("Publishing telemetry for mission %s, drone %s", mission_id, drone_code)
+                last_drone_code = drone_code
             if not await state.has_backend_required_fields():
                 await asyncio.sleep(TELEMETRY_INTERVAL_SECONDS)
                 continue
 
             payload = await state.snapshot()
-            try:
-                response = await client.post(url, json=payload)
-            except httpx.ConnectError:
-                LOGGER.warning("Backend unavailable; retrying on next interval")
-            except httpx.TimeoutException:
-                LOGGER.warning("Backend timeout; retrying on next interval")
-            except httpx.HTTPError:
-                LOGGER.warning("Backend request failed; retrying on next interval", exc_info=True)
+            response = None
+            for base_url in candidates:
+                try:
+                    response = await client.post(
+                        f"{base_url}/api/internal/v1/drone-telemetry/{drone_code}",
+                        json=payload,
+                        headers={"X-Drone-Telemetry-Secret": DRONE_TELEMETRY_SECRET},
+                    )
+                    if 200 <= response.status_code < 300:
+                        candidates.remove(base_url)
+                        candidates.insert(0, base_url)
+                    break
+                except httpx.HTTPError:
+                    continue
+            if response is None:
+                LOGGER.warning("Backend unavailable; retrying telemetry on next interval")
             else:
                 if 200 <= response.status_code < 300:
                     sent_count += 1
@@ -472,7 +567,7 @@ async def send_telemetry() -> None:
 
 
 def start_backend_telemetry() -> asyncio.Task[None]:
-    """Start Backend telemetry on demand (future Backend-trigger hook)."""
+    """Publish authenticated live telemetry to Backend."""
     global _backend_telemetry_task, backend_telemetry_enabled
     backend_telemetry_enabled = True
     if _backend_telemetry_task is None or _backend_telemetry_task.done():
@@ -500,7 +595,7 @@ async def run_telemetry_stream_generation(drone: System, generation: int) -> Non
         asyncio.create_task(watch_position(drone), name=f"position-{generation}"),
         asyncio.create_task(watch_gps_info(drone), name=f"gps_info-{generation}"),
         asyncio.create_task(watch_health(drone), name=f"health-{generation}"),
-        asyncio.create_task(watch_velocity(drone), name=f"velocity_ned-{generation}"),
+        asyncio.create_task(watch_local_position_velocity(drone), name=f"position_velocity_ned-{generation}"),
         asyncio.create_task(watch_armed(drone), name=f"armed-{generation}"),
         asyncio.create_task(watch_in_air(drone), name=f"in_air-{generation}"),
     ]
@@ -563,11 +658,15 @@ async def main() -> None:
     LOGGER.info("========================================")
     LOGGER.info(" On-Demand Monitoring Telemetry Sender")
     LOGGER.info("========================================")
-    LOGGER.info("Device: %s", DEVICE_CODE)
+    LOGGER.info("Drone identity: mission assignment via Flight Controller %s", FLIGHT_CONTROL_STATUS_URL)
     LOGGER.info("PX4: %s", PX4_SYSTEM_ADDRESS)
     LOGGER.info("MAVSDK gRPC shared server: localhost:%s", MAVSDK_TELEMETRY_GRPC_PORT)
     LOGGER.info("Backend: %s", BACKEND_BASE_URL)
-    LOGGER.info("[TELEMETRY-BE] Disabled - waiting for future Backend request")
+    if DRONE_TELEMETRY_SECRET:
+        LOGGER.info("[TELEMETRY-BE] Publishing authenticated telemetry")
+        start_backend_telemetry()
+    else:
+        LOGGER.warning("[TELEMETRY-BE] Disabled: DRONE_TELEMETRY_SECRET is not configured")
     if battery_sim.enabled:
         LOGGER.info(
             "SITL battery simulation enabled: start %.1f%%, min %.1f%%, state %s",

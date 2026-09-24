@@ -6,14 +6,17 @@ import com.ondemandmonitoring.role.domain.Role;
 import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.role.repository.RoleRepository;
 import com.ondemandmonitoring.role.service.RoleService;
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import lombok.experimental.FieldDefaults;
 import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class RoleServiceImpl implements RoleService {
 
-    private final RoleRepository roleRepository;
+    RoleRepository roleRepository;
 
     @Override
     public Role getActiveRole(RoleCode code) {

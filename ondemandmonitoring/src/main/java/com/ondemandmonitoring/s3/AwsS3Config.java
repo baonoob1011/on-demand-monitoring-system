@@ -21,7 +21,7 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 public class AwsS3Config {
 
     @Bean
-    public S3Client s3Client(Environment environment, AwsS3Properties properties) {
+    public S3Client s3Client(Environment environment, AwsCredentialsProvider credentialsProvider) {
         String region = environment.getProperty("aws.region");
         if (!StringUtils.hasText(region)) {
             throw new IllegalStateException("AWS region is not configured. Set AWS_REGION to the S3 bucket region.");
@@ -29,13 +29,13 @@ public class AwsS3Config {
 
         return S3Client.builder()
                 .region(Region.of(region))
-                .credentialsProvider(credentialsProvider(properties))
+                .credentialsProvider(credentialsProvider)
                 .httpClientBuilder(ApacheHttpClient.builder())
                 .build();
     }
 
     @Bean
-    public S3Presigner s3Presigner(Environment environment, AwsS3Properties properties) {
+    public S3Presigner s3Presigner(Environment environment, AwsCredentialsProvider credentialsProvider) {
         String region = environment.getProperty("aws.region");
         if (!StringUtils.hasText(region)) {
             throw new IllegalStateException("AWS region is not configured. Set AWS_REGION to the S3 bucket region.");
@@ -43,11 +43,12 @@ public class AwsS3Config {
 
         return S3Presigner.builder()
                 .region(Region.of(region))
-                .credentialsProvider(credentialsProvider(properties))
+                .credentialsProvider(credentialsProvider)
                 .build();
     }
 
-    private AwsCredentialsProvider credentialsProvider(AwsS3Properties properties) {
+    @Bean
+    public AwsCredentialsProvider credentialsProvider(AwsS3Properties properties) {
         String accessKey = properties.getAccessKeyBao();
         String secretKey = properties.getSecretKeyBao();
 

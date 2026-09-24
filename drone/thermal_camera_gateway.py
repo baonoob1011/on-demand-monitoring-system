@@ -418,11 +418,13 @@ class ThermalCameraGateway:
                 "thermalEnabled": self.enabled,
                 "thermalSensorOnline": native_active or self._source_online,
                 "thermalFrameAgeMs": frame_age_ms if self.enabled else None,
+                "thermalFps": round(THERMAL_FRAME_FPS, 1),
                 "thermalFrameWidth": self._native_width or THERMAL_FRAME_WIDTH,
                 "thermalFrameHeight": self._native_height or THERMAL_FRAME_HEIGHT,
                 "minTemperatureC": round(minimum, 1) if minimum is not None else None,
                 "maxTemperatureC": round(self._max_temp_c, 1) if self.enabled and self._max_temp_c is not None else None,
                 "averageTemperatureC": round(self._avg_temp_c, 1) if self.enabled and self._avg_temp_c is not None else None,
+                "thermalThresholdC": round(THERMAL_HOTSPOT_THRESHOLD_C, 1),
                 "hotspotDetected": bool(hotspot_detected),
                 "hotspotTemperatureC": round(self._hotspot_temp_c, 1) if hotspot_detected and self._hotspot_temp_c is not None else None,
                 "hotspotSimX": round(self._hotspot_sim_x, 2) if hotspot_detected and self._hotspot_sim_x is not None else None,
@@ -435,6 +437,8 @@ class ThermalCameraGateway:
                 "thermalIsothermEnabled": self._isotherm_enabled,
                 "thermalDebugOverlayEnabled": self._debug_overlay_enabled,
                 "thermalDisplayRangeMode": self._display_range_mode,
+                "thermalDisplayMinC": round(THERMAL_DISPLAY_MIN_C, 1),
+                "thermalDisplayMaxC": round(THERMAL_DISPLAY_MAX_C, 1),
             }
 
     def latest_jpeg(self) -> bytes | None:

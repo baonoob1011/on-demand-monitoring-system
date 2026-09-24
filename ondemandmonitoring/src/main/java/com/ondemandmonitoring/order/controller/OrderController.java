@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -28,8 +29,10 @@ public class OrderController {
     IOrderService orderService;
 
     @Operation(summary = "Create a new order", description = "Creates a new monitoring order after validating customer login, service existence, preferred time existence, media attributes, and location point inside zone polygon")
+    @PreAuthorize("hasRole('CUSTOMER')")
     @PostMapping
-    public ResponseEntity<ApiResponse<OrderCreateResponse>> createOrder(@Valid @RequestBody OrderCreateRequest request) {
+    public ResponseEntity<ApiResponse<OrderCreateResponse>> createOrder(
+            @Valid @RequestBody OrderCreateRequest request) {
         OrderCreateResponse response = orderService.createOrder(request);
         return ResponseEntity
                 .status(HttpStatus.CREATED)
@@ -41,5 +44,11 @@ public class OrderController {
     public ResponseEntity<ApiResponse<Void>> approveOrder(@PathVariable String orderId) {
         orderService.approveOrder(orderId);
         return ResponseEntity.ok(ApiResponse.ok("Order approved and mission created successfully", null));
+    }
+
+    @Operation(summary = "Get pending orders", description = "Manager views pending orders")
+    @org.springframework.web.bind.annotation.GetMapping("/pending")
+    public ResponseEntity<ApiResponse<java.util.List<OrderCreateResponse>>> getPendingOrders() {
+        return ResponseEntity.ok(ApiResponse.ok("Pending orders retrieved", orderService.getPendingOrders()));
     }
 }

@@ -26,14 +26,16 @@ public interface IUserService {
 
     void markEmailVerified(String email);
 
-    void recordLogin(UUID userId);
+    void recordLogin(String userId);
 
     User syncSocialIdentity(User user, String cognitoUsername, String cognitoSub,
                             String fullName, boolean emailVerified);
 
-    boolean hasIdentity(UUID userId, IdentityProvider provider);
+    boolean hasIdentity(String userId, IdentityProvider provider);
 
     User findByCognitoSub(String cognitoSub);
+
+    User findByCognitoUsername(String cognitoUsername);
 
     void linkLocalIdentity(User user, String cognitoUsername, String cognitoSub);
 

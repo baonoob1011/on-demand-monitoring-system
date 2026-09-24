@@ -21,7 +21,8 @@ import org.springframework.web.multipart.MultipartFile;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
-@Tag(name = "Media & Assets", description = "APIs for uploading and retrieving images/media captured by drones")
+@Tag(name = "Media & Assets",
+        description = "APIs for uploading and retrieving images/media captured by drones")
 @RestController
 @RequestMapping("/api/drones/{droneCode}/images")
 @RequiredArgsConstructor
@@ -31,7 +32,8 @@ public class MediaAssetController {
     IMediaAssetService mediaAssetService;
     MediaAssetMapper mediaAssetMapper;
 
-    @Operation(summary = "Upload image for drone", description = "Uploads a photo captured by a drone to storage")
+    @Operation(summary = "Upload image for drone",
+            description = "Uploads a photo captured by a drone to storage")
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<MediaAssetResponse>> upload(
             @PathVariable String droneCode,
@@ -40,6 +42,7 @@ public class MediaAssetController {
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body(ApiResponse.created("Image uploaded", mediaAssetMapper.toResponse(image)));
+                .body(ApiResponse.created("Image uploaded",
+                        mediaAssetMapper.toResponse(image)));
     }
 }

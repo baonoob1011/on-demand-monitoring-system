@@ -8,4 +8,6 @@ public interface IOrderService {
     OrderCreateResponse createOrder(OrderCreateRequest request);
 
     void approveOrder(String orderId);
+
+    java.util.List<OrderCreateResponse> getPendingOrders();
 }

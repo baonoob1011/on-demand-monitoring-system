@@ -1,0 +1,88 @@
+package com.ondemandmonitoring.order.controller;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.ondemandmonitoring.common.api.ApiResponse;
+import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
+import com.ondemandmonitoring.order.dto.request.OrderDeliverableRequest;
+import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
+import com.ondemandmonitoring.order.enums.OrderStatus;
+import com.ondemandmonitoring.order.service.IOrderService;
+import java.lang.reflect.Method;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+
+class OrderControllerTest {
+
+    private IOrderService orderService;
+    private OrderController orderController;
+
+    @BeforeEach
+    void setUp() {
+        orderService = mock(IOrderService.class);
+        orderController = new OrderController(orderService);
+    }
+
+    @Test
+    @DisplayName("Verify createOrder method is annotated with @PreAuthorize(\"hasRole('CUSTOMER')\")")
+    void createOrder_HasPreAuthorizeAnnotationWithCustomerRole() throws NoSuchMethodException {
+        Method createOrderMethod = OrderController.class.getMethod("createOrder", OrderCreateRequest.class);
+        PreAuthorize preAuthorize = createOrderMethod.getAnnotation(PreAuthorize.class);
+
+        assertNotNull(preAuthorize, "createOrder method should be annotated with @PreAuthorize");
+        assertEquals("hasRole('CUSTOMER')", preAuthorize.value(), "Role authorization should be restricted to 'hasRole(\\'CUSTOMER\\')'");
+    }
+
+    @Test
+    @DisplayName("createOrder delegates to OrderService and returns CREATED response")
+    void createOrder_Success_ReturnsCreatedResponse() {
+        OrderCreateRequest request = OrderCreateRequest.builder()
+                .title("Survey Forest")
+                .serviceId("srv-1")
+                .preferredTimeId("pt-1")
+                .preferredDateFrom(LocalDate.now().plusDays(1))
+                .preferredDateTo(LocalDate.now().plusDays(3))
+                .longitude(105.85)
+                .latitude(21.02)
+                .coverageArea(Map.of("type", "Polygon", "coordinates", List.of()))
+                .deliverables(List.of(OrderDeliverableRequest.builder()
+                        .deliverableTypeId("dt-1")
+                        .requirement(Map.of("resolution", "4K"))
+                        .build()))
+                .build();
+
+        OrderCreateResponse mockResponse = OrderCreateResponse.builder()
+                .id("ord-123")
+                .title("Survey Forest")
+                .orderStatus(OrderStatus.PENDING)
+                .longitude(105.85)
+                .latitude(21.02)
+                .build();
+
+        when(orderService.createOrder(any(OrderCreateRequest.class))).thenReturn(mockResponse);
+
+        ResponseEntity<ApiResponse<OrderCreateResponse>> responseEntity = orderController.createOrder(request);
+
+        assertNotNull(responseEntity);
+        assertEquals(HttpStatus.CREATED, responseEntity.getStatusCode());
+        assertNotNull(responseEntity.getBody());
+        assertTrue(responseEntity.getBody().isSuccess());
+        assertEquals("Order created successfully", responseEntity.getBody().getMessage());
+        assertEquals("ord-123", responseEntity.getBody().getData().getId());
+
+        verify(orderService).createOrder(request);
+    }
+}
