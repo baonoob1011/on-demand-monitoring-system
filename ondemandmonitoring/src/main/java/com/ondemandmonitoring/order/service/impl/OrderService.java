@@ -170,6 +170,30 @@ public class OrderService implements IOrderService {
 
     @Override
     @Transactional(readOnly = true)
+    public OrderCreateResponse getOrderById(String orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+        return orderMapper.toResponse(order);
+    }
+
+    @Override
+    @Transactional
+    public void rejectOrder(String orderId, String reason) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+
+        if (order.getOrderStatus() != OrderStatus.PENDING) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Only PENDING orders can be rejected");
+        }
+
+        order.setOrderStatus(OrderStatus.REJECTED);
+        order.setRejectReason(reason);
+        order.setReviewAt(java.time.Instant.now());
+        orderRepository.save(order);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<OrderCreateResponse> getPendingOrders() {
         return orderRepository.findByOrderStatusOrderByCreatedAtAsc(OrderStatus.PENDING)
                 .stream()
@@ -177,3 +201,4 @@ public class OrderService implements IOrderService {
                 .toList();
     }
 }
+

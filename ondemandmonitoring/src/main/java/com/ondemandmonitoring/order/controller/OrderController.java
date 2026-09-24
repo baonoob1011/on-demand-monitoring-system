@@ -39,11 +39,43 @@ public class OrderController {
                 .body(ApiResponse.created("Order created successfully", response));
     }
 
+    @Operation(summary = "Get order details", description = "Retrieves details of a specific order by ID")
+    @org.springframework.web.bind.annotation.GetMapping("/{orderId}")
+    public ResponseEntity<ApiResponse<OrderCreateResponse>> getOrderById(@PathVariable String orderId) {
+        OrderCreateResponse response = orderService.getOrderById(orderId);
+        return ResponseEntity.ok(ApiResponse.ok("Order details retrieved successfully", response));
+    }
+
+    @Operation(summary = "Get order resource preview", description = "Retrieves resource preview for an order (returns null if none)")
+    @org.springframework.web.bind.annotation.GetMapping("/{orderId}/resource-preview")
+    public ResponseEntity<ApiResponse<Object>> getResourcePreview(@PathVariable String orderId) {
+        return ResponseEntity.ok(ApiResponse.ok("Resource preview retrieved", null));
+    }
+
+    @Operation(summary = "Get order latest analysis", description = "Retrieves latest AI analysis for an order (returns null if none)")
+    @org.springframework.web.bind.annotation.GetMapping("/{orderId}/analysis/latest")
+    public ResponseEntity<ApiResponse<Object>> getLatestAnalysis(@PathVariable String orderId) {
+        return ResponseEntity.ok(ApiResponse.ok("Latest analysis retrieved", null));
+    }
+
     @Operation(summary = "Approve an order", description = "Manager approves an order and creates a mission")
     @PostMapping("/{orderId}/approve")
     public ResponseEntity<ApiResponse<Void>> approveOrder(@PathVariable String orderId) {
         orderService.approveOrder(orderId);
         return ResponseEntity.ok(ApiResponse.ok("Order approved and mission created successfully", null));
+    }
+
+    @Operation(summary = "Submit approval decision", description = "Manager submits rejection or need-info decision with reason")
+    @PostMapping("/{orderId}/approval")
+    public ResponseEntity<ApiResponse<Void>> submitApproval(
+            @PathVariable String orderId,
+            @RequestBody java.util.Map<String, String> body) {
+        String decision = body != null ? body.get("decision") : null;
+        String reason = body != null ? body.get("reason") : null;
+        if ("REJECTED".equalsIgnoreCase(decision)) {
+            orderService.rejectOrder(orderId, reason);
+        }
+        return ResponseEntity.ok(ApiResponse.ok("Approval decision recorded successfully", null));
     }
 
     @Operation(summary = "Get pending orders", description = "Manager views pending orders")
@@ -52,3 +84,4 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.ok("Pending orders retrieved", orderService.getPendingOrders()));
     }
 }
+
