@@ -4,6 +4,7 @@ import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.repository.query.Param;
@@ -13,7 +14,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface MissionRepository extends JpaRepository<Mission, String> {
+public interface MissionRepository extends JpaRepository<Mission, String>, JpaSpecificationExecutor<Mission> {
     @Override
     Optional<Mission> findById(String id);
 

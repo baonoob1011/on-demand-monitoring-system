@@ -6,6 +6,10 @@ import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionTelemetryReadinessResponse;
+import com.ondemandmonitoring.common.api.PageResponse;
+import com.ondemandmonitoring.mission.enums.MissionStatus;
+import org.springframework.data.domain.Pageable;
+import java.time.Instant;
 
 import java.util.List;
 
@@ -38,6 +42,8 @@ public interface IMissionService {
      * @return List of {@link MissionResponse}
      */
     List<MissionResponse> getByOperatorId(String operatorId);
+
+    PageResponse<MissionResponse> searchStaffMissions(MissionStatus status, Instant from, Instant toExclusive, Pageable pageable);
 
     List<MissionResponse> getCurrentOperatorMissions();
 

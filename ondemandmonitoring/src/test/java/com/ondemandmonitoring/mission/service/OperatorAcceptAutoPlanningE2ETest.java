@@ -6,18 +6,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.ondemandmonitoring.drone.domain.Drone;
 import com.ondemandmonitoring.drone.enums.DroneStatus;
 import com.ondemandmonitoring.drone.repository.DroneRepository;
-import com.ondemandmonitoring.mission.domain.MissionPlan;
-import com.ondemandmonitoring.mission.domain.PlanWaypoint;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
-import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
-import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
 import com.ondemandmonitoring.mission.repository.MissionPlanRepository;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import jakarta.persistence.EntityManager;
-import java.util.Comparator;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
@@ -45,7 +39,7 @@ class OperatorAcceptAutoPlanningE2ETest {
     @Autowired private JdbcTemplate jdbcTemplate;
 
     @Test
-    void operatorAcceptGeneratesEnergyAwareMissionPlanAndKeepsPreflightBehindFeasiblePlan() {
+    void operatorAcceptDefersPlanningUntilFreshTelemetryPreflight() {
         Order source = orderRepository.findAll().stream().findFirst().orElseThrow();
         Order order = orderRepository.saveAndFlush(copyOrder(source, point(200.0, -280.0)));
         Drone drone = droneRepository.findAll().stream().findFirst().orElseThrow();
@@ -62,39 +56,11 @@ class OperatorAcceptAutoPlanningE2ETest {
         entityManager.flush();
         entityManager.clear();
 
-        MissionPlan persisted = missionPlanRepository.findByMissionId(accepted.getId()).orElseThrow();
-        List<PlanWaypoint> waypoints = persisted.getWaypoints().stream()
-                .sorted(Comparator.comparingInt(PlanWaypoint::getSequence))
-                .toList();
-
         assertThat(accepted.getStatus()).isEqualTo(MissionStatus.SCHEDULED);
-        assertThat(accepted.getPlan()).isNotNull();
-        assertThat(accepted.getPlan().getPlanningAlgorithm()).isEqualTo(PlanningAlgorithm.ASTAR_ENERGY_AWARE);
-        assertThat(persisted.getPlanningAlgorithm()).isEqualTo(PlanningAlgorithm.ASTAR_ENERGY_AWARE);
-        assertThat(persisted.getFeasibilityStatus()).isEqualTo(FeasibilityStatus.FEASIBLE);
-        assertThat(persisted.getPlannedDistanceM()).isPositive();
-        assertThat(persisted.getPlannedDurationSec()).isPositive();
-        assertThat(persisted.getMaxPlannedAltitudeM()).isPositive();
-        assertThat(persisted.getEstimatedEnergyMah()).isPositive();
-        assertThat(persisted.getEstimatedBatteryUsedPercent()).isPositive();
-        assertThat(persisted.getRequiredBatteryPercent()).isGreaterThan(persisted.getEstimatedBatteryUsedPercent());
-        assertThat(waypoints).isNotEmpty();
-        assertThat(countPlans(accepted.getId())).isEqualTo(1);
-        assertThat(countWaypoints(accepted.getId())).isEqualTo(waypoints.size());
-
-        assertThat(missionService.getMissionPlan(accepted.getId()).getWaypoints()).hasSameSizeAs(waypoints);
-
-        assertThatThrownBy(() -> missionService.acceptMission(accepted.getId(), "OP-E2E"))
-                .hasMessageContaining("must be WAITING_OPERATOR_ACCEPTANCE");
-        assertThat(countPlans(accepted.getId())).isEqualTo(1);
-        assertThat(countWaypoints(accepted.getId())).isEqualTo(waypoints.size());
-
-        System.out.printf("OPERATOR_AUTO_PLAN_E2E|mission=%s|plan=%s|algorithm=%s|feasibility=%s|distance=%.12f|duration=%.12f|worldZ=%.12f|energy=%.12f|battery=%.12f|required=%.12f|available=%s|planningMs=%d|waypoints=%d|plans=%d|status=%s%n",
-                accepted.getId(), persisted.getId(), persisted.getPlanningAlgorithm(), persisted.getFeasibilityStatus(),
-                persisted.getPlannedDistanceM(), persisted.getPlannedDurationSec(), persisted.getMaxPlannedAltitudeM(),
-                persisted.getEstimatedEnergyMah(), persisted.getEstimatedBatteryUsedPercent(),
-                persisted.getRequiredBatteryPercent(), String.valueOf(persisted.getAvailableBatteryPercentAtPlanning()),
-                persisted.getPlanningTimeMs(), waypoints.size(), countPlans(accepted.getId()), accepted.getStatus());
+        assertThat(accepted.getPlan()).isNull();
+        assertThat(missionPlanRepository.findByMissionId(accepted.getId())).isEmpty();
+        assertThat(countPlans(accepted.getId())).isZero();
+        assertThat(countWaypoints(accepted.getId())).isZero();
     }
 
     private Order copyOrder(Order source, Point target) {

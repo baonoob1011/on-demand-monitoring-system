@@ -2,6 +2,7 @@ package com.ondemandmonitoring.order.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -9,6 +10,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.common.api.ApiResponse;
+import com.ondemandmonitoring.common.exception.ApiException;
+import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.request.OrderDeliverableRequest;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
@@ -114,6 +117,26 @@ class OrderControllerTest {
         assertNotNull(responseEntity);
         assertEquals(HttpStatus.OK, responseEntity.getStatusCode());
         assertTrue(responseEntity.getBody().isSuccess());
+    }
+
+    @Test
+    @DisplayName("approveOrder returns the mission created for the approved order")
+    void approveOrder_ReturnsCreatedMission() {
+        MissionResponse mission = MissionResponse.builder().id("mission-123").build();
+        when(orderService.approveOrder("ord-123")).thenReturn(mission);
+
+        ResponseEntity<ApiResponse<MissionResponse>> responseEntity = orderController.approveOrder("ord-123");
+
+        assertEquals(HttpStatus.OK, responseEntity.getStatusCode());
+        assertEquals("mission-123", responseEntity.getBody().getData().getId());
+        verify(orderService).approveOrder("ord-123");
+    }
+
+    @Test
+    @DisplayName("unsupported need-info decision must not report success")
+    void submitApproval_NeedInfo_Throws() {
+        assertThrows(ApiException.class, () -> orderController.submitApproval(
+                "ord-123", Map.of("decision", "NEED_INFO", "reason", "More details")));
     }
 
     @Test

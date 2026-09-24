@@ -3,6 +3,7 @@ package com.ondemandmonitoring.order.service.impl;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.mission.service.IMissionService;
+import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.domain.OrderDeliverable;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
@@ -51,7 +52,7 @@ public class OrderService implements IOrderService {
 
     @Override
     @Transactional
-    public void approveOrder(String orderId) {
+    public MissionResponse approveOrder(String orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
 
@@ -63,7 +64,7 @@ public class OrderService implements IOrderService {
         orderRepository.save(order);
 
         // Flow 2: Create mission for the approved order
-        missionService.createMissionForOrder(orderId);
+        return missionService.createMissionForOrder(orderId);
     }
 
     @Override
