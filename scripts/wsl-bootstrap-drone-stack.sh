@@ -29,8 +29,14 @@ import cv2
 import grpc
 import httpx
 import mavsdk
+from mavsdk.action import ActionError
 from PIL import Image
 import dotenv
+from pathlib import Path
+
+server = Path(mavsdk.__file__).resolve().parent / "bin" / "mavsdk_server"
+if not server.is_file():
+    raise SystemExit("mavsdk_server missing")
 PY
 then
     PYTHON_ENV_READY=1
@@ -79,19 +85,28 @@ python3 -m venv "$DRONE_ENV"
 # shellcheck disable=SC1090
 source "$DRONE_ENV/bin/activate"
 python -m pip install --upgrade pip
+python -m pip uninstall -y em mavsdk mavsdk-grpc >/dev/null 2>&1 || true
 python -m pip install \
+    "empy==3.3.4" \
     grpcio \
     httpx \
-    mavsdk \
+    "mavsdk<4" \
     numpy \
     opencv-python \
     pillow \
     python-dotenv
+if [ -f "$PX4_ROOT/Tools/setup/requirements.txt" ]; then
+    python -m pip install -r "$PX4_ROOT/Tools/setup/requirements.txt"
+fi
+python -m pip install --force-reinstall "empy==3.3.4"
 
 log "Preparing controller working folder"
 mkdir -p "$DRONE_WORKDIR/video" "$MARKER_DIR"
 
 log "Building PX4 SITL once"
+if [ ! -f "$PX4_ROOT/build/px4_sitl_default/rootfs/gz_env.sh" ]; then
+    rm -rf "$PX4_ROOT/build/px4_sitl_default"
+fi
 make -C "$PX4_ROOT" px4_sitl gz_x500_mono_cam_down
 
 date -Is > "$MARKER_FILE"
