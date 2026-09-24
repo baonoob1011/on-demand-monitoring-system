@@ -280,7 +280,7 @@ if (-not (Test-Path $webRoot)) {
 $forest3DPath = Resolve-Forest3DPath $systemRoot
 Assert-CompactMapAssets $systemRoot $forest3DPath
 
-$backendEnvFile = Join-Path $systemRoot "ondemandmonitoring/.env"
+$backendEnvFile = Join-Path $systemRoot ".env"
 if (-not (Test-Path -LiteralPath $backendEnvFile -PathType Leaf)) {
     throw "Missing shared backend and drone configuration: $backendEnvFile"
 }

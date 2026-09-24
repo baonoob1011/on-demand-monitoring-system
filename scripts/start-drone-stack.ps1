@@ -114,7 +114,7 @@ $ubuntuDistro = "Ubuntu-24.04"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $forest3DPath = Resolve-Forest3DPath $repoRoot
 Assert-DronePackage $forest3DPath $SimWorld
-$backendEnvFile = Join-Path $repoRoot "ondemandmonitoring/.env"
+$backendEnvFile = Join-Path $repoRoot ".env"
 if (-not (Test-Path -LiteralPath $backendEnvFile -PathType Leaf)) {
     throw "Missing shared backend and drone configuration: $backendEnvFile"
 }
