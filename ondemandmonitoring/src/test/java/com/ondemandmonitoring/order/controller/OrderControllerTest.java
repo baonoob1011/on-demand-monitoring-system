@@ -85,4 +85,45 @@ class OrderControllerTest {
 
         verify(orderService).createOrder(request);
     }
+
+    @Test
+    @DisplayName("getOrderById delegates to OrderService and returns order details")
+    void getOrderById_Success_ReturnsOrderDetails() {
+        OrderCreateResponse mockResponse = OrderCreateResponse.builder()
+                .id("ord-123")
+                .title("Survey Forest")
+                .orderStatus(OrderStatus.PENDING)
+                .build();
+
+        when(orderService.getOrderById("ord-123")).thenReturn(mockResponse);
+
+        ResponseEntity<ApiResponse<OrderCreateResponse>> responseEntity = orderController.getOrderById("ord-123");
+
+        assertNotNull(responseEntity);
+        assertEquals(HttpStatus.OK, responseEntity.getStatusCode());
+        assertTrue(responseEntity.getBody().isSuccess());
+        assertEquals("ord-123", responseEntity.getBody().getData().getId());
+        verify(orderService).getOrderById("ord-123");
+    }
+
+    @Test
+    @DisplayName("getResourcePreview returns null data response")
+    void getResourcePreview_ReturnsNullData() {
+        ResponseEntity<ApiResponse<Object>> responseEntity = orderController.getResourcePreview("ord-123");
+
+        assertNotNull(responseEntity);
+        assertEquals(HttpStatus.OK, responseEntity.getStatusCode());
+        assertTrue(responseEntity.getBody().isSuccess());
+    }
+
+    @Test
+    @DisplayName("submitApproval delegates to rejectOrder when decision is REJECTED")
+    void submitApproval_Rejected_DelegatesToRejectOrder() {
+        ResponseEntity<ApiResponse<Void>> responseEntity = orderController.submitApproval("ord-123", Map.of("decision", "REJECTED", "reason", "Out of zone"));
+
+        assertNotNull(responseEntity);
+        assertEquals(HttpStatus.OK, responseEntity.getStatusCode());
+        verify(orderService).rejectOrder("ord-123", "Out of zone");
+    }
 }
+

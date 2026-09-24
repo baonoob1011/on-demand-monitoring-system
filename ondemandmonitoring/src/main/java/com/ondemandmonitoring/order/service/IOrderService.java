@@ -9,5 +9,10 @@ public interface IOrderService {
 
     void approveOrder(String orderId);
 
+    void rejectOrder(String orderId, String reason);
+
+    OrderCreateResponse getOrderById(String orderId);
+
     java.util.List<OrderCreateResponse> getPendingOrders();
 }
+

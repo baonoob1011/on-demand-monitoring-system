@@ -115,7 +115,9 @@ public class SecurityConfig {
                                 "/api/internal/v1/drone-telemetry/*",
                                 "/api/missions/**",
                                 "/api/missions/*/images",
-                                "/api/missions/*/media"))
+                                "/api/missions/*/media",
+                                "/api/orders/**"))
+
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .headers(headers -> headers.frameOptions(frameOptions -> frameOptions.disable()))
                 .authorizeHttpRequests(auth -> auth
