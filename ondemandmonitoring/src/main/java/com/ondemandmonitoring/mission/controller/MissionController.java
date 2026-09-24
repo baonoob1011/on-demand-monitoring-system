@@ -1,6 +1,9 @@
 package com.ondemandmonitoring.mission.controller;
 
 import com.ondemandmonitoring.common.api.ApiResponse;
+import com.ondemandmonitoring.common.api.PageResponse;
+import com.ondemandmonitoring.common.exception.ApiException;
+import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.dto.response.MediaAssetResponse;
@@ -13,6 +16,7 @@ import com.ondemandmonitoring.mission.dto.request.PostFlightStatusRequest;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionTelemetryReadinessResponse;
+import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.service.IMissionMediaUploadService;
 import com.ondemandmonitoring.mission.service.IMissionService;
 import jakarta.validation.Valid;
@@ -25,9 +29,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.format.annotation.DateTimeFormat;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
+import java.time.LocalDate;
+import java.time.ZoneId;
 
 /**
  * REST entry point for all Flow 3 (Drone Operator) mission lifecycle use cases.
@@ -61,6 +70,26 @@ public class MissionController {
             @RequestParam String operatorId) {
         List<MissionResponse> missions = missionService.getByOperatorId(operatorId);
         return ResponseEntity.ok(ApiResponse.ok(missions));
+    }
+
+    /** Staff-only search; leaves the operator-scoped GET /api/missions contract unchanged. */
+    @GetMapping("/staff")
+    @PreAuthorize("hasAnyRole('STAFF', 'SYSTEM_OPERATOR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<PageResponse<MissionResponse>>> searchStaffMissions(
+            @RequestParam(required = false) MissionStatus status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "100") int size) {
+        if (page < 0 || size < 1 || size > 100 || (from != null && to != null && to.isBefore(from))) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Invalid mission search filters or page size");
+        }
+        ZoneId zone = ZoneId.of("Asia/Ho_Chi_Minh");
+        return ResponseEntity.ok(ApiResponse.ok(missionService.searchStaffMissions(
+                status,
+                from == null ? null : from.atStartOfDay(zone).toInstant(),
+                to == null ? null : to.plusDays(1).atStartOfDay(zone).toInstant(),
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt", "id")))));
     }
 
     @PreAuthorize("hasRole('DRONE_OPERATOR')")

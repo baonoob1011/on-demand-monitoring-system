@@ -4,6 +4,9 @@ import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
 import com.ondemandmonitoring.order.service.IOrderService;
+import com.ondemandmonitoring.mission.dto.response.MissionResponse;
+import com.ondemandmonitoring.common.exception.ApiException;
+import com.ondemandmonitoring.common.exception.ErrorCode;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -60,9 +63,9 @@ public class OrderController {
 
     @Operation(summary = "Approve an order", description = "Manager approves an order and creates a mission")
     @PostMapping("/{orderId}/approve")
-    public ResponseEntity<ApiResponse<Void>> approveOrder(@PathVariable String orderId) {
-        orderService.approveOrder(orderId);
-        return ResponseEntity.ok(ApiResponse.ok("Order approved and mission created successfully", null));
+    public ResponseEntity<ApiResponse<MissionResponse>> approveOrder(@PathVariable String orderId) {
+        MissionResponse mission = orderService.approveOrder(orderId);
+        return ResponseEntity.ok(ApiResponse.ok("Order approved and mission created successfully", mission));
     }
 
     @Operation(summary = "Submit approval decision", description = "Manager submits rejection or need-info decision with reason")
@@ -72,9 +75,15 @@ public class OrderController {
             @RequestBody java.util.Map<String, String> body) {
         String decision = body != null ? body.get("decision") : null;
         String reason = body != null ? body.get("reason") : null;
-        if ("REJECTED".equalsIgnoreCase(decision)) {
-            orderService.rejectOrder(orderId, reason);
+        if (!"REJECTED".equalsIgnoreCase(decision)) {
+            throw new ApiException(
+                    ErrorCode.INVALID_REQUEST,
+                    "Only REJECTED is currently supported");
         }
+        if (reason == null || reason.isBlank()) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Rejection reason is required");
+        }
+        orderService.rejectOrder(orderId, reason);
         return ResponseEntity.ok(ApiResponse.ok("Approval decision recorded successfully", null));
     }
 

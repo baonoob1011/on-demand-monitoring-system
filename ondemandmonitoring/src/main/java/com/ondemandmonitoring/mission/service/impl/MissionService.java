@@ -1,6 +1,7 @@
 package com.ondemandmonitoring.mission.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
+import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.drone.domain.Drone;
 import com.ondemandmonitoring.drone.domain.DroneTelemetry;
@@ -45,9 +46,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -97,6 +101,20 @@ public class MissionService implements IMissionService {
     // =========================================================================
     // Query Methods
     // =========================================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<MissionResponse> searchStaffMissions(
+            MissionStatus status, Instant from, Instant toExclusive, Pageable pageable) {
+        Specification<Mission> criteria = (root, query, builder) -> {
+            var predicates = new ArrayList<jakarta.persistence.criteria.Predicate>();
+            if (status != null) predicates.add(builder.equal(root.get("status"), status));
+            if (from != null) predicates.add(builder.greaterThanOrEqualTo(root.get("scheduledStartAt"), from));
+            if (toExclusive != null) predicates.add(builder.lessThan(root.get("scheduledStartAt"), toExclusive));
+            return builder.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        };
+        return PageResponse.from(missionRepository.findAll(criteria, pageable).map(missionMapper::toResponse));
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -270,9 +288,6 @@ public class MissionService implements IMissionService {
         newMoa.setAssignedAt(Instant.now());
         missionOperatorAssignmentRepository.save(newMoa);
 
-        MissionPlan plan = missionPlanningService.generateAStarEnergyAwarePlan(missionId);
-        requireFeasiblePlan(plan);
-
         log.info("Mission {} assigned to operator {}", missionId, operatorId);
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
@@ -321,9 +336,6 @@ public class MissionService implements IMissionService {
         }
         requireStatus(mission, MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
         requirePendingAssignment(assignment);
-
-        MissionPlan plan = missionPlanningService.generateAStarEnergyAwarePlan(missionId);
-        requireFeasiblePlan(plan);
 
         // Update MissionOperatorAssignment audit
         assignment.setStatus("ACCEPTED");
@@ -380,8 +392,6 @@ public class MissionService implements IMissionService {
     @Override
     @Transactional
     public MissionResponse connectGcs(String missionId) {
-        Mission mission = getOrThrow(missionId);
-        requireFeasiblePlan(missionId);
         return deviceConnectionService.connectGcs(missionId);
     }
 
@@ -422,11 +432,33 @@ public class MissionService implements IMissionService {
         Drone device = droneRepository.findByDroneCode(droneCode)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Device not found: " + droneCode));
 
-        requireFeasiblePlan(missionId);
-
-        if (mission.getStatus() == MissionStatus.SCHEDULED) {
-            mission.setStatus(MissionStatus.CONNECTED);
+        if (mission.getStatus() != MissionStatus.CONNECTED) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Connect GCS and bind the mission before preflight.");
         }
+        Drone assignedDrone = getCurrentDevice(missionId);
+        if (assignedDrone == null || !droneCode.equals(assignedDrone.getDroneCode())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Preflight drone does not match the mission assignment.");
+        }
+        // Lock the telemetry row before planning. Planning and the checklist read this same
+        // entity again; a concurrent telemetry update between an unlocked read and a locked
+        // read would put conflicting versions of it in this persistence context.
+        DroneTelemetry telemetry = droneTelemetryRepository.findByDroneCode(droneCode)
+                .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REQUEST,
+                        "Fresh drone telemetry is required before preflight."));
+        if (!Boolean.TRUE.equals(telemetry.getConnected())
+                || !DroneTelemetryFreshness.isFresh(telemetry.getUpdatedAt())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Fresh drone telemetry is required before preflight.");
+        }
+        Double batteryPercent = telemetry.getBatteryPercent();
+        if (batteryPercent == null || !Double.isFinite(batteryPercent)
+                || batteryPercent < 0 || batteryPercent > 100) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Drone battery telemetry is unavailable. Refresh telemetry before preflight.");
+        }
+
+        MissionPlan plan = missionPlanningService.generateAStarEnergyAwarePlan(missionId);
+        requireFeasiblePlan(plan);
 
         PreflightCheck check = preflightCheckService.run(droneCode, missionId);
         FlightTokenResponse tokenResponse = null;
@@ -625,14 +657,6 @@ public class MissionService implements IMissionService {
         }
     }
 
-    private void requireFeasiblePlan(String missionId) {
-        MissionPlan plan = missionPlanRepository.findByMissionId(missionId)
-                .orElseThrow(() -> new ApiException(
-                        ErrorCode.INVALID_REQUEST,
-                        "Mission must have a feasible plan before preflight."));
-        requireFeasiblePlan(plan);
-    }
-
     private void requireFeasiblePlan(MissionPlan plan) {
         FeasibilityStatus status = plan.getFeasibilityStatus();
         if (status == FeasibilityStatus.FEASIBLE) {
@@ -643,7 +667,7 @@ public class MissionService implements IMissionService {
                     "Mission plan feasibility could not be determined.");
         }
         String message = switch (status) {
-            case BATTERY_DATA_UNAVAILABLE -> "Drone battery telemetry is unavailable. Connect the drone and refresh telemetry before assignment.";
+            case BATTERY_DATA_UNAVAILABLE -> "Drone battery telemetry is unavailable. Connect the drone and refresh telemetry before preflight.";
             case INSUFFICIENT_BATTERY -> "Drone battery is insufficient for this mission and its safety reserve.";
             case INVALID_TARGET -> "Mission target is invalid for route planning.";
             case NO_SAFE_ROUTE -> "No safe route could be generated for this mission.";
