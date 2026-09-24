@@ -58,7 +58,7 @@ DEFAULT_CAMERA_FRONT_TOPIC = (
 
 WORLD_NAME = os.getenv("GZ_WORLD_NAME", DEFAULT_WORLD)
 MODEL_NAME = os.getenv("GZ_MODEL_NAME", DEFAULT_MODEL)
-CAMERA_DEFAULT_VIEW = os.getenv("CAMERA_DEFAULT_VIEW", "DOWN").strip().upper()
+CAMERA_DEFAULT_VIEW = os.getenv("CAMERA_DEFAULT_VIEW", "FRONT").strip().upper()
 CAMERA_DOWN_TOPIC = os.getenv("GAZEBO_CAMERA_DOWN_TOPIC", os.getenv("GAZEBO_CAMERA_TOPIC", DEFAULT_CAMERA_DOWN_TOPIC))
 CAMERA_FRONT_TOPIC = os.getenv("GAZEBO_CAMERA_FRONT_TOPIC", DEFAULT_CAMERA_FRONT_TOPIC)
 CAMERA_TOPIC = CAMERA_DOWN_TOPIC if CAMERA_DEFAULT_VIEW == "DOWN" else CAMERA_FRONT_TOPIC
@@ -128,7 +128,7 @@ class DroneTelemetryState:
     max_speed_m_s: float | None = PX4_SPEED_LIMIT_M_S
     battery_percent: float | None = None
     battery_level: str | None = None
-    camera_mode: str = CAMERA_DEFAULT_VIEW if CAMERA_DEFAULT_VIEW in {"DOWN", "FRONT"} else "DOWN"
+    camera_mode: str = CAMERA_DEFAULT_VIEW if CAMERA_DEFAULT_VIEW in {"DOWN", "FRONT"} else "FRONT"
     velocity_north_m_s: float | None = None
     velocity_east_m_s: float | None = None
     velocity_down_m_s: float | None = None
@@ -230,7 +230,7 @@ class GazeboCameraOrientationController:
         self.command_topic = os.getenv("GAZEBO_CAMERA_PITCH_TOPIC", default_topic)
         self.front_position_rad = float(os.getenv("CAMERA_FRONT_JOINT_POSITION_RAD", "0.0"))
         self.down_position_rad = float(os.getenv("CAMERA_DOWN_JOINT_POSITION_RAD", "-1.57079632679"))
-        self.current_mode = CAMERA_DEFAULT_VIEW if CAMERA_DEFAULT_VIEW in {"DOWN", "FRONT"} else "DOWN"
+        self.current_mode = CAMERA_DEFAULT_VIEW if CAMERA_DEFAULT_VIEW in {"DOWN", "FRONT"} else "FRONT"
         self._last_toggle_s = 0.0
 
     def toggle(self) -> str | None:

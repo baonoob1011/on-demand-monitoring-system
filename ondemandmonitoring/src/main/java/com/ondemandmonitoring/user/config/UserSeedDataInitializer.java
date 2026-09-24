@@ -9,7 +9,6 @@ import com.ondemandmonitoring.user.enumeration.IdentityProvider;
 import com.ondemandmonitoring.user.repository.CustomerProfileRepository;
 import com.ondemandmonitoring.user.repository.UserRepository;
 import java.util.List;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -25,40 +24,46 @@ public class UserSeedDataInitializer implements ApplicationRunner {
 
     private static final List<SeedUser> SEED_USERS = List.of(
             new SeedUser(
-                    UUID.fromString("00000000-0000-0000-0000-000000000001"),
+                    "00000000-0000-0000-0000-000000000001",
                     "Seed Customer",
                     RoleCode.CUSTOMER,
                     "seed.customer@odms.local",
-                    UUID.fromString("20000000-0000-0000-0000-000000000001"),
-                    "39ea75ec-c001-7087-152e-e76ebbf4740b"),
+                    "20000000-0000-0000-0000-000000000001",
+                    "39ea75ec-c001-7087-152e-e76ebbf4740b"
+            ),
             new SeedUser(
-                    UUID.fromString("00000000-0000-0000-0000-000000000002"),
+                    "00000000-0000-0000-0000-000000000002",
                     "Seed Staff",
                     RoleCode.STAFF,
                     "seed.staff@odms.local",
-                    UUID.fromString("20000000-0000-0000-0000-000000000002"),
-                    "e9eab58c-00a1-705d-69b7-c74a17074053"),
+                    "20000000-0000-0000-0000-000000000002",
+                    "e9eab58c-00a1-705d-69b7-c74a17074053"
+            ),
             new SeedUser(
-                    UUID.fromString("00000000-0000-0000-0000-000000000003"),
+                    "00000000-0000-0000-0000-000000000003",
                     "Seed Drone Operator",
                     RoleCode.DRONE_OPERATOR,
                     "seed.drone.operator@odms.local",
-                    UUID.fromString("20000000-0000-0000-0000-000000000003"),
-                    "c9cab55c-0081-705a-a1e0-4358cd45d47e"),
+                    "20000000-0000-0000-0000-000000000003",
+                    "c9cab55c-0081-705a-a1e0-4358cd45d47e"
+            ),
             new SeedUser(
-                    UUID.fromString("00000000-0000-0000-0000-000000000004"),
+                    "00000000-0000-0000-0000-000000000004",
                     "Seed System Operator",
                     RoleCode.SYSTEM_OPERATOR,
                     "seed.system.operator@odms.local",
-                    UUID.fromString("20000000-0000-0000-0000-000000000004"),
-                    "792ab50c-9061-7069-6f70-b6729473926c"),
+                    "20000000-0000-0000-0000-000000000004",
+                    "792ab50c-9061-7069-6f70-b6729473926c"
+            ),
             new SeedUser(
-                    UUID.fromString("00000000-0000-0000-0000-000000000005"),
+                    "00000000-0000-0000-0000-000000000005",
                     "Seed Admin",
                     RoleCode.ADMIN,
                     "seed.admin@odms.local",
-                    UUID.fromString("20000000-0000-0000-0000-000000000005"),
-                    "e9fa959c-3041-70ef-b624-595c74207d06"));
+                    "20000000-0000-0000-0000-000000000005",
+                    "e9fa959c-3041-70ef-b624-595c74207d06"
+            )
+    );
 
     private final RoleRepository roleRepository;
     private final JdbcTemplate jdbcTemplate;
@@ -72,7 +77,11 @@ public class UserSeedDataInitializer implements ApplicationRunner {
 
         for (SeedUser seed : SEED_USERS) {
             Role role = roleRepository.findByCode(seed.role())
-                    .orElseThrow(() -> new IllegalStateException("Missing seed role: " + seed.role()));
+                    .orElseThrow(() ->
+                            new IllegalStateException(
+                                    "Missing seed role: " + seed.role()
+                            )
+                    );
 
             upsertUser(seed, role, roleColumnExists);
             insertIdentity(seed);
@@ -86,12 +95,19 @@ public class UserSeedDataInitializer implements ApplicationRunner {
         }
 
         User user = userRepository.findByEmailIgnoreCase(seed.email())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Missing seeded customer after upsert: " + seed.email()));
+                .orElseThrow(() ->
+                        new IllegalStateException(
+                                "Missing seeded customer after upsert: "
+                                        + seed.email()
+                        )
+                );
+
         if (!customerProfileRepository.existsById(user.getId())) {
-            customerProfileRepository.save(CustomerProfile.builder()
-                    .user(user)
-                    .build());
+            customerProfileRepository.save(
+                    CustomerProfile.builder()
+                            .user(user)
+                            .build()
+            );
         }
     }
 
@@ -102,25 +118,40 @@ public class UserSeedDataInitializer implements ApplicationRunner {
                 WHERE table_schema = 'public'
                   AND table_name = 'users'
                   AND column_name = 'role'
-                """, Integer.class);
+                """,
+                Integer.class
+        );
+
         return count != null && count > 0;
     }
 
-    private void upsertUser(SeedUser seed, Role role, boolean roleColumnExists) {
+    private void upsertUser(
+            SeedUser seed,
+            Role role,
+            boolean roleColumnExists
+    ) {
         if (roleColumnExists) {
             jdbcTemplate.update("""
                     INSERT INTO users (
-                        user_id,
+                        id,
                         full_name,
                         role,
                         role_id,
                         email,
                         email_verified,
                         is_active,
+                        version,
                         created_at,
                         updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, true, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    VALUES (
+                        ?, ?, ?, ?, ?,
+                        true,
+                        true,
+                        0,
+                        CURRENT_TIMESTAMP,
+                        CURRENT_TIMESTAMP
+                    )
                     ON CONFLICT (email) DO UPDATE SET
                         full_name = EXCLUDED.full_name,
                         role = EXCLUDED.role,
@@ -133,22 +164,32 @@ public class UserSeedDataInitializer implements ApplicationRunner {
                     seed.fullName(),
                     seed.role().name(),
                     role.getId(),
-                    seed.email());
+                    seed.email()
+            );
+
             return;
         }
 
         jdbcTemplate.update("""
                 INSERT INTO users (
-                    user_id,
+                    id,
                     full_name,
                     role_id,
                     email,
                     email_verified,
                     is_active,
+                    version,
                     created_at,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, true, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                VALUES (
+                    ?, ?, ?, ?,
+                    true,
+                    true,
+                    0,
+                    CURRENT_TIMESTAMP,
+                    CURRENT_TIMESTAMP
+                )
                 ON CONFLICT (email) DO UPDATE SET
                     full_name = EXCLUDED.full_name,
                     role_id = EXCLUDED.role_id,
@@ -159,36 +200,44 @@ public class UserSeedDataInitializer implements ApplicationRunner {
                 seed.userId(),
                 seed.fullName(),
                 role.getId(),
-                seed.email());
+                seed.email()
+        );
     }
 
     private void insertIdentity(SeedUser seed) {
         jdbcTemplate.update("""
-                INSERT INTO user_identities (
-                    identity_id,
-                    user_id,
-                    provider,
-                    cognito_username,
-                    cognito_sub,
-                    created_at,
-                    updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                ON CONFLICT (provider, cognito_sub) DO NOTHING
-                """,
+            INSERT INTO user_identities (
+                id,
+                user_id,
+                provider,
+                cognito_username,
+                cognito_sub,
+                version,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                ?, ?, ?, ?, ?,
+                0,
+                CURRENT_TIMESTAMP,
+                CURRENT_TIMESTAMP
+            )
+            ON CONFLICT (provider, cognito_sub) DO NOTHING
+            """,
                 seed.identityId(),
                 seed.userId(),
                 IdentityProvider.LOCAL.name(),
                 seed.cognitoSub(),
-                seed.cognitoSub());
+                seed.cognitoSub()
+        );
     }
-
     private record SeedUser(
-            UUID userId,
+            String userId,
             String fullName,
             RoleCode role,
             String email,
-            UUID identityId,
-            String cognitoSub) {
+            String identityId,
+            String cognitoSub
+    ) {
     }
 }

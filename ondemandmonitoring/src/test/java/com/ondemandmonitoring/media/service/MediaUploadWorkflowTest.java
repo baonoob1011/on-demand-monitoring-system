@@ -52,7 +52,7 @@ class MediaUploadWorkflowTest {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("operator", "n/a", java.util.List.of()));
         User user = new User();
-        user.setId(UUID.randomUUID());
+        user.setId(UUID.randomUUID().toString());
         when(userResolver.getCurrentUser()).thenReturn(user);
         Mission mission = new Mission();
         mission.setId("mission-id");

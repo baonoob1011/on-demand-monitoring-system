@@ -1,12 +1,14 @@
 package com.ondemandmonitoring.order.dto.request;
 
-import com.ondemandmonitoring.order.dto.GeoJsonPointDto;
-import com.ondemandmonitoring.order.enums.MediaTypeSp;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -25,14 +27,12 @@ import lombok.experimental.FieldDefaults;
 public class OrderCreateRequest {
 
     @NotBlank(message = "Title is required")
+    @Size(max = 255, message = "Title must not exceed 255 characters")
     @Schema(description = "Title of the order", example = "Forest Area Monitoring")
     String title;
 
-    @Schema(description = "Purpose of the monitoring order", example = "Wildfire risk detection")
-    String purpose;
-
     @NotBlank(message = "Service ID is required")
-    @Schema(description = "Category Service ID", example = "550e8400-e29b-41d4-a716-446655440000")
+    @Schema(description = "Service ID", example = "550e8400-e29b-41d4-a716-446655440000")
     String serviceId;
 
     @Schema(description = "Detailed description of the monitoring request")
@@ -41,26 +41,32 @@ public class OrderCreateRequest {
     @Schema(description = "Address of the monitoring target location")
     String address;
 
-    @Valid
-    @NotNull(message = "Point location is required")
-    @Schema(description = "GeoJSON Point location format")
-    GeoJsonPointDto point;
+    @NotNull(message = "Longitude is required")
+    @Schema(description = "Longitude coordinate", example = "106.660172")
+    Double longitude;
 
-    @NotNull(message = "Preferred date is required")
-    @Schema(description = "Preferred monitoring date", example = "2026-10-01")
-    LocalDate preferredDate;
+    @NotNull(message = "Latitude is required")
+    @Schema(description = "Latitude coordinate", example = "10.762622")
+    Double latitude;
+
+    @NotNull(message = "Coverage area GeoJSON map is required")
+    @Schema(description = "Coverage area GeoJSON object map")
+    Map<String, Object> coverageArea;
+
+    @NotNull(message = "Preferred date from is required")
+    @Schema(description = "Preferred monitoring start date", example = "2026-10-01")
+    LocalDate preferredDateFrom;
+
+    @NotNull(message = "Preferred date to is required")
+    @Schema(description = "Preferred monitoring end date", example = "2026-10-05")
+    LocalDate preferredDateTo;
 
     @NotBlank(message = "Preferred time ID is required")
     @Schema(description = "Preferred time frame ID")
     String preferredTimeId;
 
-    @NotNull(message = "Media type is required")
-    @Schema(description = "Media output type: IMAGE or VIDEO")
-    MediaTypeSp mediaType;
-
-    @Schema(description = "Duration of video in seconds (Required if mediaType is VIDEO)", example = "120")
-    Integer durationOfVideo;
-
-    @Schema(description = "Number of photos (Required if mediaType is IMAGE)", example = "10")
-    Integer numberOfPhoto;
+    @NotEmpty(message = "At least one deliverable is required")
+    @Valid
+    @Schema(description = "List of deliverable types with requirements for the service")
+    List<OrderDeliverableRequest> deliverables;
 }

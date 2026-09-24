@@ -33,7 +33,7 @@ class CustomerMediaServiceTest {
     @Test
     void onlyAvailableMediaGetsDownloadUrl() {
         User customer = new User();
-        customer.setId(UUID.randomUUID());
+        customer.setId(UUID.randomUUID().toString());
         when(currentUser.getCurrentUser()).thenReturn(customer);
         Order order = new Order();
         order.setCustomer(customer);
@@ -65,9 +65,9 @@ class CustomerMediaServiceTest {
     @Test
     void rejectsCustomerFromAnotherOrder() {
         User owner = new User();
-        owner.setId(UUID.randomUUID());
+        owner.setId(UUID.randomUUID().toString());
         User other = new User();
-        other.setId(UUID.randomUUID());
+        other.setId(UUID.randomUUID().toString());
         when(currentUser.getCurrentUser()).thenReturn(other);
         Order order = new Order();
         order.setCustomer(owner);

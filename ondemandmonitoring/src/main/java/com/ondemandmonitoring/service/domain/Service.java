@@ -1,14 +1,16 @@
 package com.ondemandmonitoring.service.domain;
 
+import com.ondemandmonitoring.Consultation.domains.CustomerConsultation;
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "services")
@@ -28,4 +30,9 @@ public class Service extends BaseEntity {
     @Builder.Default
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
+
+
+    @Builder.Default
+    @OneToMany(mappedBy = "recommendedService", fetch = FetchType.LAZY)
+    private List<CustomerConsultation> consultations = new ArrayList<>();
 }

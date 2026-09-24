@@ -1,13 +1,10 @@
 package com.ondemandmonitoring.user.domain;
 
+import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.role.domain.Role;
 import jakarta.persistence.*;
-import java.time.OffsetDateTime;
-import java.util.UUID;
 import lombok.*;
-import lombok.experimental.FieldDefaults;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
+import java.time.OffsetDateTime;
 
 @Entity
 @Table(name = "users", uniqueConstraints = {
@@ -18,43 +15,28 @@ import org.hibernate.annotations.UpdateTimestamp;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@FieldDefaults(level = AccessLevel.PRIVATE)
-public class User {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(name = "user_id")
-    UUID id;
-
+public class User extends BaseEntity {
     @Column(name = "full_name", nullable = false, length = 100)
-    String fullName;
+    private String fullName;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "role_id", nullable = false)
-    Role role;
+    private Role role;
 
     @Column(name = "email", length = 150)
-    String email;
+    private String email;
 
     @Column(name = "email_verified", nullable = false)
     @Builder.Default
-    Boolean emailVerified = false;
+    private Boolean emailVerified = false;
 
     @Column(name = "avatar_s3_key", length = 500)
-    String avatarS3Key;
+    private String avatarS3Key;
 
     @Column(name = "is_active", nullable = false)
     @Builder.Default
-    Boolean isActive = true;
+    private Boolean isActive = true;
 
     @Column(name = "last_login_at")
-    OffsetDateTime lastLoginAt;
-
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    OffsetDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
-    OffsetDateTime updatedAt;
+    private OffsetDateTime lastLoginAt;
 }

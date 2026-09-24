@@ -11,28 +11,27 @@ import com.ondemandmonitoring.drone.enums.DroneStatus;
 import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
 import com.ondemandmonitoring.environment.service.EnvironmentalMeasurementService;
+import com.ondemandmonitoring.replanning.event.DroneTelemetrySavedEvent;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 @Service
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class DroneTelemetryService implements IDroneTelemetryService {
-
     DroneTelemetryRepository droneTelemetryRepository;
     DroneRepository droneRepository;
     EnvironmentalMeasurementService environmentalMeasurementService;
-
+    ApplicationEventPublisher eventPublisher;
     @Transactional
     @Override
     public DroneTelemetry save(String droneCode, TelemetryRequest request) {
         return saveSnapshot(getOrCreateDrone(droneCode), droneCode, request);
     }
-
     @Transactional
     @Override
     public DroneTelemetry saveForRegisteredDrone(String droneCode, TelemetryRequest request) {
@@ -41,11 +40,9 @@ public class DroneTelemetryService implements IDroneTelemetryService {
                         "Registered drone not found: " + droneCode));
         return saveSnapshot(drone, droneCode, request);
     }
-
     private DroneTelemetry saveSnapshot(Drone drone, String droneCode, TelemetryRequest request) {
         DroneTelemetry telemetry = droneTelemetryRepository.findByDroneCode(droneCode)
                 .orElseGet(DroneTelemetry::new);
-
         telemetry.setDroneCode(droneCode);
         telemetry.setDrone(drone);
         telemetry.setLatitude(request.getLatitude());
@@ -87,6 +84,7 @@ public class DroneTelemetryService implements IDroneTelemetryService {
 
         DroneTelemetry saved = droneTelemetryRepository.save(telemetry);
         environmentalMeasurementService.recordAirPressure(drone, droneCode, request);
+        eventPublisher.publishEvent(new DroneTelemetrySavedEvent(saved.getId(), droneCode));
         return saved;
     }
 

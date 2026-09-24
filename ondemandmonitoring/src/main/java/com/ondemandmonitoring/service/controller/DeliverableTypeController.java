@@ -3,7 +3,7 @@ package com.ondemandmonitoring.service.controller;
 import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.service.dto.request.DeliverableTypeRequest;
 import com.ondemandmonitoring.service.dto.response.DeliverableTypeResponse;
-import com.ondemandmonitoring.service.service.DeliverableTypeService;
+import com.ondemandmonitoring.service.service.IDeliverableTypeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -30,7 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class DeliverableTypeController {
 
-    DeliverableTypeService deliverableTypeService;
+    IDeliverableTypeService deliverableTypeService;
 
     @Operation(summary = "Create deliverable type", description = "Creates a new deliverable type")
     @PostMapping

@@ -27,7 +27,7 @@ public interface MissionRepository extends JpaRepository<Mission, String> {
 
     Optional<Mission> findByMissionCode(String missionCode);
 
-    List<Mission> findByOrder_Customer_Id(UUID customerId);
+    List<Mission> findByOrder_Customer_Id(String customerId);
 
     @Query("""
             SELECT DISTINCT m FROM Mission m

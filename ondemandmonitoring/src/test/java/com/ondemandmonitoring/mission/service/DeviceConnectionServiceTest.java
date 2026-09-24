@@ -3,13 +3,13 @@ package com.ondemandmonitoring.mission.service;
 import com.ondemandmonitoring.drone.domain.Drone;
 import com.ondemandmonitoring.drone.enums.DroneStatus;
 import com.ondemandmonitoring.drone.repository.DroneRepository;
-import com.ondemandmonitoring.mission.domain.GcsSession;
+import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.mapper.MissionMapper;
-import com.ondemandmonitoring.mission.repository.GcsSessionRepository;
+import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
 import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionOperatorAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
@@ -34,7 +34,7 @@ class DeviceConnectionServiceTest {
     @Mock
     private MissionRepository missionRepository;
     @Mock
-    private GcsSessionRepository gcsSessionRepository;
+    private DeviceConnectionRepository deviceConnectionRepository;
     @Mock
     private MissionDroneAssignmentRepository missionDroneAssignmentRepository;
     @Mock
@@ -50,7 +50,7 @@ class DeviceConnectionServiceTest {
     void setUp() {
         deviceConnectionService = new DeviceConnectionService(
                 missionRepository,
-                gcsSessionRepository,
+                deviceConnectionRepository,
                 missionDroneAssignmentRepository,
                 missionOperatorAssignmentRepository,
                 droneRepository,
@@ -94,9 +94,9 @@ class DeviceConnectionServiceTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatus()).isEqualTo(MissionStatus.CONNECTED);
 
-        ArgumentCaptor<GcsSession> sessionCaptor = ArgumentCaptor.forClass(GcsSession.class);
-        verify(gcsSessionRepository).save(sessionCaptor.capture());
-        GcsSession savedSession = sessionCaptor.getValue();
+        ArgumentCaptor<DeviceConnection> sessionCaptor = ArgumentCaptor.forClass(DeviceConnection.class);
+        verify(deviceConnectionRepository).save(sessionCaptor.capture());
+        DeviceConnection savedSession = sessionCaptor.getValue();
         assertThat(savedSession.getConnectionStatus()).isEqualTo("CONNECTED");
         assertThat(savedSession.getTelemetryActive()).isTrue();
     }
@@ -109,13 +109,13 @@ class DeviceConnectionServiceTest {
         mission.setId(missionId);
         mission.setStatus(MissionStatus.CONNECTED);
 
-        GcsSession activeSession = new GcsSession();
+        DeviceConnection activeSession = new DeviceConnection();
         activeSession.setMission(mission);
         activeSession.setConnectionStatus("CONNECTED");
         activeSession.setTelemetryActive(true);
 
         when(missionRepository.findById(missionId)).thenReturn(Optional.of(mission));
-        when(gcsSessionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED"))
+        when(deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED"))
                 .thenReturn(Optional.of(activeSession));
 
         deviceConnectionService.disconnectGcs(missionId, "MISSION_COMPLETED");
@@ -123,7 +123,7 @@ class DeviceConnectionServiceTest {
         assertThat(activeSession.getConnectionStatus()).isEqualTo("DISCONNECTED");
         assertThat(activeSession.getTelemetryActive()).isFalse();
         assertThat(activeSession.getDisconnectReason()).isEqualTo("MISSION_COMPLETED");
-        verify(gcsSessionRepository).save(activeSession);
+        verify(deviceConnectionRepository).save(activeSession);
     }
 
     @Test
@@ -143,12 +143,12 @@ class DeviceConnectionServiceTest {
         mda.setDrone(device);
         mda.setIsCurrent(true);
 
-        GcsSession activeSession = new GcsSession();
+        DeviceConnection activeSession = new DeviceConnection();
         activeSession.setMission(mission);
         activeSession.setConnectionStatus("CONNECTED");
 
         when(missionRepository.findById(missionId)).thenReturn(Optional.of(mission));
-        when(gcsSessionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED"))
+        when(deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED"))
                 .thenReturn(Optional.of(activeSession));
         when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)).thenReturn(Optional.of(mda));
         when(missionRepository.save(any(Mission.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -160,7 +160,7 @@ class DeviceConnectionServiceTest {
         assertThat(activeSession.getConnectionStatus()).isEqualTo("LOST");
         assertThat(activeSession.getDisconnectReason()).isEqualTo("SIGNAL_LOSS_COMM_TIMEOUT");
 
-        verify(gcsSessionRepository).save(activeSession);
+        verify(deviceConnectionRepository).save(activeSession);
         verify(droneRepository).save(device);
     }
 }

@@ -55,14 +55,14 @@ public class UserManagementController {
     @Operation(summary = "Get user details by ID", description = "Retrieves detailed information of a user by UUID")
     @GetMapping("/{userId}")
     public ResponseEntity<ApiResponse<UserManagementDetailResponse>> getUser(
-            @PathVariable UUID userId) {
+            @PathVariable String userId) {
         return ResponseEntity.ok(ApiResponse.ok(userManagementService.getUser(userId)));
     }
 
     @Operation(summary = "Update user status", description = "Activates or deactivates a user account")
     @PatchMapping("/{userId}/status")
     public ResponseEntity<ApiResponse<UserManagementDetailResponse>> updateStatus(
-            @PathVariable UUID userId,
+            @PathVariable String userId,
             @Valid @RequestBody UserStatusUpdateRequest request) {
         return ResponseEntity.ok(ApiResponse.ok(
                 "Account status updated successfully",

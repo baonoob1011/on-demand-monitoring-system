@@ -1,6 +1,5 @@
 package com.ondemandmonitoring.user.dto.response;
 
-import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -11,7 +10,7 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AvailableOperatorResponse {
 
-    UUID id;
+    String id;
     String fullName;
     String email;
 }

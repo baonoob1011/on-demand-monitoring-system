@@ -48,7 +48,7 @@ class UserServiceImplTest {
         when(roleService.getActiveRole(RoleCode.CUSTOMER)).thenReturn(customerRole);
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
             User user = invocation.getArgument(0);
-            user.setId(UUID.randomUUID());
+            user.setId(UUID.randomUUID().toString());
             return user;
         });
 
@@ -70,7 +70,7 @@ class UserServiceImplTest {
         when(roleService.getActiveRole(RoleCode.CUSTOMER)).thenReturn(customerRole);
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
             User user = invocation.getArgument(0);
-            user.setId(UUID.randomUUID());
+            user.setId(UUID.randomUUID().toString());
             return user;
         });
 
@@ -112,7 +112,8 @@ class UserServiceImplTest {
 
     @Test
     void findByCognitoUsername_delegatesToIdentityService() {
-        User expected = User.builder().id(UUID.randomUUID()).build();
+        User expected = User.builder().build();
+        expected.setId(UUID.randomUUID().toString());
         when(userIdentityService.findUserByCognitoUsername("cognito-user"))
                 .thenReturn(expected);
 

@@ -336,8 +336,8 @@ if (-not $SkipFrontend) {
     Write-Step "Preparing and starting Frontend UI"
     $envFile = Join-Path $webRoot ".env.local"
     Write-Utf8NoBomLines $envFile @(
-        "VITE_API_BASE_URL=http://localhost:8080",
-        "VITE_FLIGHT_CONTROL_API_URL=http://localhost:8090"
+        "VITE_API_BASE_URL=$(Get-EnvValue $rootEnvFile 'VITE_API_BASE_URL' 'http://localhost:8080')",
+        "VITE_FLIGHT_CONTROL_API_URL=$(Get-EnvValue $rootEnvFile 'VITE_FLIGHT_CONTROL_API_URL' 'http://localhost:8090')"
     )
     Start-TerminalTab -Title "FE - OMSS UI" -WorkingDirectory $webRoot -Command "if (-not (Test-Path node_modules)) { npm install }; npm run dev -- --host 0.0.0.0 --port 5173"
 }

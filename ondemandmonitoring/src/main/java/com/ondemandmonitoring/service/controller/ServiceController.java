@@ -3,7 +3,7 @@ package com.ondemandmonitoring.service.controller;
 import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.service.dto.request.ServiceRequest;
 import com.ondemandmonitoring.service.dto.response.ServiceResponse;
-import com.ondemandmonitoring.service.service.ServiceService;
+import com.ondemandmonitoring.service.service.IServiceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -30,7 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class ServiceController {
 
-    ServiceService serviceService;
+    IServiceService serviceService;
 
     @Operation(summary = "Create service", description = "Creates a new monitoring service")
     @PostMapping

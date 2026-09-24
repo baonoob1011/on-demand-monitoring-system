@@ -15,6 +15,7 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.AccessLevel;
@@ -239,6 +240,18 @@ public class MissionPlan extends BaseEntity {
      */
     @Column(name = "planning_time_ms")
     Long planningTimeMs;
+
+    @Column(name = "plan_version")
+    Integer planVersion;
+
+    @Column(name = "replanning_reason", length = 50)
+    String replanningReason;
+
+    @Column(name = "replanning_status", length = 50)
+    String replanningStatus;
+
+    @Column(name = "replanned_at")
+    Instant replannedAt;
 
     /*
      * Danh sách các điểm bay tạo thành planned route.

@@ -2,7 +2,7 @@ package com.ondemandmonitoring.categoryservice.controller;
 
 import com.ondemandmonitoring.categoryservice.dto.request.CategoryServiceRequest;
 import com.ondemandmonitoring.categoryservice.dto.response.CategoryServiceResponse;
-import com.ondemandmonitoring.categoryservice.service.CategoryServiceService;
+import com.ondemandmonitoring.categoryservice.service.ICategoryServiceService;
 import com.ondemandmonitoring.common.api.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class CategoryServiceController {
 
-    CategoryServiceService categoryServiceService;
+    ICategoryServiceService categoryServiceService;
 
     @Operation(summary = "Create category service", description = "Creates a new category service")
     @PostMapping

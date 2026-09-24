@@ -40,10 +40,10 @@ class UserSeedDataInitializerTest {
     @Test
     void run_provisionsOnlyMissingCustomerProfile() throws Exception {
         User customer = User.builder()
-                .id(UUID.fromString("00000000-0000-0000-0000-000000000001"))
                 .email("seed.customer@odms.local")
                 .fullName("Seed Customer")
                 .build();
+        customer.setId("00000000-0000-0000-0000-000000000001");
         when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class))).thenReturn(0);
         when(roleRepository.findByCode(any())).thenAnswer(invocation -> Optional.of(
                 Role.builder()

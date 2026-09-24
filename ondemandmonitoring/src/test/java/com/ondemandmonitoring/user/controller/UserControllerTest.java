@@ -30,7 +30,7 @@ class UserControllerTest {
 
     @Test
     void getCurrentProfile_returnsProfileEnvelope() throws Exception {
-        UUID userId = UUID.randomUUID();
+        String userId = UUID.randomUUID().toString();
         when(userProfileService.getCurrentProfile()).thenReturn(UserProfileResponse.builder()
                 .id(userId)
                 .fullName("Customer Name")
@@ -57,7 +57,7 @@ class UserControllerTest {
     void updateCurrentProfile_returnsUpdatedProfileEnvelope() throws Exception {
         when(userProfileService.updateCurrentProfile(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(UserProfileResponse.builder()
-                        .id(UUID.randomUUID())
+                        .id(UUID.randomUUID().toString())
                         .fullName("Updated Name")
                         .email("customer@example.com")
                         .role(RoleCode.CUSTOMER)

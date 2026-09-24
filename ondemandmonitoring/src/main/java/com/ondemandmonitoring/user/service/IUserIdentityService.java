@@ -12,9 +12,9 @@ public interface IUserIdentityService {
 
     UserIdentity link(User user, IdentityProvider provider, String cognitoUsername, String cognitoSub);
 
-    String getUsername(UUID userId, IdentityProvider provider);
+    String getUsername(String userId, IdentityProvider provider);
 
-    boolean hasIdentity(UUID userId, IdentityProvider provider);
+    boolean hasIdentity(String userId, IdentityProvider provider);
 
     User findUserByCognitoSub(String cognitoSub);
 
