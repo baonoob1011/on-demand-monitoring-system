@@ -16,6 +16,7 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -33,6 +34,33 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(
                         exception.getErrorCode().name(),
                         exception.getMessage()
+                ));
+    }
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingServletRequestParameter(
+            MissingServletRequestParameterException exception,
+            HttpServletRequest request
+    ) {
+        log.debug(
+                "Missing required request parameter '{}' of type '{}' for {} {}",
+                exception.getParameterName(),
+                exception.getParameterType(),
+                request.getMethod(),
+                request.getRequestURI()
+        );
+
+        Map<String, String> errors = new LinkedHashMap<>();
+        errors.put(
+                exception.getParameterName(),
+                "Required request parameter is missing"
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(
+                        ErrorCode.VALIDATION_ERROR.name(),
+                        "Missing required request parameter",
+                        errors
                 ));
     }
 
