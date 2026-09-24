@@ -1,20 +1,15 @@
 package com.ondemandmonitoring.drone.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.drone.dto.request.TelemetryRequest;
-import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.drone.domain.DroneTelemetry;
 import com.ondemandmonitoring.drone.domain.Drone;
 import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
-import com.ondemandmonitoring.drone.service.impl.DroneTelemetryService;
-import com.ondemandmonitoring.environment.service.EnvironmentalMeasurementService;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,9 +26,6 @@ class DroneTelemetryServiceTest {
 
     @Mock
     private DroneRepository droneRepository;
-
-    @Mock
-    private EnvironmentalMeasurementService environmentalMeasurementService;
 
     @InjectMocks
     private DroneTelemetryService service;
@@ -71,17 +63,5 @@ class DroneTelemetryServiceTest {
         assertThat(captured.getSpeed()).isEqualTo(12.5);
         assertThat(captured.getFlightMode()).isEqualTo("AUTO");
         assertThat(captured.getArmed()).isTrue();
-        verify(environmentalMeasurementService).recordAirPressure(drone, "DRONE-01", request);
-    }
-
-    @Test
-    void internalTelemetryRejectsUnknownDroneInsteadOfCreatingIt() {
-        when(droneRepository.findByDroneCode("UNKNOWN")).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> service.saveForRegisteredDrone("UNKNOWN", new TelemetryRequest()))
-                .isInstanceOf(ApiException.class)
-                .hasMessageContaining("Registered drone not found");
-        verify(droneRepository, never()).save(any());
-        verify(repository, never()).save(any());
     }
 }

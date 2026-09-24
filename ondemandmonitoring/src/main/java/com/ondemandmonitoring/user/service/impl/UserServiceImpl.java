@@ -1,20 +1,16 @@
 package com.ondemandmonitoring.user.service.impl;
 
-import com.ondemandmonitoring.user.domain.CustomerProfile;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.enumeration.IdentityProvider;
 import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.role.domain.Role;
 import com.ondemandmonitoring.role.service.RoleService;
-import com.ondemandmonitoring.user.repository.CustomerProfileRepository;
 import com.ondemandmonitoring.user.repository.UserRepository;
 import com.ondemandmonitoring.user.service.IUserService;
-import com.ondemandmonitoring.user.service.IUserIdentityService;
+import com.ondemandmonitoring.user.service.UserIdentityService;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
-import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,13 +23,11 @@ import java.util.UUID;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class UserServiceImpl implements IUserService {
 
-    UserRepository userRepository;
-    RoleService roleService;
-    IUserIdentityService userIdentityService;
-    CustomerProfileRepository customerProfileRepository;
+    private final UserRepository userRepository;
+    private final RoleService roleService;
+    private final UserIdentityService userIdentityService;
 
     @Override
     public User findByEmail(String email) {
@@ -82,16 +76,7 @@ public class UserServiceImpl implements IUserService {
                 .isActive(true)
                 .build());
         userIdentityService.create(user, provider, cognitoUsername, cognitoSub);
-        provisionCustomerProfile(user, role);
         return user;
-    }
-
-    private void provisionCustomerProfile(User user, RoleCode role) {
-        if (role == RoleCode.CUSTOMER) {
-            customerProfileRepository.save(CustomerProfile.builder()
-                    .user(user)
-                    .build());
-        }
     }
 
     @Override
@@ -116,7 +101,7 @@ public class UserServiceImpl implements IUserService {
 
     @Override
     @Transactional
-    public void recordLogin(String userId) {
+    public void recordLogin(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
         user.setLastLoginAt(OffsetDateTime.now());
@@ -138,7 +123,7 @@ public class UserServiceImpl implements IUserService {
 
     @Override
     @Transactional(readOnly = true)
-    public boolean hasIdentity(String userId, IdentityProvider provider) {
+    public boolean hasIdentity(UUID userId, IdentityProvider provider) {
         return userIdentityService.hasIdentity(userId, provider);
     }
 
@@ -146,12 +131,6 @@ public class UserServiceImpl implements IUserService {
     @Transactional(readOnly = true)
     public User findByCognitoSub(String cognitoSub) {
         return userIdentityService.findUserByCognitoSub(cognitoSub);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public User findByCognitoUsername(String cognitoUsername) {
-        return userIdentityService.findUserByCognitoUsername(cognitoUsername);
     }
 
     @Override

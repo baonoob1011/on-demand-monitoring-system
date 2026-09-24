@@ -3,35 +3,7 @@
 set -e
 
 PROJECT_PATH="${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-
-resolve_forest3d_path() {
-    if [ -n "${FOREST3D_PATH:-}" ] && [ -f "$FOREST3D_PATH/models/compact_terrain/model.config" ]; then
-        printf '%s\n' "$FOREST3D_PATH"
-        return 0
-    fi
-
-    local candidates=(
-        "$PROJECT_PATH/Forest3D"
-        "$PROJECT_PATH/drone/Forest3D"
-        "$PROJECT_PATH/on-demand-monitoring-system/Forest3D"
-        "$(dirname "$PROJECT_PATH")/Forest3D"
-        "$(dirname "$PROJECT_PATH")/on-demand-monitoring-system/Forest3D"
-    )
-
-    local candidate
-    for candidate in "${candidates[@]}"; do
-        if [ -f "$candidate/models/compact_terrain/model.config" ]; then
-            cd "$candidate" && pwd
-            return 0
-        fi
-    done
-
-    echo "[SIM] ERROR: Cannot find Forest3D compact Gazebo assets." >&2
-    echo "[SIM] Expected Forest3D/models/compact_terrain/model.config inside the package." >&2
-    return 1
-}
-
-FOREST3D_PATH="$(resolve_forest3d_path)"
+FOREST3D_PATH="${FOREST3D_PATH:-$PROJECT_PATH/Forest3D}"
 FOREST3D_MODELS_PATH="${FOREST3D_MODELS_PATH:-$FOREST3D_PATH/models}"
 FOREST3D_DRONE_MODEL_PATH="${FOREST3D_DRONE_MODEL_PATH:-$FOREST3D_PATH/models/x500_mono_cam_down}"
 ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
@@ -44,18 +16,23 @@ PX4_MAVLINK_RC="$PX4_ROOT/ROMFS/px4fmu_common/init.d-posix/px4-rc.mavlink"
 
 if [ -f "$ENV_FILE" ]; then
     set -a
-    # Strip Windows BOM/CRLF endings while keeping the source .env unchanged.
-    source <(sed '1s/^\xEF\xBB\xBF//; s/\r$//' "$ENV_FILE")
+    # Strip Windows CRLF endings while keeping the source .env unchanged.
+    source <(sed 's/\r$//' "$ENV_FILE")
     set +a
 fi
 
+FOREST3D_MODELS_PATH="${FOREST3D_MODELS_PATH:-$FOREST3D_PATH/models}"
+if [ ! -f "$FOREST3D_MODELS_PATH/compact_terrain/model.config" ] \
+    && [ -f "$PROJECT_PATH/Forest3D/models/compact_terrain/model.config" ]; then
+    FOREST3D_MODELS_PATH="$PROJECT_PATH/Forest3D/models"
+elif [ ! -f "$FOREST3D_MODELS_PATH/compact_terrain/model.config" ] \
+    && [ -f "$PROJECT_PATH/drone/Forest3D/models/compact_terrain/model.config" ]; then
+    FOREST3D_MODELS_PATH="$PROJECT_PATH/drone/Forest3D/models"
+fi
 FOREST3D_DRONE_MODEL_PATH="${FOREST3D_DRONE_MODEL_PATH:-$FOREST3D_PATH/models/x500_mono_cam_down}"
 if [ ! -f "$FOREST3D_DRONE_MODEL_PATH/model.sdf" ] \
     && [ -f "$PROJECT_PATH/Forest3D/models/x500_mono_cam_down/model.sdf" ]; then
     FOREST3D_DRONE_MODEL_PATH="$PROJECT_PATH/Forest3D/models/x500_mono_cam_down"
-elif [ ! -f "$FOREST3D_DRONE_MODEL_PATH/model.sdf" ] \
-    && [ -f "$PROJECT_PATH/drone/Forest3D/models/x500_mono_cam_down/model.sdf" ]; then
-    FOREST3D_DRONE_MODEL_PATH="$PROJECT_PATH/drone/Forest3D/models/x500_mono_cam_down"
 fi
 
 PX4_ONBOARD_MAVLINK_RATE_B_S="${PX4_ONBOARD_MAVLINK_RATE_B_S:-100000}"

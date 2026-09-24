@@ -2,7 +2,6 @@ package com.ondemandmonitoring.planning.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.verify;
 
 import com.ondemandmonitoring.planning.domain.PlanningGrid;
 import com.ondemandmonitoring.planning.dto.response.EnvironmentSample;
@@ -124,18 +123,6 @@ class SimulationPlanningEnvironmentTest {
 
         assertThat(environment.sample(-5.0, -5.0).restricted()).isTrue();
         assertThat(environment.sample(-5.0, -5.0).restricted()).isFalse();
-    }
-
-    @Test
-    void searchSnapshotLoadsRestrictedZonesOnceAndReusesThem() {
-        when(zoneRepository.findAllByRestrictedTrueOrderByCodeAsc()).thenReturn(List.of(airportZone()));
-
-        PlanningEnvironment snapshot = environment.snapshot();
-        assertThat(snapshot.sample(-5.0, -5.0).restricted()).isTrue();
-        assertThat(snapshot.sample(0.0, 0.0).restricted()).isFalse();
-        assertThat(snapshot.sample(-5.0, -5.0).restricted()).isTrue();
-
-        verify(zoneRepository).findAllByRestrictedTrueOrderByCodeAsc();
     }
 
     @Test

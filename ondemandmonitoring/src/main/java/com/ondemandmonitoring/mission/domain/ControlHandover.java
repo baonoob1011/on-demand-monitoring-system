@@ -18,8 +18,8 @@ import java.time.Instant;
 public class ControlHandover extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "device_connection_id")
-    DeviceConnection deviceConnection;
+    @JoinColumn(name = "gcs_session_id")
+    GcsSession gcsSession;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "drone_id", nullable = false)

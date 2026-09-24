@@ -55,10 +55,19 @@ $sensor.Add_Click({
 })
 $form.Controls.Add($sensor)
 
+$thermal = New-Object System.Windows.Forms.Button
+$thermal.Text = "Open Thermal Camera"
+$thermal.Size = New-Object System.Drawing.Size(280, 34)
+$thermal.Location = New-Object System.Drawing.Point(28, 145)
+$thermal.Add_Click({
+    Start-WslMonitor "SIM_WORLD=compact exec $scriptRoot/wsl-thermal-view.sh"
+})
+$form.Controls.Add($thermal)
+
 $telemetry = New-Object System.Windows.Forms.Button
 $telemetry.Text = "Open Telemetry"
 $telemetry.Size = New-Object System.Drawing.Size(280, 34)
-$telemetry.Location = New-Object System.Drawing.Point(28, 145)
+$telemetry.Location = New-Object System.Drawing.Point(28, 190)
 $telemetry.Add_Click({
     Start-WslMonitor "exec $scriptRoot/wsl-telemetry.sh"
 })

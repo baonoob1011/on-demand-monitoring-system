@@ -2,7 +2,6 @@ package com.ondemandmonitoring.mission.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
-import com.ondemandmonitoring.order.domain.Order;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -28,7 +27,7 @@ public class Mission extends BaseEntity {
     // ===== Relationship to Order =====
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "order_id")
-    Order order;
+    com.ondemandmonitoring.order.domain.Order order;
 
     // ===== Schedule =====
 

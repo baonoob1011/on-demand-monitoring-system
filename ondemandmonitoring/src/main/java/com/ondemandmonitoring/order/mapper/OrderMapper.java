@@ -1,37 +1,35 @@
 package com.ondemandmonitoring.order.mapper;
 
 import com.ondemandmonitoring.order.domain.Order;
-import com.ondemandmonitoring.order.domain.OrderDeliverable;
+import com.ondemandmonitoring.order.dto.GeoJsonPointDto;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
-import com.ondemandmonitoring.order.dto.response.OrderDeliverableResponse;
-import com.ondemandmonitoring.order.util.GeoReader;
-import java.util.Map;
+import org.locationtech.jts.geom.Coordinate;
+import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.Point;
-import org.locationtech.jts.geom.Polygon;
+import org.locationtech.jts.geom.PrecisionModel;
 import org.mapstruct.Builder;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingConstants;
 import org.mapstruct.NullValuePropertyMappingStrategy;
 
-@Mapper(componentModel = MappingConstants.ComponentModel.SPRING, builder = @Builder(disableBuilder = true), nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+@Mapper(componentModel = MappingConstants.ComponentModel.SPRING,
+        builder = @Builder(disableBuilder = true),
+        nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
 public interface OrderMapper {
+
+    GeometryFactory GEOMETRY_FACTORY = new GeometryFactory(new PrecisionModel(), 4326);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "customer", ignore = true)
     @Mapping(target = "service", ignore = true)
     @Mapping(target = "preferredTime", ignore = true)
     @Mapping(target = "orderStatus", ignore = true)
-    @Mapping(target = "rejectReason", ignore = true)
-    @Mapping(target = "reviewBy", ignore = true)
-    @Mapping(target = "reviewAt", ignore = true)
-    @Mapping(target = "deliverables", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "version", ignore = true)
-    @Mapping(target = "point", expression = "java(toPoint(request.getLongitude(), request.getLatitude()))")
-    @Mapping(target = "targetArea", expression = "java(toPolygon(request.getCoverageArea()))")
+    @Mapping(source = "point", target = "point")
     Order toEntity(OrderCreateRequest request);
 
     @Mapping(source = "customer.id", target = "customerId")
@@ -40,36 +38,25 @@ public interface OrderMapper {
     @Mapping(source = "service.name", target = "serviceName")
     @Mapping(source = "preferredTime.id", target = "preferredTimeId")
     @Mapping(source = "preferredTime.name", target = "preferredTimeName")
-    @Mapping(source = "reviewBy.id", target = "reviewById")
-    @Mapping(source = "reviewBy.fullName", target = "reviewByName")
-    @Mapping(target = "longitude", expression = "java(toLongitude(order.getPoint()))")
-    @Mapping(target = "latitude", expression = "java(toLatitude(order.getPoint()))")
-    @Mapping(target = "coverageArea", expression = "java(toCoverageArea(order.getTargetArea()))")
-    @Mapping(source = "deliverables", target = "deliverables")
+    @Mapping(source = "point", target = "point")
     OrderCreateResponse toResponse(Order order);
 
-    @Mapping(source = "deliverableType.id", target = "deliverableTypeId")
-    @Mapping(source = "deliverableType.name", target = "deliverableTypeName")
-    @Mapping(source = "deliverableType.defaultFormat", target = "defaultFormat")
-    OrderDeliverableResponse toDeliverableResponse(OrderDeliverable entity);
-
-    default Point toPoint(Double longitude, Double latitude) {
-        return GeoReader.createPoint(longitude, latitude);
+    default Point toPoint(GeoJsonPointDto dto) {
+        if (dto == null || dto.getCoordinates() == null || dto.getCoordinates().size() < 2) {
+            return null;
+        }
+        Double longitude = dto.getCoordinates().get(0);
+        Double latitude = dto.getCoordinates().get(1);
+        if (longitude == null || latitude == null) {
+            return null;
+        }
+        return GEOMETRY_FACTORY.createPoint(new Coordinate(longitude, latitude));
     }
 
-    default Polygon toPolygon(Map<String, Object> coverageArea) {
-        return GeoReader.readPolygonFromCoverageArea(coverageArea);
-    }
-
-    default Double toLongitude(Point point) {
-        return GeoReader.getLongitude(point);
-    }
-
-    default Double toLatitude(Point point) {
-        return GeoReader.getLatitude(point);
-    }
-
-    default Map<String, Object> toCoverageArea(Polygon polygon) {
-        return GeoReader.toCoverageArea(polygon);
+    default GeoJsonPointDto toGeoJsonPointDto(Point point) {
+        if (point == null) {
+            return null;
+        }
+        return GeoJsonPointDto.of(point.getX(), point.getY());
     }
 }

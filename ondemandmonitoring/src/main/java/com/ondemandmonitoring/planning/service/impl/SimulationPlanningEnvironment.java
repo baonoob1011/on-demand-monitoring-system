@@ -9,14 +9,10 @@ import com.ondemandmonitoring.zone.repository.ZoneRepository;
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.util.Optional;
-import java.util.List;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.Point;
 import org.locationtech.jts.geom.PrecisionModel;
-import org.locationtech.jts.geom.Polygon;
-import org.locationtech.jts.geom.prep.PreparedGeometry;
-import org.locationtech.jts.geom.prep.PreparedGeometryFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
@@ -80,22 +76,6 @@ public class SimulationPlanningEnvironment implements PlanningEnvironment {
         return planningGrid;
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public PlanningEnvironment snapshot() {
-        List<RestrictedArea> restrictedAreas = zoneRepository.findAllByRestrictedTrueOrderByCodeAsc().stream()
-                .filter(Zone::isRestricted)
-                .filter(this::isCurrentSimulationZone)
-                .filter(zone -> zone.getPolygon() != null)
-                .map(zone -> new RestrictedArea(
-                        zone.getCode(),
-                        zone.getName(),
-                        zone.getPolygon(),
-                        PreparedGeometryFactory.prepare(zone.getPolygon())))
-                .toList();
-        return new SearchSnapshot(planningGrid, restrictedAreas);
-    }
-
     private Optional<Zone> findRestrictedZone(double simX, double simY) {
         Point point = GEOMETRY_FACTORY.createPoint(new Coordinate(simX, simY));
         point.setSRID(SRID);
@@ -111,48 +91,5 @@ public class SimulationPlanningEnvironment implements PlanningEnvironment {
     private boolean isCurrentSimulationZone(Zone zone) {
         return planningGrid.world().equals(zone.getSourceWorld())
                 && planningGrid.coordinateSystem().equals(zone.getCoordinateSystem());
-    }
-
-    private record RestrictedArea(
-            String code,
-            String name,
-            Polygon polygon,
-            PreparedGeometry preparedPolygon) {
-    }
-
-    private static final class SearchSnapshot implements PlanningEnvironment {
-
-        private final PlanningGrid grid;
-        private final List<RestrictedArea> restrictedAreas;
-
-        private SearchSnapshot(PlanningGrid grid, List<RestrictedArea> restrictedAreas) {
-            this.grid = grid;
-            this.restrictedAreas = List.copyOf(restrictedAreas);
-        }
-
-        @Override
-        public EnvironmentSample sample(double simX, double simY) {
-            PlanningGrid.GridSample gridSample = grid.sample(simX, simY);
-            Point point = GEOMETRY_FACTORY.createPoint(new Coordinate(simX, simY));
-            RestrictedArea restrictedArea = restrictedAreas.stream()
-                    .filter(area -> area.preparedPolygon().covers(point))
-                    .findFirst()
-                    .orElse(null);
-            return new EnvironmentSample(
-                    simX,
-                    simY,
-                    grid.contains(simX, simY),
-                    gridSample.terrainElevationM(),
-                    gridSample.obstacleHeightM(),
-                    gridSample.surfaceElevationM(),
-                    restrictedArea != null,
-                    restrictedArea == null ? null : restrictedArea.code(),
-                    restrictedArea == null ? null : restrictedArea.name());
-        }
-
-        @Override
-        public PlanningGrid grid() {
-            return grid;
-        }
     }
 }

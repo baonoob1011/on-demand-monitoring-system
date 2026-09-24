@@ -9,17 +9,15 @@ import com.ondemandmonitoring.auth.port.out.SocialIdentityProviderPort;
 import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
 import com.ondemandmonitoring.auth.port.out.AuthenticationTokens;
 import com.ondemandmonitoring.auth.infrastructure.outbox.AuthOutboxService;
-import com.ondemandmonitoring.auth.mapper.AuthenticatedUserMapper;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.user.domain.User;
+import com.ondemandmonitoring.user.dto.response.UserProfileResponse;
 import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.user.enumeration.IdentityProvider;
 import com.ondemandmonitoring.user.service.IUserService;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
-import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,15 +28,13 @@ import java.util.Locale;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class SocialAuthService {
 
-    SocialIdentityProviderPort identityProvider;
-    IdentityProviderPort cognitoUserDirectory;
-    AuthOutboxService outboxService;
-    IUserService userService;
-    RefreshTokenCookieService refreshTokenCookieService;
-    AuthenticatedUserMapper authenticatedUserMapper;
+    private final SocialIdentityProviderPort identityProvider;
+    private final IdentityProviderPort cognitoUserDirectory;
+    private final AuthOutboxService outboxService;
+    private final IUserService userService;
+    private final RefreshTokenCookieService refreshTokenCookieService;
 
     @Transactional
     public AuthResponse sync(SocialSyncRequest request, HttpServletResponse response) {
@@ -100,10 +96,19 @@ public class SocialAuthService {
                     responseTokens.username());
         }
 
+        UserProfileResponse profile = UserProfileResponse.builder()
+                .id(user.getId())
+                .fullName(user.getFullName())
+                .email(user.getEmail())
+                .emailVerified(user.getEmailVerified())
+                .role(user.getRole().getCode())
+                .isActive(user.getIsActive())
+                .build();
+
         return AuthResponse.builder()
                 .accessToken(responseTokens.accessToken())
                 .expiresIn(responseTokens.expiresIn())
-                .user(authenticatedUserMapper.toResponse(user))
+                .user(profile)
                 .build();
     }
 

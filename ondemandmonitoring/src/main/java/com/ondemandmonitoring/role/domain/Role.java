@@ -8,17 +8,16 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.time.OffsetDateTime;
-import java.util.UUID;
-import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import lombok.experimental.FieldDefaults;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+
+import java.time.OffsetDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "roles")
@@ -27,35 +26,34 @@ import org.hibernate.annotations.UpdateTimestamp;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@FieldDefaults(level = AccessLevel.PRIVATE)
 public class Role {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "role_id")
-    UUID id;
+    private UUID id;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "code", nullable = false, unique = true, length = 30)
-    RoleCode code;
+    private RoleCode code;
 
     @Column(name = "name", nullable = false, length = 100)
-    String name;
+    private String name;
 
     @Column(name = "description", length = 255)
-    String description;
+    private String description;
 
     @Column(name = "is_system_role", nullable = false)
-    boolean systemRole;
+    private boolean systemRole;
 
     @Column(name = "is_active", nullable = false)
-    boolean active;
+    private boolean active;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
-    OffsetDateTime createdAt;
+    private OffsetDateTime createdAt;
 
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
-    OffsetDateTime updatedAt;
+    private OffsetDateTime updatedAt;
 }

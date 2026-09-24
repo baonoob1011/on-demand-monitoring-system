@@ -18,7 +18,6 @@ import time
 import tty
 import sys
 import grpc
-import httpx
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from mavsdk import System
 from mavsdk.action import ActionError
@@ -28,23 +27,15 @@ from pathlib import Path
 from dotenv import load_dotenv
 from video.video_recorder import RecordingResult, VideoRecorder
 from battery_simulator import BatterySimulator, preflight_battery_check
-from media_uploader import BackendUrlResolver
-from media_review import LocalMediaLibrary
+from media_uploader import BackendUrlResolver, MediaUploader
 from thermal_camera_gateway import ThermalCameraGateway
 
-def resolve_project_root() -> Path:
-    configured = os.getenv("PROJECT_PATH")
-    if configured:
-        return Path(configured)
-
-    source_candidate = Path(__file__).resolve().parent.parent
-    if (source_candidate / "Forest3D").exists() and (source_candidate / "ondemandmonitoring").exists():
-        return source_candidate
-
-    return Path.cwd()
-
-
-PROJECT_ROOT = resolve_project_root()
+PROJECT_ROOT = Path(
+    os.getenv(
+        "PROJECT_PATH",
+        "/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system",
+    )
+)
 
 DRONE_DIR = PROJECT_ROOT / "drone"
 
@@ -88,7 +79,6 @@ else:
 
 class MotionOwner(Enum):
     MANUAL = "MANUAL"
-    AUTO_PLAN = "AUTO_PLAN"
     EMERGENCY = "EMERGENCY"
 
 
@@ -162,17 +152,8 @@ VERTICAL_SPEED_M_S = float(
     os.getenv("CONTROL_VERTICAL_SPEED_M_S", "500.0")
 )
 YAW_STEP_DEG = float(
-    os.getenv("CONTROL_YAW_STEP_DEG", "5.0")
+    os.getenv("CONTROL_YAW_STEP_DEG", "30.0")
 )
-AUTO_PLAN_REACHED_RADIUS_M = float(os.getenv("AUTO_PLAN_REACHED_RADIUS_M", "5.0"))
-AUTO_PLAN_ALTITUDE_TOLERANCE_M = float(os.getenv("AUTO_PLAN_ALTITUDE_TOLERANCE_M", "4.0"))
-AUTO_PLAN_MAX_SPEED_M_S = float(os.getenv("AUTO_PLAN_MAX_SPEED_M_S", "8.0"))
-AUTO_PLAN_MIN_SPEED_M_S = float(os.getenv("AUTO_PLAN_MIN_SPEED_M_S", "1.2"))
-AUTO_PLAN_SLOWDOWN_RADIUS_M = float(os.getenv("AUTO_PLAN_SLOWDOWN_RADIUS_M", "35.0"))
-AUTO_PLAN_VERTICAL_MAX_SPEED_M_S = float(os.getenv("AUTO_PLAN_VERTICAL_MAX_SPEED_M_S", "0.5"))
-AUTO_PLAN_VERTICAL_GAIN = float(os.getenv("AUTO_PLAN_VERTICAL_GAIN", "0.08"))
-AUTO_PLAN_SETPOINT_SMOOTHING = float(os.getenv("AUTO_PLAN_SETPOINT_SMOOTHING", "0.35"))
-AUTO_PLAN_ALTITUDE_RAMP_M = float(os.getenv("AUTO_PLAN_ALTITUDE_RAMP_M", "1.0"))
 
 SPEED_ADJUST_STEP_M_S = float(
     os.getenv("CONTROL_SPEED_ADJUST_STEP_M_S", "200.0")
@@ -264,6 +245,21 @@ BACKEND_BASE_URL = os.getenv(
     "http://localhost:8080",
 ).rstrip("/")
 
+DEVICE_CODE = os.getenv(
+    "DEVICE_CODE",
+    "DRONE-01",
+)
+
+DRONE_ID = os.getenv(
+    "DRONE_ID",
+    DEVICE_CODE,
+)
+
+MISSION_ID = os.getenv(
+    "MISSION_ID",
+    "MISSION_001",
+)
+
 SIM_WORLD = os.getenv(
     "SIM_WORLD",
     "legacy",
@@ -308,6 +304,7 @@ VIDEO_RECORDING_DIR = Path(
 )
 VIDEO_RECORDING_FPS = float(os.getenv("VIDEO_RECORDING_FPS", "15.0"))
 VIDEO_RECORDING_QUEUE_SIZE = int(os.getenv("VIDEO_RECORDING_QUEUE_SIZE", "4"))
+VIDEO_UPLOAD_TIMEOUT_S = float(os.getenv("VIDEO_UPLOAD_TIMEOUT_S", "120.0"))
 CAMERA_STREAM_FPS = float(os.getenv("CAMERA_STREAM_FPS", "15.0"))
 CAMERA_STREAM_MAX_WIDTH = int(os.getenv("CAMERA_STREAM_MAX_WIDTH", "0"))
 CAMERA_LEGACY_DOWN_SENSOR_ENABLED = (
@@ -400,122 +397,6 @@ WEATHER_PRESETS = {
         "wind": "x: 14 y: 5 z: 0",
     },
 }
-CURRENT_WEATHER_PRESET = "CLEAR_DAY"
-CURRENT_WEATHER_LOCK = threading.Lock()
-
-
-WEATHER_METRICS = {
-    "CLEAR_DAY": {
-        "status": "PASS",
-        "windSpeedMps": 3.2,
-        "windGustMps": 4.5,
-        "precipitationMmH": 0.0,
-        "visibilityKm": 14.0,
-        "temperatureC": 30.0,
-        "humidityPercent": 62,
-        "advisory": "Trời quang, điều kiện bay mô phỏng ổn định.",
-    },
-    "SUNSET": {
-        "status": "PASS",
-        "windSpeedMps": 3.8,
-        "windGustMps": 5.2,
-        "precipitationMmH": 0.0,
-        "visibilityKm": 10.5,
-        "temperatureC": 28.0,
-        "humidityPercent": 68,
-        "advisory": "Ánh sáng thấp dần, vẫn đủ điều kiện bay mô phỏng.",
-    },
-    "NIGHT": {
-        "status": "WARN",
-        "windSpeedMps": 3.0,
-        "windGustMps": 4.0,
-        "precipitationMmH": 0.0,
-        "visibilityKm": 4.5,
-        "temperatureC": 25.0,
-        "humidityPercent": 72,
-        "advisory": "Bay đêm làm giảm tầm nhìn, cần bật đèn và giữ độ cao an toàn.",
-    },
-    "CLOUDY": {
-        "status": "PASS",
-        "windSpeedMps": 5.8,
-        "windGustMps": 7.9,
-        "precipitationMmH": 0.6,
-        "visibilityKm": 12.6,
-        "temperatureC": 29.0,
-        "humidityPercent": 76,
-        "advisory": "Nhiều mây nhẹ, đủ điều kiện bay mô phỏng.",
-    },
-    "FOGGY": {
-        "status": "WARN",
-        "windSpeedMps": 2.4,
-        "windGustMps": 3.5,
-        "precipitationMmH": 0.2,
-        "visibilityKm": 2.8,
-        "temperatureC": 26.0,
-        "humidityPercent": 88,
-        "advisory": "Sương mù làm giảm tầm nhìn, cần cân nhắc hoãn bay.",
-    },
-    "WINDY": {
-        "status": "WARN",
-        "windSpeedMps": 12.6,
-        "windGustMps": 15.2,
-        "precipitationMmH": 0.0,
-        "visibilityKm": 9.0,
-        "temperatureC": 28.0,
-        "humidityPercent": 70,
-        "advisory": "Gió mạnh, cần giảm trần bay hoặc hoãn nhiệm vụ.",
-    },
-    "LIGHT_RAIN": {
-        "status": "WARN",
-        "windSpeedMps": 6.1,
-        "windGustMps": 8.4,
-        "precipitationMmH": 1.8,
-        "visibilityKm": 6.8,
-        "temperatureC": 27.0,
-        "humidityPercent": 84,
-        "advisory": "Mưa nhẹ, kiểm tra camera/payload trước khi bay.",
-    },
-    "HEAVY_RAIN": {
-        "status": "FAIL",
-        "windSpeedMps": 14.8,
-        "windGustMps": 19.5,
-        "precipitationMmH": 8.6,
-        "visibilityKm": 2.0,
-        "temperatureC": 25.0,
-        "humidityPercent": 94,
-        "advisory": "Mưa lớn và gió mạnh, không đủ điều kiện cất cánh.",
-    },
-}
-
-
-def build_weather_preflight_status() -> dict:
-    with CURRENT_WEATHER_LOCK:
-        preset_name = CURRENT_WEATHER_PRESET
-    preset = WEATHER_PRESETS.get(preset_name, WEATHER_PRESETS["CLEAR_DAY"])
-    metrics = WEATHER_METRICS.get(preset_name, WEATHER_METRICS["CLEAR_DAY"])
-    status = metrics["status"]
-    safe_to_fly = status == "PASS"
-    summary = (
-        "Thời tiết phù hợp để cất cánh."
-        if safe_to_fly
-        else "Thời tiết trong mô phỏng cần chú ý trước khi cất cánh."
-    )
-    return {
-        "source": "flight-controller-simulation",
-        "weatherPreset": preset_name,
-        "weatherLabel": preset["label"],
-        "status": status,
-        "safeToFly": safe_to_fly,
-        "summary": summary,
-        "windSpeedMps": metrics["windSpeedMps"],
-        "windGustMps": metrics["windGustMps"],
-        "precipitationMmH": metrics["precipitationMmH"],
-        "visibilityKm": metrics["visibilityKm"],
-        "temperatureC": metrics["temperatureC"],
-        "humidityPercent": metrics["humidityPercent"],
-        "advisories": [metrics["advisory"]],
-        "checkedAt": datetime.now(timezone.utc).isoformat(),
-    }
 
 class MavsdkAckNoiseFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
@@ -682,9 +563,6 @@ def apply_weather_key(key: str) -> bool:
         print(f"[WEATHER] Applied {preset['label']} (lighting only)", flush=True)
     else:
         print(f"[WEATHER] Applied {preset['label']}", flush=True)
-    with CURRENT_WEATHER_LOCK:
-        global CURRENT_WEATHER_PRESET
-        CURRENT_WEATHER_PRESET = preset_name
     return True
 
 
@@ -692,7 +570,7 @@ class CameraGateway:
     def __init__(
         self,
         video_recorder: VideoRecorder | None = None,
-        media_library: LocalMediaLibrary | None = None,
+        media_uploader: MediaUploader | None = None,
     ) -> None:
         self.latest_frames: dict[str, GzImage] = {}
         self.latest_frame_time_s: dict[str, float] = {}
@@ -702,7 +580,7 @@ class CameraGateway:
         self.lock = threading.Lock()
         self.node = None
         self.video_recorder = video_recorder
-        self.media_library = media_library
+        self.media_uploader = media_uploader
 
     def start(self) -> None:
         if Node is None or GzImage is None:
@@ -711,7 +589,9 @@ class CameraGateway:
             return
 
         self.node = Node()
-        topics = {"FRONT": CAMERA_FRONT_TOPIC, "DOWN": CAMERA_DOWN_TOPIC}
+        topics = {"FRONT": CAMERA_FRONT_TOPIC}
+        if CAMERA_LEGACY_DOWN_SENSOR_ENABLED:
+            topics["DOWN"] = CAMERA_DOWN_TOPIC
         for mode, topic in topics.items():
             self.node.subscribe(GzImage, topic, self._make_frame_handler(mode))
             print(f"[CAMERA] Listening to {mode.lower()} sensor: {topic}")
@@ -794,25 +674,25 @@ class CameraGateway:
                 self.latest_jpegs[cache_key] = (version, jpeg)
         return jpeg
 
-    async def capture_for_review(self) -> None:
+    async def capture_and_upload(self) -> None:
         print("[CAMERA] Drone camera capture requested")
         jpeg = await asyncio.to_thread(self._latest_jpeg)
         if jpeg is None:
             print("[CAMERA] No camera frame available")
             return
 
-        if self.media_library is None:
-            print("[CAMERA] Local media library unavailable")
+        if self.media_uploader is None:
+            print("[CAMERA] Media uploader unavailable")
             return
-        item = await asyncio.to_thread(self.media_library.capture_image, jpeg)
-        print(f"[CAMERA] Captured for operator review id={item['localMediaId']}", flush=True)
 
-    async def retain_recorded_video(self, recording: RecordingResult) -> None:
-        if self.media_library is None:
-            print("[VIDEO] Local media library unavailable", flush=True)
+        await self.media_uploader.upload_image(jpeg)
+
+    async def upload_recorded_video(self, recording: RecordingResult) -> None:
+        if self.media_uploader is None:
+            print("[VIDEO] Media uploader unavailable", flush=True)
             return
-        item = await asyncio.to_thread(self.media_library.register_video, recording.path)
-        print(f"[VIDEO] Captured for operator review id={item['localMediaId']}", flush=True)
+
+        await self.media_uploader.upload_video(recording)
 
 
 class CameraOrientationController:
@@ -829,8 +709,14 @@ class CameraOrientationController:
             return
         self._last_toggle_s = now
 
-        next_mode = "FRONT" if self.current_mode == "DOWN" else "DOWN"
-        self.set_mode(next_mode)
+        next_pitch = self.current_pitch_deg + self._pitch_direction * CAMERA_PITCH_STEP_DEG
+        if next_pitch <= -90.0:
+            next_pitch = -90.0
+            self._pitch_direction = 1.0
+        elif next_pitch >= 0.0:
+            next_pitch = 0.0
+            self._pitch_direction = -1.0
+        self.set_pitch(next_pitch)
 
     def set_mode(self, mode: str) -> None:
         normalized = mode.strip().upper()
@@ -844,7 +730,8 @@ class CameraOrientationController:
             return
         normalized = "DOWN" if clamped_pitch <= -89.5 else "FRONT"
         if self.on_mode_change is not None:
-            self.on_mode_change(normalized)
+            # The movable front sensor supplies every intermediate angle.
+            self.on_mode_change("FRONT")
         self.current_mode = normalized
         self.current_pitch_deg = clamped_pitch
         self._write_state(normalized, clamped_pitch)
@@ -862,14 +749,9 @@ class CameraOrientationController:
             print(f"[CAMERA] State write failed: {exc}", flush=True)
 
     def request_pitch(self, pitch_deg: float) -> bool:
-        # UI pitch is expressed as 0..-90 degrees. Use the configured Gazebo
-        # joint positions so the sign matches the actual simulation model.
-        down_ratio = abs(max(-90.0, min(0.0, pitch_deg))) / 90.0
-        joint_position = (
-            CAMERA_FRONT_JOINT_POSITION_RAD
-            + (CAMERA_DOWN_JOINT_POSITION_RAD - CAMERA_FRONT_JOINT_POSITION_RAD)
-            * down_ratio
-        )
+        # UI pitch is expressed as 0..-90 degrees, while this Gazebo joint
+        # rotates in the positive Y direction to look downward.
+        joint_position = math.radians(-pitch_deg)
         topics = tuple(dict.fromkeys((GAZEBO_CAMERA_PITCH_TOPIC, GAZEBO_CAMERA_JOINT_TOPIC)))
         sent = False
         errors: list[str] = []
@@ -1101,139 +983,6 @@ CONTROL_COMMAND_KEYS = {
 }
 
 
-def normalize_auto_plan_waypoints(payload: dict) -> list[dict]:
-    raw_points = payload.get("waypoints")
-    if not isinstance(raw_points, list):
-        return []
-    normalized = []
-    for index, point in enumerate(raw_points):
-        if not isinstance(point, dict):
-            continue
-        try:
-            sim_x = float(point["simX"])
-            sim_y = float(point["simY"])
-            altitude_m = float(point.get("altitudeM", 0.0))
-        except (KeyError, TypeError, ValueError):
-            continue
-        if not all(math.isfinite(value) for value in (sim_x, sim_y, altitude_m)):
-            continue
-        speed = point.get("speedMps")
-        try:
-            speed_mps = float(speed) if speed is not None else AUTO_PLAN_MAX_SPEED_M_S
-        except (TypeError, ValueError):
-            speed_mps = AUTO_PLAN_MAX_SPEED_M_S
-        if not math.isfinite(speed_mps) or speed_mps <= 0.0:
-            speed_mps = AUTO_PLAN_MAX_SPEED_M_S
-        normalized.append(
-            {
-                "sequence": int(point.get("sequence", index)),
-                "simX": sim_x,
-                "simY": sim_y,
-                "altitudeM": max(0.0, altitude_m),
-                "speedMps": min(speed_mps, AUTO_PLAN_MAX_SPEED_M_S),
-                "reason": str(point.get("reason", "CRUISE")),
-            }
-        )
-    return sorted(normalized, key=lambda item: item["sequence"])
-
-
-class PreflightPersistenceBridge:
-    def __init__(
-        self,
-        backend_urls: BackendUrlResolver,
-        mission_id: str,
-        access_token: str | None = None,
-    ) -> None:
-        self.backend_urls = backend_urls
-        self.mission_id = mission_id
-        self.access_token = access_token
-        self.run_id: str | None = None
-        self.base_url: str | None = None
-        self.sent_items: dict[str, tuple[str, str]] = {}
-        self.warned_unavailable = False
-
-    def start(self) -> str | None:
-        self.run_id = None
-        self.base_url = None
-        self.sent_items.clear()
-
-        for base_url in self.backend_urls.candidates():
-            try:
-                response = httpx.post(
-                    f"{base_url}/api/missions/{self.mission_id}/preflight-checks",
-                    headers=self._headers(),
-                    timeout=1.5,
-                )
-                if response.status_code >= 400:
-                    continue
-
-                payload = response.json()
-                data = payload.get("data") if isinstance(payload, dict) else None
-                run_id = data.get("id") if isinstance(data, dict) else None
-                if not run_id:
-                    continue
-
-                self.run_id = str(run_id)
-                self.base_url = base_url
-                self.warned_unavailable = False
-                print(
-                    f"[PREFLIGHT-DB] Created run={self.run_id} mission={self.mission_id}",
-                    flush=True,
-                )
-                return self.run_id
-            except (httpx.HTTPError, ValueError):
-                continue
-
-        if not self.warned_unavailable:
-            print(
-                f"[PREFLIGHT-DB] Not saved. Backend unavailable or mission missing: {self.mission_id}",
-                flush=True,
-            )
-            self.warned_unavailable = True
-        return None
-
-    def sync(self, payload: dict) -> None:
-        if not self.run_id or not self.base_url:
-            return
-
-        for item in payload.get("checks", []):
-            check_type = str(item.get("key", "")).strip()
-            status = self._to_backend_status(str(item.get("status", "")).strip().upper())
-            message = str(item.get("message", "")).strip()
-
-            if not check_type or status is None:
-                continue
-
-            state = (status, message)
-            if self.sent_items.get(check_type) == state:
-                continue
-
-            try:
-                response = httpx.patch(
-                    f"{self.base_url}/api/preflight-checks/{self.run_id}/items/{check_type}",
-                    headers=self._headers(),
-                    json={"status": status, "message": message},
-                    timeout=1.0,
-                )
-                if response.status_code < 400:
-                    self.sent_items[check_type] = state
-            except httpx.HTTPError:
-                return
-
-    def _headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self.access_token}"} if self.access_token else {}
-
-    @staticmethod
-    def _to_backend_status(status: str) -> str | None:
-        if status == "PASS":
-            return "PASSED"
-        if status in {"FAIL", "WARN"}:
-            return "FAILED"
-        if status in {"PENDING", "CHECKING"}:
-            return status
-        return None
-
-
 class FlightControlApi:
     def __init__(
         self,
@@ -1241,19 +990,13 @@ class FlightControlApi:
         commands: "queue.Queue[str]",
         status_provider=None,
         preflight_provider=None,
-        preflight_persistence=None,
         thermal: ThermalCameraGateway | None = None,
-        media_library: LocalMediaLibrary | None = None,
-        session_binder=None,
     ) -> None:
         self.camera = camera
         self.commands = commands
         self.status_provider = status_provider
         self.preflight_provider = preflight_provider
-        self.preflight_persistence = preflight_persistence
         self.thermal = thermal
-        self.media_library = media_library
-        self.session_binder = session_binder
         self.preflight_check_id: str | None = None
         self.preflight_started_at_s: float | None = None
         self.server: ThreadingHTTPServer | None = None
@@ -1288,52 +1031,6 @@ class FlightControlApi:
                 self.end_headers()
 
             def do_GET(self) -> None:
-                if self.path == "/api/media/local":
-                    self._write_json(200, {"media": owner.media_library.list_items() if owner.media_library else []})
-                    return
-                if self.path.startswith("/api/media/local/") and self.path.endswith("/preview"):
-                    local_id = self.path.split("/")[4]
-                    try:
-                        item = owner.media_library.get(local_id)
-                        source = Path(item["localPath"])
-                        size = source.stat().st_size
-                        start, end = 0, size - 1
-                        range_header = self.headers.get("Range")
-                        if range_header:
-                            if not range_header.startswith("bytes=") or "," in range_header:
-                                self._write_json(416, {"error": "Invalid range"})
-                                return
-                            first, _, last = range_header[6:].partition("-")
-                            if not first:
-                                self._write_json(416, {"error": "Invalid range"})
-                                return
-                            start = int(first)
-                            end = int(last) if last else size - 1
-                            if start < 0 or end < start or end >= size:
-                                self._write_json(416, {"error": "Range outside media"})
-                                return
-                        self.send_response(206 if range_header else 200)
-                        self._cors()
-                        self.send_header("Content-Type", item["contentType"])
-                        self.send_header("Content-Length", str(end - start + 1))
-                        self.send_header("Accept-Ranges", "bytes")
-                        if range_header:
-                            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
-                        self.send_header("Cache-Control", "no-store")
-                        self.end_headers()
-                        with source.open("rb") as media_file:
-                            media_file.seek(start)
-                            remaining = end - start + 1
-                            while remaining and (chunk := media_file.read(min(1024 * 1024, remaining))):
-                                self.wfile.write(chunk)
-                                remaining -= len(chunk)
-                    except (KeyError, FileNotFoundError):
-                        self._write_json(404, {"error": "Media not found"})
-                    except ValueError:
-                        self._write_json(416, {"error": "Invalid range"})
-                    except (BrokenPipeError, ConnectionResetError):
-                        pass
-                    return
                 if self.path.startswith("/api/control/status"):
                     status = {"online": True}
                     if owner.status_provider is not None:
@@ -1342,10 +1039,6 @@ class FlightControlApi:
                         except Exception as exc:
                             status["statusError"] = str(exc)
                     self._write_json(200, status)
-                    return
-
-                if self.path.startswith("/api/weather/preflight-check"):
-                    self._write_json(200, build_weather_preflight_status())
                     return
 
                 if self.path.startswith("/api/preflight/"):
@@ -1395,53 +1088,8 @@ class FlightControlApi:
                         return
 
             def do_POST(self) -> None:
-                if self.path == "/api/control/session":
-                    try:
-                        length = int(self.headers.get("Content-Length", "0"))
-                        if length <= 0 or length > 16_384:
-                            self._write_json(400, {"error": "Invalid session payload"})
-                            return
-                        payload = json.loads(self.rfile.read(length))
-                        if owner.session_binder is None:
-                            self._write_json(503, {"error": "Session binding unavailable"})
-                            return
-                        result = owner.session_binder(payload)
-                        self._write_json(200, {"ok": True, **result})
-                    except (ValueError, json.JSONDecodeError) as exc:
-                        self._write_json(400, {"error": str(exc)[:500]})
-                    return
-
-                if self.path.startswith("/api/media/local/"):
-                    local_id = self.path.split("/")[4]
-                    try:
-                        length = int(self.headers.get("Content-Length", "0"))
-                        if length > 200000:
-                            self._write_json(413, {"error": "Upload plan too large"})
-                            return
-                        payload = json.loads(self.rfile.read(length) or b"{}")
-                        if self.path.endswith("/discard"):
-                            owner.media_library.discard(local_id)
-                            self._write_json(200, {"ok": True})
-                        elif self.path.endswith("/transfer"):
-                            result = owner.media_library.transfer(local_id, payload)
-                            self._write_json(200, {"ok": True, **result})
-                        else:
-                            self._write_json(404, {"error": "Unknown media action"})
-                    except KeyError:
-                        self._write_json(404, {"error": "Media not found"})
-                    except (ValueError, httpx.HTTPError) as exc:
-                        self._write_json(400, {"error": str(exc)[:500]})
-                    return
-
-                if self.path.startswith("/api/weather/preflight-check"):
-                    self._write_json(200, build_weather_preflight_status())
-                    return
                 if self.path.startswith("/api/preflight/check"):
-                    persisted_check_id = None
-                    if owner.preflight_persistence is not None:
-                        persisted_check_id = owner.preflight_persistence.start()
-
-                    owner.preflight_check_id = persisted_check_id or f"PF-{int(time.time() * 1000)}"
+                    owner.preflight_check_id = f"PF-{int(time.time() * 1000)}"
                     owner.preflight_started_at_s = time.monotonic()
                     payload = {
                         "checkId": owner.preflight_check_id,
@@ -1464,55 +1112,12 @@ class FlightControlApi:
                     payload = {}
 
                 command = str(payload.get("command", "")).strip().lower()
-                if command == "weather_set":
-                    requested_preset = str(payload.get("preset", "")).strip().upper()
-                    requested_key = str(payload.get("weatherKey", "")).strip().lower()
-                    weather_key = requested_key or next(
-                        (
-                            key
-                            for key, preset_name in WEATHER_KEY_PRESETS.items()
-                            if preset_name == requested_preset
-                        ),
-                        "",
-                    )
-                    if weather_key not in WEATHER_KEY_PRESETS:
-                        self._write_json(400, {"ok": False, "error": "unknown weather preset"})
-                        return
-                    ok = apply_weather_key(weather_key)
-                    status = build_weather_preflight_status()
-                    self._write_json(
-                        202,
-                        {
-                            "ok": ok,
-                            "command": command,
-                            "weather": status,
-                            "message": "Weather preset stored"
-                            if ok
-                            else "Weather preset stored, but Gazebo visual update failed",
-                        },
-                    )
-                    return
-
-                if command in {"photo", "video_toggle"} and (
-                    owner.media_library is None or not owner.media_library.mission_id
-                ):
-                    self._write_json(409, {"ok": False, "error": "Bind an assigned mission before capturing media"})
-                    return
-                if command == "auto_plan_start":
-                    waypoints = normalize_auto_plan_waypoints(payload)
-                    if len(waypoints) < 1:
-                        self._write_json(400, {"ok": False, "error": "missing waypoints"})
-                        return
-                    owner.commands.put({"type": "auto_plan_start", "waypoints": waypoints})
-                    self._write_json(202, {"ok": True, "command": command, "waypoints": len(waypoints)})
-                    return
-
                 key = CONTROL_COMMAND_KEYS.get(command)
                 if key is None:
                     self._write_json(400, {"ok": False, "error": "unknown command"})
                     return
 
-                owner.commands.put({"type": "key", "key": key})
+                owner.commands.put(key)
                 self._write_json(202, {"ok": True, "command": command})
 
         try:
@@ -2502,19 +2107,19 @@ async def main() -> None:
     connection_manager = MavsdkConnectionManager()
     drone = await connection_manager.connect()
     backend_urls = BackendUrlResolver(BACKEND_BASE_URL)
-    active_mission_id = None
-    active_mission_code = None
-    active_drone_id = None
-    media_root = Path(os.getenv("LOCAL_MEDIA_DIR", "/tmp/forest3d_drone_media"))
-    media_library = LocalMediaLibrary(
-        media_root, active_mission_id, active_drone_id)
+    media_uploader = MediaUploader(
+        backend_urls,
+        DRONE_ID,
+        MISSION_ID,
+        VIDEO_UPLOAD_TIMEOUT_S,
+    )
 
     video_recorder = VideoRecorder(
         VIDEO_RECORDING_DIR,
         fps=VIDEO_RECORDING_FPS,
         queue_size=VIDEO_RECORDING_QUEUE_SIZE,
     )
-    camera = CameraGateway(video_recorder, media_library)
+    camera = CameraGateway(video_recorder, media_uploader)
     camera.start()
     thermal = ThermalCameraGateway(backend_urls.candidates())
     thermal_node = None
@@ -2592,7 +2197,6 @@ async def main() -> None:
     )
     avoidance = None
     lidar = None
-    lidar_ui_enabled = False
     safety_sensor_enabled = (
     os.getenv("SAFETY_SENSOR_ENABLED", "false").strip().lower()
         in {"1", "true", "yes", "on"}
@@ -2612,11 +2216,6 @@ async def main() -> None:
     current_health_update_s: float | None = None
     local_position_update_s: float | None = None
     local_position_ready = False
-    auto_plan_points: list[dict] = []
-    auto_plan_index = 0
-    auto_plan_active = False
-    auto_plan_status = "IDLE"
-    auto_plan_desired_altitude_m: float | None = None
     safety_speed_scale = 1.0
     simulated_battery = BatterySimulator(
         float(os.getenv("SIM_BATTERY_INITIAL_PERCENT", "100.0")),
@@ -2755,7 +2354,7 @@ async def main() -> None:
         completed = sum(1 for item in checks if item["status"] in {"PASS", "WARN", "FAIL"})
         critical_failures = [item for item in checks if item["critical"] and item["status"] == "FAIL"]
         overall = "FAILED" if critical_failures else "READY"
-        payload = {
+        return {
             "checkId": check_id,
             "status": overall,
             "progress": round((completed / len(checks)) * 100),
@@ -2763,9 +2362,6 @@ async def main() -> None:
             "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "checks": checks,
         }
-        if control_api.preflight_persistence is not None:
-            control_api.preflight_persistence.sync(payload)
-        return payload
 
     def api_status() -> dict:
         battery_snapshot = simulated_battery.snapshot()
@@ -2780,9 +2376,8 @@ async def main() -> None:
         )
         thermal.update_pose(sim_x_m, sim_y_m, max(0.0, -current_local_down_m))
         status = {
-            "missionId": active_mission_id,
-            "missionCode": active_mission_code,
-            "deviceCode": active_drone_id,
+            "missionId": MISSION_ID,
+            "deviceCode": DEVICE_CODE,
             "positionReady": local_position_ready,
             "positionNed": {
                 "northM": current_local_north_m,
@@ -2795,7 +2390,6 @@ async def main() -> None:
             },
             "yawDeg": current_yaw_deg,
             "altitudeM": max(0.0, -current_local_down_m),
-            "inAir": current_in_air,
             "speedMps": horizontal_speed,
             "batteryPercent": round(battery_snapshot.battery_percent, 1),
             "batteryState": battery_snapshot.battery_state,
@@ -2828,122 +2422,12 @@ async def main() -> None:
                 "rightMps": current_right_m_s,
                 "downMps": current_down_m_s,
             },
-            "autoPlan": {
-                "active": auto_plan_active,
-                "status": auto_plan_status,
-                "currentIndex": auto_plan_index,
-                "total": len(auto_plan_points),
-            },
             "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
-        if lidar is not None and hasattr(lidar, "snapshot"):
-            lidar_state, lidar_status, lidar_direction = lidar.snapshot()
-            if lidar_state is not None:
-                status["lidar"] = {
-                    "enabled": lidar_ui_enabled or safety_sensor_enabled,
-                    "available": bool(getattr(lidar, "available", False)),
-                    "status": lidar_status,
-                    "direction": lidar_direction,
-                    "rangeMaxM": float(os.getenv("LIDAR_MAX_RANGE_M", "500.0")),
-                    "frontM": lidar_state.front,
-                    "frontLeftM": lidar_state.front_left,
-                    "frontRightM": lidar_state.front_right,
-                    "leftM": lidar_state.left,
-                    "rightM": lidar_state.right,
-                    "backM": lidar_state.back,
-                    "nearestM": lidar_state.nearest_distance,
-                    "nearestAngleDeg": lidar_state.nearest_angle,
-                    "nearestDirection": lidar_state.nearest_direction,
-                    "scanAgeS": lidar.latest_scan_age_s() if hasattr(lidar, "latest_scan_age_s") else None,
-                }
-        elif lidar_ui_enabled:
-            status["lidar"] = {
-                "enabled": True,
-                "available": False,
-                "status": "STARTING",
-                "direction": "NONE",
-                "rangeMaxM": float(os.getenv("LIDAR_MAX_RANGE_M", "500.0")),
-                "scanAgeS": None,
-            }
         status.update(thermal.status())
         return status
 
-    def bind_control_session(payload: dict) -> dict:
-        nonlocal active_mission_id, active_mission_code, active_drone_id, media_library
-        mission_id = str(payload.get("missionId", "")).strip()
-        drone_code = str(payload.get("droneCode", "")).strip()
-        access_token = str(payload.get("accessToken", "")).strip()
-        if not mission_id or len(mission_id) > 255:
-            raise ValueError("missionId is required")
-        if not drone_code or len(drone_code) > 50:
-            raise ValueError("droneCode is required")
-        if not access_token or len(access_token) > 4096 or any(char.isspace() for char in access_token):
-            raise ValueError("A valid operator access token is required")
-        if video_recorder.is_recording() or current_in_air:
-            if mission_id != active_mission_id or drone_code != active_drone_id:
-                raise ValueError("Cannot switch control session while recording or in flight")
-
-        assigned_mission = None
-        backend_reachable = False
-        token_rejected = False
-        for base_url in backend_urls.candidates():
-            try:
-                response = httpx.get(
-                    f"{base_url}/api/missions/mine",
-                    headers={"Authorization": f"Bearer {access_token}"},
-                    timeout=2.0,
-                )
-                if response.status_code in (401, 403):
-                    token_rejected = True
-                    continue
-                if response.status_code != 200:
-                    continue
-                backend_reachable = True
-                body = response.json()
-                missions = body.get("data", []) if isinstance(body, dict) else []
-                assigned_mission = next(
-                    (item for item in missions if str(item.get("id", "")) == mission_id),
-                    None,
-                )
-                if assigned_mission is not None:
-                    break
-            except (httpx.HTTPError, ValueError):
-                continue
-        if assigned_mission is None:
-            if not backend_reachable:
-                if token_rejected:
-                    raise ValueError("Backend rejected the operator access token; sign in again")
-                raise ValueError("Flight Controller cannot reach the backend mission API")
-            raise ValueError("Mission is not assigned to the authenticated operator")
-        assigned_drone = str(assigned_mission.get("droneCode") or "").strip()
-        if not assigned_drone:
-            raise ValueError("Mission has no assigned drone code in the backend")
-        if assigned_drone != drone_code:
-            raise ValueError("Drone does not match the mission assignment")
-
-        active_mission_id = mission_id
-        active_mission_code = str(assigned_mission.get("missionCode") or "").strip() or None
-        active_drone_id = assigned_drone
-        media_library = LocalMediaLibrary(media_root, mission_id, assigned_drone, active_mission_code)
-        camera.media_library = media_library
-        control_api.media_library = media_library
-        control_api.preflight_persistence = PreflightPersistenceBridge(
-            backend_urls, mission_id, access_token)
-        control_api.preflight_check_id = None
-        control_api.preflight_started_at_s = None
-        print(f"[SESSION] Bound mission={active_mission_code or mission_id} id={mission_id} drone={assigned_drone}", flush=True)
-        return {"missionId": mission_id, "missionCode": active_mission_code, "droneCode": assigned_drone}
-
-    control_api = FlightControlApi(
-        camera,
-        api_commands,
-        api_status,
-        build_preflight_status,
-        None,
-        thermal,
-        media_library,
-        bind_control_session,
-    )
+    control_api = FlightControlApi(camera, api_commands, api_status, build_preflight_status, thermal)
     control_api.start()
     print(
         f"[SAFETY] Sensor default -> "
@@ -3066,156 +2550,6 @@ async def main() -> None:
     def force_manual_control() -> None:
         set_motion_owner(MotionOwner.MANUAL)
 
-    def stop_auto_plan(reason: str = "stopped") -> None:
-        nonlocal auto_plan_active, auto_plan_points, auto_plan_index, auto_plan_status
-        nonlocal auto_plan_desired_altitude_m
-        if auto_plan_active:
-            print(f"[AUTO-PLAN] {reason}", flush=True)
-        auto_plan_active = False
-        auto_plan_points = []
-        auto_plan_index = 0
-        auto_plan_status = reason
-        auto_plan_desired_altitude_m = None
-
-    def start_auto_plan(points: list[dict]) -> None:
-        nonlocal auto_plan_active, auto_plan_points, auto_plan_index, auto_plan_status
-        nonlocal auto_plan_desired_altitude_m
-        auto_plan_points = list(points)
-        auto_plan_index = 0
-        auto_plan_desired_altitude_m = max(0.0, -current_local_down_m)
-        if local_position_ready and auto_plan_points:
-            sim_x_m, sim_y_m = px4_ned_to_sim_xy(current_local_north_m, current_local_east_m)
-            nearest_index = min(
-                range(len(auto_plan_points)),
-                key=lambda index: math.hypot(
-                    auto_plan_points[index]["simX"] - sim_x_m,
-                    auto_plan_points[index]["simY"] - sim_y_m,
-                ),
-            )
-            nearest = auto_plan_points[nearest_index]
-            nearest_distance = math.hypot(nearest["simX"] - sim_x_m, nearest["simY"] - sim_y_m)
-            auto_plan_index = (
-                min(nearest_index + 1, len(auto_plan_points) - 1)
-                if nearest_distance <= AUTO_PLAN_REACHED_RADIUS_M
-                else nearest_index
-            )
-        auto_plan_active = True
-        auto_plan_status = "RUNNING"
-        set_motion_owner(MotionOwner.AUTO_PLAN)
-        print(
-            f"[AUTO-PLAN] Started with {len(auto_plan_points)} waypoint(s), "
-            f"current target index={auto_plan_index}",
-            flush=True,
-        )
-
-    async def update_auto_plan() -> None:
-        nonlocal auto_plan_index
-        nonlocal current_forward_m_s, current_right_m_s
-        nonlocal current_north_m_s, current_east_m_s, current_down_m_s, current_yaw_deg
-        nonlocal auto_plan_desired_altitude_m
-
-        if not auto_plan_active:
-            return
-        if not local_position_ready:
-            print("[AUTO-PLAN] Waiting for local position", flush=True)
-            return
-        if auto_plan_index >= len(auto_plan_points):
-            stop_auto_plan("complete")
-            active_drone = await set_motion(connection_manager, 0.0, 0.0, 0.0, current_yaw_deg)
-            if active_drone is not None and avoidance is not None:
-                avoidance.set_drone(active_drone)
-            set_motion_owner(MotionOwner.MANUAL)
-            return
-
-        sim_x_m, sim_y_m = px4_ned_to_sim_xy(current_local_north_m, current_local_east_m)
-        altitude_m = max(0.0, -current_local_down_m)
-        target = auto_plan_points[auto_plan_index]
-        dx = target["simX"] - sim_x_m
-        dy = target["simY"] - sim_y_m
-        horizontal_distance = math.hypot(dx, dy)
-        if auto_plan_desired_altitude_m is None:
-            auto_plan_desired_altitude_m = altitude_m
-        altitude_target_delta = target["altitudeM"] - auto_plan_desired_altitude_m
-        if abs(altitude_target_delta) <= AUTO_PLAN_ALTITUDE_RAMP_M:
-            auto_plan_desired_altitude_m = target["altitudeM"]
-        else:
-            auto_plan_desired_altitude_m += math.copysign(AUTO_PLAN_ALTITUDE_RAMP_M, altitude_target_delta)
-        altitude_error = auto_plan_desired_altitude_m - altitude_m
-
-        if (
-                horizontal_distance <= AUTO_PLAN_REACHED_RADIUS_M
-                and abs(altitude_error) <= AUTO_PLAN_ALTITUDE_TOLERANCE_M
-        ):
-            print(
-                f"[AUTO-PLAN] Reached waypoint {target['sequence']} "
-                f"dist={horizontal_distance:.1f}m alt_err={altitude_error:.1f}m",
-                flush=True,
-            )
-            auto_plan_index += 1
-            return
-
-        plan_speed = min(float(target["speedMps"]), control_speed_m_s, AUTO_PLAN_MAX_SPEED_M_S)
-        if horizontal_distance <= AUTO_PLAN_REACHED_RADIUS_M:
-            speed = 0.0
-        else:
-            slowdown_span = max(1.0, AUTO_PLAN_SLOWDOWN_RADIUS_M - AUTO_PLAN_REACHED_RADIUS_M)
-            slowdown_ratio = min(
-                1.0,
-                max(0.0, (horizontal_distance - AUTO_PLAN_REACHED_RADIUS_M) / slowdown_span),
-            )
-            speed = AUTO_PLAN_MIN_SPEED_M_S + (plan_speed - AUTO_PLAN_MIN_SPEED_M_S) * slowdown_ratio
-            speed = min(plan_speed, max(AUTO_PLAN_MIN_SPEED_M_S, speed))
-
-        if horizontal_distance <= AUTO_PLAN_REACHED_RADIUS_M:
-            north_m_s = 0.0
-            east_m_s = 0.0
-        else:
-            east_m_s = (dx / horizontal_distance) * speed
-            north_m_s = (dy / horizontal_distance) * speed
-
-        if abs(altitude_error) <= AUTO_PLAN_ALTITUDE_TOLERANCE_M:
-            down_m_s = 0.0
-        else:
-            vertical_speed = min(
-                AUTO_PLAN_VERTICAL_MAX_SPEED_M_S,
-                control_vertical_speed_m_s,
-                max(0.15, abs(altitude_error) * AUTO_PLAN_VERTICAL_GAIN),
-            )
-            down_m_s = -vertical_speed if altitude_error > 0.0 else vertical_speed
-
-        smoothing = min(1.0, max(0.0, AUTO_PLAN_SETPOINT_SMOOTHING))
-        north_m_s = current_north_m_s + (north_m_s - current_north_m_s) * smoothing
-        east_m_s = current_east_m_s + (east_m_s - current_east_m_s) * smoothing
-        down_m_s = current_down_m_s + (down_m_s - current_down_m_s) * smoothing
-        if abs(down_m_s) < 0.08:
-            down_m_s = 0.0
-
-        if horizontal_distance > 0.001:
-            current_yaw_deg = (math.degrees(math.atan2(east_m_s, north_m_s)) + 360.0) % 360.0
-        current_forward_m_s = math.hypot(north_m_s, east_m_s)
-        current_right_m_s = 0.0
-        current_north_m_s = north_m_s
-        current_east_m_s = east_m_s
-        current_down_m_s = down_m_s
-
-        try:
-            active_drone = await set_motion(
-                connection_manager,
-                current_north_m_s,
-                current_east_m_s,
-                current_down_m_s,
-                current_yaw_deg,
-            )
-            if active_drone is not None and avoidance is not None:
-                avoidance.set_drone(active_drone)
-        except OffboardError as exc:
-            print_command_denied("auto plan", exc)
-            stop_auto_plan("offboard rejected")
-            set_motion_owner(MotionOwner.MANUAL)
-        except grpc.aio.AioRpcError as exc:
-            print_mavsdk_unavailable("auto plan", exc)
-            stop_auto_plan("mavsdk unavailable")
-            set_motion_owner(MotionOwner.MANUAL)
 
     def current_saved_motion():
         if not has_manual_motion():
@@ -3295,17 +2629,17 @@ async def main() -> None:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def cleanup_controller(retain_video: bool = True) -> None:
+    async def cleanup_controller(upload_video: bool = True) -> None:
         print("[SHUTDOWN] Cleaning up...", flush=True)
         control_api.stop()
-        stop_video_recording(retain=retain_video)
+        stop_video_recording(upload=upload_video)
         await connection_manager.stop_offboard_sender()
         await connection_manager.stop_connection_monitor()
         await cancel_owned_tasks()
         await wait_for_media_tasks()
         print("[SHUTDOWN] Cleanup complete", flush=True)
 
-    def stop_video_recording(retain: bool = True) -> RecordingResult | None:
+    def stop_video_recording(upload: bool = True) -> RecordingResult | None:
         if not video_recorder.is_recording():
             return None
         print("[VIDEO] Stopping recording...", flush=True)
@@ -3322,11 +2656,11 @@ async def main() -> None:
             f"size={result.width}x{result.height} dropped={result.dropped_frames}",
             flush=True,
         )
-        if retain and result.frames_written > 0:
-            task = asyncio.create_task(camera.retain_recorded_video(result))
+        if upload and result.frames_written > 0:
+            task = asyncio.create_task(camera.upload_recorded_video(result))
             track_background_task(task, "VIDEO")
         elif result.frames_written <= 0:
-            print("[VIDEO] Local review skipped - no frames were recorded", flush=True)
+            print("[VIDEO] Upload skipped - no frames were recorded", flush=True)
         return result
 
     # ================================================================
@@ -3374,36 +2708,21 @@ async def main() -> None:
     while True:
 
         try:
-            command_message = api_commands.get_nowait()
+            key = api_commands.get_nowait()
         except queue.Empty:
-            command_message = await asyncio.to_thread(read_key_timeout, 0.1)
-            if command_message is None:
-                if auto_plan_active and motion_owner == MotionOwner.AUTO_PLAN:
-                    await update_auto_plan()
+            key = await asyncio.to_thread(read_key_timeout, 0.1)
+            if key is None:
                 continue
-
-        if isinstance(command_message, dict):
-            if command_message.get("type") == "auto_plan_start":
-                start_auto_plan(command_message.get("waypoints", []))
-                continue
-            key = str(command_message.get("key", ""))
-        else:
-            key = str(command_message)
 
         if (
                 motion_owner != MotionOwner.MANUAL
                 and not safety_sensor_enabled
-                and motion_owner != MotionOwner.AUTO_PLAN
         ):
             force_manual_control()
 
         if key in WEATHER_KEY_PRESETS:
             await asyncio.to_thread(apply_weather_key, key)
             continue
-
-        if key in {"w", "a", "s", "d", "f", "v", "q", "e", "k", "h", "l"} and auto_plan_active:
-            stop_auto_plan("manual override")
-            set_motion_owner(MotionOwner.MANUAL)
 
         if key in {"w", "a", "s", "d", "f", "v", "q", "e"} and motion_owner != MotionOwner.MANUAL:
             print("[CONTROL] Obstacle stop active - hover until path is clear", flush=True)
@@ -3678,19 +2997,11 @@ async def main() -> None:
                 "downward_camera_viewer.py|wsl-camera-view.sh",
             )
         elif key == "4":
-            lidar_ui_enabled = not lidar_ui_enabled
-            if lidar_ui_enabled:
-                if LidarGateway is None:
-                    lidar_ui_enabled = False
-                    print(f"[LIDAR] Disabled: {LIDAR_IMPORT_ERROR}", flush=True)
-                elif lidar is None:
-                    lidar = LidarGateway()
-                    lidar.start()
-                    print("[LIDAR] UI monitor -> ON (web dashboard only)", flush=True)
-                else:
-                    print("[LIDAR] UI monitor -> ON (web dashboard only)", flush=True)
-            else:
-                print("[LIDAR] UI monitor -> OFF", flush=True)
+            toggle_monitor_window(
+                "LiDAR monitor",
+                "wsl-sensor-monitor.sh",
+                "drone.visualization.sensor_dashboard|wsl-sensor-monitor.sh",
+            )
         elif key == "5":
             toggle_monitor_window(
                 "Telemetry monitor",
@@ -3701,12 +3012,23 @@ async def main() -> None:
             enabled = thermal.toggle()
             set_native_thermal_subscription(enabled)
             print(f"[THERMAL] {'ON' if enabled else 'OFF'}", flush=True)
-            stop_monitor_window(
+            if enabled:
+                open_monitor_window_if_needed(
+                    "Thermal camera",
+                    "wsl-thermal-view.sh",
+                    "wsl-thermal-view.sh|thermal_debug_viewer.py|sensor_dashboard.*--thermal-view",
+                )
+            else:
+                stop_monitor_window(
+                    "Thermal camera",
+                    "wsl-thermal-view.sh|thermal_debug_viewer.py|sensor_dashboard.*--thermal-view",
+                )
+        elif key == "7":
+            toggle_monitor_window(
                 "Thermal camera",
+                "wsl-thermal-view.sh",
                 "wsl-thermal-view.sh|thermal_debug_viewer.py|sensor_dashboard.*--thermal-view",
             )
-        elif key == "7":
-            print("[THERMAL] Viewer disabled; use UI thermal stream only", flush=True)
         elif key == "thermal_palette_next":
             print(f"[THERMAL] Palette -> {thermal.cycle_palette()}", flush=True)
         elif key == "thermal_isotherm_toggle":
@@ -3716,29 +3038,24 @@ async def main() -> None:
         elif key == "thermal_range_toggle":
             print(f"[THERMAL] Display range -> {thermal.toggle_display_range()}", flush=True)
         elif key == "p":
-            if not active_mission_id:
-                print("[CAMERA] Bind an assigned mission before capturing media", flush=True)
-            else:
-                task = asyncio.create_task(camera.capture_for_review())
-                track_background_task(task, "CAMERA")
+            task = asyncio.create_task(camera.capture_and_upload())
+            track_background_task(task, "CAMERA")
         elif key == "r":
             if video_recorder.is_recording():
-                stop_video_recording(retain=True)
-            elif not active_mission_id:
-                print("[VIDEO] Bind an assigned mission before recording", flush=True)
+                stop_video_recording(upload=True)
             else:
                 try:
-                    path = video_recorder.start_recording(active_mission_id)
+                    path = video_recorder.start_recording(MISSION_ID)
                 except RuntimeError as exc:
                     print(f"[VIDEO] Recording unavailable: {exc}", flush=True)
                 else:
                     print(
-                        f"[VIDEO] Recording started mission={active_mission_id} path={path}",
+                        f"[VIDEO] Recording started mission={MISSION_ID} path={path}",
                         flush=True,
                     )
         elif key == "l":
             print("[CMD] land")
-            stop_video_recording(retain=True)
+            stop_video_recording(upload=True)
             await connection_manager.stop_offboard_sender()
             active_drone = await connection_manager.get_drone()
             if active_drone is None:
@@ -3770,7 +3087,7 @@ async def main() -> None:
             await wait_for_media_tasks()
         elif key == "x":
             print("[SHUTDOWN] Stopped by user")
-            await cleanup_controller(retain_video=True)
+            await cleanup_controller(upload_video=True)
             return
 
 

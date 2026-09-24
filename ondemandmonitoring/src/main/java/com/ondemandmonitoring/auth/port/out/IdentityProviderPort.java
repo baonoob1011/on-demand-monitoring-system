@@ -34,8 +34,4 @@ public interface IdentityProviderPort {
 
     void deleteUser(String username);
 
-    void enableUser(String username);
-
-    void disableUser(String username);
-
 }

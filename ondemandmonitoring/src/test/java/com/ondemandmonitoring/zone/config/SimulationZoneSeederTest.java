@@ -5,7 +5,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.ondemandmonitoring.environment.repository.AtmosphereProfileRepository;
 import com.ondemandmonitoring.zone.domain.ThermalSource;
 import com.ondemandmonitoring.zone.enums.ThermalType;
 import com.ondemandmonitoring.zone.domain.Zone;
@@ -37,7 +36,6 @@ class SimulationZoneSeederTest {
                 zoneRepository,
                 mock(SimulationMapFeatureRepository.class),
                 thermalSourceRepository,
-                mock(AtmosphereProfileRepository.class),
                 mock(JdbcTemplate.class),
                 mock(Environment.class));
 

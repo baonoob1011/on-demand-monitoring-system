@@ -67,6 +67,7 @@ Local development values are stored in `.env`:
 ```properties
 PX4_SYSTEM_ADDRESS=udp://:14540
 BACKEND_BASE_URL=http://localhost:8080
+DEVICE_CODE=DRONE-01
 TELEMETRY_INTERVAL_SECONDS=2
 ```
 

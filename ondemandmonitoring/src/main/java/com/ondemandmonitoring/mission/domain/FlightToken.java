@@ -31,12 +31,6 @@ public class FlightToken extends BaseEntity {
     @Column(name = "drone_code", nullable = false, length = 50)
     String droneCode;
 
-    // Retained for databases created before drone_code was introduced.
-    // Both columns identify the same assigned drone and must be written together.
-    @Setter(AccessLevel.NONE)
-    @Column(name = "device_code", nullable = false, length = 50)
-    String deviceCode;
-
     @Column(name = "operator_id", length = 100)
     String operatorId;
 
@@ -57,11 +51,6 @@ public class FlightToken extends BaseEntity {
     /** True if the system explicitly revoked the token (e.g. operator missed the window). */
     @Column(name = "revoked", nullable = false)
     boolean revoked = false;
-
-    public void setDroneCode(String droneCode) {
-        this.droneCode = droneCode;
-        this.deviceCode = droneCode;
-    }
 
     public boolean isValid() {
         return !used && !revoked && Instant.now().isBefore(expiresAt);

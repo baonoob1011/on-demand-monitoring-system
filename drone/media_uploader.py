@@ -16,18 +16,8 @@ class BackendUrlResolver:
         candidates = [configured]
 
         if configured in {"http://localhost:8080", "http://127.0.0.1:8080"}:
-            try:
-                route = subprocess.check_output(
-                    ["ip", "-4", "route", "show", "default"],
-                    text=True,
-                    timeout=1.0,
-                )
-                parts = route.split()
-                if "via" in parts:
-                    candidates.append(f"http://{parts[parts.index('via') + 1]}:8080")
-            except (OSError, subprocess.SubprocessError, IndexError):
-                pass
             candidates.append("http://host.docker.internal:8080")
+            candidates.append("http://172.20.176.1:8080")
             try:
                 output = subprocess.check_output(
                     ["sh", "-lc", "awk '/^nameserver / {print $2; exit}' /etc/resolv.conf"],

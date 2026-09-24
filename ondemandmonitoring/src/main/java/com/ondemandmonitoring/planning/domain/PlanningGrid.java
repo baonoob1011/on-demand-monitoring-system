@@ -28,40 +28,14 @@ public record PlanningGrid(
             return new GridSample(null, null, null);
         }
 
-        int column = columnForX(simX);
-        int row = rowForY(simY);
+        int column = nearestIndex(simX, bounds.minX(), bounds.maxX(), width);
+        int row = nearestIndex(simY, bounds.minY(), bounds.maxY(), height);
         int index = row * width + column;
 
         return new GridSample(
                 terrainElevationM.get(index),
                 obstacleHeightM.get(index),
                 surfaceElevationM.get(index));
-    }
-
-    public int columnForX(double simX) {
-        return nearestIndex(simX, bounds.minX(), bounds.maxX(), width);
-    }
-
-    public int rowForY(double simY) {
-        return nearestIndex(simY, bounds.minY(), bounds.maxY(), height);
-    }
-
-    public double simXForColumn(int column) {
-        return coordinateForIndex(column, width, bounds.minX(), bounds.maxX());
-    }
-
-    public double simYForRow(int row) {
-        return coordinateForIndex(row, height, bounds.minY(), bounds.maxY());
-    }
-
-    private double coordinateForIndex(int index, int size, double min, double max) {
-        if (index < 0 || index >= size) {
-            throw new IndexOutOfBoundsException("Grid index out of bounds: " + index);
-        }
-        if (index == size - 1) {
-            return max;
-        }
-        return min + index * resolutionM;
     }
 
     private int nearestIndex(double value, double min, double max, int size) {

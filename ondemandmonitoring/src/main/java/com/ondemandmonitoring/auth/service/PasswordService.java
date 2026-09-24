@@ -7,9 +7,7 @@ import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.user.service.IUserService;
 import com.ondemandmonitoring.user.enumeration.IdentityProvider;
-import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
-import lombok.experimental.FieldDefaults;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.CodeMismatchException;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.CognitoIdentityProviderException;
@@ -22,11 +20,10 @@ import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
-@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class PasswordService {
 
-    IUserService userService;
-    IdentityProviderPort identityProvider;
+    private final IUserService userService;
+    private final IdentityProviderPort identityProvider;
 
     public void forgotPassword(ForgotPasswordRequest request) {
         String email = normalizeEmail(request.getEmail());

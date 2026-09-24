@@ -1,7 +1,5 @@
 package com.ondemandmonitoring.zone.config;
 
-import com.ondemandmonitoring.environment.domain.AtmosphereProfile;
-import com.ondemandmonitoring.environment.repository.AtmosphereProfileRepository;
 import com.ondemandmonitoring.zone.domain.Zone;
 import com.ondemandmonitoring.zone.domain.SimulationMapFeature;
 import com.ondemandmonitoring.zone.domain.ThermalSource;
@@ -41,7 +39,6 @@ public class SimulationZoneSeeder implements CommandLineRunner {
     ZoneRepository zoneRepository;
     SimulationMapFeatureRepository simulationMapFeatureRepository;
     ThermalSourceRepository thermalSourceRepository;
-    AtmosphereProfileRepository atmosphereProfileRepository;
     JdbcTemplate jdbcTemplate;
     Environment environment;
 
@@ -77,7 +74,6 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                 SOURCE_WORLD, createdZones, zones.size() - createdZones);
         markAirportRestricted();
         seedThermalSources();
-        seedAtmosphereProfile();
 
         int createdMapFeatures = 0;
         for (MapFeature feature : simulationMapFeatures()) {
@@ -103,22 +99,6 @@ public class SimulationZoneSeeder implements CommandLineRunner {
 
         createPgAdminGeometryViewerViews();
         logSimulationViewerUrls();
-    }
-
-    void seedAtmosphereProfile() {
-        if (atmosphereProfileRepository.existsBySourceWorldAndActiveTrue(SOURCE_WORLD)) {
-            log.info("Skipping atmosphere profile seed because {} already has an active profile", SOURCE_WORLD);
-            return;
-        }
-
-        AtmosphereProfile profile = new AtmosphereProfile();
-        profile.setSourceWorld(SOURCE_WORLD);
-        profile.setBasePressurePa(101_325.0);
-        profile.setBaseAltitudeM(0.0);
-        profile.setActive(true);
-        atmosphereProfileRepository.save(profile);
-        log.info("Seeded default atmosphere profile for {} (basePressurePa={}, baseAltitudeM={})",
-                SOURCE_WORLD, profile.getBasePressurePa(), profile.getBaseAltitudeM());
     }
 
     void seedThermalSources() {

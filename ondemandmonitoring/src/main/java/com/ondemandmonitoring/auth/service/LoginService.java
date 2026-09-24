@@ -3,7 +3,6 @@ package com.ondemandmonitoring.auth.service;
 import com.ondemandmonitoring.auth.dto.request.LoginRequest;
 import com.ondemandmonitoring.auth.dto.request.FirstLoginPasswordChangeRequest;
 import com.ondemandmonitoring.auth.dto.response.AuthResponse;
-import com.ondemandmonitoring.auth.mapper.AuthenticatedUserMapper;
 import com.ondemandmonitoring.auth.port.out.AuthenticationTokens;
 import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
 import com.ondemandmonitoring.common.exception.ApiException;
@@ -11,12 +10,11 @@ import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.user.service.IUserService;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.enumeration.IdentityProvider;
+import com.ondemandmonitoring.user.dto.response.UserProfileResponse;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.transaction.Transactional;
 import jakarta.servlet.http.HttpServletRequest;
-import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
-import lombok.experimental.FieldDefaults;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.CognitoIdentityProviderException;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.InvalidPasswordException;
@@ -28,13 +26,11 @@ import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
-@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class LoginService {
 
-    IUserService userService;
-    IdentityProviderPort identityProvider;
-    RefreshTokenCookieService refreshTokenCookieService;
-    AuthenticatedUserMapper authenticatedUserMapper;
+    private final IUserService userService;
+    private final IdentityProviderPort identityProvider;
+    private final RefreshTokenCookieService refreshTokenCookieService;
 
     @Transactional
     public AuthResponse login(LoginRequest request, HttpServletResponse response) {
@@ -101,7 +97,6 @@ public class LoginService {
     public AuthResponse refresh(HttpServletRequest request) {
         RefreshTokenCookieService.RefreshToken cookie = refreshTokenCookieService.read(request)
                 .orElseThrow(() -> new ApiException(ErrorCode.REFRESH_TOKEN_INVALID));
-        ensureActive(resolveRefreshUser(cookie.username()));
         try {
             AuthenticationTokens tokens = identityProvider.refresh(cookie.token(), cookie.username());
             return AuthResponse.builder()
@@ -132,35 +127,28 @@ public class LoginService {
     }
 
     private void ensureCanLogin(User user) {
-        ensureActive(user);
+        if (!Boolean.TRUE.equals(user.getIsActive())) {
+            throw new ApiException(ErrorCode.ACCOUNT_DISABLED);
+        }
         if (!Boolean.TRUE.equals(user.getEmailVerified())) {
             throw new ApiException(ErrorCode.USER_NOT_CONFIRMED);
         }
     }
 
-    private void ensureActive(User user) {
-        if (!Boolean.TRUE.equals(user.getIsActive())) {
-            throw new ApiException(ErrorCode.ACCOUNT_DISABLED);
-        }
-    }
-
-    private User resolveRefreshUser(String cognitoUsername) {
-        try {
-            return userService.findByCognitoUsername(cognitoUsername);
-        } catch (ApiException exception) {
-            if (exception.getErrorCode() == ErrorCode.USER_NOT_FOUND) {
-                throw new ApiException(ErrorCode.REFRESH_TOKEN_INVALID);
-            }
-            throw exception;
-        }
-    }
-
     private AuthResponse toResponse(AuthenticationTokens tokens, User user) {
+        UserProfileResponse profile = UserProfileResponse.builder()
+                .id(user.getId())
+                .fullName(user.getFullName())
+                .email(user.getEmail())
+                .emailVerified(user.getEmailVerified())
+                .role(user.getRole().getCode())
+                .isActive(user.getIsActive())
+                .build();
         return AuthResponse.builder()
                 .accessToken(tokens.accessToken())
                 .status("AUTHENTICATED")
                 .expiresIn(tokens.expiresIn())
-                .user(authenticatedUserMapper.toResponse(user))
+                .user(profile)
                 .build();
     }
 

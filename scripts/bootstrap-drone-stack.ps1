@@ -25,25 +25,6 @@ function ConvertTo-WslPath([string]$WindowsPath) {
     return "/mnt/$drive/$rest"
 }
 
-function Convert-ShellScriptsToLf([string]$Root) {
-    $paths = @()
-    $paths += Get-ChildItem -Path (Join-Path $Root "scripts") -Filter "*.sh" -File -Recurse -ErrorAction SilentlyContinue
-    $wslBin = Join-Path $Root "scripts\wsl-bin"
-    if (Test-Path $wslBin) {
-        $paths += Get-ChildItem -Path $wslBin -File -Recurse -ErrorAction SilentlyContinue
-    }
-
-    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    foreach ($path in $paths) {
-        $content = [System.IO.File]::ReadAllText($path.FullName)
-        $normalized = $content -replace "`r`n", "`n"
-        $normalized = $normalized -replace "`r", "`n"
-        if ($normalized -ne $content) {
-            [System.IO.File]::WriteAllText($path.FullName, $normalized, $utf8NoBom)
-        }
-    }
-}
-
 if (-not (Test-CommandExists "wsl.exe")) {
     throw "WSL is not available on this Windows installation. Install WSL first, then run Start Drone Stack again."
 }
@@ -65,7 +46,6 @@ if (-not $hasDistro) {
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-Convert-ShellScriptsToLf $repoRoot
 $repoRootWsl = ConvertTo-WslPath $repoRoot
 $bootstrapWsl = "$repoRootWsl/scripts/wsl-bootstrap-drone-stack.sh"
 

@@ -4,7 +4,6 @@ import com.ondemandmonitoring.auth.dto.request.LoginRequest;
 import com.ondemandmonitoring.auth.dto.request.FirstLoginPasswordChangeRequest;
 import com.ondemandmonitoring.auth.port.out.AuthenticationTokens;
 import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
-import com.ondemandmonitoring.auth.mapper.AuthenticatedUserMapper;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.role.domain.Role;
@@ -16,7 +15,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mapstruct.factory.Mappers;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -35,8 +33,7 @@ class LoginServiceTest {
         users = mock(IUserService.class);
         identityProvider = mock(IdentityProviderPort.class);
         cookies = mock(RefreshTokenCookieService.class);
-        service = new LoginService(users, identityProvider, cookies,
-                Mappers.getMapper(AuthenticatedUserMapper.class));
+        service = new LoginService(users, identityProvider, cookies);
     }
 
     @Test
@@ -108,7 +105,6 @@ class LoginServiceTest {
     @Test
     void refreshUsesTokenAndCognitoUsernameFromCookie() {
         HttpServletRequest request = mock(HttpServletRequest.class);
-        when(users.findByCognitoUsername("uuid-user")).thenReturn(activeUser());
         when(cookies.read(request)).thenReturn(Optional.of(
                 new RefreshTokenCookieService.RefreshToken("refresh", "uuid-user")));
         when(identityProvider.refresh("refresh", "uuid-user"))
@@ -118,37 +114,6 @@ class LoginServiceTest {
 
         assertEquals("new-access", result.getAccessToken());
         verify(identityProvider).refresh("refresh", "uuid-user");
-    }
-
-    @Test
-    void disabledUserCannotRefreshToken() {
-        HttpServletRequest request = mock(HttpServletRequest.class);
-        User user = activeUser();
-        user.setIsActive(false);
-        when(cookies.read(request)).thenReturn(Optional.of(
-                new RefreshTokenCookieService.RefreshToken("refresh", "uuid-user")));
-        when(users.findByCognitoUsername("uuid-user")).thenReturn(user);
-
-        ApiException exception = assertThrows(ApiException.class,
-                () -> service.refresh(request));
-
-        assertEquals(ErrorCode.ACCOUNT_DISABLED, exception.getErrorCode());
-        verify(identityProvider, never()).refresh(anyString(), anyString());
-    }
-
-    @Test
-    void refreshWithUnknownIdentity_returnsInvalidRefreshToken() {
-        HttpServletRequest request = mock(HttpServletRequest.class);
-        when(cookies.read(request)).thenReturn(Optional.of(
-                new RefreshTokenCookieService.RefreshToken("refresh", "missing-user")));
-        when(users.findByCognitoUsername("missing-user"))
-                .thenThrow(new ApiException(ErrorCode.USER_NOT_FOUND));
-
-        ApiException exception = assertThrows(ApiException.class,
-                () -> service.refresh(request));
-
-        assertEquals(ErrorCode.REFRESH_TOKEN_INVALID, exception.getErrorCode());
-        verify(identityProvider, never()).refresh(anyString(), anyString());
     }
 
     @Test
@@ -173,14 +138,13 @@ class LoginServiceTest {
     }
 
     private User activeUser() {
-        User user = User.builder()
+        return User.builder()
+                .id(UUID.randomUUID())
                 .email("user@example.com")
                 .fullName("User")
                 .emailVerified(true)
                 .isActive(true)
                 .role(Role.builder().code(RoleCode.CUSTOMER).build())
                 .build();
-        user.setId(UUID.randomUUID().toString());
-        return user;
     }
 }

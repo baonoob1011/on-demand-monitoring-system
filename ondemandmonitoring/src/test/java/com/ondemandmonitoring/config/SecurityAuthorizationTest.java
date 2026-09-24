@@ -4,7 +4,6 @@ import com.ondemandmonitoring.auth.controller.AdminAccountController;
 import com.ondemandmonitoring.auth.dto.response.ManagedAccountResponse;
 import com.ondemandmonitoring.auth.service.IAdminAccountService;
 import com.ondemandmonitoring.role.domain.RoleCode;
-import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -32,7 +31,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringJUnitConfig(classes = {
         SecurityConfig.class,
-        ActiveAccountFilter.class,
         SecurityAuthorizationTest.TestBeans.class,
         AdminAccountController.class
 })
@@ -56,7 +54,7 @@ class SecurityAuthorizationTest {
 
     @Test
     void unauthenticatedRequestReturns401() throws Exception {
-        mvc.perform(post("/api/admin/accounts")
+        mvc.perform(post("/api/v1/admin/accounts")
                         .with(csrf())
                         .contentType("application/json")
                         .content(requestBody()))
@@ -66,7 +64,7 @@ class SecurityAuthorizationTest {
     @ParameterizedTest
     @EnumSource(value = RoleCode.class, names = "ADMIN", mode = EnumSource.Mode.EXCLUDE)
     void everyNonAdminRoleReturns403(RoleCode role) throws Exception {
-        mvc.perform(post("/api/admin/accounts")
+        mvc.perform(post("/api/v1/admin/accounts")
                         .with(csrf())
                         .with(jwt().authorities(() -> "ROLE_" + role.name()))
                         .contentType("application/json")
@@ -76,7 +74,7 @@ class SecurityAuthorizationTest {
 
     @Test
     void adminCanCreateManagedAccount() throws Exception {
-        mvc.perform(post("/api/admin/accounts")
+        mvc.perform(post("/api/v1/admin/accounts")
                         .with(csrf())
                         .with(jwt().authorities(() -> "ROLE_ADMIN"))
                         .contentType("application/json")
@@ -102,11 +100,6 @@ class SecurityAuthorizationTest {
         @Qualifier("cognitoAccessTokenDecoder")
         JwtDecoder cognitoAccessTokenDecoder() {
             return mock(JwtDecoder.class);
-        }
-
-        @Bean
-        AuthenticatedUserResolver authenticatedUserResolver() {
-            return mock(AuthenticatedUserResolver.class);
         }
     }
 }

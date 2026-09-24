@@ -37,12 +37,12 @@ import org.springframework.web.multipart.MultipartFile;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class MediaAssetService implements IMediaAssetService {
 
-    static Set<String> ALLOWED_CONTENT_TYPES = Set.of("image/png", "image/jpeg", "video/mp4");
-    static String MEDIA_TYPE_IMAGE = "IMAGE";
-    static String MEDIA_TYPE_VIDEO = "VIDEO";
-    static String STORAGE_PROVIDER_S3 = "S3";
-    static String STORAGE_PROVIDER_LOCAL = "LOCAL";
-    static Path LOCAL_IMAGE_DIR = Path.of("uploads", "drone-images");
+    private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of("image/png", "image/jpeg", "video/mp4");
+    private static final String MEDIA_TYPE_IMAGE = "IMAGE";
+    private static final String MEDIA_TYPE_VIDEO = "VIDEO";
+    private static final String STORAGE_PROVIDER_S3 = "S3";
+    private static final String STORAGE_PROVIDER_LOCAL = "LOCAL";
+    private static final Path LOCAL_IMAGE_DIR = Path.of("uploads", "drone-images");
 
     S3ObjectStorageService s3ObjectStorageService;
     AwsS3Properties awsS3Properties;
@@ -58,15 +58,13 @@ public class MediaAssetService implements IMediaAssetService {
 
     @Transactional
     @Override
-    public MediaAsset upload(String missionId, String droneId,
-                             Instant capturedAt, MultipartFile file) {
+    public MediaAsset upload(String missionId, String droneId, Instant capturedAt, MultipartFile file) {
         return upload(missionId, droneId, capturedAt, file, MEDIA_TYPE_IMAGE);
     }
 
     @Transactional
     @Override
-    public MediaAsset upload(String missionId, String droneId,
-                             Instant capturedAt, MultipartFile file, String requestedMediaType) {
+    public MediaAsset upload(String missionId, String droneId, Instant capturedAt, MultipartFile file, String requestedMediaType) {
         String mediaType = validate(file, requestedMediaType);
         validateRequired("missionId", missionId);
         validateRequired("droneId", droneId);
@@ -76,34 +74,17 @@ public class MediaAssetService implements IMediaAssetService {
         String contentType = file.getContentType();
 
         if (!useS3Storage()) {
-            return saveLocal(
-                    drone,
-                    missionId,
-                    droneId,
-                    capturedAt,
-                    file,
-                    originalFileName,
-                    contentType,
-                    mediaType);
+            return saveLocal(drone, missionId, droneId, capturedAt, file, originalFileName, contentType, mediaType);
         }
 
         String bucket = s3ObjectStorageService.bucket();
         if (bucket == null || bucket.isBlank()) {
             log.warn("AWS S3 bucket is not configured; storing image locally");
-            return saveLocal(
-                    drone,
-                    missionId,
-                    droneId,
-                    capturedAt,
-                    file,
-                    originalFileName,
-                    contentType,
-                    mediaType);
+            return saveLocal(drone, missionId, droneId, capturedAt, file, originalFileName, contentType, mediaType);
         }
 
         String key = buildS3Key(missionId, droneId, mediaType);
-        String diagnosticPrefix = MEDIA_TYPE_VIDEO.equals(mediaType)
-                ? "[S3-VIDEO]" : "[S3-IMAGE]";
+        String diagnosticPrefix = MEDIA_TYPE_VIDEO.equals(mediaType) ? "[S3-VIDEO]" : "[S3-IMAGE]";
         StoredObject storedObject;
 
         try {
@@ -147,8 +128,7 @@ public class MediaAssetService implements IMediaAssetService {
     @Override
     public MediaAsset getById(String mediaId) {
         return mediaAssetRepository.findById(mediaId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
-                        "Media not found"));
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Media not found"));
     }
 
     @Transactional(readOnly = true)
@@ -160,8 +140,7 @@ public class MediaAssetService implements IMediaAssetService {
         }
 
         String mediaType = normalizeMediaType(requestedMediaType);
-        return mediaAssetRepository
-                .findByMissionIdAndTypeOrderByCapturedAtDesc(missionId, mediaType);
+        return mediaAssetRepository.findByMissionIdAndTypeOrderByCapturedAtDesc(missionId, mediaType);
     }
 
     @Transactional(readOnly = true)
@@ -184,8 +163,7 @@ public class MediaAssetService implements IMediaAssetService {
         }
 
         String mediaType = normalizeMediaType(requestedMediaType);
-        return mediaAssetRepository
-                .findByDroneCodeAndTypeOrderByCapturedAtDesc(droneCode, mediaType);
+        return mediaAssetRepository.findByDroneCodeAndTypeOrderByCapturedAtDesc(droneCode, mediaType);
     }
 
     @Transactional
@@ -207,14 +185,12 @@ public class MediaAssetService implements IMediaAssetService {
                         image.getContentType(),
                         image.getOriginalFileName());
             } catch (IOException exception) {
-                throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "Cannot read local media file");
+                throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Cannot read local media file");
             }
         }
 
         try {
-            StoredObjectStream stream = s3ObjectStorageService
-                    .open(image.getS3Bucket(), image.getS3Key());
+            StoredObjectStream stream = s3ObjectStorageService.open(image.getS3Bucket(), image.getS3Key());
             return new MediaContent(
                     stream.inputStream(),
                     stream.contentLength() == null ? image.getFileSize() : stream.contentLength(),
@@ -223,8 +199,7 @@ public class MediaAssetService implements IMediaAssetService {
                             : stream.contentType(),
                     image.getOriginalFileName());
         } catch (RuntimeException exception) {
-            log.error("Cannot read media from S3. bucket={}, key={}",
-                    image.getS3Bucket(), image.getS3Key(), exception);
+            log.error("Cannot read media from S3. bucket={}, key={}", image.getS3Bucket(), image.getS3Key(), exception);
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "Cannot read media from S3: " + rootMessage(exception));
         }

@@ -5,7 +5,7 @@ import bpy
 from mathutils import Vector
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(r"C:/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system")
 SRC = ROOT / "uav-monitoring-compact-world-v6-roads-export-source_20260907_095003.blend"
 REPORT = ROOT / "Forest3D" / "near_pad_objects_report.json"
 

@@ -11,8 +11,6 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface DronePayloadRepository extends JpaRepository<DronePayload, String> {
 
-    boolean existsByModelNameIgnoreCase(String modelName);
-
     @Query("SELECT p FROM DronePayload p WHERE " +
            "(:sensorType IS NULL OR LOWER(p.sensorType) LIKE LOWER(CONCAT('%', :sensorType, '%'))) AND " +
            "(:modelName IS NULL OR LOWER(p.modelName) LIKE LOWER(CONCAT('%', :modelName, '%')))")

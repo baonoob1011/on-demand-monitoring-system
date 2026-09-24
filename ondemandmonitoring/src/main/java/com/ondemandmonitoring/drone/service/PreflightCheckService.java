@@ -28,6 +28,7 @@ public class PreflightCheckService {
     private static final double MIN_BATTERY_PERCENT = 80.0;
     /** Per state diagram: GPS Lock >= 8 satellites */
     private static final int MIN_GPS_SATELLITES = 8;
+    private static final Duration MAX_TELEMETRY_AGE = Duration.ofSeconds(10);
     /** Minimum storage required on drone for a mission (100 MB). */
     private static final long MIN_STORAGE_MB = 100L;
 
@@ -213,7 +214,7 @@ public class PreflightCheckService {
         }
 
         long ageSeconds = Duration.between(updatedAt, Instant.now()).abs().toSeconds();
-        if (ageSeconds > DroneTelemetryFreshness.MAX_AGE.toSeconds()) {
+        if (ageSeconds > MAX_TELEMETRY_AGE.toSeconds()) {
             failures.add("Telemetry is stale (" + ageSeconds + "s old)");
         }
     }

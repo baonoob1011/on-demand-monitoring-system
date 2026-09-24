@@ -15,7 +15,6 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.AccessLevel;
@@ -111,10 +110,6 @@ public class MissionPlan extends BaseEntity {
     /*
      * Độ cao lớn nhất mà planned route yêu cầu, đơn vị mét.
      *
-     * Với DIRECT planning trong simulation hiện tại, đây là Gazebo World Z,
-     * không phải PX4 relative altitude, altitude above home, terrain-relative
-     * altitude, hay NED Down.
-     *
      * Giá trị này có thể phụ thuộc vào:
      * - terrain
      * - obstacle
@@ -151,14 +146,6 @@ public class MissionPlan extends BaseEntity {
      */
     @Column(name = "estimated_battery_used_percent")
     Double estimatedBatteryUsedPercent;
-
-    /*
-     * Battery capacity snapshot used for the planning calculation, đơn vị mAh.
-     *
-     * estimatedBatteryUsedPercent = estimatedEnergyMah / batteryCapacityMah * 100.
-     */
-    @Column(name = "battery_capacity_mah")
-    Double batteryCapacityMah;
 
     /*
      * Phần trăm pin thực tế đang có tại thời điểm tạo plan.
@@ -240,18 +227,6 @@ public class MissionPlan extends BaseEntity {
      */
     @Column(name = "planning_time_ms")
     Long planningTimeMs;
-
-    @Column(name = "plan_version")
-    Integer planVersion;
-
-    @Column(name = "replanning_reason", length = 50)
-    String replanningReason;
-
-    @Column(name = "replanning_status", length = 50)
-    String replanningStatus;
-
-    @Column(name = "replanned_at")
-    Instant replannedAt;
 
     /*
      * Danh sách các điểm bay tạo thành planned route.

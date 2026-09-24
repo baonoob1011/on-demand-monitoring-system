@@ -30,24 +30,6 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: ${COGNITO_ISSUER_URI:}
-  ai:
-    openai:
-      api-key: ${AI_OPENROUTER_API_KEY}
-      base-url: https://openrouter.ai/api/v1
-
-      chat:
-        model: ${AI_OPENROUTER_CHAT_MODEL}
-
-      embedding:
-        model: ${AI_OPENROUTER_EMBEDDING_MODEL}
-
-    vectorstore:
-      pgvector:
-        initialize-schema: true
-        schema-name: public
-        table-name: vector_store
-        dimensions: 4096
-        index-type: NONE
 
 mybatis:
   mapper-locations: ${MYBATIS_MAPPER_LOCATIONS}
@@ -83,22 +65,6 @@ auth:
     secure: ${AUTH_REFRESH_COOKIE_SECURE:false}
     max-age-seconds: ${AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS:2592000}
     same-site: ${AUTH_REFRESH_COOKIE_SAME_SITE:Lax}
-
-app:
-  media:
-    max-image-bytes: ${MEDIA_MAX_IMAGE_BYTES:26214400}
-    max-video-bytes: ${MEDIA_MAX_VIDEO_BYTES:1073741824}
-    sqs:
-      enabled: ${MEDIA_SQS_ENABLED:false}
-      queue-url: ${MEDIA_SQS_QUEUE_URL:}
-
-mission:
-  replanning:
-    enabled: ${MISSION_REPLANNING_ENABLED:true}
-    cooldown-seconds: ${MISSION_REPLANNING_COOLDOWN_SECONDS:10}
-    route-deviation-threshold-meters: ${MISSION_REPLANNING_ROUTE_DEVIATION_THRESHOLD_METERS:20.0}
-    minimum-battery-reserve-percent: ${MISSION_REPLANNING_MINIMUM_BATTERY_RESERVE_PERCENT:20.0}
-    max-replans-per-mission: ${MISSION_REPLANNING_MAX_REPLANS_PER_MISSION:5}
 
 springdoc:
   api-docs:

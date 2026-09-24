@@ -36,12 +36,6 @@ then
     PYTHON_ENV_READY=1
 fi
 
-if ! need_cmd ffmpeg || ! need_cmd ffprobe; then
-    log "Installing FFmpeg for browser-compatible H.264 video review"
-    sudo apt-get update
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ffmpeg
-fi
-
 if [ "$PX4_BUILD_READY" -eq 1 ] && [ "$PYTHON_ENV_READY" -eq 1 ]; then
     mkdir -p "$DRONE_WORKDIR/video" "$MARKER_DIR"
     date -Is > "$MARKER_FILE"

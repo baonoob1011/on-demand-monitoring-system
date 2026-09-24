@@ -13,9 +13,7 @@ import java.time.Instant;
 @Getter
 @Setter
 @Entity
-@Table(name = "drone_media", uniqueConstraints =
-        @UniqueConstraint(name = "uk_drone_media_local_capture",
-                columnNames = {"mission_id", "drone_code", "local_media_id"}))
+@Table(name = "drone_media")
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class MediaAsset extends BaseEntity {
 
@@ -55,26 +53,4 @@ public class MediaAsset extends BaseEntity {
 
     @Column(name = "captured_at", nullable = false)
     Instant capturedAt;
-
-    @Column(name = "local_media_id", length = 100)
-    String localMediaId;
-
-    @Column(name = "operator_id", length = 100)
-    String operatorId;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "media_status", length = 40)
-    MediaStatus mediaStatus;
-
-    @Column(name = "checksum_sha256", length = 64)
-    String checksumSha256;
-
-    @Column(name = "validation_error", length = 1000)
-    String validationError;
-
-    @Column(name = "validated_at")
-    Instant validatedAt;
-
-    @Column(name = "available_at")
-    Instant availableAt;
 }

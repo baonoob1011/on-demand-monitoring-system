@@ -10,12 +10,7 @@ import java.util.Optional;
 @Repository
 public interface MaintenanceTicketRepository extends JpaRepository<MaintenanceTicket, String> {
 
-    /** All tickets for a given device (e.g. drone) — full fault history per device */
-    List<MaintenanceTicket> findByDeviceId(String deviceId);
-
-    /** All open tickets assigned to a specific technician user */
-    List<MaintenanceTicket> findByAssignedTechnicianId(java.util.UUID technicianId);
+    List<MaintenanceTicket> findByDroneId(String droneId);
 
     Optional<MaintenanceTicket> findByTicketCode(String ticketCode);
 }
-

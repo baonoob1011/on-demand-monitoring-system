@@ -13,8 +13,4 @@ public interface MissionOperatorAssignmentRepository extends JpaRepository<Missi
     List<MissionOperatorAssignment> findByMissionId(String missionId);
 
     Optional<MissionOperatorAssignment> findByMissionIdAndIsCurrentTrue(String missionId);
-
-    Optional<MissionOperatorAssignment> findFirstByMissionIdOrderByAssignedAtDesc(String missionId);
-
-    boolean existsByMissionIdAndOperatorId(String missionId, String operatorId);
 }

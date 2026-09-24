@@ -16,8 +16,6 @@ public class MissionResponse {
 
     String id;
     String orderId;
-    String orderTitle;
-    String customerName;
     String missionCode;
     MissionStatus status;
     String operatorId;
@@ -33,7 +31,6 @@ public class MissionResponse {
     String failureReason;
     String rejectionReason;
     MediaType mediaType;
-    MissionPlanResponse plan;
 
     // Preflight Inline Fields
     Integer preflightRetryCount;

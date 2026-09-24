@@ -17,10 +17,6 @@ import java.util.UUID;
 @NoArgsConstructor
 public class AuthOutboxEvent {
 
-    public static final String COGNITO_USER_CLEANUP = "COGNITO_USER_CLEANUP";
-    public static final String COGNITO_USER_ENABLE = "COGNITO_USER_ENABLE";
-    public static final String COGNITO_USER_DISABLE = "COGNITO_USER_DISABLE";
-
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
@@ -62,19 +58,9 @@ public class AuthOutboxEvent {
     public static AuthOutboxEvent cognitoCleanup(String username, String cognitoSub) {
         AuthOutboxEvent event = new AuthOutboxEvent();
         event.status = AuthOutboxStatus.PENDING;
-        event.eventType = COGNITO_USER_CLEANUP;
+        event.eventType = "COGNITO_USER_CLEANUP";
         event.targetUsername = username;
         event.targetCognitoSub = cognitoSub;
-        event.nextAttemptAt = Instant.now();
-        event.createdAt = Instant.now();
-        return event;
-    }
-
-    public static AuthOutboxEvent cognitoAccountStatus(String username, boolean active) {
-        AuthOutboxEvent event = new AuthOutboxEvent();
-        event.status = AuthOutboxStatus.PENDING;
-        event.eventType = active ? COGNITO_USER_ENABLE : COGNITO_USER_DISABLE;
-        event.targetUsername = username;
         event.nextAttemptAt = Instant.now();
         event.createdAt = Instant.now();
         return event;

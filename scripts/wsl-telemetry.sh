@@ -16,15 +16,9 @@ cp "$REPO_CONTROLLER/sitl_battery_sim.py" sitl_battery_sim.py
 
 if [ -f "$ENV_FILE" ]; then
     set -a
-    # Strip Windows BOM/CRLF endings while keeping the source .env unchanged.
-    source <(sed '1s/^\xEF\xBB\xBF//; s/\r$//' "$ENV_FILE")
+    # Strip Windows CRLF endings while keeping the source .env unchanged.
+    source <(sed 's/\r$//' "$ENV_FILE")
     set +a
-fi
-
-if [ -z "${DRONE_TELEMETRY_SECRET:-}" ]; then
-    echo "[MAVSDK-TEL] ERROR: DRONE_TELEMETRY_SECRET is missing in $ENV_FILE"
-    echo "[MAVSDK-TEL] Backend preflight requires authenticated live telemetry."
-    exit 1
 fi
 
 source "$DRONE_ENV/bin/activate"

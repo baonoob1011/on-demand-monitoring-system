@@ -5,7 +5,7 @@ from pathlib import Path
 import bpy
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(r"C:/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system")
 SRC = ROOT / "uav-monitoring-compact-world-v6-roads-export-source_20260907_095003.blend"
 BACKUP = ROOT / "uav-monitoring-compact-world-v6-roads-export-source_20260907_095003.before-green-flight-path-removal.blend"
 REPORT = ROOT / "Forest3D" / "green_flight_path_obstacle_removal_report.json"

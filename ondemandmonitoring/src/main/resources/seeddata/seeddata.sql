@@ -26,13 +26,13 @@ VALUES
     ('00000000-0000-0000-0000-000000000005', 'Seed Admin', 'ADMIN', (SELECT role_id FROM roles WHERE code = 'ADMIN'),
      'seed.admin@odms.local', true, true,
      CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-    ON CONFLICT (email) DO UPDATE SET
+ON CONFLICT (email) DO UPDATE SET
     full_name = EXCLUDED.full_name,
-                               role = EXCLUDED.role,
-                               role_id = EXCLUDED.role_id,
-                               email_verified = EXCLUDED.email_verified,
-                               is_active = EXCLUDED.is_active,
-                               updated_at = CURRENT_TIMESTAMP;
+    role = EXCLUDED.role,
+    role_id = EXCLUDED.role_id,
+    email_verified = EXCLUDED.email_verified,
+    is_active = EXCLUDED.is_active,
+    updated_at = CURRENT_TIMESTAMP;
 
 INSERT INTO user_identities (
     identity_id,
@@ -49,4 +49,26 @@ VALUES
     ('20000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000003', 'LOCAL', 'c9cab55c-0081-705a-a1e0-4358cd45d47e', 'c9cab55c-0081-705a-a1e0-4358cd45d47e', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
     ('20000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000004', 'LOCAL', '792ab50c-9061-7069-6f70-b6729473926c', '792ab50c-9061-7069-6f70-b6729473926c', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
     ('20000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000005', 'LOCAL', 'e9fa959c-3041-70ef-b624-595c74207d06', 'e9fa959c-3041-70ef-b624-595c74207d06', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-    ON CONFLICT (provider, cognito_sub) DO NOTHING;
+ON CONFLICT (provider, cognito_sub) DO NOTHING;
+
+------------------------------------------------------------------------------------------------------------------------
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_users_email_lower
+    ON users (LOWER(email));
+
+ALTER TABLE user_identities
+DROP CONSTRAINT IF EXISTS uk_user_identity_cognito_sub;
+
+ALTER TABLE user_identities
+DROP CONSTRAINT IF EXISTS user_identities_cognito_sub_key;
+
+ALTER TABLE user_identities
+DROP CONSTRAINT IF EXISTS uk_user_identity_cognito_username;
+
+ALTER TABLE user_identities
+DROP CONSTRAINT IF EXISTS user_identities_cognito_username_key;
+
+DROP INDEX IF EXISTS user_identities_cognito_username_key;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_user_identity_provider_sub
+    ON user_identities (provider, cognito_sub);

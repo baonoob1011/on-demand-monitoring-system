@@ -2,10 +2,6 @@ package com.ondemandmonitoring.mission.dto.request;
 
 import com.ondemandmonitoring.drone.enums.DroneStatus;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.NotEmpty;
-import jakarta.validation.constraints.Size;
-import com.ondemandmonitoring.mission.enums.InspectionResult;
-import java.util.Map;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
@@ -20,10 +16,6 @@ public class PostFlightStatusRequest {
     @NotNull(message = "Drone status after flight cannot be null")
     DroneStatus newDroneStatus;
 
-    @NotEmpty(message = "Inspection results are required")
-    Map<String, InspectionResult> inspectionResults;
-
-    @Size(max = 500)
     String notes;
 }
 

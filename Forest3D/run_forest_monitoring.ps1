@@ -1,18 +1,7 @@
 $ErrorActionPreference = "Stop"
 
-function ConvertTo-WslPath([string]$WindowsPath) {
-    $fullPath = (Resolve-Path $WindowsPath).Path
-    if ($fullPath -notmatch "^([A-Za-z]):\\(.*)$") {
-        throw "Cannot convert path to WSL format: $fullPath"
-    }
-
-    $drive = $Matches[1].ToLowerInvariant()
-    $rest = $Matches[2] -replace "\\", "/"
-    return "/mnt/$drive/$rest"
-}
-
-$projectPath = (Resolve-Path $PSScriptRoot).Path
-$wslProjectPath = ConvertTo-WslPath $projectPath
+$projectPath = "C:\Users\ACER\Documents\GitHub\doan\on-demand-monitoring-system\Forest3D"
+$wslProjectPath = "/mnt/c/Users/ACER/Documents/GitHub/doan/on-demand-monitoring-system/Forest3D"
 
 Write-Host "Launching Forest3D capstone world from:"
 Write-Host "  $projectPath"

@@ -7,49 +7,50 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.ondemandmonitoring.categoryservice.domain.CategoryService;
+import com.ondemandmonitoring.categoryservice.repository.CategoryServiceRepository;
 import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.order.domain.Order;
+import com.ondemandmonitoring.order.dto.GeoJsonPointDto;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
-import com.ondemandmonitoring.order.dto.request.OrderDeliverableRequest;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
+import com.ondemandmonitoring.order.enums.MediaTypeSp;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.mapper.OrderMapper;
-import org.mapstruct.factory.Mappers;
+import com.ondemandmonitoring.order.mapper.OrderMapperImpl;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.impl.OrderService;
-import com.ondemandmonitoring.service.domain.DeliverableType;
-import com.ondemandmonitoring.service.domain.Service;
-import com.ondemandmonitoring.service.repository.DeliverableTypeRepository;
-import com.ondemandmonitoring.service.repository.ServiceDeliverableRepository;
-import com.ondemandmonitoring.service.repository.ServiceRepository;
+import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.user.domain.User;
-import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
+import com.ondemandmonitoring.user.repository.UserRepository;
+import com.ondemandmonitoring.user.service.UserIdentityService;
 import com.ondemandmonitoring.warehouse.domain.PreferredTime;
 import com.ondemandmonitoring.warehouse.repository.PreferredTimeRepository;
 import com.ondemandmonitoring.zone.domain.Zone;
 import com.ondemandmonitoring.zone.repository.ZoneRepository;
 import java.time.LocalDate;
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.Polygon;
 import org.locationtech.jts.geom.PrecisionModel;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 class OrderServiceTest {
 
     private OrderRepository orderRepository;
-    private ServiceRepository serviceRepository;
-    private DeliverableTypeRepository deliverableTypeRepository;
-    private ServiceDeliverableRepository serviceDeliverableRepository;
+    private CategoryServiceRepository categoryServiceRepository;
     private PreferredTimeRepository preferredTimeRepository;
     private ZoneRepository zoneRepository;
-    private AuthenticatedUserResolver authenticatedUserResolver;
+    private UserRepository userRepository;
+    private UserIdentityService userIdentityService;
     private OrderMapper orderMapper;
     private OrderService orderService;
     private GeometryFactory geometryFactory;
@@ -57,32 +58,37 @@ class OrderServiceTest {
     @BeforeEach
     void setUp() {
         orderRepository = mock(OrderRepository.class);
-        serviceRepository = mock(ServiceRepository.class);
-        deliverableTypeRepository = mock(DeliverableTypeRepository.class);
-        serviceDeliverableRepository = mock(ServiceDeliverableRepository.class);
+        categoryServiceRepository = mock(CategoryServiceRepository.class);
         preferredTimeRepository = mock(PreferredTimeRepository.class);
         zoneRepository = mock(ZoneRepository.class);
-        authenticatedUserResolver = mock(AuthenticatedUserResolver.class);
+        userRepository = mock(UserRepository.class);
+        userIdentityService = mock(UserIdentityService.class);
         IMissionService missionService = mock(IMissionService.class);
-        orderMapper = Mappers.getMapper(OrderMapper.class);
+        orderMapper = new OrderMapperImpl();
         geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
 
         orderService = new OrderService(
                 orderRepository,
-                serviceRepository,
-                deliverableTypeRepository,
-                serviceDeliverableRepository,
+                categoryServiceRepository,
                 preferredTimeRepository,
                 zoneRepository,
-                authenticatedUserResolver,
+                userRepository,
+                userIdentityService,
                 missionService,
                 orderMapper
         );
 
-        String userId = UUID.randomUUID().toString();
-        User mockUser = User.builder().fullName("Test Customer").email("test@example.com").build();
-        mockUser.setId(userId);
-        when(authenticatedUserResolver.getCurrentUser()).thenReturn(mockUser);
+        UUID userId = UUID.randomUUID();
+        User mockUser = User.builder().id(userId).fullName("Test Customer").email("test@example.com").build();
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(userId.toString(), "credentials", Collections.emptyList())
+        );
+        when(userRepository.findById(userId)).thenReturn(Optional.of(mockUser));
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     private Polygon createSquarePolygon(double minX, double minY, double maxX, double maxY) {
@@ -98,36 +104,19 @@ class OrderServiceTest {
         return poly;
     }
 
-    private Map<String, Object> sampleCoverageAreaMap() {
-        return Map.of(
-                "type", "Polygon",
-                "coordinates", List.of(List.of(
-                        List.of(0.0, 0.0),
-                        List.of(10.0, 0.0),
-                        List.of(10.0, 10.0),
-                        List.of(0.0, 10.0),
-                        List.of(0.0, 0.0)
-                ))
-        );
-    }
-
     @Test
     void createOrder_Success() {
         // Arrange
-        Service service = Service.builder().name("Land Monitoring").build();
-        service.setId("srv-1");
+        CategoryService service = CategoryService.builder().name("Land Monitoring").build();
+        service.setId("cs-1");
         PreferredTime preferredTime = PreferredTime.builder().name("Morning").build();
         preferredTime.setId("pt-1");
-        DeliverableType delType = DeliverableType.builder().name("Photo Map").defaultFormat("JPEG").build();
-        delType.setId("dt-1");
 
         Zone zone = new Zone();
         zone.setPolygon(createSquarePolygon(0.0, 0.0, 10.0, 10.0));
 
-        when(serviceRepository.findById("srv-1")).thenReturn(Optional.of(service));
+        when(categoryServiceRepository.findById("cs-1")).thenReturn(Optional.of(service));
         when(preferredTimeRepository.findById("pt-1")).thenReturn(Optional.of(preferredTime));
-        when(deliverableTypeRepository.findById("dt-1")).thenReturn(Optional.of(delType));
-        when(serviceDeliverableRepository.existsByServiceIdAndDeliverableTypeId("srv-1", "dt-1")).thenReturn(true);
         when(zoneRepository.findAll()).thenReturn(List.of(zone));
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
             Order o = invocation.getArgument(0);
@@ -135,21 +124,14 @@ class OrderServiceTest {
             return o;
         });
 
-        OrderDeliverableRequest delReq = OrderDeliverableRequest.builder()
-                .deliverableTypeId("dt-1")
-                .requirement(Map.of("resolution", "4K"))
-                .build();
-
         OrderCreateRequest request = OrderCreateRequest.builder()
                 .title("Survey Forest")
-                .serviceId("srv-1")
+                .serviceId("cs-1")
                 .preferredTimeId("pt-1")
-                .preferredDateFrom(LocalDate.now())
-                .preferredDateTo(LocalDate.now().plusDays(2))
-                .longitude(5.0)
-                .latitude(5.0)
-                .coverageArea(sampleCoverageAreaMap())
-                .deliverables(List.of(delReq))
+                .preferredDate(LocalDate.now())
+                .mediaType(MediaTypeSp.IMAGE)
+                .numberOfPhoto(5)
+                .point(GeoJsonPointDto.of(5.0, 5.0))
                 .build();
 
         // Act
@@ -160,41 +142,55 @@ class OrderServiceTest {
         assertEquals("ord-123", response.getId());
         assertEquals("Survey Forest", response.getTitle());
         assertEquals(OrderStatus.PENDING, response.getOrderStatus());
-        assertEquals(5.0, response.getLongitude());
-        assertEquals(5.0, response.getLatitude());
-        assertNotNull(response.getDeliverables());
-        assertEquals(1, response.getDeliverables().size());
-        assertEquals("dt-1", response.getDeliverables().get(0).getDeliverableTypeId());
+        assertEquals(5.0, response.getPoint().getCoordinates().get(0));
+        assertEquals(5.0, response.getPoint().getCoordinates().get(1));
     }
 
     @Test
     void createOrder_ThrowsWhenPointOutsideZone() {
-        Service service = Service.builder().name("Land Monitoring").build();
-        service.setId("srv-1");
+        CategoryService service = CategoryService.builder().name("Land Monitoring").build();
+        service.setId("cs-1");
         PreferredTime preferredTime = PreferredTime.builder().name("Morning").build();
         preferredTime.setId("pt-1");
-        DeliverableType delType = DeliverableType.builder().name("Photo Map").build();
-        delType.setId("dt-1");
 
         Zone zone = new Zone();
         zone.setPolygon(createSquarePolygon(0.0, 0.0, 10.0, 10.0));
 
-        when(serviceRepository.findById("srv-1")).thenReturn(Optional.of(service));
+        when(categoryServiceRepository.findById("cs-1")).thenReturn(Optional.of(service));
         when(preferredTimeRepository.findById("pt-1")).thenReturn(Optional.of(preferredTime));
-        when(deliverableTypeRepository.findById("dt-1")).thenReturn(Optional.of(delType));
-        when(serviceDeliverableRepository.existsByServiceIdAndDeliverableTypeId("srv-1", "dt-1")).thenReturn(true);
         when(zoneRepository.findAll()).thenReturn(List.of(zone));
 
         OrderCreateRequest request = OrderCreateRequest.builder()
                 .title("Outside Point")
-                .serviceId("srv-1")
+                .serviceId("cs-1")
                 .preferredTimeId("pt-1")
-                .preferredDateFrom(LocalDate.now())
-                .preferredDateTo(LocalDate.now().plusDays(2))
-                .longitude(20.0)
-                .latitude(20.0)
-                .coverageArea(sampleCoverageAreaMap())
-                .deliverables(List.of(OrderDeliverableRequest.builder().deliverableTypeId("dt-1").requirement(Map.of()).build()))
+                .preferredDate(LocalDate.now())
+                .mediaType(MediaTypeSp.IMAGE)
+                .numberOfPhoto(5)
+                .point(GeoJsonPointDto.of(20.0, 20.0))
+                .build();
+
+        assertThrows(ApiException.class, () -> orderService.createOrder(request));
+    }
+
+    @Test
+    void createOrder_ThrowsWhenImageMissingPhotos() {
+        CategoryService service = CategoryService.builder().name("Land Monitoring").build();
+        service.setId("cs-1");
+        PreferredTime preferredTime = PreferredTime.builder().name("Morning").build();
+        preferredTime.setId("pt-1");
+
+        when(categoryServiceRepository.findById("cs-1")).thenReturn(Optional.of(service));
+        when(preferredTimeRepository.findById("pt-1")).thenReturn(Optional.of(preferredTime));
+
+        OrderCreateRequest request = OrderCreateRequest.builder()
+                .title("No Photo Count")
+                .serviceId("cs-1")
+                .preferredTimeId("pt-1")
+                .preferredDate(LocalDate.now())
+                .mediaType(MediaTypeSp.IMAGE)
+                .numberOfPhoto(null)
+                .point(GeoJsonPointDto.of(5.0, 5.0))
                 .build();
 
         assertThrows(ApiException.class, () -> orderService.createOrder(request));

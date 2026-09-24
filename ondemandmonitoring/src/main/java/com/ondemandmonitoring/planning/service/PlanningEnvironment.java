@@ -9,14 +9,6 @@ public interface PlanningEnvironment {
 
     PlanningGrid grid();
 
-    /**
-     * Returns a stable view for one planning operation. Implementations backed by
-     * mutable external data can snapshot that data once instead of reloading it per cell.
-     */
-    default PlanningEnvironment snapshot() {
-        return this;
-    }
-
     default boolean isInsideWorldBounds(double simX, double simY) {
         return sample(simX, simY).insideWorldBounds();
     }

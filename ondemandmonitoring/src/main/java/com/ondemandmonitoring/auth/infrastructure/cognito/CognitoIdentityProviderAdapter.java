@@ -180,22 +180,6 @@ public class CognitoIdentityProviderAdapter implements IdentityProviderPort {
                 .build());
     }
 
-    @Override
-    public void enableUser(String username) {
-        client.adminEnableUser(AdminEnableUserRequest.builder()
-                .userPoolId(properties.userPoolId())
-                .username(username)
-                .build());
-    }
-
-    @Override
-    public void disableUser(String username) {
-        client.adminDisableUser(AdminDisableUserRequest.builder()
-                .userPoolId(properties.userPoolId())
-                .username(username)
-                .build());
-    }
-
     private AuthenticationTokens tokens(AuthenticationResultType result, String username) {
         return new AuthenticationTokens(result.accessToken(), result.refreshToken(), result.expiresIn(), username);
     }
