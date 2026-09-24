@@ -44,7 +44,13 @@ then
     python -m pip install -q opencv-python
 fi
 
-MAVSDK_BIN="$HOME/drone-env/lib/python3.12/site-packages/mavsdk/bin/mavsdk_server"
+MAVSDK_BIN="$(python - <<'PY'
+from pathlib import Path
+import mavsdk
+
+print(Path(mavsdk.__file__).resolve().parent / "bin" / "mavsdk_server")
+PY
+)"
 MAVSDK_LOG="$PWD/mavsdk_control.log"
 MAVSDK_PORT=50052
 MAVSDK_MAVLINK_ADDRESS="${MAVSDK_MAVLINK_ADDRESS_OVERRIDE:-${PX4_CONTROL_SYSTEM_ADDRESS:-udpin://0.0.0.0:14030}}"
