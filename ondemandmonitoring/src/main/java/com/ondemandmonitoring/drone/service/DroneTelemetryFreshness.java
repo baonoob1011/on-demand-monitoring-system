@@ -5,7 +5,7 @@ import java.time.Instant;
 
 public final class DroneTelemetryFreshness {
 
-    public static final Duration MAX_AGE = Duration.ofSeconds(10);
+    public static final Duration MAX_AGE = Duration.ofSeconds(45);
 
     private DroneTelemetryFreshness() {
     }
