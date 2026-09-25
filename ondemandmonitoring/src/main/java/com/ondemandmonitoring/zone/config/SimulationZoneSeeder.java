@@ -52,12 +52,10 @@ public class SimulationZoneSeeder implements CommandLineRunner {
         List<SimulationZone> zones = simulationZones();
 
         int createdZones = 0;
+        int updatedZones = 0;
         for (SimulationZone zone : zones) {
-            if (zoneRepository.findByCode(zone.code()).isPresent()) {
-                continue;
-            }
-
-            Zone entity = new Zone();
+            Optional<Zone> existing = zoneRepository.findByCode(zone.code());
+            Zone entity = existing.orElseGet(Zone::new);
             entity.setCode(zone.code());
             entity.setName(zone.name());
             entity.setZoneType(zone.type());
@@ -70,11 +68,15 @@ public class SimulationZoneSeeder implements CommandLineRunner {
             entity.setCoordinateSystem(COORDINATE_SYSTEM);
             entity.setPolygon(zone.polygon());
             zoneRepository.save(entity);
-            createdZones++;
+            if (existing.isPresent()) {
+                updatedZones++;
+            } else {
+                createdZones++;
+            }
         }
 
-        log.info("Seeded missing simulation zones from {} (created={}, existing={})",
-                SOURCE_WORLD, createdZones, zones.size() - createdZones);
+        log.info("Seeded simulation zones from {} (created={}, updated={})",
+                SOURCE_WORLD, createdZones, updatedZones);
         markAirportRestricted();
         seedThermalSources();
         seedAtmosphereProfile();
@@ -422,6 +424,18 @@ public class SimulationZoneSeeder implements CommandLineRunner {
         return polygon;
     }
 
+    private Polygon polygonExact(Coordinate... points) {
+        Coordinate[] coordinates = new Coordinate[points.length + 1];
+        for (int i = 0; i < points.length; i++) {
+            coordinates[i] = new Coordinate(points[i].x, points[i].y);
+        }
+        coordinates[points.length] = new Coordinate(coordinates[0]);
+
+        Polygon polygon = GEOMETRY_FACTORY.createPolygon(GEOMETRY_FACTORY.createLinearRing(coordinates));
+        polygon.setSRID(SRID);
+        return polygon;
+    }
+
     private LineString line(Coordinate... points) {
         Coordinate[] coordinates = new Coordinate[points.length];
         for (int i = 0; i < points.length; i++) {
@@ -436,173 +450,173 @@ public class SimulationZoneSeeder implements CommandLineRunner {
     List<SimulationZone> simulationZones() {
         return List.of(
                 new SimulationZone(
-                        "DRONE_BASE",
-                        "Helipad / Drone Base",
-                        "HOME",
+                        "LOGISTICS_YARD",
+                        "Logistics Yard",
+                        "LOGISTICS",
                         false,
-                        -22.801571199988913,
-                        -273.47150118759254,
-                        82.49875532933,
-                        "Takeoff, landing, return-to-launch, operations staging",
-                        polygon(
-                                new Coordinate(-63.86, -337.19),
-                                new Coordinate(28.33, -312.75),
-                                new Coordinate(43.00, -238.31),
-                                new Coordinate(-81.01, -215.01))),
-                new SimulationZone(
-                        "AIRPORT",
-                        "Airport",
-                        "AIRPORT",
-                        true,
-                        -201.12662040136175,
-                        -245.2981690787902,
-                        165.58532543676694,
-                        "Runway and aircraft operating area inspection",
-                        polygon(
-                                new Coordinate(-313.63, -366.80),
-                                new Coordinate(-88.63, -366.80),
-                                new Coordinate(-88.63, -123.80),
-                                new Coordinate(-313.63, -123.80))),
+                        139.145693419814,
+                        -321.3862851742284,
+                        114.11964890958473,
+                        "Container, loading and storage yard monitoring",
+                        polygonExact(
+                                new Coordinate(68.95623066280409, -388.330972884988),
+                                new Coordinate(211.95623066280407, -381.230972884988),
+                                new Coordinate(238.94770662852704, -286.9824155949244),
+                                new Coordinate(57.366230662804085, -241.79097288498798))),
                 new SimulationZone(
                         "DAM",
                         "Dam",
                         "DAM",
                         false,
-                        10.332541095611454,
-                        299.89813291970745,
-                        177.88706685847177,
+                        12.519335019577102,
+                        28.76067421310007,
+                        291.70433026930954,
                         "Dam wall, spillway and water discharge inspection",
-                        polygon(
-                                new Coordinate(-46.85, 152.57),
-                                new Coordinate(88.66, 160.96),
-                                new Coordinate(149.54, 397.19),
-                                new Coordinate(71.59, 417.89),
-                                new Coordinate(40.43, 416.10),
-                                new Coordinate(-17.79, 413.65),
-                                new Coordinate(-72.41, 417.89),
-                                new Coordinate(-140.13, 394.79))),
-                new SimulationZone(
-                        "CONSTRUCTION_SITE",
-                        "Construction Site",
-                        "CONSTRUCTION",
-                        false,
-                        181.08429258099966,
-                        -48.57152098713513,
-                        81.50111952863544,
-                        "Construction progress and restricted area inspection",
-                        polygon(
-                                new Coordinate(132.00, -113.63),
-                                new Coordinate(232.21, -92.63),
-                                new Coordinate(238.24, -0.29),
-                                new Coordinate(132.00, 10.37))),
-                new SimulationZone(
-                        "AGRICULTURAL_FIELD",
-                        "Agricultural Field",
-                        "AGRICULTURE",
-                        false,
-                        214.3248698788421,
-                        -172.621925726457,
-                        101.12841417775034,
-                        "Crop health survey and dry-area detection",
-                        polygon(
-                                new Coordinate(128.78, -215.17),
-                                new Coordinate(273.15, -229.37),
-                                new Coordinate(303.94, -125.76),
-                                new Coordinate(144.86, -122.42))),
-                new SimulationZone(
-                        "INDUSTRIAL_WAREHOUSE",
-                        "Industrial Warehouse",
-                        "INDUSTRIAL",
-                        false,
-                        -171.3394256943739,
-                        -60.8064074628538,
-                        89.62293078564005,
-                        "Warehouse, tank, roof and yard monitoring",
-                        polygon(
-                                new Coordinate(-234.28, -115.36),
-                                new Coordinate(-107.49, -123.70),
-                                new Coordinate(-113.83, -5.78),
-                                new Coordinate(-228.43, 5.53))),
-                new SimulationZone(
-                        "LOGISTICS_YARD",
-                        "Logistics Yard",
-                        "LOGISTICS",
-                        false,
-                        142.76432355969126,
-                        -285.09449405832765,
-                        116.52158569083771,
-                        "Container, loading and storage yard monitoring",
-                        polygon(
-                                new Coordinate(67.54, -359.30),
-                                new Coordinate(210.54, -352.20),
-                                new Coordinate(245.10, -229.37),
-                                new Coordinate(55.95, -212.76))),
-                new SimulationZone(
-                        "TELECOM_TOWER",
-                        "Telecom Tower",
-                        "TELECOM",
-                        false,
-                        202.05069075251456,
-                        270.40852675750807,
-                        57.097851942937574,
-                        "Communication tower inspection",
-                        polygon(
-                                new Coordinate(224.28, 294.40),
-                                new Coordinate(210.21, 308.47),
-                                new Coordinate(190.31, 308.47),
-                                new Coordinate(176.24, 294.40),
-                                new Coordinate(145.60, 265.71),
-                                new Coordinate(177.06, 240.09),
-                                new Coordinate(231.78, 241.21),
-                                new Coordinate(259.14, 269.61))),
-                new SimulationZone(
-                        "LANDSLIDE_FLOOD_AREA",
-                        "Landslide / Flood Area",
-                        "ENVIRONMENTAL_HAZARD",
-                        false,
-                        -244.70538550726846,
-                        257.7900376484977,
-                        222.7743598873677,
-                        "Landslide, blocked trail and flood inspection",
-                        polygon(
-                                new Coordinate(-326.26, 360.78),
-                                new Coordinate(-327.00, 50.77),
-                                new Coordinate(-134.46, 284.08),
-                                new Coordinate(-105.67, 371.74))),
+                        polygonExact(
+                                new Coordinate(-61.7002342063322, -236.34594164407727),
+                                new Coordinate(51.3562107367149, -260.3467684140278),
+                                new Coordinate(135.4648931432244, 239.47498885276502),
+                                new Coordinate(59.35454184073578, 265.2506955811425),
+                                new Coordinate(28.194541840735774, 263.46069558114255),
+                                new Coordinate(-30.025458159264225, 261.0106955811425),
+                                new Coordinate(-63.37834564044442, 205.7039926457046),
+                                new Coordinate(-91.2270513985826, 234.42134151454093))),
                 new SimulationZone(
                         "FOREST_MONITORING_AREA",
                         "Forest Monitoring Area",
                         "FOREST",
                         false,
-                        -200.152292424777,
-                        92.7099200393152,
-                        214.002215488247,
+                        -153.07958631557224,
+                        -5.74990159281607,
+                        176.41741086945504,
                         "Forest survey, vegetation monitoring and search-area inspection",
-                        polygon(
-                                new Coordinate(-115.78, 2.55),
-                                new Coordinate(-113.83, 91.88),
-                                new Coordinate(-187.95, 135.36),
-                                new Coordinate(-122.12, 291.98),
-                                new Coordinate(-206.97, 187.17),
-                                new Coordinate(-324.50, 38.28))),
+                        polygonExact(
+                                new Coordinate(-114.64592817410448, -66.79729515949634),
+                                new Coordinate(-86.14678571391302, -54.43734152071602),
+                                new Coordinate(-66.98237719045625, -38.527028554483934),
+                                new Coordinate(-92.44074403389453, 142.2905073449026),
+                                new Coordinate(-179.28678571391302, 40.852658479283974),
+                                new Coordinate(-296.816785713913, -108.03734152071601))),
+                new SimulationZone(
+                        "AGRICULTURAL_FIELD",
+                        "Agricultural Field",
+                        "AGRICULTURE",
+                        false,
+                        189.22019372570196,
+                        -217.91925413365598,
+                        126.44561576835451,
+                        "Crop health survey and dry-area detection",
+                        polygonExact(
+                                new Coordinate(64.7619773618294, -240.24963985719037),
+                                new Coordinate(255.94144817148606, -294.0631097252151),
+                                new Coordinate(288.36248911984484, -163.28784365646757),
+                                new Coordinate(129.28248911984485, -159.94784365646754))),
+                new SimulationZone(
+                        "AIRPORT",
+                        "Airport",
+                        "AIRPORT",
+                        true,
+                        -191.25102446379535,
+                        -282.98745476687617,
+                        165.58532543676702,
+                        "Runway and aircraft operating area inspection",
+                        polygonExact(
+                                new Coordinate(-303.75102446379543, -404.48745476687617),
+                                new Coordinate(-78.7510244637952, -404.48745476687617),
+                                new Coordinate(-78.7510244637952, -161.4874547668761),
+                                new Coordinate(-303.75102446379543, -161.4874547668761))),
+                new SimulationZone(
+                        "INDUSTRIAL_WAREHOUSE",
+                        "Industrial Warehouse",
+                        "INDUSTRIAL",
+                        false,
+                        -143.23062371562537,
+                        -114.81108969620317,
+                        113.32913184143027,
+                        "Warehouse, tank, roof and yard monitoring",
+                        polygonExact(
+                                new Coordinate(-187.36306346370972, -158.17978765074838),
+                                new Coordinate(-78.09292524404549, -159.34636969449593),
+                                new Coordinate(-67.98254258693515, -55.90919361220344),
+                                new Coordinate(-256.1915857600335, -105.68348442789366))),
+                new SimulationZone(
+                        "CONSTRUCTION_SITE",
+                        "Construction Site",
+                        "CONSTRUCTION",
+                        false,
+                        194.28785918114278,
+                        -98.75079262560652,
+                        115.2411810661449,
+                        "Construction progress and restricted area inspection",
+                        polygonExact(
+                                new Coordinate(104.0271568575314, -156.553660742234),
+                                new Coordinate(299.4839317714034, -145.8073131631964),
+                                new Coordinate(281.0241839984052, -45.29033996245829),
+                                new Coordinate(98.95355904858229, -44.43152924084802))),
+                new SimulationZone(
+                        "LANDSLIDE_FLOOD_AREA",
+                        "Landslide / Flood Area",
+                        "ENVIRONMENTAL_HAZARD",
+                        false,
+                        -219.3346554204865,
+                        100.63047130709104,
+                        222.77629271229262,
+                        "Landslide, blocked trail and flood inspection",
+                        polygonExact(
+                                new Coordinate(-300.8895268681381, 203.62155736914286),
+                                new Coordinate(-301.6295268681381, -106.3884426308571),
+                                new Coordinate(-109.08952686813811, 126.92155736914287),
+                                new Coordinate(-80.29952686813812, 214.5815573691429))),
+                new SimulationZone(
+                        "TELECOM_TOWER",
+                        "Telecom Tower",
+                        "TELECOM",
+                        false,
+                        182.71799184259135,
+                        110.65620524037989,
+                        64.66197446625816,
+                        "Communication tower inspection",
+                        polygonExact(
+                                new Coordinate(231.60551522410242, 149.08727480280152),
+                                new Coordinate(183.3938203235917, 143.74187559672214),
+                                new Coordinate(163.4938203235917, 143.74187559672214),
+                                new Coordinate(149.4238203235917, 129.6718755967221),
+                                new Coordinate(118.7838203235917, 100.98187559672209),
+                                new Coordinate(150.2438203235917, 75.36187559672211),
+                                new Coordinate(204.9638203235917, 76.48187559672212),
+                                new Coordinate(232.3238203235917, 104.88187559672213))),
                 new SimulationZone(
                         "REMOTE_MONITORING_TARGET",
                         "Remote Monitoring Target",
                         "REMOTE_TARGET",
                         false,
-                        191.7830168189289,
-                        103.83556383076377,
-                        41.99624864199183,
+                        199.76439304467283,
+                        18.025160134743047,
+                        122.01357653407322,
                         "Longer-distance waypoint target and orbit inspection",
-                        polygon(
-                                new Coordinate(230.58, 119.91),
-                                new Coordinate(207.85, 142.64),
-                                new Coordinate(175.71, 142.64),
-                                new Coordinate(152.98, 119.91),
-                                new Coordinate(152.98, 87.77),
-                                new Coordinate(175.71, 65.04),
-                                new Coordinate(207.85, 65.04),
-                                new Coordinate(230.58, 87.77))));
+                        polygonExact(
+                                new Coordinate(287.1689564234234, 60.86550243555595),
+                                new Coordinate(264.4389564234234, 83.59550243555594),
+                                new Coordinate(243.76394886361754, 100.57277901567107),
+                                new Coordinate(119.87135205201912, 52.67668810716452),
+                                new Coordinate(92.15463887754174, -39.48530557999237),
+                                new Coordinate(303.68572402516327, -40.20722962673068),
+                                new Coordinate(264.4389564234234, 5.995502435555963),
+                                new Coordinate(287.1689564234234, 28.72550243555594))),
+                new SimulationZone(
+                        "DRONE_BASE",
+                        "Helipad / Drone Base",
+                        "HOME",
+                        false,
+                        -14.307585446249302,
+                        -298.25494173650185,
+                        82.49692575887347,
+                        "Takeoff, landing, return-to-launch, operations staging",
+                        polygonExact(
+                                new Coordinate(-55.36315623932795, -361.9725239938444),
+                                new Coordinate(36.82684376067205, -337.5325239938444),
+                                new Coordinate(51.49684376067205, -263.0925239938444),
+                                new Coordinate(-72.51315623932796, -239.79252399384438))));
     }
 
     private List<MapFeature> simulationMapFeatures() {

@@ -3,6 +3,7 @@ package com.ondemandmonitoring.order.controller;
 import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
+import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.service.IOrderService;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.common.exception.ApiException;
@@ -16,11 +17,15 @@ import lombok.experimental.FieldDefaults;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PathVariable;
+
+import java.util.List;
 
 @Tag(name = "Order Management", description = "APIs for creating and managing monitoring orders")
 @RestController
@@ -42,21 +47,29 @@ public class OrderController {
                 .body(ApiResponse.created("Order created successfully", response));
     }
 
+    @Operation(summary = "Get my orders", description = "Customer views their own monitoring orders")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    @GetMapping("/mine")
+    public ResponseEntity<ApiResponse<List<OrderCreateResponse>>> getMyOrders(
+            @RequestParam(required = false) OrderStatus status) {
+        return ResponseEntity.ok(ApiResponse.ok("Customer orders retrieved successfully", orderService.getMyOrders(status)));
+    }
+
     @Operation(summary = "Get order details", description = "Retrieves details of a specific order by ID")
-    @org.springframework.web.bind.annotation.GetMapping("/{orderId}")
+    @GetMapping("/{orderId}")
     public ResponseEntity<ApiResponse<OrderCreateResponse>> getOrderById(@PathVariable String orderId) {
         OrderCreateResponse response = orderService.getOrderById(orderId);
         return ResponseEntity.ok(ApiResponse.ok("Order details retrieved successfully", response));
     }
 
     @Operation(summary = "Get order resource preview", description = "Retrieves resource preview for an order (returns null if none)")
-    @org.springframework.web.bind.annotation.GetMapping("/{orderId}/resource-preview")
+    @GetMapping("/{orderId}/resource-preview")
     public ResponseEntity<ApiResponse<Object>> getResourcePreview(@PathVariable String orderId) {
         return ResponseEntity.ok(ApiResponse.ok("Resource preview retrieved", null));
     }
 
     @Operation(summary = "Get order latest analysis", description = "Retrieves latest AI analysis for an order (returns null if none)")
-    @org.springframework.web.bind.annotation.GetMapping("/{orderId}/analysis/latest")
+    @GetMapping("/{orderId}/analysis/latest")
     public ResponseEntity<ApiResponse<Object>> getLatestAnalysis(@PathVariable String orderId) {
         return ResponseEntity.ok(ApiResponse.ok("Latest analysis retrieved", null));
     }
@@ -88,9 +101,8 @@ public class OrderController {
     }
 
     @Operation(summary = "Get pending orders", description = "Manager views pending orders")
-    @org.springframework.web.bind.annotation.GetMapping("/pending")
+    @GetMapping("/pending")
     public ResponseEntity<ApiResponse<java.util.List<OrderCreateResponse>>> getPendingOrders() {
         return ResponseEntity.ok(ApiResponse.ok("Pending orders retrieved", orderService.getPendingOrders()));
     }
 }
-

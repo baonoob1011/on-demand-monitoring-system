@@ -201,5 +201,17 @@ public class OrderService implements IOrderService {
                 .map(orderMapper::toResponse)
                 .toList();
     }
-}
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderCreateResponse> getMyOrders(OrderStatus status) {
+        User customer = authenticatedUserResolver.getCurrentUser();
+        List<Order> orders = status == null
+                ? orderRepository.findByCustomer_IdOrderByCreatedAtDesc(customer.getId())
+                : orderRepository.findByCustomer_IdAndOrderStatusOrderByCreatedAtDesc(customer.getId(), status);
+
+        return orders.stream()
+                .map(orderMapper::toResponse)
+                .toList();
+    }
+}

@@ -10,4 +10,8 @@ import com.ondemandmonitoring.order.enums.OrderStatus;
 @Repository
 public interface OrderRepository extends JpaRepository<Order, String> {
     List<Order> findByOrderStatusOrderByCreatedAtAsc(OrderStatus status);
+
+    List<Order> findByCustomer_IdOrderByCreatedAtDesc(String customerId);
+
+    List<Order> findByCustomer_IdAndOrderStatusOrderByCreatedAtDesc(String customerId, OrderStatus status);
 }

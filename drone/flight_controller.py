@@ -1251,6 +1251,7 @@ class FlightControlApi:
         thermal: ThermalCameraGateway | None = None,
         media_library: LocalMediaLibrary | None = None,
         session_binder=None,
+        session_releaser=None,
     ) -> None:
         self.camera = camera
         self.commands = commands
@@ -1260,6 +1261,7 @@ class FlightControlApi:
         self.thermal = thermal
         self.media_library = media_library
         self.session_binder = session_binder
+        self.session_releaser = session_releaser
         self.preflight_check_id: str | None = None
         self.preflight_started_at_s: float | None = None
         self.server: ThreadingHTTPServer | None = None
@@ -1412,6 +1414,19 @@ class FlightControlApi:
                             self._write_json(503, {"error": "Session binding unavailable"})
                             return
                         result = owner.session_binder(payload)
+                        self._write_json(200, {"ok": True, **result})
+                    except (ValueError, json.JSONDecodeError) as exc:
+                        self._write_json(400, {"error": str(exc)[:500]})
+                    return
+
+                if self.path == "/api/control/session/release":
+                    try:
+                        length = int(self.headers.get("Content-Length", "0"))
+                        payload = json.loads(self.rfile.read(length) or b"{}") if length > 0 else {}
+                        if owner.session_releaser is None:
+                            self._write_json(503, {"error": "Session release unavailable"})
+                            return
+                        result = owner.session_releaser(payload)
                         self._write_json(200, {"ok": True, **result})
                     except (ValueError, json.JSONDecodeError) as exc:
                         self._write_json(400, {"error": str(exc)[:500]})
@@ -2942,6 +2957,33 @@ async def main() -> None:
         print(f"[SESSION] Bound mission={active_mission_code or mission_id} id={mission_id} drone={assigned_drone}", flush=True)
         return {"missionId": mission_id, "missionCode": active_mission_code, "droneCode": assigned_drone}
 
+    def release_control_session(payload: dict) -> dict:
+        nonlocal active_mission_id, active_mission_code, active_drone_id, media_library, current_in_air
+        requested_mission_id = str(payload.get("missionId", "")).strip()
+        if requested_mission_id and active_mission_id and requested_mission_id != active_mission_id:
+            return {
+                "released": False,
+                "missionId": active_mission_id,
+                "message": "Active control session belongs to another mission",
+            }
+        retained_video = False
+        if video_recorder.is_recording():
+            result = stop_video_recording(retain=True)
+            retained_video = result is not None
+        stop_auto_plan("session release")
+        active_mission_id = None
+        active_mission_code = None
+        active_drone_id = None
+        current_in_air = False
+        media_library = LocalMediaLibrary(media_root, None, None)
+        camera.media_library = media_library
+        control_api.media_library = media_library
+        control_api.preflight_persistence = None
+        control_api.preflight_check_id = None
+        control_api.preflight_started_at_s = None
+        print("[SESSION] Released active control session", flush=True)
+        return {"released": True, "retainedVideo": retained_video}
+
     control_api = FlightControlApi(
         camera,
         api_commands,
@@ -2951,6 +2993,7 @@ async def main() -> None:
         thermal,
         media_library,
         bind_control_session,
+        release_control_session,
     )
     control_api.start()
     print(
