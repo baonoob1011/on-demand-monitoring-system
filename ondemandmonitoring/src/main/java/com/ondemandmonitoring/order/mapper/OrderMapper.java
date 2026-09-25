@@ -44,6 +44,7 @@ public interface OrderMapper {
     @Mapping(source = "reviewBy.fullName", target = "reviewByName")
     @Mapping(target = "longitude", expression = "java(toLongitude(order.getPoint()))")
     @Mapping(target = "latitude", expression = "java(toLatitude(order.getPoint()))")
+    @Mapping(target = "radiusM", expression = "java(toRadiusM(order))")
     @Mapping(target = "coverageArea", expression = "java(toCoverageArea(order.getTargetArea()))")
     @Mapping(source = "deliverables", target = "deliverables")
     OrderCreateResponse toResponse(Order order);
@@ -71,5 +72,38 @@ public interface OrderMapper {
 
     default Map<String, Object> toCoverageArea(Polygon polygon) {
         return GeoReader.toCoverageArea(polygon);
+    }
+
+    default Double toRadiusM(Order order) {
+        if (order == null || order.getDeliverables() == null) {
+            return null;
+        }
+        for (OrderDeliverable deliverable : order.getDeliverables()) {
+            if (deliverable == null || deliverable.getRequirement() == null) {
+                continue;
+            }
+            Double radius = toDouble(deliverable.getRequirement().get("radiusM"));
+            if (radius == null) {
+                radius = toDouble(deliverable.getRequirement().get("radius_m"));
+            }
+            if (radius != null) {
+                return radius;
+            }
+        }
+        return null;
+    }
+
+    default Double toDouble(Object value) {
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return Double.parseDouble(text);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 }

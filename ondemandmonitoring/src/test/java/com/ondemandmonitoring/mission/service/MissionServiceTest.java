@@ -1131,10 +1131,11 @@ class MissionServiceTest {
                     "a1", InspectionResult.FAIL, "a2", InspectionResult.PASS,
                     "p1", InspectionResult.PASS, "p2", InspectionResult.PASS,
                     "e1", InspectionResult.PASS, "e2", InspectionResult.PASS,
-                    "e3", InspectionResult.PASS, "d1", InspectionResult.PASS);
+                    "e3", InspectionResult.PASS, "e4", InspectionResult.PASS,
+                    "d1", InspectionResult.PASS);
 
             MissionResponse response = missionService.recordPostFlightInspection(
-                    mission.getId(), DroneStatus.MAINTENANCE, "Frame cracked", results);
+                    mission.getId(), DroneStatus.MAINTENANCE, "Frame cracked", results, null);
 
             assertThat(response.getStatus()).isEqualTo(MissionStatus.COMPLETED);
             assertThat(drone.getStatus()).isEqualTo(DroneStatus.MAINTENANCE);

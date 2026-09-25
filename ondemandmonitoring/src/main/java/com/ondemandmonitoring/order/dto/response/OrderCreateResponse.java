@@ -38,6 +38,7 @@ public class OrderCreateResponse {
     String address;
     Double longitude;
     Double latitude;
+    Double radiusM;
     Map<String, Object> coverageArea;
 
     // Schedule Info

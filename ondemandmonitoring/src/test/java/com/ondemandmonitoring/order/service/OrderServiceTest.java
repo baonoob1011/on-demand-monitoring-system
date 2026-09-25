@@ -137,7 +137,7 @@ class OrderServiceTest {
 
         OrderDeliverableRequest delReq = OrderDeliverableRequest.builder()
                 .deliverableTypeId("dt-1")
-                .requirement(Map.of("resolution", "4K"))
+                .requirement(Map.of("resolution", "4K", "radiusM", 300))
                 .build();
 
         OrderCreateRequest request = OrderCreateRequest.builder()
@@ -162,6 +162,7 @@ class OrderServiceTest {
         assertEquals(OrderStatus.PENDING, response.getOrderStatus());
         assertEquals(5.0, response.getLongitude());
         assertEquals(5.0, response.getLatitude());
+        assertEquals(300.0, response.getRadiusM());
         assertNotNull(response.getDeliverables());
         assertEquals(1, response.getDeliverables().size());
         assertEquals("dt-1", response.getDeliverables().get(0).getDeliverableTypeId());
