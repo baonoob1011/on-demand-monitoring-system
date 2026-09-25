@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.chat.services;
+package com.ondemandmonitoring.chat.services.impl;
 
 import com.ondemandmonitoring.chat.domain.*;
 import com.ondemandmonitoring.chat.dto.request.CreateDirectChatRequest;
@@ -9,6 +9,7 @@ import com.ondemandmonitoring.chat.enums.ChatRoomType;
 import com.ondemandmonitoring.chat.repositories.ChatMessageRepository;
 import com.ondemandmonitoring.chat.repositories.ChatParticipantRepository;
 import com.ondemandmonitoring.chat.repositories.ChatRoomRepository;
+import com.ondemandmonitoring.chat.services.ChatService;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.repository.UserRepository;
 import com.ondemandmonitoring.user.service.IUserIdentityService;
