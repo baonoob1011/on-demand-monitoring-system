@@ -52,7 +52,7 @@ public class CustomerConsultationServiceImpl
     private final ObjectMapper objectMapper;
 
     private static final Duration AI_REPLY_TIMEOUT =
-            Duration.ofSeconds(12);
+            Duration.ofSeconds(30);
     // =========================================================
     // START CONSULTATION
     // =========================================================
@@ -285,45 +285,28 @@ public class CustomerConsultationServiceImpl
             // 7. VALIDATE RECOMMENDED SERVICE
             // =====================================================
 
-            if (aiResult.recommendedServiceId() != null
+            Optional<Service> recommendedServiceOptional =
+                    resolveRecommendedService(aiResult);
+            String assistantReply = aiResult.reply().trim();
+
+            if (recommendedServiceOptional.isPresent()) {
+                Service recommendedService = recommendedServiceOptional.get();
+
+                consultation.setRecommendedService(
+                        recommendedService
+                );
+                saveLearningEntry(consultation, customer, request.getMessage(), recommendedService);
+
+            } else if (aiResult.recommendedServiceId() != null
                     && !aiResult.recommendedServiceId().isBlank()) {
-
-                String recommendedServiceId =
-                        aiResult.recommendedServiceId().trim();
-
-                Optional<Service> recommendedServiceOptional =
-                        serviceRepository.findById(recommendedServiceId);
-
-                if (recommendedServiceOptional.isEmpty()) {
-                    log.warn(
-                            "AI returned invalid serviceId. consultationId={}, serviceId={}",
-                            consultationId,
-                            recommendedServiceId
-                    );
-                } else {
-                    Service recommendedService =
-                            recommendedServiceOptional.get();
-
-                    /*
-                     * AI chỉ được recommend Service đang hoạt động.
-                     */
-                    if (Boolean.TRUE.equals(
-                            recommendedService.getIsActive()
-                    )) {
-
-                        consultation.setRecommendedService(
-                                recommendedService
-                        );
-                        saveLearningEntry(consultation, customer, request.getMessage(), recommendedService);
-
-                    } else {
-                        log.warn(
-                                "AI returned inactive serviceId. consultationId={}, serviceId={}",
-                                consultationId,
-                                recommendedServiceId
-                        );
-                    }
-                }
+                log.warn(
+                        "AI returned invalid or inactive serviceId. consultationId={}, serviceId={}",
+                        consultationId,
+                        aiResult.recommendedServiceId().trim()
+                );
+                consultation.setRecommendedService(null);
+            } else {
+                consultation.setRecommendedService(null);
             }
 
             // =====================================================
@@ -335,24 +318,57 @@ public class CustomerConsultationServiceImpl
              *
              * AI hiện chỉ có quyền đưa consultation về:
              *
-             * ACTIVE
+             * ACTIVE / NEED_MORE_INFO
+             * RECOMMENDED
              * READY_FOR_CONFIRMATION
              *
              * CONFIRMED sẽ do backend xử lý riêng sau khi
              * Customer thực sự xác nhận.
              */
             if (aiResult.requirementStatus()
-                    == ConsultationStatus.READY_FOR_CONFIRMATION) {
+                    == ConsultationStatus.RECOMMENDED
+                    && recommendedServiceOptional.isPresent()) {
+
+                consultation.setStatus(
+                        ConsultationStatus.RECOMMENDED
+                );
+                consultation.setRequestTitle(
+                        normalizeGeneratedDraftText(aiResult.requestTitle())
+                );
+                consultation.setRequestSummary(
+                        normalizeGeneratedDraftText(aiResult.requestSummary())
+                );
+
+            } else if (aiResult.requirementStatus()
+                    == ConsultationStatus.READY_FOR_CONFIRMATION
+                    && recommendedServiceOptional.isPresent()) {
 
                 consultation.setStatus(
                         ConsultationStatus.READY_FOR_CONFIRMATION
                 );
+                consultation.setRequestTitle(
+                        normalizeGeneratedDraftText(aiResult.requestTitle())
+                );
+                consultation.setRequestSummary(
+                        normalizeGeneratedDraftText(aiResult.requestSummary())
+                );
 
             } else {
 
+                if (aiResult.requirementStatus()
+                        == ConsultationStatus.READY_FOR_CONFIRMATION) {
+                    assistantReply = """
+                            Hiện chưa tìm thấy dịch vụ phù hợp với nhu cầu này. Anh/chị có thể mô tả cụ thể hơn mục tiêu cần giám sát.
+                            """.trim();
+                }
+
                 consultation.setStatus(
-                        ConsultationStatus.ACTIVE
+                        aiResult.requirementStatus() == ConsultationStatus.NEED_MORE_INFO
+                                ? ConsultationStatus.NEED_MORE_INFO
+                                : ConsultationStatus.ACTIVE
                 );
+                consultation.setRequestTitle(null);
+                consultation.setRequestSummary(null);
             }
 
             consultationRepository.save(consultation);
@@ -368,7 +384,7 @@ public class CustomerConsultationServiceImpl
                                     ConsultationSenderType.ASSISTANT
                             )
                             .message(
-                                    aiResult.reply().trim()
+                                    assistantReply
                             )
                             .build();
 
@@ -535,10 +551,36 @@ public class CustomerConsultationServiceImpl
     ) {
         String latestCustomerText = normalizeLatestCustomerMessage(aiHistory);
         if (latestCustomerText == null || latestCustomerText.isBlank()) {
-            return "Khách hàng đang cần tư vấn dịch vụ giám sát. Chưa đủ dữ liệu AI để đề xuất service.";
+            return "Khách hàng đang cần tư vấn dịch vụ giám sát. Cần làm rõ đối tượng/khu vực cần giám sát và mục tiêu chính trước khi đề xuất service.";
         }
 
-        return "Khách hàng đang cần tư vấn dịch vụ giám sát dựa trên nhu cầu vừa cung cấp. Chưa đủ dữ liệu AI để đề xuất service đáng tin cậy.";
+        return "Khách hàng đang cần tư vấn dịch vụ giám sát dựa trên nhu cầu vừa cung cấp. Cần làm rõ thêm mục tiêu ưu tiên, phạm vi khu vực và nhu cầu phân tích hình ảnh trước khi đề xuất service.";
+    }
+
+    private Optional<Service> resolveRecommendedService(AiConsultationResult aiResult) {
+
+        if (aiResult.recommendedServiceId() != null
+                && !aiResult.recommendedServiceId().isBlank()) {
+
+            Optional<Service> byId = serviceRepository.findById(
+                    aiResult.recommendedServiceId().trim()
+            );
+
+            if (byId.isPresent()
+                    && Boolean.TRUE.equals(byId.get().getIsActive())) {
+                return byId;
+            }
+        }
+        return Optional.empty();
+    }
+
+    private String normalizeGeneratedDraftText(String value) {
+
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        return value.trim();
     }
 
     private String normalizeHistory(List<ConsultationMessage> messages) {

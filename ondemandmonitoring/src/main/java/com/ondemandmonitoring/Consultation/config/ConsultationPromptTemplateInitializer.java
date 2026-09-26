@@ -9,7 +9,9 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 @Component
 @RequiredArgsConstructor
@@ -22,31 +24,38 @@ public class ConsultationPromptTemplateInitializer implements CommandLineRunner 
     @Transactional
     public void run(String... args) {
         int upserted = 0;
+        Set<String> activeKeys = new HashSet<>();
+        activeKeys.add(ConsultationPromptTemplateService.AI_SYSTEM_PROMPT);
+        activeKeys.add(ConsultationPromptTemplateService.AI_USER_TASK_PROMPT);
+
         upserted += upsert(ConsultationPromptTemplateService.AI_SYSTEM_PROMPT, """
                 Bạn là trợ lý tư vấn request giám sát của On-Demand Monitoring System.
 
                 Nguyên tắc chính:
-                - Vai trò chính của AI là đọc nhu cầu khách nhập, xác định khu vực/mục tiêu giám sát, gợi ý service phù hợp và tóm tắt lại cho phần mô tả request.
+                - Vai trò chính của AI là đọc nhu cầu khách nhập, match với ACTIVE service trong AVAILABLE SERVICES và trả recommendation ngắn gọn.
+                - Ưu tiên đề xuất service thay vì phỏng vấn dài. Nếu nhu cầu đã match hợp lý với một service trong AVAILABLE SERVICES thì đề xuất ngay.
                 - Khung giờ bay, loại kết quả ảnh/video/báo cáo và media do biểu mẫu bên ngoài quản lý; không hỏi lại, không tự thêm vào requirementSummary.
                 - Không hỏi hoặc tự gợi ý các khả năng app chưa chắc đáp ứng như rò rỉ, thấm nước, xói lở, nứt vỡ, cảnh báo realtime nếu khách chưa tự nêu rõ.
-                - Chỉ hỏi tối đa 2 nhóm đơn giản: khu vực/mục tiêu giám sát còn thiếu và dịch vụ phù hợp từ AVAILABLE SERVICES.
-                - AI detect ảnh là dịch vụ bổ sung/add-on; chỉ nhắc chung là "có cần AI detect ảnh bổ sung không", không tự liệt kê các loại detect chi tiết.
-                - Chỉ hỏi ngắn gọn khách có cần bật dịch vụ bổ sung AI detect ảnh không khi nội dung khách nhập thật sự liên quan tới phân tích hình ảnh.
+                - Chỉ hỏi thêm khi nội dung quá mơ hồ và AVAILABLE SERVICES có nhiều service phù hợp gần ngang nhau.
+                - Nếu cần hỏi thêm, chỉ hỏi tối đa 1 câu làm rõ ngắn gọn trong một lượt.
+                - Không hỏi câu xác nhận như "Anh/chị có muốn tiếp tục không?" hoặc "Có muốn sử dụng cấu hình này không?".
+                - AI detect ảnh là dịch vụ bổ sung/add-on; không hỏi lại nếu khách chưa chủ động nói cần phân tích ảnh bổ sung.
+                - Sau khi đã đề xuất được service, được phép hỏi đúng 1 câu tùy chọn: "Bạn có muốn bổ sung AI phân tích hình ảnh để hỗ trợ phát hiện và đánh dấu các dấu hiệu bất thường không? Đây là yêu cầu bổ sung và có thể phát sinh thêm chi phí."
+                - Câu hỏi AI phân tích hình ảnh không được dùng làm điều kiện để đề xuất service.
                 - Nếu khách đồng ý hoặc chọn nút bổ sung, ghi rõ vào requirementSummary là "Dịch vụ bổ sung: AI detect ảnh - ...".
                 - Không mặc định khách cần phát hiện bất thường, điểm nóng, nứt vỡ hoặc cảnh báo.
-                - Hỏi từ nhỏ tới lớn: đối tượng/khu vực cần giám sát -> mục tiêu giám sát -> gợi ý service phù hợp.
-                - Mỗi lượt chỉ hỏi 1 đến 2 ý quan trọng nhất.
                 - Không hỏi lại thông tin khách đã cung cấp.
                 - Không tự bịa dịch vụ, serviceId, khả năng kỹ thuật hoặc requirement.
                 - Chỉ đề xuất service xuất hiện trong AVAILABLE SERVICES và sao chép đúng serviceId.
                 - requirementSummary chỉ ghi nhu cầu giám sát và service/add-on đã rõ; không ghi khung giờ hoặc hình thức bàn giao.
-                - Chỉ dùng status ACTIVE hoặc READY_FOR_CONFIRMATION.
+                - requestTitle và requestSummary chỉ được tạo khi status READY_FOR_CONFIRMATION.
+                - Dùng status RECOMMENDED khi đã chọn được service nhưng chưa cần tạo draft request đầy đủ.
+                - Chỉ dùng status NEED_MORE_INFO, RECOMMENDED hoặc READY_FOR_CONFIRMATION.
 
                 READY_FOR_CONFIRMATION chỉ khi đã rõ:
-                1. Đối tượng/khu vực cần giám sát.
-                2. Mục tiêu giám sát chính.
-                3. Service phù hợp từ AVAILABLE SERVICES.
-                4. Requirement summary ngắn gọn, không suy diễn.
+                1. Nhu cầu customer đủ để chọn một service phù hợp từ AVAILABLE SERVICES.
+                2. recommendedServiceId là serviceId thật có trong AVAILABLE SERVICES.
+                3. Requirement summary ngắn gọn, không suy diễn.
 
                 REQUIREMENT SUMMARY RULES:
                 - requirementSummary phải là bản tóm tắt tự nhiên về nhu cầu giám sát đã xác định từ toàn bộ conversation.
@@ -58,13 +67,20 @@ public class ConsultationPromptTemplateInitializer implements CommandLineRunner 
                 - Tên service đề xuất chỉ nằm ở recommendedServiceId/recommendation riêng.
                 - Chỉ tóm tắt thông tin customer đã xác nhận hoặc có thể xác định chắc chắn từ conversation.
                 - Không tự bịa requirement.
-                - Nếu còn thiếu thông tin quan trọng, có thể kết thúc bằng "Cần làm rõ: ...".
-                - Giữ summary ngắn gọn khoảng 2 đến 4 câu và cập nhật sau mỗi lượt conversation.
+                - Nếu cần làm rõ thêm, ghi ngắn gọn nhu cầu đã hiểu và câu còn thiếu.
+                - Giữ summary ngắn gọn khoảng 1 đến 3 câu và cập nhật sau mỗi lượt conversation.
 
                 Không được nói với customer các chi tiết triển khai như RAG, vector search, embedding, similarity score, knowledge base, retrieved documents, prompt, LLM, metadata hoặc serviceId.
-                Khi tư vấn service, nói tự nhiên như nhân viên tư vấn; ví dụ chỉ nêu service phù hợp và lý do nghiệp vụ.
+                Khi tư vấn service, nói tự nhiên như nhân viên tư vấn; chỉ nêu service phù hợp và lý do nghiệp vụ ngắn gọn.
 
-                Trả về structured output gồm: reply, requirementStatus, recommendedServiceId, requirementSummary, requirements.
+                REQUEST TITLE/SUMMARY RULES:
+                - Nếu status NEED_MORE_INFO: requestTitle=null và requestSummary=null.
+                - Nếu status READY_FOR_CONFIRMATION: tạo requestTitle và requestSummary dựa trên toàn bộ conversation, requirement đã hiểu và service phù hợp.
+                - requestTitle viết tiếng Việt tự nhiên, 6 đến 15 từ, thể hiện mục tiêu chính, không copy nguyên câu dài của khách, không bắt đầu bằng "Khách hàng muốn", không có dấu chấm cuối, không dùng title chung chung như "Yêu cầu giám sát".
+                - requestSummary dài 1 đến 3 câu, nêu đối tượng/khu vực giám sát nếu đã biết, mục tiêu cần kiểm tra/phát hiện, loại dữ liệu cần thu thập nếu khách yêu cầu, và nhu cầu AI analysis nếu có.
+                - Không thêm thông tin chưa được customer cung cấp hoặc chưa xác định chắc chắn.
+
+                Trả về structured output gồm: reply, requirementStatus, recommendedServiceId, requirementSummary, requestTitle, requestSummary, requirements.
                 Mặc định trả lời tiếng Việt tự nhiên, ngắn gọn, chuyên nghiệp.
                 """);
         upserted += upsert(ConsultationPromptTemplateService.AI_USER_TASK_PROMPT, """
@@ -78,61 +94,76 @@ public class ConsultationPromptTemplateInitializer implements CommandLineRunner 
 
                 NHIỆM VỤ
 
-                Tiếp tục tư vấn khách hàng theo nguyên tắc trong system prompt.
-                Phân tích toàn bộ hội thoại để xác định thông tin đã biết, thông tin còn thiếu và service phù hợp trong AVAILABLE SERVICES.
+                Phân tích toàn bộ hội thoại, ưu tiên match nhu cầu hiện tại với service phù hợp nhất trong AVAILABLE SERVICES.
 
-                Nếu còn thiếu thông tin quan trọng:
-                - status ACTIVE.
-                - Hỏi 1 đến 2 câu tiếp theo.
-                - Chỉ hỏi về khu vực/mục tiêu giám sát còn thiếu hoặc xác nhận service phù hợp từ AVAILABLE SERVICES.
-                - Không hỏi khung giờ, ngày bay, số lượng media, độ phân giải, ảnh/video/báo cáo hay cách bàn giao.
-                - Chỉ hỏi chung "có cần AI detect ảnh bổ sung không" nếu khách có nhu cầu phân tích hình ảnh ngoài việc thu thập dữ liệu thông thường.
-                - Nếu khách trả lời không cần dịch vụ bổ sung, không hỏi lan sang mapping/2D/3D/orthomosaic/point cloud hay service khác.
-                - Chỉ hỏi về một service cụ thể khi khách chủ động nhắc tới nhu cầu đó hoặc service đó thật sự phù hợp.
-
-                Nếu đã đủ thông tin:
+                Nếu nhu cầu đã match hợp lý với một service:
                 - Chọn service phù hợp từ AVAILABLE SERVICES.
                 - Dùng đúng serviceId.
-                - Tóm tắt requirement đúng dữ liệu khách đã nói, chỉ gồm nhu cầu/khu vực/mục tiêu giám sát và dịch vụ bổ sung AI detect ảnh nếu có.
+                - recommendedServiceId bắt buộc là serviceId thật trong AVAILABLE SERVICES.
+                - reply ngắn gọn: "Dịch vụ ... phù hợp với nhu cầu ... của bạn."
+                - Sau đó hỏi thêm đúng 1 câu tùy chọn: "Bạn có muốn bổ sung AI phân tích hình ảnh để hỗ trợ phát hiện và đánh dấu các dấu hiệu bất thường không? Đây là yêu cầu bổ sung và có thể phát sinh thêm chi phí."
+                - Tóm tắt requirement đúng dữ liệu khách đã nói, chỉ gồm nhu cầu/khu vực/mục tiêu giám sát và dịch vụ bổ sung nếu có.
                 - Không đưa tên service đề xuất vào requirementSummary.
-                - status READY_FOR_CONFIRMATION.
+                - Tạo requestTitle và requestSummary để prefill form.
+                - status RECOMMENDED.
+
+                Nếu request thật sự quá mơ hồ hoặc nhiều service trong AVAILABLE SERVICES phù hợp gần ngang nhau:
+                - status NEED_MORE_INFO.
+                - recommendedServiceId=null.
+                - requestTitle=null và requestSummary=null.
+                - Hỏi tối đa 1 câu làm rõ ngắn gọn để phân biệt service.
+                - Không hỏi khung giờ, ngày bay, số lượng media, độ phân giải, ảnh/video/báo cáo hay cách bàn giao.
+
+                Nếu không có service phù hợp trong AVAILABLE SERVICES:
+                - status NEED_MORE_INFO.
+                - recommendedServiceId=null.
+                - reply: "Hiện chưa tìm thấy dịch vụ phù hợp với nhu cầu này. Anh/chị có thể mô tả cụ thể hơn mục tiêu cần giám sát."
+                - Không hallucinate tên service.
 
                 Tuyệt đối không tự thêm mục tiêu phát hiện bất thường, điểm nóng, nứt vỡ, rò rỉ, thấm nước, xói lở hoặc cảnh báo nếu khách chưa yêu cầu.
                 """);
 
-        for (Map.Entry<String, String> entry : fallbackTemplates().entrySet()) {
+        Map<String, String> fallbackTemplates = fallbackTemplates();
+        activeKeys.addAll(fallbackTemplates.keySet());
+        for (Map.Entry<String, String> entry : fallbackTemplates.entrySet()) {
             upserted += upsert(entry.getKey(), entry.getValue());
         }
 
-        log.info("Consultation prompt templates seed completed: upserted={}", upserted);
+        int deactivated = deactivateObsoleteFallbacks(activeKeys);
+
+        log.info(
+                "Consultation prompt templates seed completed: upserted={}, deactivated={}",
+                upserted,
+                deactivated
+        );
     }
 
     private Map<String, String> fallbackTemplates() {
         return Map.ofEntries(
                 Map.entry("FALLBACK_AI_UNAVAILABLE", """
-                        Mình đã ghi nhận nội dung anh/chị nhập, nhưng hiện chưa lấy được kết quả phân tích AI từ hệ thống.
+                        Mình chưa xác định được service phù hợp từ nội dung hiện tại.
 
-                        Anh/chị có thể gửi lại nhu cầu một lần nữa hoặc chọn service thủ công ở danh sách bên dưới. Mình sẽ không tự đề xuất service khi chưa có kết quả tư vấn đáng tin cậy.
+                        Anh/chị mô tả ngắn gọn muốn giám sát công trình, đập/hồ nước, mặt nước/dòng chảy, nhiệt độ hay tiến độ thi công nhé.
                         """),
                 Map.entry("FALLBACK_BUILDING_DELIVERABLE", """
-                        Mình đã ghi nhận nhu cầu giám sát tòa nhà/công trình.
+                        Mình đã ghi nhận nhu cầu giám sát công trình.
 
-                        Anh/chị muốn ưu tiên khu vực nào và mục tiêu chính là kiểm tra hiện trạng, nứt/hư hỏng, an toàn hay tiến độ?
+                        Anh/chị muốn theo dõi tiến độ thi công hay kiểm tra hiện trạng công trình?
                         """),
                 Map.entry("FALLBACK_BUILDING_PRIORITY", """
                         Mình đã ghi nhận yêu cầu giám sát công trình{optionalGoal}.
 
-                        Anh/chị muốn ưu tiên khu vực nào: mái, mặt đứng, mặt tiền, cổng ra vào, một tầng/khu cụ thể, hay toàn bộ công trình?
+                        Anh/chị muốn giám sát cố định một khu vực hay toàn bộ khu vực đã chọn trên bản đồ?
                         """),
                 Map.entry("FALLBACK_BUILDING_OUTCOME", """
-                        Mình đã rõ đối tượng và khu vực ưu tiên.
+                        Mình đã rõ hướng giám sát công trình.
 
-                        Mục tiêu giám sát chính của anh/chị là kiểm tra hiện trạng, phát hiện hư hỏng, theo dõi tiến độ hay rà soát an toàn?
+                        Kết quả anh/chị cần ưu tiên là ảnh/video sau khi giám sát hay báo cáo tổng hợp?
                         """),
                 Map.entry("FALLBACK_BUILDING_NOTIFICATION", """
-                        Request đã khá rõ: giám sát tòa nhà/công trình, có khu vực ưu tiên và mục tiêu giám sát.
+                        Request đã khá rõ: giám sát công trình theo nhu cầu đã nêu.
 
-                        Anh/chị có cần AI detect ảnh bổ sung để hỗ trợ phân tích hư hỏng/bất thường, hay chỉ cần giám sát theo dịch vụ chính?
+                        Nếu cần AI detect ảnh bổ sung, anh/chị có thể tick trong phần dịch vụ bổ sung.
                         """),
                 Map.entry("FALLBACK_BUILDING_READY", """
                         Mình đã có đủ thông tin chính để lập request giám sát công trình.
@@ -143,31 +174,6 @@ public class ConsultationPromptTemplateInitializer implements CommandLineRunner 
                         Mình đang cần làm rõ request giám sát.
 
                         Anh/chị cho biết đối tượng/khu vực cần giám sát là gì và mục tiêu chính muốn kiểm tra điều gì?
-                        """),
-                Map.entry("FALLBACK_INDUSTRIAL", """
-                        Mình đang hiểu nhu cầu là giám sát khu công nghiệp/nhà máy.
-
-                        Anh/chị muốn ưu tiên chụp khu vực nào trước: mái nhà, bồn chứa, hàng rào, tài sản ngoài trời hay lối ra vào? Kết quả cần ảnh tổng quan, video, hay báo cáo kèm hình?
-                        """),
-                Map.entry("FALLBACK_LOGISTICS", """
-                        Mình đang hiểu nhu cầu là giám sát kho bãi/logistics.
-
-                        Anh/chị muốn ưu tiên việc nào: kiểm kê container/xe/vật tư, phát hiện khu vực quá tải, theo dõi luồng ra vào hay kiểm tra an ninh? Kết quả cần ảnh tổng quan, danh sách vị trí bất thường hay báo cáo định kỳ?
-                        """),
-                Map.entry("FALLBACK_EVENT_CROWD", """
-                        Mình đang hiểu nhu cầu là giám sát sự kiện hoặc khu đông người.
-
-                        Anh/chị muốn theo dõi mật độ đám đông, luồng di chuyển, điểm ùn ứ, bãi đỗ xe hay khu vực an ninh? Cần cảnh báo theo thời gian thực hay chỉ báo cáo sau sự kiện?
-                        """),
-                Map.entry("FALLBACK_AGRICULTURE_PRIORITY", """
-                        Mình đang hiểu nhu cầu là giám sát nông nghiệp/cây trồng.
-
-                        Anh/chị muốn giám sát toàn bộ vườn hay một phần cụ thể? Có cần AI phân tích thêm về sinh trưởng kém, thiếu nước hoặc sâu bệnh không?
-                        """),
-                Map.entry("FALLBACK_AGRICULTURE_FREQUENCY", """
-                        Mình đã ghi nhận hướng giám sát cây trồng và khu vực ưu tiên.
-
-                        Anh/chị muốn kiểm tra một lần để biết hiện trạng hay theo dõi định kỳ hằng tuần/hằng tháng để so sánh xu hướng?
                         """),
                 Map.entry("FALLBACK_GENERIC_RECEIVE_RESULT", """
                         Mình đã ghi nhận nhu cầu giám sát của anh/chị.
@@ -184,50 +190,15 @@ public class ConsultationPromptTemplateInitializer implements CommandLineRunner 
 
                         Request sẽ tập trung giám sát theo khu vực và mục tiêu anh/chị đã nhập. Anh/chị kiểm tra thông tin bên phải, nếu đúng có thể tiếp tục.
                         """),
-                Map.entry("FALLBACK_ENVIRONMENT", """
-                        Mình đang hiểu nhu cầu là giám sát môi trường/khu vực rủi ro.
-
-                        Anh/chị muốn ưu tiên theo dõi ngập, sạt lở, xói mòn, ô nhiễm nguồn nước, hay điểm bất thường khác? Khu vực ưu tiên là ven sông/kênh, khu dân cư, nhà máy hay toàn bộ vùng?
-                        """),
-                Map.entry("FALLBACK_FIRE", """
-                        Mình đang hiểu nhu cầu là phát hiện cháy rừng/điểm nhiệt.
-
-                        Anh/chị cần cảnh báo gần thời gian thực khi thấy khói/điểm nhiệt, hay chỉ cần bản đồ nguy cơ và báo cáo định kỳ? Kênh nhận cảnh báo là email, SMS/tin nhắn hay dashboard?
-                        """),
-                Map.entry("FALLBACK_SECURITY", """
-                        Mình đang hiểu nhu cầu là giám sát an ninh khu vực.
-
-                        Anh/chị muốn tuần tra một lần, tuần tra theo khung giờ cố định, hay giám sát khi có sự kiện? Cần ưu tiên cổng ra vào, hàng rào, kho bãi hay điểm nhạy cảm nào?
-                        """),
-                Map.entry("FALLBACK_TRAFFIC", """
-                        Mình đang hiểu nhu cầu là giám sát giao thông.
-
-                        Anh/chị muốn theo dõi lưu lượng xe, ùn tắc, tai nạn, điểm nghẽn, hay tình trạng mặt đường? Kết quả cần là video quan sát, thống kê lưu lượng, hay báo cáo điểm bất thường?
-                        """),
-                Map.entry("FALLBACK_SOLAR", """
-                        Mình đang hiểu nhu cầu là kiểm tra tấm pin năng lượng mặt trời.
-
-                        Anh/chị muốn phát hiện điểm nóng, tấm lỗi, bụi bẩn/suy giảm hiệu suất, hay kiểm tra inverter/khu kỹ thuật? Kết quả cần ảnh nhiệt kèm vị trí từng tấm hay báo cáo tổng hợp theo dãy?
-                        """),
-                Map.entry("FALLBACK_POWER_LINE", """
-                        Mình đang hiểu nhu cầu là kiểm tra đường dây điện/trạm biến áp.
-
-                        Anh/chị muốn kiểm tra cột, sứ, dây dẫn, điểm nhiệt thiết bị, hành lang an toàn hay vật cản gần tuyến? Cần báo cáo theo từng vị trí/cột hay tổng hợp toàn tuyến?
-                        """),
                 Map.entry("FALLBACK_MAPPING", """
                         Mình đang hiểu nhu cầu là khảo sát bản đồ 2D/3D.
 
-                        Anh/chị cần orthomosaic 2D, mô hình 3D, point cloud, đo diện tích/thể tích hay bản đồ hiện trạng? Chỉ cần trả lời phần nào thật sự cần.
+                        Anh/chị muốn nhận bản đồ khu vực hay ảnh/video kiểm tra từ khu vực đã chọn?
                         """),
-                Map.entry("FALLBACK_PIPELINE", """
-                        Mình đang hiểu nhu cầu là kiểm tra đường ống/hành lang tuyến.
+                Map.entry("FALLBACK_WATER", """
+                        Mình đang hiểu nhu cầu liên quan đập, hồ chứa hoặc mặt nước.
 
-                        Anh/chị muốn phát hiện rò rỉ, xâm lấn hành lang, hư hỏng bề mặt, điểm nhiệt hay vật cản trên tuyến? Cần báo cáo theo từng đoạn tuyến hay theo tọa độ điểm bất thường?
-                        """),
-                Map.entry("FALLBACK_BRIDGE_ROAD", """
-                        Mình đang hiểu nhu cầu là kiểm tra cầu/đường/hạ tầng giao thông.
-
-                        Anh/chị muốn phát hiện nứt vỡ, sụt lún, hư hỏng mặt đường, taluy/sạt lở hay điểm nguy hiểm giao thông? Khu vực ưu tiên là mặt cầu, mặt đường, mép taluy hay toàn tuyến?
+                        Anh/chị muốn giám sát cố định một khu vực hay theo dõi mặt nước/dòng chảy trong vùng đã chọn?
                         """)
         );
     }
@@ -243,5 +214,20 @@ public class ConsultationPromptTemplateInitializer implements CommandLineRunner 
         template.setActive(true);
         repository.save(template);
         return changed ? 1 : 0;
+    }
+
+    private int deactivateObsoleteFallbacks(Set<String> activeKeys) {
+        int count = 0;
+        for (ConsultationPromptTemplate template : repository.findAll()) {
+            String key = template.getTemplateKey();
+            if (key == null || !key.startsWith("FALLBACK_") || activeKeys.contains(key)
+                    || !Boolean.TRUE.equals(template.getActive())) {
+                continue;
+            }
+            template.setActive(false);
+            repository.save(template);
+            count++;
+        }
+        return count;
     }
 }

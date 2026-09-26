@@ -8,6 +8,8 @@ public record AiConsultationResult(
         ConsultationStatus requirementStatus,
         String recommendedServiceId,
         String requirementSummary,
+        String requestTitle,
+        String requestSummary,
         ConsultationRequirements requirements
 ) {
 }
