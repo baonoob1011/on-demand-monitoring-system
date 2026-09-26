@@ -3,8 +3,10 @@ package com.ondemandmonitoring.service.config;
 import com.ondemandmonitoring.service.domain.DeliverableType;
 import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.service.domain.ServiceDeliverable;
+import com.ondemandmonitoring.service.domain.ServiceRequirementSuggestion;
 import com.ondemandmonitoring.service.repository.DeliverableTypeRepository;
 import com.ondemandmonitoring.service.repository.ServiceDeliverableRepository;
+import com.ondemandmonitoring.service.repository.ServiceRequirementSuggestionRepository;
 import com.ondemandmonitoring.service.repository.ServiceRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +30,7 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
     private final ServiceRepository serviceRepository;
     private final DeliverableTypeRepository deliverableTypeRepository;
     private final ServiceDeliverableRepository serviceDeliverableRepository;
+    private final ServiceRequirementSuggestionRepository suggestionRepository;
 
     @Override
     @Transactional
@@ -36,13 +39,15 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
         int legacyServicesCleaned = cleanupLegacyEnglishServices();
         int deliverablesUpserted = seedDeliverableTypes();
         int linksCreated = seedServiceDeliverables();
+        int suggestionsUpserted = seedRequirementSuggestions();
 
         log.info(
-                "Service catalog seed completed: services={}, legacyServicesCleaned={}, deliverableTypes={}, serviceDeliverables={}",
+                "Service catalog seed completed: services={}, legacyServicesCleaned={}, deliverableTypes={}, serviceDeliverables={}, requirementSuggestions={}",
                 servicesUpserted,
                 legacyServicesCleaned,
                 deliverablesUpserted,
-                linksCreated
+                linksCreated,
+                suggestionsUpserted
         );
     }
 
@@ -339,6 +344,117 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
                 });
     }
 
+    private int seedRequirementSuggestions() {
+        int count = 0;
+        count += seedGlobalSuggestions();
+
+        Map<String, List<SuggestionSeed>> byServiceName = Map.ofEntries(
+                Map.entry("Giám sát Tòa nhà / Cơ sở hạ tầng", List.of(
+                        new SuggestionSeed("Mục tiêu AI check", "AI check nứt vỡ/hư hỏng.", "AI check nứt vỡ/hư hỏng.", 10),
+                        new SuggestionSeed("Mục tiêu AI check", "Theo dõi tiến độ công trình.", "Theo dõi tiến độ công trình.", 20),
+                        new SuggestionSeed("Khu vực ưu tiên", "Ưu tiên mặt đứng và mặt tiền.", "Ưu tiên mặt đứng và mặt tiền.", 30),
+                        new SuggestionSeed("Khu vực ưu tiên", "Ưu tiên mái và khu kỹ thuật.", "Ưu tiên mái và khu kỹ thuật.", 40)
+                )),
+                Map.entry("Giám sát Nông nghiệp / Cây trồng", List.of(
+                        new SuggestionSeed("Mục tiêu AI check", "Phát hiện cây sinh trưởng kém.", "Phát hiện cây sinh trưởng kém.", 10),
+                        new SuggestionSeed("Mục tiêu AI check", "Tìm vùng thiếu nước.", "Tìm vùng thiếu nước.", 20),
+                        new SuggestionSeed("Mục tiêu AI check", "Phát hiện sâu bệnh.", "Phát hiện sâu bệnh.", 30),
+                        new SuggestionSeed("Thông báo & tần suất", "Theo dõi định kỳ để so sánh thay đổi.", "Theo dõi định kỳ để so sánh thay đổi.", 40)
+                )),
+                Map.entry("Giám sát Cháy rừng / Điểm nhiệt", List.of(
+                        new SuggestionSeed("Mục tiêu AI check", "Phát hiện khói/điểm nhiệt.", "Phát hiện khói/điểm nhiệt.", 10),
+                        new SuggestionSeed("Mục tiêu AI check", "Cảnh báo cháy sớm.", "Cảnh báo cháy sớm.", 20),
+                        new SuggestionSeed("Kết quả cần nhận", "Bản đồ nguy cơ cháy.", "Bản đồ nguy cơ cháy.", 30),
+                        new SuggestionSeed("Thông báo & tần suất", "Báo khẩn khi có điểm nhiệt.", "Báo khẩn khi có điểm nhiệt.", 40)
+                )),
+                Map.entry("Khảo sát Bản đồ 2D/3D", List.of(
+                        new SuggestionSeed("Sản phẩm bản đồ", "Tôi cần orthomosaic 2D.", "Tôi cần orthomosaic 2D.", 10),
+                        new SuggestionSeed("Sản phẩm bản đồ", "Tôi cần mô hình 3D/point cloud.", "Tôi cần mô hình 3D/point cloud.", 20),
+                        new SuggestionSeed("Sản phẩm bản đồ", "Tôi muốn đo diện tích/thể tích.", "Tôi muốn đo diện tích/thể tích.", 30),
+                        new SuggestionSeed("Độ chi tiết", "Ưu tiên ảnh độ phân giải cao.", "Ưu tiên ảnh độ phân giải cao.", 40)
+                )),
+                Map.entry("Giám sát Kho bãi / Logistics", List.of(
+                        new SuggestionSeed("Mục tiêu AI check", "Kiểm kê container/xe/vật tư.", "Kiểm kê container/xe/vật tư.", 10),
+                        new SuggestionSeed("Mục tiêu AI check", "Phát hiện khu vực quá tải.", "Phát hiện khu vực quá tải.", 20),
+                        new SuggestionSeed("Mục tiêu AI check", "Theo dõi luồng ra vào.", "Theo dõi luồng ra vào.", 30),
+                        new SuggestionSeed("Kết quả cần nhận", "Báo cáo số lượng và vị trí.", "Báo cáo số lượng và vị trí.", 40)
+                )),
+                Map.entry("Giám sát Sự kiện / Đám đông", List.of(
+                        new SuggestionSeed("Mục tiêu AI check", "Theo dõi mật độ đám đông.", "Theo dõi mật độ đám đông.", 10),
+                        new SuggestionSeed("Mục tiêu AI check", "Phát hiện điểm ùn ứ.", "Phát hiện điểm ùn ứ.", 20),
+                        new SuggestionSeed("Mục tiêu AI check", "Giám sát bãi đỗ xe.", "Giám sát bãi đỗ xe.", 30),
+                        new SuggestionSeed("Thông báo & tần suất", "Cảnh báo thời gian thực.", "Cảnh báo thời gian thực.", 40)
+                ))
+        );
+
+        for (Map.Entry<String, List<SuggestionSeed>> entry : byServiceName.entrySet()) {
+            Service service = serviceRepository.findByNameIgnoreCase(entry.getKey()).orElse(null);
+            if (service == null) continue;
+            for (SuggestionSeed seed : entry.getValue()) {
+                if (upsertSuggestion(service, seed)) count++;
+            }
+        }
+
+        return count;
+    }
+
+    private int seedGlobalSuggestions() {
+        int count = 0;
+        for (SuggestionSeed seed : List.of(
+                new SuggestionSeed("Mục tiêu AI check", "Phát hiện bất thường chính.", "Phát hiện bất thường chính.", 900),
+                new SuggestionSeed("Kết quả cần nhận", "Ảnh/video minh chứng.", "Tôi muốn ảnh/video minh chứng.", 910),
+                new SuggestionSeed("Kết quả cần nhận", "Đánh dấu vị trí trên bản đồ.", "Đánh dấu vị trí trên bản đồ.", 920),
+                new SuggestionSeed("Thông báo & tần suất", "Báo khẩn qua email/điện thoại.", "Báo khẩn qua email/điện thoại khi phát hiện bất thường.", 930),
+                new SuggestionSeed("Thông báo & tần suất", "Chỉ tổng hợp trong báo cáo.", "Chỉ tổng hợp trong báo cáo sau chuyến bay.", 940)
+        )) {
+            if (upsertSuggestion(null, seed)) count++;
+        }
+        return count;
+    }
+
+    private boolean upsertSuggestion(Service service, SuggestionSeed seed) {
+        ServiceRequirementSuggestion suggestion = service == null
+                ? suggestionRepository.findByActiveTrueAndServiceIsNullOrderBySortOrderAscCreatedAtAsc().stream()
+                        .filter(row -> row.getCategory().equalsIgnoreCase(seed.category())
+                                && row.getLabel().equalsIgnoreCase(seed.label()))
+                        .findFirst()
+                        .orElse(null)
+                : suggestionRepository
+                        .findByServiceIdAndCategoryIgnoreCaseAndLabelIgnoreCase(service.getId(), seed.category(), seed.label())
+                        .orElse(null);
+
+        if (suggestion == null) {
+            suggestion = new ServiceRequirementSuggestion();
+            suggestion.setService(service);
+            suggestion.setCategory(seed.category());
+            suggestion.setLabel(seed.label());
+        }
+
+        boolean changed = false;
+        if (!seed.message().equals(suggestion.getMessage())) {
+            suggestion.setMessage(seed.message());
+            changed = true;
+        }
+        if (!seed.sortOrder().equals(suggestion.getSortOrder())) {
+            suggestion.setSortOrder(seed.sortOrder());
+            changed = true;
+        }
+        if (!Boolean.TRUE.equals(suggestion.getActive())) {
+            suggestion.setActive(true);
+            changed = true;
+        }
+        if (!"SEED".equals(suggestion.getSource())) {
+            suggestion.setSource("SEED");
+            changed = true;
+        }
+
+        if (suggestion.getId() == null || changed) {
+            suggestionRepository.save(suggestion);
+            return true;
+        }
+        return false;
+    }
+
     private boolean upsertDeliverableType(DeliverableTypeSeed seed) {
         return deliverableTypeRepository.findByNameIgnoreCase(seed.name())
                 .map(existing -> {
@@ -377,5 +493,8 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
     }
 
     private record DeliverableTypeSeed(String name, String defaultFormat) {
+    }
+
+    private record SuggestionSeed(String category, String label, String message, Integer sortOrder) {
     }
 }

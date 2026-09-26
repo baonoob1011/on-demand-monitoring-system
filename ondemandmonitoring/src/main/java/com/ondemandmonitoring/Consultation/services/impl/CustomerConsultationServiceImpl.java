@@ -1,6 +1,7 @@
 package com.ondemandmonitoring.Consultation.services.impl;
 
 import com.ondemandmonitoring.Consultation.domains.ConsultationMessage;
+import com.ondemandmonitoring.Consultation.domains.ConsultationLearningEntry;
 import com.ondemandmonitoring.Consultation.domains.ConsultationRequirements;
 import com.ondemandmonitoring.Consultation.domains.CustomerConsultation;
 import com.ondemandmonitoring.Consultation.dtos.requests.SendConsultationMessageRequest;
@@ -9,6 +10,7 @@ import com.ondemandmonitoring.Consultation.dtos.responses.CustomerConsultationRe
 import com.ondemandmonitoring.Consultation.enums.ConsultationSenderType;
 import com.ondemandmonitoring.Consultation.enums.ConsultationStatus;
 import com.ondemandmonitoring.Consultation.mappers.CustomerConsultationMapper;
+import com.ondemandmonitoring.Consultation.repositories.ConsultationLearningEntryRepository;
 import com.ondemandmonitoring.Consultation.repositories.ConsultationMessageRepository;
 import com.ondemandmonitoring.Consultation.repositories.CustomerConsultationRepository;
 import com.ondemandmonitoring.Consultation.services.AiConsultationService;
@@ -39,6 +41,7 @@ public class CustomerConsultationServiceImpl
 
     private final CustomerConsultationRepository consultationRepository;
     private final ConsultationMessageRepository messageRepository;
+    private final ConsultationLearningEntryRepository learningEntryRepository;
     private final CustomerConsultationMapper consultationMapper;
     private final AuthenticatedUserResolver authenticatedUserResolver;
     private final AiConsultationService aiConsultationService;
@@ -158,6 +161,7 @@ public class CustomerConsultationServiceImpl
                         .build();
 
         messageRepository.save(customerMessage);
+        saveLearningEntry(consultation, customer, request.getMessage(), null);
 
         // =====================================================
         // 2. LOAD CONVERSATION HISTORY
@@ -307,6 +311,7 @@ public class CustomerConsultationServiceImpl
                         consultation.setRecommendedService(
                                 recommendedService
                         );
+                        saveLearningEntry(consultation, customer, request.getMessage(), recommendedService);
 
                     } else {
                         log.warn(
@@ -554,6 +559,8 @@ public class CustomerConsultationServiceImpl
                 "nong nghiep",
                 "cay trong",
                 "ca phe",
+                "thanh long",
+                "vuon thanh long",
                 "lua",
                 "vuon",
                 "thieu nuoc",
@@ -574,6 +581,8 @@ public class CustomerConsultationServiceImpl
                 "nong nghiep",
                 "cay trong",
                 "ca phe",
+                "thanh long",
+                "vuon thanh long",
                 "lua",
                 "vuon",
                 "thieu nuoc",
@@ -739,6 +748,9 @@ public class CustomerConsultationServiceImpl
 
         if (latestLogistics || latestIndustrial || latestEventCrowd) {
             agriculture = false;
+        }
+        if (latestAgriculture) {
+            building = false;
         }
 
         if (!building) {
@@ -973,6 +985,12 @@ public class CustomerConsultationServiceImpl
                 .filter(service -> Boolean.TRUE.equals(service.getIsActive()))
                 .filter(service -> {
                     String name = normalizeText(service.getName());
+                    if (containsAny(latestCustomerText, "nong nghiep", "cay trong", "ca phe", "thanh long", "vuon", "lua", "sau benh", "thieu nuoc")) {
+                        return name.contains("nong nghiep")
+                                || name.contains("cay trong")
+                                || name.contains("ndvi")
+                                || name.contains("thuc vat");
+                    }
                     if (containsAny(latestCustomerText, "kho bai", "logistics", "container", "bai xe")) {
                         return name.contains("kho bai")
                                 || name.contains("logistics")
@@ -1003,7 +1021,10 @@ public class CustomerConsultationServiceImpl
     ) {
 
         String text = normalizeHistory(aiHistory);
-        boolean building = containsAny(text, "toa nha", "cong trinh", "co so ha tang");
+        String latestCustomerText = normalizeLatestCustomerMessage(aiHistory);
+        boolean agriculture = containsAny(latestCustomerText, "nong nghiep", "cay trong", "ca phe", "thanh long", "vuon", "lua", "sau benh", "thieu nuoc");
+        boolean building = !agriculture && containsAny(text, "toa nha", "cong trinh", "co so ha tang");
+        boolean cropIssue = containsAny(text, "sau benh", "thieu nuoc", "sinh truong", "vang la", "kho heo", "bat thuong");
         boolean crack = containsAny(text, "nut vo", "hu hong", "xuong cap", "ket cau");
         boolean hotSpot = containsAny(text, "diem nong", "nhiet", "thermal", "qua nhiet");
         boolean safety = containsAny(text, "an toan", "xam nhap", "nguy hiem");
@@ -1013,6 +1034,11 @@ public class CustomerConsultationServiceImpl
             return "Khách hàng muốn giám sát tòa nhà/công trình để "
                     + buildProblemPhrase(crack, hotSpot, safety, progress)
                     + ". Cần làm rõ thêm khu vực ưu tiên, kết quả bàn giao và cách thông báo khi phát hiện bất thường.";
+        }
+        if (agriculture) {
+            return "Khách hàng muốn giám sát vườn/cây trồng"
+                    + (cropIssue ? " để phát hiện dấu hiệu bất thường, sâu bệnh hoặc thiếu nước" : "")
+                    + ". Cần làm rõ thêm khu vực ưu tiên, tần suất theo dõi và kết quả bàn giao mong muốn.";
         }
 
         return "Khách hàng muốn tạo yêu cầu giám sát nhưng cần làm rõ đối tượng, mục tiêu, phạm vi, kết quả mong muốn và cách nhận thông báo.";
@@ -1102,6 +1128,41 @@ public class CustomerConsultationServiceImpl
                 .replace("đ", "d")
                 .replace("Đ", "d")
                 .toLowerCase();
+    }
+
+    private void saveLearningEntry(
+            CustomerConsultation consultation,
+            User customer,
+            String rawMessage,
+            Service service
+    ) {
+
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return;
+        }
+
+        String normalized = normalizeText(rawMessage)
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        if (normalized.length() < 5) {
+            return;
+        }
+
+        String customerId = customer != null ? customer.getId() : null;
+        if (customerId != null
+                && learningEntryRepository.existsByCustomerIdAndNormalizedMessage(customerId, normalized)) {
+            return;
+        }
+
+        ConsultationLearningEntry entry = new ConsultationLearningEntry();
+        entry.setConsultation(consultation);
+        entry.setCustomerId(customerId);
+        entry.setRawMessage(rawMessage.trim());
+        entry.setNormalizedMessage(normalized);
+        entry.setService(service);
+        entry.setPromotedToSuggestion(false);
+        learningEntryRepository.save(entry);
     }
 
     // =========================================================
