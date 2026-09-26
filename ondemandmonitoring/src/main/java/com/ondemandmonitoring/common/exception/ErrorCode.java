@@ -70,7 +70,8 @@ public enum ErrorCode {
     DEVICE_MODEL_NOT_FOUND("Device model not found", HttpStatus.NOT_FOUND),
     DEVICE_MODEL_CODE_EXISTS("Device model code already exists", HttpStatus.CONFLICT),
     DEVICE_NOT_FOUND("Device not found", HttpStatus.NOT_FOUND),
-    DEVICE_SERIAL_NUMBER_EXISTS("Device serial number already exists", HttpStatus.CONFLICT);
+    DEVICE_SERIAL_NUMBER_EXISTS("Device serial number already exists", HttpStatus.CONFLICT),
+    DEVICE_NOT_AVAILABLE("Device is not available", HttpStatus.CONFLICT);
 
     String message;
     HttpStatus status;
