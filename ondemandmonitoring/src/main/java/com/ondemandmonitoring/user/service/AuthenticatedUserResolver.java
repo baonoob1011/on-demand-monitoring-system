@@ -25,6 +25,11 @@ public class AuthenticatedUserResolver {
     IUserIdentityService userIdentityService;
 
     @Transactional(readOnly = true)
+    public String getCurrentUserId() {
+        return getCurrentUser().getId();
+    }
+
+    @Transactional(readOnly = true)
     public User getCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null

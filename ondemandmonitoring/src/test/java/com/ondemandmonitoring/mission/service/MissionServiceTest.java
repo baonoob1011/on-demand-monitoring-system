@@ -4,14 +4,13 @@ import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.drone.domain.Drone;
 import com.ondemandmonitoring.drone.domain.DroneTelemetry;
 import com.ondemandmonitoring.drone.domain.PersistedPreflightCheck;
-import com.ondemandmonitoring.drone.domain.PreflightCheck;
 import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
 import com.ondemandmonitoring.drone.enums.DroneStatus;
 import com.ondemandmonitoring.drone.enums.PreflightCheckStatus;
 import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
-import com.ondemandmonitoring.drone.service.PreflightCheckService;
 import com.ondemandmonitoring.mission.domain.FlightToken;
+import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
 import com.ondemandmonitoring.mission.domain.MissionOperatorAssignment;
@@ -25,7 +24,6 @@ import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
 import com.ondemandmonitoring.mission.mapper.FlightTokenMapper;
 import com.ondemandmonitoring.mission.mapper.MissionMapper;
-import com.ondemandmonitoring.drone.mapper.PreflightCheckMapper;
 import com.ondemandmonitoring.mission.mapper.PostflightCheckMapper;
 import com.ondemandmonitoring.mission.repository.FlightTokenRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
@@ -63,10 +61,8 @@ class MissionServiceTest {
     DroneTelemetryRepository droneTelemetryRepository;
     PersistedPreflightCheckRepository persistedPreflightCheckRepository;
     FlightTokenRepository flightTokenRepository;
-    PreflightCheckService preflightCheckService;
     MissionMapper missionMapper;
     FlightTokenMapper flightTokenMapper;
-    PreflightCheckMapper preflightCheckMapper;
     PostflightCheckMapper postflightCheckMapper;
 
     MissionDroneAssignmentRepository missionDroneAssignmentRepository;
@@ -111,10 +107,8 @@ class MissionServiceTest {
         droneTelemetryRepository = mock(DroneTelemetryRepository.class);
         persistedPreflightCheckRepository = mock(PersistedPreflightCheckRepository.class);
         flightTokenRepository = mock(FlightTokenRepository.class);
-        preflightCheckService = mock(PreflightCheckService.class);
         missionMapper = mock(MissionMapper.class);
         flightTokenMapper = mock(FlightTokenMapper.class);
-        preflightCheckMapper = mock(PreflightCheckMapper.class);
         postflightCheckMapper = mock(PostflightCheckMapper.class);
         missionDroneAssignmentRepository = mock(MissionDroneAssignmentRepository.class);
         missionOperatorAssignmentRepository = mock(MissionOperatorAssignmentRepository.class);
@@ -146,10 +140,8 @@ class MissionServiceTest {
                 droneTelemetryRepository,
                 persistedPreflightCheckRepository,
                 flightTokenRepository,
-                preflightCheckService,
                 missionMapper,
                 flightTokenMapper,
-                preflightCheckMapper,
                 postflightCheckMapper,
                 missionDroneAssignmentRepository,
                 missionOperatorAssignmentRepository,
@@ -191,16 +183,6 @@ class MissionServiceTest {
                     .build();
         });
 
-        when(preflightCheckMapper.toResponse(any(), any())).thenAnswer(inv -> {
-            PreflightCheck pc = inv.getArgument(0);
-            FlightTokenResponse ft = inv.getArgument(1);
-            if (pc == null)
-                return null;
-            return PreflightCheckResponse.builder()
-                    .overallPassed(pc.getOverallPassed())
-                    .flightToken(ft)
-                    .build();
-        });
 
         when(persistedPreflightCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(any()))
                 .thenReturn(Optional.empty());
@@ -416,7 +398,7 @@ class MissionServiceTest {
     class F3_2_GcsConnectAndPreflightGate {
 
         @Test
-        void preflightWithoutFreshTelemetryDoesNotPlanOrIssueToken() {
+        void preflightWithoutRuntimePassDoesNotPlanOrIssueToken() {
             Mission mission = buildMission("m-stale-preflight", MissionStatus.CONNECTED);
             Drone drone = buildDrone("DRONE-01", DroneStatus.PREFLIGHT);
             when(missionRepository.findById("m-stale-preflight")).thenReturn(Optional.of(mission));
@@ -427,11 +409,13 @@ class MissionServiceTest {
             stale.setBatteryPercent(100.0);
             stale.setUpdatedAt(Instant.now().minusSeconds(60));
             when(droneTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(stale));
+            when(persistedPreflightCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc("m-stale-preflight"))
+                    .thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> missionService.runPreflightCheck("m-stale-preflight", "DRONE-01"))
                     .isInstanceOf(ApiException.class)
-                    .hasMessageContaining("Fresh drone telemetry");
-            verifyNoInteractions(missionPlanningService, preflightCheckService, flightTokenRepository);
+                    .hasMessageContaining("runtime preflight PASS");
+            verifyNoInteractions(missionPlanningService, flightTokenRepository);
         }
 
         @Test
@@ -450,6 +434,8 @@ class MissionServiceTest {
             PersistedPreflightCheck runtimePass = new PersistedPreflightCheck();
             runtimePass.setStatus(PreflightCheckStatus.PASSED);
             runtimePass.setCompletedAt(Instant.now());
+            runtimePass.setDeviceConnection(deviceConnectionRepository
+                    .findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(mission.getId(), "CONNECTED").orElseThrow());
             when(persistedPreflightCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc("m-runtime-pass"))
                     .thenReturn(Optional.of(runtimePass));
             when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -465,7 +451,6 @@ class MissionServiceTest {
             assertThat(result.getOverallPassed()).isTrue();
             assertThat(result.getFlightToken()).isNotNull();
             assertThat(mission.getStatus()).isEqualTo(MissionStatus.READY_TO_FLY);
-            verifyNoInteractions(preflightCheckService);
         }
 
         @Test
@@ -487,6 +472,9 @@ class MissionServiceTest {
             when(persistedPreflightCheckRepository
                     .findFirstByMissionIdOrderByCreatedAtDesc("m-runtime-pass-no-battery"))
                     .thenReturn(Optional.of(runtimePass));
+            runtimePass.setDeviceConnection(deviceConnectionRepository
+                    .findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(mission.getId(), "CONNECTED")
+                    .orElseThrow());
             MissionPlan plan = feasiblePlan("m-runtime-pass-no-battery");
             plan.setFeasibilityStatus(FeasibilityStatus.BATTERY_DATA_UNAVAILABLE);
             when(missionPlanningService.generateAStarEnergyAwarePlan("m-runtime-pass-no-battery")).thenReturn(plan);
@@ -503,7 +491,6 @@ class MissionServiceTest {
             assertThat(result.getOverallPassed()).isTrue();
             assertThat(result.getFlightToken()).isNotNull();
             assertThat(mission.getStatus()).isEqualTo(MissionStatus.READY_TO_FLY);
-            verifyNoInteractions(preflightCheckService);
         }
 
         @Test
@@ -518,7 +505,7 @@ class MissionServiceTest {
             assertThatThrownBy(() -> missionService.runPreflightCheck("m-other-drone", "DRONE-OTHER"))
                     .isInstanceOf(ApiException.class)
                     .hasMessageContaining("does not match");
-            verifyNoInteractions(missionPlanningService, preflightCheckService, flightTokenRepository);
+            verifyNoInteractions(missionPlanningService, flightTokenRepository);
         }
 
         @Test
@@ -535,7 +522,7 @@ class MissionServiceTest {
             assertThatThrownBy(() -> missionService.runPreflightCheck("m-low-plan", "DRONE-01"))
                     .isInstanceOf(ApiException.class)
                     .hasMessageContaining("insufficient");
-            verifyNoInteractions(preflightCheckService, flightTokenRepository);
+            verifyNoInteractions(flightTokenRepository);
         }
 
         @Test
@@ -574,7 +561,6 @@ class MissionServiceTest {
             when(droneTelemetryRepository.readByDroneCode("DRN-0048")).thenReturn(Optional.of(telemetry));
 
             assertThat(missionService.getTelemetryReadiness("m-stale").ready()).isFalse();
-            verifyNoInteractions(preflightCheckService);
         }
 
         @Test
@@ -693,17 +679,11 @@ class MissionServiceTest {
         void runPreflightCheck_passed_issuesFlightToken_missionBecomesReadyToFly() {
             Mission mission = buildMission("m-3", MissionStatus.CONNECTED);
             Drone drone = buildDrone("DRONE-01", DroneStatus.AVAILABLE);
-            PreflightCheck passedCheck = new PreflightCheck();
-            passedCheck.setOverallPassed(true);
-            passedCheck.setDrone(drone);
-            passedCheck.setMissionId("m-3");
-
             when(missionRepository.findById("m-3")).thenReturn(Optional.of(mission));
             when(droneRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(drone));
             stubFreshAssignedTelemetry("m-3", drone, 100.0);
             when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(preflightCheckService.run("DRONE-01", "m-3")).thenReturn(passedCheck);
             when(flightTokenRepository.save(any())).thenAnswer(inv -> {
                 FlightToken t = inv.getArgument(0);
                 t.setId("ft-1");
@@ -719,64 +699,45 @@ class MissionServiceTest {
         }
 
         @Test
-        @DisplayName("5. runPreflightCheck HARDWARE fault routes drone to MAINTENANCE, auto-creates ticket, re-queues mission to RESOURCE_ASSIGNING")
-        void runPreflightCheck_hardwareFailed_routesToMaintenance_andRequeues() {
+        @DisplayName("Runtime preflight failure must not issue token or change mission state")
+        void failedHardwareRuntimePreflightDoesNotIssueFlightToken() {
             Mission mission = buildMission("m-fail", MissionStatus.CONNECTED);
             Drone drone = buildDrone("DRONE-01", DroneStatus.PREFLIGHT);
-            PreflightCheck failedCheck = new PreflightCheck();
-            failedCheck.setOverallPassed(false);
-            failedCheck.setFailureReason("Gyrometer failure");
-            failedCheck.setFaultType("HARDWARE");
-            failedCheck.setDrone(drone);
-
             when(missionRepository.findById("m-fail")).thenReturn(Optional.of(mission));
             when(droneRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(drone));
-            stubFreshAssignedTelemetry("m-fail", drone, 100.0);
-            when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(preflightCheckService.run("DRONE-01", "m-fail")).thenReturn(failedCheck);
-            when(maintenanceTicketRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            stubFreshAssignedTelemetry("m-fail", drone, 20.0);
+            PersistedPreflightCheck failedRun = new PersistedPreflightCheck();
+            failedRun.setStatus(PreflightCheckStatus.FAILED);
+            failedRun.setCompletedAt(Instant.now());
+            when(persistedPreflightCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc("m-fail"))
+                    .thenReturn(Optional.of(failedRun));
 
-            PreflightCheckResponse result = missionService.runPreflightCheck("m-fail", "DRONE-01");
-
-            assertThat(result.getOverallPassed()).isFalse();
-            assertThat(drone.getStatus()).isEqualTo(DroneStatus.MAINTENANCE);
-            // AC: HARDWARE fault auto-creates ticket and re-queues to RESOURCE_ASSIGNING
-            // for manager
-            assertThat(mission.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
-            verify(maintenanceTicketRepository).save(any());
+            assertThatThrownBy(() -> missionService.runPreflightCheck("m-fail", "DRONE-01"))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("runtime preflight PASS");
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.CONNECTED);
+            assertThat(drone.getStatus()).isEqualTo(DroneStatus.PREFLIGHT);
+            verifyNoInteractions(missionPlanningService, flightTokenRepository, maintenanceTicketRepository);
         }
 
         @Test
-        @DisplayName("6. runPreflightCheck BATTERY fault routes drone to IDLE_CHARGING, triggers auto-swap, re-queues mission to RESOURCE_ASSIGNING")
-        void runPreflightCheck_batteryLow_routesToIdleCharging_andTriggersAutoSwap() {
+        @DisplayName("Runtime preflight failure must not issue token or change mission state")
+        void failedBatteryRuntimePreflightDoesNotIssueFlightToken() {
             Mission mission = buildMission("m-bat", MissionStatus.CONNECTED);
             Drone drone = buildDrone("DRONE-01", DroneStatus.PREFLIGHT);
-            PreflightCheck batteryLowCheck = new PreflightCheck();
-            batteryLowCheck.setOverallPassed(false);
-            batteryLowCheck.setFailureReason("Battery is below 80%");
-            batteryLowCheck.setFaultType("BATTERY");
-            batteryLowCheck.setBatteryPercent(45.0);
-            batteryLowCheck.setDrone(drone);
-
             when(missionRepository.findById("m-bat")).thenReturn(Optional.of(mission));
             when(droneRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(drone));
-            stubFreshAssignedTelemetry("m-bat", drone, 45.0);
-            when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(preflightCheckService.run("DRONE-01", "m-bat")).thenReturn(batteryLowCheck);
-            // No replacement available — simulates pool empty fallback
-            when(droneRepository.findFirstAvailableExcluding(eq(DroneStatus.AVAILABLE), eq(drone.getId())))
-                    .thenReturn(Optional.empty());
+            stubFreshAssignedTelemetry("m-bat", drone, 20.0);
+            PersistedPreflightCheck failedRun = new PersistedPreflightCheck();
+            failedRun.setStatus(PreflightCheckStatus.FAILED);
+            failedRun.setCompletedAt(Instant.now());
+            when(persistedPreflightCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc("m-bat"))
+                    .thenReturn(Optional.of(failedRun));
 
-            PreflightCheckResponse result = missionService.runPreflightCheck("m-bat", "DRONE-01");
-
-            assertThat(result.getOverallPassed()).isFalse();
-            assertThat(drone.getStatus()).isEqualTo(DroneStatus.MAINTENANCE);
-            verify(maintenanceTicketRepository).save(any());
-            // AC: BATTERY fault auto-swap attempted, mission re-queued to
-            // RESOURCE_ASSIGNING
-            assertThat(mission.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
+            assertThatThrownBy(() -> missionService.runPreflightCheck("m-bat", "DRONE-01"))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("runtime preflight PASS");
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.CONNECTED);
+            assertThat(drone.getStatus()).isEqualTo(DroneStatus.PREFLIGHT);
+            verifyNoInteractions(missionPlanningService, flightTokenRepository, maintenanceTicketRepository);
         }
     }
 
@@ -1189,73 +1150,45 @@ class MissionServiceTest {
         }
 
         @Test
-        @DisplayName("AC-2. BATTERY preflight fault sets device to MAINTENANCE and requeues mission for Manager reassignment")
-        void preflightFail_battery_requeuesForManager() {
+        @DisplayName("Runtime preflight failure must not issue token or change mission state")
+        void failedRuntimePreflightDoesNotConfirmMission() {
             Mission mission = buildMission("m-bat-swap", MissionStatus.CONNECTED);
-            Drone faultyDrone = buildDrone("DRONE-LOW", DroneStatus.PREFLIGHT);
-
-            PreflightCheck batteryCheck = new PreflightCheck();
-            batteryCheck.setOverallPassed(false);
-            batteryCheck.setFaultType("BATTERY");
-            batteryCheck.setBatteryPercent(20.0);
-            batteryCheck.setFailureReason("Battery below minimum threshold (80%)");
-            batteryCheck.setDrone(faultyDrone);
-
-            MissionPlan plan = feasiblePlan("m-bat-swap");
-            when(missionPlanRepository.findByMissionId("m-bat-swap")).thenReturn(Optional.of(plan));
+            Drone drone = buildDrone("DRONE-LOW", DroneStatus.PREFLIGHT);
             when(missionRepository.findById("m-bat-swap")).thenReturn(Optional.of(mission));
-            when(droneRepository.findByDroneCode("DRONE-LOW")).thenReturn(Optional.of(faultyDrone));
-            stubFreshAssignedTelemetry("m-bat-swap", faultyDrone, 20.0);
-            when(preflightCheckService.run("DRONE-LOW", "m-bat-swap")).thenReturn(batteryCheck);
-            when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(preflightCheckMapper.toResponse(any(), any())).thenReturn(
-                    com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse.builder()
-                            .overallPassed(false).build());
+            when(droneRepository.findByDroneCode("DRONE-LOW")).thenReturn(Optional.of(drone));
+            stubFreshAssignedTelemetry("m-bat-swap", drone, 20.0);
+            PersistedPreflightCheck failedRun = new PersistedPreflightCheck();
+            failedRun.setStatus(PreflightCheckStatus.FAILED);
+            failedRun.setCompletedAt(Instant.now());
+            when(persistedPreflightCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc("m-bat-swap"))
+                    .thenReturn(Optional.of(failedRun));
 
-            missionService.runPreflightCheck("m-bat-swap", "DRONE-LOW");
-
-            // Faulty drone should be MAINTENANCE, mission RESOURCE_ASSIGNING for manager
-            // reassignment
-            assertThat(faultyDrone.getStatus()).isEqualTo(DroneStatus.MAINTENANCE);
-            assertThat(mission.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
-            verify(maintenanceTicketRepository, times(1)).save(any());
+            assertThatThrownBy(() -> missionService.runPreflightCheck("m-bat-swap", "DRONE-LOW"))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("runtime preflight PASS");
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.CONNECTED);
+            assertThat(drone.getStatus()).isEqualTo(DroneStatus.PREFLIGHT);
+            verifyNoInteractions(missionPlanningService, flightTokenRepository, maintenanceTicketRepository);
         }
 
         @Test
-        @DisplayName("AC-3. BATTERY preflight fault with no available drones falls back to RESOURCE_ASSIGNING")
-        void preflightFail_battery_noAvailableDrone_requeues() {
+        @DisplayName("Runtime preflight failure must not issue token or change mission state")
+        void missingRuntimePassDoesNotConfirmMissionWithLowBattery() {
             Mission mission = buildMission("m-bat-empty", MissionStatus.CONNECTED);
-            Drone faultyDrone = buildDrone("DRONE-DEAD", DroneStatus.PREFLIGHT);
-
-            PreflightCheck batteryCheck = new PreflightCheck();
-            batteryCheck.setOverallPassed(false);
-            batteryCheck.setFaultType("BATTERY");
-            batteryCheck.setBatteryPercent(15.0);
-            batteryCheck.setFailureReason("Battery critically low");
-            batteryCheck.setDrone(faultyDrone);
-
-            MissionPlan plan = feasiblePlan("m-bat-empty");
-            when(missionPlanRepository.findByMissionId("m-bat-empty")).thenReturn(Optional.of(plan));
+            Drone drone = buildDrone("DRONE-DEAD", DroneStatus.PREFLIGHT);
             when(missionRepository.findById("m-bat-empty")).thenReturn(Optional.of(mission));
-            when(droneRepository.findByDroneCode("DRONE-DEAD")).thenReturn(Optional.of(faultyDrone));
-            stubFreshAssignedTelemetry("m-bat-empty", faultyDrone, 15.0);
-            when(preflightCheckService.run("DRONE-DEAD", "m-bat-empty")).thenReturn(batteryCheck);
-            when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            // No available drone in pool
-            when(droneRepository.findFirstAvailableExcluding(eq(DroneStatus.AVAILABLE), eq(faultyDrone.getId())))
-                    .thenReturn(Optional.empty());
-            when(preflightCheckMapper.toResponse(any(), any())).thenReturn(
-                    com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse.builder()
-                            .overallPassed(false).build());
+            when(droneRepository.findByDroneCode("DRONE-DEAD")).thenReturn(Optional.of(drone));
+            stubFreshAssignedTelemetry("m-bat-empty", drone, 20.0);
+            PersistedPreflightCheck failedRun = new PersistedPreflightCheck();
+            failedRun.setStatus(PreflightCheckStatus.FAILED);
+            failedRun.setCompletedAt(Instant.now());
+            when(persistedPreflightCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc("m-bat-empty"))
+                    .thenReturn(Optional.of(failedRun));
 
-            missionService.runPreflightCheck("m-bat-empty", "DRONE-DEAD");
-
-            // Faulty drone MAINTENANCE, mission falls back to RESOURCE_ASSIGNING for
-            // manager
-            assertThat(faultyDrone.getStatus()).isEqualTo(DroneStatus.MAINTENANCE);
-            assertThat(mission.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
+            assertThatThrownBy(() -> missionService.runPreflightCheck("m-bat-empty", "DRONE-DEAD"))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("runtime preflight PASS");
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.CONNECTED);
+            assertThat(drone.getStatus()).isEqualTo(DroneStatus.PREFLIGHT);
+            verifyNoInteractions(missionPlanningService, flightTokenRepository, maintenanceTicketRepository);
         }
     }
 
@@ -1268,6 +1201,18 @@ class MissionServiceTest {
         assignment.setDrone(drone);
         when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId))
                 .thenReturn(Optional.of(assignment));
+        DeviceConnection connection = new DeviceConnection();
+        connection.setId("connection-" + missionId);
+        connection.setDrone(drone);
+        connection.setConnectionStatus("CONNECTED");
+        when(deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED"))
+                .thenReturn(Optional.of(connection));
+        PersistedPreflightCheck runtimePass = new PersistedPreflightCheck();
+        runtimePass.setStatus(PreflightCheckStatus.PASSED);
+        runtimePass.setCompletedAt(Instant.now());
+        runtimePass.setDeviceConnection(connection);
+        when(persistedPreflightCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId))
+                .thenReturn(Optional.of(runtimePass));
         DroneTelemetry telemetry = new DroneTelemetry();
         telemetry.setDroneCode(drone.getDroneCode());
         telemetry.setConnected(true);

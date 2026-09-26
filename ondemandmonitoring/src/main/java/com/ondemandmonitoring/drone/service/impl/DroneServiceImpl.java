@@ -23,6 +23,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -74,6 +75,27 @@ public class DroneServiceImpl implements IDroneService {
         return droneRepository.findById(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.DRONE_NOT_FOUND,
                         "Drone not found with id: " + id));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Drone getEntityByCode(String code) {
+        return droneRepository.findByDroneCode(code)
+                .orElseThrow(() -> new ApiException(ErrorCode.DRONE_NOT_FOUND));
+    }
+
+    @Override
+    @Transactional
+    public Drone getOrRegisterLegacySimulator(String code) {
+        return droneRepository.findByDroneCode(code).orElseGet(() -> {
+            Drone drone = new Drone();
+            drone.setDroneCode(code);
+            drone.setSerialNumber(code);
+            drone.setDroneName("PX4 SITL Drone");
+            drone.setStatus(DroneStatus.AVAILABLE);
+            drone.setLastSeenAt(LocalDateTime.now());
+            return droneRepository.save(drone);
+        });
     }
 
     @Override
