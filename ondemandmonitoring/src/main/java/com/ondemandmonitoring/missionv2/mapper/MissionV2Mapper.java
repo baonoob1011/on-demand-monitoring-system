@@ -7,7 +7,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
 @Mapper(componentModel = "spring", uses = { OrderMapper.class })
-public abstract class MissionMapper {
+public abstract class MissionV2Mapper {
 
     @Mapping(source = "order.id", target = "orderId")
     public abstract MissionV2Response toResponse(MissionV2 mission);

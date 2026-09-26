@@ -147,7 +147,7 @@ class MissionServiceTest {
                 missionMapper,
                 flightTokenMapper,
                 preflightCheckMapper,
-                missionDroneAssignmentRepository,
+                null, missionDroneAssignmentRepository,
                 missionOperatorAssignmentRepository,
                 missionPlanRepository,
                 missionPlanningService,

@@ -12,5 +12,5 @@ public interface MissionV2Repository extends JpaRepository<MissionV2, String> {
 
     boolean existsByMissionCode(String code);
 
-    boolean existByOrderId(String orderId);
+    boolean existsByOrderId(String orderId);
 }

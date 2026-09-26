@@ -19,7 +19,7 @@ import com.ondemandmonitoring.missionv2.dto.request.AssignStaffRequest;
 import com.ondemandmonitoring.missionv2.dto.request.MissionCreateRequest;
 import com.ondemandmonitoring.missionv2.dto.request.MissionUpdateRequest;
 import com.ondemandmonitoring.missionv2.dto.response.MissionV2Response;
-import com.ondemandmonitoring.missionv2.mapper.MissionMapper;
+import com.ondemandmonitoring.missionv2.mapper.MissionV2Mapper;
 import com.ondemandmonitoring.missionv2.repository.MissionStaffAssignmentRepository;
 import com.ondemandmonitoring.missionv2.repository.ResourceTimeLockRepository;
 import com.ondemandmonitoring.missionv2.service.IMissionV2Service;
@@ -37,6 +37,7 @@ import com.ondemandmonitoring.missionv2.repository.MissionV2Repository;
 import com.ondemandmonitoring.missionv2.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.missionv2.repository.MissionRescheduleHistoryRepository;
 import com.ondemandmonitoring.device.repository.DeviceRepository;
+import com.ondemandmonitoring.planning.service.MissionPlanningService;
 
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -60,7 +61,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class MissionV2Service implements IMissionV2Service {
 
     MissionV2Repository missionV2Repository;
-    MissionMapper missionMapper;
+    MissionV2Mapper missionMapper;
     OrderRepository orderRepository;
     ResourceTimeLockRepository resourceTimeLockRepository;
     UserRepository userRepository;
@@ -70,11 +71,12 @@ public class MissionV2Service implements IMissionV2Service {
     MissionRescheduleHistoryRepository missionRescheduleHistoryRepository;
     DeviceRepository deviceRepository;
     MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
+    MissionPlanningService missionPlanningService;
 
     @Override
     @Transactional
     public MissionV2Response createMission(MissionCreateRequest request) {
-        if (missionV2Repository.existByOrderId(request.getOrderId())) {
+        if (missionV2Repository.existsByOrderId(request.getOrderId())) {
             throw new ApiException(ErrorCode.RESOURCE_ALREADY_EXISTS,
                     "Mission already exists for order id: " + request.getOrderId());
         }
@@ -101,6 +103,7 @@ public class MissionV2Service implements IMissionV2Service {
         mission.setScheduledEndAt(endAt);
 
         MissionV2 saved = missionV2Repository.save(mission);
+        missionPlanningService.generateAStarEnergyAwarePlan(mission.getId());
         return missionMapper.toResponse(saved);
     }
 
