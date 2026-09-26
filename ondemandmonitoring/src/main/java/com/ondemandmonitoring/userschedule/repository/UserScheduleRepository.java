@@ -12,13 +12,15 @@ import java.util.List;
 import java.util.UUID;
 
 @Repository
-public interface UserScheduleRepository extends JpaRepository<UserSchedule, String>, JpaSpecificationExecutor<UserSchedule> {
+public interface UserScheduleRepository
+        extends JpaRepository<UserSchedule, String>, JpaSpecificationExecutor<UserSchedule> {
 
-    List<UserSchedule> findByStaffId(UUID staffId);
+    List<UserSchedule> findByStaffId(String staffId);
 
-    List<UserSchedule> findByStaffIdAndStatus(UUID staffId, UserScheduleStatus status);
+    List<UserSchedule> findByStaffIdAndStatus(String staffId, UserScheduleStatus status);
 
-    List<UserSchedule> findByStaffIdAndStartTimeLessThanEqualAndEndTimeGreaterThanEqual(UUID staffId, Instant endTime, Instant startTime);
+    List<UserSchedule> findByStaffIdAndStartTimeLessThanEqualAndEndTimeGreaterThanEqual(UUID staffId, Instant endTime,
+            Instant startTime);
 
     List<UserSchedule> findByReferenceId(String referenceId);
 
