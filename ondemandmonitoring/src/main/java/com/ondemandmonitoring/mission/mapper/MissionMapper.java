@@ -35,6 +35,8 @@ public abstract class MissionMapper {
     @Mapping(target = "operatorId", expression = "java(getOperatorId(mission))")
     @Mapping(source = "order.id", target = "orderId")
     @Mapping(source = "order.title", target = "orderTitle")
+    @Mapping(source = "order.service.name", target = "serviceName")
+    @Mapping(source = "order.description", target = "description")
     @Mapping(source = "order.customer.fullName", target = "customerName")
     @Mapping(source = "order.address", target = "address")
     @Mapping(target = "mediaType", ignore = true)

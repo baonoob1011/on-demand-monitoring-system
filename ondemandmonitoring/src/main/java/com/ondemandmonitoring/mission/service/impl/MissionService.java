@@ -5,14 +5,13 @@ import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.drone.domain.Drone;
 import com.ondemandmonitoring.drone.domain.DroneTelemetry;
-import com.ondemandmonitoring.drone.domain.PreflightCheck;
+import com.ondemandmonitoring.drone.domain.PersistedPreflightCheck;
 import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
 import com.ondemandmonitoring.drone.enums.DroneStatus;
 import com.ondemandmonitoring.drone.enums.PreflightCheckStatus;
 import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
 import com.ondemandmonitoring.drone.repository.PersistedPreflightCheckRepository;
-import com.ondemandmonitoring.drone.service.PreflightCheckService;
 import com.ondemandmonitoring.drone.service.DroneTelemetryFreshness;
 import com.ondemandmonitoring.mission.domain.ControlHandover;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
@@ -33,7 +32,6 @@ import com.ondemandmonitoring.mission.repository.ControlHandoverRepository;
 import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
 import com.ondemandmonitoring.mission.repository.FlightTokenRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
-import com.ondemandmonitoring.drone.mapper.PreflightCheckMapper;
 import com.ondemandmonitoring.mission.mapper.FlightTokenMapper;
 import com.ondemandmonitoring.mission.mapper.MissionMapper;
 import com.ondemandmonitoring.mission.mapper.PostflightCheckMapper;
@@ -88,10 +86,8 @@ public class MissionService implements IMissionService {
     DroneTelemetryRepository droneTelemetryRepository;
     PersistedPreflightCheckRepository persistedPreflightCheckRepository;
     FlightTokenRepository flightTokenRepository;
-    PreflightCheckService preflightCheckService;
     MissionMapper missionMapper;
     FlightTokenMapper flightTokenMapper;
-    PreflightCheckMapper preflightCheckMapper;
     PostflightCheckMapper postflightCheckMapper;
 
     // Supporting audit & work order repositories
@@ -456,227 +452,90 @@ public class MissionService implements IMissionService {
         if (assignedDrone == null || !droneCode.equals(assignedDrone.getDroneCode())) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Preflight drone does not match the mission assignment.");
         }
-        // Lock the telemetry row before planning. Planning and the checklist read this same
-        // entity again; a concurrent telemetry update between an unlocked read and a locked
-        // read would put conflicting versions of it in this persistence context.
+        DeviceConnection activeConnection = deviceConnectionRepository
+                .findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED")
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.INVALID_REQUEST,
+                        "Connect GCS and bind the mission before preflight."));
+        if (activeConnection.getDrone() == null
+                || !droneCode.equals(activeConnection.getDrone().getDroneCode())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Connected drone does not match the mission assignment.");
+        }
+
         DroneTelemetry telemetry = droneTelemetryRepository.findByDroneCode(droneCode).orElse(null);
-        boolean freshTelemetry = telemetry != null
-                && Boolean.TRUE.equals(telemetry.getConnected())
-                && DroneTelemetryFreshness.isFresh(telemetry.getUpdatedAt());
-        boolean persistedPreflightPassed = hasRecentPersistedPreflightPass(missionId);
-        boolean livePreflightAvailable = freshTelemetry && hasValidBatteryTelemetry(telemetry);
-        if (!livePreflightAvailable && !persistedPreflightPassed) {
+        PersistedPreflightCheck runtimePass = recentPersistedPreflightPass(missionId)
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.INVALID_REQUEST,
+                        "A completed runtime preflight PASS is required before backend confirmation."));
+        if (runtimePass.getDeviceConnection() == null
+                || !activeConnection.getId().equals(runtimePass.getDeviceConnection().getId())) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
-                    "Fresh drone telemetry or a completed runtime preflight PASS is required before preflight.");
+                    "Runtime preflight result does not belong to the active device connection.");
         }
 
         MissionPlan plan = missionPlanningService.generateAStarEnergyAwarePlan(missionId);
-        requireFeasiblePlan(plan, persistedPreflightPassed);
+        requireFeasiblePlan(plan, true);
 
-        PreflightCheck check = livePreflightAvailable
-                ? preflightCheckService.run(droneCode, missionId)
-                : passedPersistedPreflightCheck(device, telemetry, missionId);
-        FlightTokenResponse tokenResponse = null;
-
-        // Store preflight check diagnostics inline on Mission entity (per DB design)
-        mission.setPreflightPassed(check.getOverallPassed());
-        mission.setPreflightFaultType(check.getFaultType());
-        mission.setPreflightFailureReason(check.getFailureReason());
+        mission.setPreflightPassed(true);
+        mission.setPreflightFaultType(null);
+        mission.setPreflightFailureReason(null);
         mission.setPreflightCheckedAt(Instant.now());
         mission.setPreflightRetryCount(
                 (mission.getPreflightRetryCount() == null ? 0 : mission.getPreflightRetryCount()) + 1
         );
 
-        if (Boolean.TRUE.equals(check.getOverallPassed())) {
-            mission.setStatus(MissionStatus.READY_TO_FLY);
-            device.setStatus(DroneStatus.PREFLIGHT);
-            droneRepository.save(device);
+        mission.setStatus(MissionStatus.READY_TO_FLY);
+        device.setStatus(DroneStatus.PREFLIGHT);
+        droneRepository.save(device);
 
-            FlightToken token = issueFlightToken(missionId, droneCode, getCurrentOperatorId(missionId));
-            tokenResponse = flightTokenMapper.toResponse(token);
-            log.info("Mission {} digital preflight PASSED – issued FlightToken {}", missionId, token.getTokenValue());
-        } else {
-            mission.setStatus(MissionStatus.FAILED_PREFLIGHT);
-            handlePreflightFailure(mission, device, check);
-        }
+        FlightToken token = issueFlightToken(missionId, droneCode, getCurrentOperatorId(missionId));
+        FlightTokenResponse tokenResponse = flightTokenMapper.toResponse(token);
+        log.info("Mission {} persisted preflight PASSED – issued FlightToken {}", missionId, token.getTokenValue());
 
         missionRepository.save(mission);
-        return preflightCheckMapper.toResponse(check, tokenResponse);
+        return preflightResponseFromRun(runtimePass, droneCode, missionId, telemetry, tokenResponse);
     }
 
-    private boolean hasValidBatteryTelemetry(DroneTelemetry telemetry) {
-        if (telemetry == null) return false;
-        Double batteryPercent = telemetry.getBatteryPercent();
-        return batteryPercent != null
-                && Double.isFinite(batteryPercent)
-                && batteryPercent >= 0
-                && batteryPercent <= 100;
-    }
-
-    private boolean hasRecentPersistedPreflightPass(String missionId) {
+    private java.util.Optional<PersistedPreflightCheck> recentPersistedPreflightPass(String missionId) {
         return persistedPreflightCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId)
                 .filter(run -> run.getStatus() == PreflightCheckStatus.PASSED)
                 .filter(run -> run.getCompletedAt() == null
-                        || Duration.between(run.getCompletedAt(), Instant.now()).abs().toMinutes() <= 10)
-                .isPresent();
+                        || Duration.between(run.getCompletedAt(), Instant.now()).abs().toMinutes() <= 10);
     }
 
-    private PreflightCheck passedPersistedPreflightCheck(Drone drone, DroneTelemetry telemetry, String missionId) {
-        PreflightCheck check = new PreflightCheck();
-        check.setDrone(drone);
-        check.setMissionId(missionId);
-        check.setOverallPassed(true);
-        check.setConnected(true);
-        check.setInAir(false);
-        check.setBatteryPercent(telemetry != null ? telemetry.getBatteryPercent() : null);
-        check.setGpsFixType(telemetry != null ? telemetry.getGpsFixType() : null);
-        check.setGpsSatelliteCount(telemetry != null ? telemetry.getGpsSatelliteCount() : null);
-        check.setGyrometerOk(true);
-        check.setAccelerometerOk(true);
-        check.setMagnetometerOk(true);
-        check.setLocalPositionOk(true);
-        check.setGlobalPositionOk(true);
-        check.setHomePositionOk(true);
-        check.setArmable(true);
-        check.setCheckedAt(Instant.now());
-        return check;
-    }
-
-    private void handlePreflightFailure(Mission mission, Drone faultyDevice, PreflightCheck check) {
-        String faultType = check.getFaultType();
-
-        if ("HARDWARE".equalsIgnoreCase(faultType)) {
-            // ── HARDWARE fault: device goes to MAINTENANCE, auto-generate ticket ──────────
-            faultyDevice.setStatus(DroneStatus.MAINTENANCE);
-            droneRepository.save(faultyDevice);
-            log.error("[PREFLIGHT-GATE] Device {} HARDWARE fault: {}. Status → MAINTENANCE.",
-                    faultyDevice.getDroneCode(), check.getFailureReason());
-
-            // ACCEPTANCE CRITERIA: Auto-create MaintenanceTicket on HARDWARE fault
-            MaintenanceTicket ticket = new MaintenanceTicket();
-            ticket.setTicketCode("TKT-PREFLIGHT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
-            ticket.setDevice(faultyDevice); // device field — device-type agnostic
-            ticket.setReportedBy("AUTOMATED_PREFLIGHT_GATE");
-            ticket.setIssueType("PREFLIGHT_HARDWARE_FAIL");
-            ticket.setSeverity("HIGH");
-            ticket.setDescription(
-                    "Pre-flight hardware failure on device " + faultyDevice.getDroneCode() + ": " + check.getFailureReason());
-            ticket.setStatus("OPEN");
-            ticket.setOpenedAt(Instant.now());
-            maintenanceTicketRepository.save(ticket);
-            log.error("[MAINTENANCE] Auto-created ticket {} for device {}", ticket.getTicketCode(), faultyDevice.getDroneCode());
-
-            // Re-queue mission for manager to assign a new device
-            mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
-            releaseFaultyDeviceAssignment(mission, faultyDevice, "HARDWARE_FAIL");
-            log.warn("[MISSION-REQUEUE] Mission {} → RESOURCE_ASSIGNING (hardware fault, needs manager reassignment)", mission.getId());
-
-        } else if ("BATTERY".equalsIgnoreCase(faultType)) {
-            // ── BATTERY fault: device goes to MAINTENANCE, auto-generate ticket & re-queue for Manager ─
-            faultyDevice.setStatus(DroneStatus.MAINTENANCE);
-            droneRepository.save(faultyDevice);
-            log.warn("[PREFLIGHT-GATE] Device {} BATTERY low/failed ({}%). Status → MAINTENANCE.",
-                    faultyDevice.getDroneCode(), check.getBatteryPercent());
-
-            // Auto-create MaintenanceTicket for battery fault
-            MaintenanceTicket ticket = new MaintenanceTicket();
-            ticket.setTicketCode("TKT-PREFLIGHT-BAT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
-            ticket.setDevice(faultyDevice);
-            ticket.setReportedBy("AUTOMATED_PREFLIGHT_GATE");
-            ticket.setIssueType("PREFLIGHT_BATTERY_FAIL");
-            ticket.setSeverity("HIGH");
-            ticket.setDescription("Pre-flight battery failure on device " + faultyDevice.getDroneCode() + ": battery level " + check.getBatteryPercent() + "%");
-            ticket.setStatus("OPEN");
-            ticket.setOpenedAt(Instant.now());
-            maintenanceTicketRepository.save(ticket);
-            log.error("[MAINTENANCE] Auto-created battery ticket {} for device {}", ticket.getTicketCode(), faultyDevice.getDroneCode());
-
-            // Flow update: Re-queue mission to RESOURCE_ASSIGNING for Manager manual drone selection & reassignment
-            mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
-            releaseFaultyDeviceAssignment(mission, faultyDevice, "BATTERY_FAIL");
-            log.warn("[MISSION-REQUEUE] Mission {} → RESOURCE_ASSIGNING (battery fault, needs manager reassignment)", mission.getId());
-
-        } else {
-            // Unknown fault type — treat as HARDWARE for safety
-            faultyDevice.setStatus(DroneStatus.MAINTENANCE);
-            droneRepository.save(faultyDevice);
-            mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
-            releaseFaultyDeviceAssignment(mission, faultyDevice, "UNKNOWN_FAULT");
-            log.error("[PREFLIGHT-GATE] Device {} unknown fault type '{}' – defaulting to MAINTENANCE.",
-                    faultyDevice.getDroneCode(), faultType);
-        }
-    }
-
-    /**
-     * Releases the current MissionDroneAssignment for the faulty device.
-     * Does NOT alter the device's status (already set by caller).
-     */
-    private void releaseFaultyDeviceAssignment(Mission mission, Drone faultyDevice, String releaseReason) {
-        missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
-                .ifPresent(mda -> {
-                    mda.setIsCurrent(false);
-                    mda.setStatus("RELEASED");
-                    mda.setReleaseReason(releaseReason);
-                    mda.setReleasedAt(Instant.now());
-                    missionDroneAssignmentRepository.save(mda);
-                });
-    }
-
-    private void releaseFaultyDroneAssignment(Mission mission, Drone faultyDrone, String releaseReason) {
-        releaseFaultyDeviceAssignment(mission, faultyDrone, releaseReason);
-    }
-
-    /**
-     * BATTERY fault auto-swap: find the next AVAILABLE device from the pool and assign it.
-     * If none available, fall back to RESOURCE_ASSIGNING for manager intervention.
-     */
-    private void attemptAutoSwapDevice(Mission mission, Drone faultyDevice) {
-        String missionId = mission.getId();
-
-        // Release current assignment first
-        releaseFaultyDeviceAssignment(mission, faultyDevice, "BATTERY_FAIL");
-
-        // Try to find a replacement from the available pool
-        droneRepository.findFirstAvailableExcluding(DroneStatus.AVAILABLE, faultyDevice.getId())
-                .ifPresentOrElse(replacementDevice -> {
-                    // Check for scheduling conflict
-                    boolean hasConflict = missionRepository.findActiveByDroneId(replacementDevice.getId())
-                            .stream().anyMatch(m -> !m.getId().equals(missionId));
-
-                    if (hasConflict) {
-                        log.warn("[AUTO-SWAP] Candidate device {} has a schedule conflict – falling back to RESOURCE_ASSIGNING.",
-                                replacementDevice.getDroneCode());
-                        mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
-                        return;
-                    }
-
-                    // Assign replacement device
-                    replacementDevice.setStatus(DroneStatus.RESERVED);
-                    droneRepository.save(replacementDevice);
-
-                    MissionDroneAssignment newMda = new MissionDroneAssignment();
-                    newMda.setMission(mission);
-                    newMda.setDrone(replacementDevice);
-                    newMda.setAssignmentSource("AUTO_SYSTEM");
-                    newMda.setStatus("ACTIVE");
-                    newMda.setIsCurrent(true);
-                    newMda.setAssignedAt(Instant.now());
-                    missionDroneAssignmentRepository.save(newMda);
-
-                    // Mission returns to RESOURCE_ASSIGNING so manager can confirm before re-dispatch
-                    mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
-                    log.info("[AUTO-SWAP] Mission {} – swapped faulty device {} → replacement device {} (AUTO_SYSTEM). Mission → RESOURCE_ASSIGNING.",
-                            missionId, faultyDevice.getDroneCode(), replacementDevice.getDroneCode());
-
-                }, () -> {
-                    // No available replacement in the pool
-                    mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
-                    log.warn("[AUTO-SWAP] Mission {} – no AVAILABLE devices in pool. Mission → RESOURCE_ASSIGNING for manager intervention.", missionId);
-                });
-    }
-
-    private void attemptAutoSwapDrone(Mission mission, Drone faultyDrone) {
-        attemptAutoSwapDevice(mission, faultyDrone);
+    private PreflightCheckResponse preflightResponseFromRun(
+            PersistedPreflightCheck run,
+            String droneCode,
+            String missionId,
+            DroneTelemetry telemetry,
+            FlightTokenResponse tokenResponse) {
+        return PreflightCheckResponse.builder()
+                .id(run.getId())
+                .droneCode(droneCode)
+                .missionId(missionId)
+                .overallPassed(true)
+                .failureReason(null)
+                .faultType(null)
+                .batteryPercent(telemetry == null ? null : telemetry.getBatteryPercent())
+                .gpsFixType(telemetry == null ? null : telemetry.getGpsFixType())
+                .gpsSatelliteCount(telemetry == null ? null : telemetry.getGpsSatelliteCount())
+                .gyrometerOk(true)
+                .accelerometerOk(true)
+                .magnetometerOk(true)
+                .localPositionOk(true)
+                .globalPositionOk(true)
+                .homePositionOk(true)
+                .armable(true)
+                .connected(true)
+                .inAir(false)
+                .flightMode(telemetry == null ? null : telemetry.getFlightMode())
+                .cameraOk(true)
+                .gimbalOk(true)
+                .storageOk(true)
+                .weatherOk(true)
+                .flightToken(tokenResponse)
+                .checkedAt(run.getCompletedAt() == null ? run.getStartedAt() : run.getCompletedAt())
+                .build();
     }
 
     private FlightToken issueFlightToken(String missionId, String droneCode, String operatorId) {
