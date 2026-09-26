@@ -16,6 +16,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, String> 
     @Query("select m from MediaAsset m where m.id = :id")
     Optional<MediaAsset> findByIdForUpdate(@Param("id") String id);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<MediaAsset> findByMissionIdAndDroneCodeAndLocalMediaId(
             String missionId, String droneCode, String localMediaId);
 

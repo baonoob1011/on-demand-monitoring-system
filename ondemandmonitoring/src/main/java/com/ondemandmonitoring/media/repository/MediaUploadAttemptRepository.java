@@ -19,6 +19,9 @@ public interface MediaUploadAttemptRepository extends JpaRepository<MediaUploadA
 
     Optional<MediaUploadAttempt> findByStorageKey(String storageKey);
 
+    @Query("select a.media.id from MediaUploadAttempt a where a.storageKey = :key")
+    Optional<String> findMediaIdByStorageKey(@Param("key") String key);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select a from MediaUploadAttempt a where a.storageKey = :key")
     Optional<MediaUploadAttempt> findByStorageKeyForUpdate(@Param("key") String key);

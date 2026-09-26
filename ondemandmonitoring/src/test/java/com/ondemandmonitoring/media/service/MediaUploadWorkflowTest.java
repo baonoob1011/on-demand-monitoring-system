@@ -43,14 +43,20 @@ class MediaUploadWorkflowTest {
     private final S3ObjectStorageService storage = mock(S3ObjectStorageService.class);
     private final AuthenticatedUserResolver userResolver = mock(AuthenticatedUserResolver.class);
     private final AwsS3Properties s3 = new AwsS3Properties();
+    private final com.ondemandmonitoring.media.policy.MediaUploadPolicy policy = new com.ondemandmonitoring.media.policy.MediaUploadPolicy();
     private final MediaUploadServiceImpl service = new MediaUploadServiceImpl(
             new MissionMediaAccessServiceImpl(missions, droneAssignments, operatorAssignments, userResolver),
-            drones, media, attempts, manualTasks, audit, storage, s3, userResolver);
+            drones, media, attempts, manualTasks, new com.ondemandmonitoring.media.service.impl.MediaAuditServiceImpl(audit),
+            org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class), policy, storage,
+            new com.ondemandmonitoring.media.service.impl.MediaUploadPlanServiceImpl(
+                    media, attempts, manualTasks, new com.ondemandmonitoring.media.service.impl.MediaAuditServiceImpl(audit),
+                    org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class),
+                    policy, storage, s3, userResolver), userResolver);
 
     @BeforeEach
     void setUp() {
-        ReflectionTestUtils.setField(service, "maxImageBytes", 25_000_000L);
-        ReflectionTestUtils.setField(service, "maxVideoBytes", 1_000_000_000L);
+        ReflectionTestUtils.setField(policy, "maxImageBytes", 25_000_000L);
+        ReflectionTestUtils.setField(policy, "maxVideoBytes", 1_000_000_000L);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("operator", "n/a", java.util.List.of()));
         User user = new User();
@@ -94,6 +100,7 @@ class MediaUploadWorkflowTest {
         var request = request("IMAGE", "image/jpeg");
         MediaAsset existing = new MediaAsset();
         existing.setId("media-id");
+        when(media.findByIdForUpdate("media-id")).thenReturn(Optional.of(existing));
         existing.setMissionId("mission-id");
         existing.setType("IMAGE");
         existing.setContentType("image/jpeg");
@@ -145,6 +152,7 @@ class MediaUploadWorkflowTest {
         when(media.findByMissionIdAndDroneCodeAndLocalMediaId("mission-id", "DRONE-01", "capture-1"))
                 .thenReturn(Optional.of(existing));
         when(media.findById("media-id")).thenReturn(Optional.of(existing));
+        when(media.findByIdForUpdate("media-id")).thenReturn(Optional.of(existing));
 
         assertThat(service.prepare("mission-id", request("IMAGE", "image/jpeg")).getStatus())
                 .isEqualTo(MediaStatus.AVAILABLE);
@@ -186,6 +194,29 @@ class MediaUploadWorkflowTest {
         verify(manualTasks, never()).save(any());
     }
 
+    @Test
+    void supersededAttemptCannotAcknowledgeUpload() {
+        pendingAsset();
+        var newer = new MediaUploadAttempt();
+        newer.setId("attempt-new");
+        when(attempts.findFirstByMediaIdOrderByAttemptNumberDesc("media-id"))
+                .thenReturn(Optional.of(newer));
+        assertThatThrownBy(() -> service.markUploaded("media-id", "attempt-id"))
+                .isInstanceOf(ApiException.class).hasMessageContaining("superseded");
+        verify(attempts, never()).save(any());
+        verify(media, never()).save(any());
+    }
+
+    @Test
+    void uploadAcknowledgementLocksAssetBeforeLoadingAttempt() {
+        var asset = pendingAsset();
+        service.markUploaded("media-id", "attempt-id");
+        var order = inOrder(media, attempts);
+        order.verify(media).findByIdForUpdate("media-id");
+        order.verify(attempts).findByIdAndMediaId("attempt-id", "media-id");
+        assertThat(asset.getMediaStatus()).isEqualTo(MediaStatus.VALIDATING);
+    }
+
     private MediaAsset pendingAsset() {
         var asset = new MediaAsset();
         asset.setId("media-id");
@@ -197,6 +228,7 @@ class MediaUploadWorkflowTest {
         attempt.setStorageKey("staging/capture.jpg");
         attempt.setStatus(UploadAttemptStatus.PENDING);
         when(media.findById("media-id")).thenReturn(Optional.of(asset));
+        when(media.findByIdForUpdate("media-id")).thenReturn(Optional.of(asset));
         when(attempts.findByIdAndMediaId("attempt-id", "media-id")).thenReturn(Optional.of(attempt));
         when(attempts.findFirstByMediaIdOrderByAttemptNumberDesc("media-id"))
                 .thenReturn(Optional.of(attempt));
@@ -234,8 +266,8 @@ class MediaUploadWorkflowTest {
 
         var result = service.manualTasks("mission-id");
         assertThat(result).hasSize(1);
-        assertThat(result.getFirst().backendMediaId()).isEqualTo("media-id");
-        assertThat(result.getFirst().checksumSha256()).isEqualTo("a".repeat(64));
+        assertThat(result.getFirst().getBackendMediaId()).isEqualTo("media-id");
+        assertThat(result.getFirst().getChecksumSha256()).isEqualTo("a".repeat(64));
         verifyNoInteractions(storage);
     }
 

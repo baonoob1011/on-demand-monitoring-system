@@ -32,7 +32,8 @@ class CustomerMediaServiceTest {
     private final AuthenticatedUserResolver currentUser = mock(AuthenticatedUserResolver.class);
     private final CustomerMediaServiceImpl service = new CustomerMediaServiceImpl(
             new MissionMediaAccessServiceImpl(missions, mock(MissionDroneAssignmentRepository.class),
-                    mock(MissionOperatorAssignmentRepository.class), currentUser), media, notifications, storage);
+                    mock(MissionOperatorAssignmentRepository.class), currentUser), media, notifications, storage,
+            org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class));
 
     @Test
     void onlyAvailableMediaGetsDownloadUrl() {

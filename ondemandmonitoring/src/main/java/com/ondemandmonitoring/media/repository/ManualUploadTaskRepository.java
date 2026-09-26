@@ -12,6 +12,6 @@ public interface ManualUploadTaskRepository extends JpaRepository<ManualUploadTa
     Optional<ManualUploadTask> findByMediaId(String mediaId);
 
     @Query("select t from ManualUploadTask t join fetch t.media m "
-            + "where m.missionId = :missionId and t.status = 'OPEN' order by t.createdAt")
+            + "where m.missionId = :missionId and t.status = com.ondemandmonitoring.media.enums.ManualUploadTaskStatus.OPEN order by t.createdAt")
     List<ManualUploadTask> findOpenByMissionId(@Param("missionId") String missionId);
 }

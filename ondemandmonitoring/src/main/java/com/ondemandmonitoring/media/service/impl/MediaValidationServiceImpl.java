@@ -4,8 +4,10 @@ import com.ondemandmonitoring.media.domain.*;
 import com.ondemandmonitoring.media.repository.*;
 import com.ondemandmonitoring.media.service.IMediaValidationService;
 import com.ondemandmonitoring.s3.S3ObjectStorageService;
-import java.io.IOException;
-import java.io.InputStream;
+import com.ondemandmonitoring.media.service.IMediaAuditService;
+import com.ondemandmonitoring.media.service.IMediaObjectVerificationService;
+import com.ondemandmonitoring.media.policy.MediaUploadPolicy;
+import com.ondemandmonitoring.media.enums.*;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
@@ -26,16 +28,17 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class MediaValidationServiceImpl implements IMediaValidationService {
 
-    static int MAX_AUTOMATIC_ATTEMPTS = 3;
     static String AVAILABLE_EVENT = "CUSTOMER_MEDIA_AVAILABLE";
 
     MediaUploadAttemptRepository attempts;
     MediaAssetRepository media;
     StorageEventInboxRepository inbox;
     ManualUploadTaskRepository manualTasks;
-    MediaAuditLogRepository auditLogs;
+    IMediaAuditService auditService;
+    MediaUploadPolicy policy;
     MediaNotificationOutboxRepository outbox;
     S3ObjectStorageService storage;
+    IMediaObjectVerificationService verification;
 
     @Override
     @Transactional
@@ -46,9 +49,19 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
             return;
         }
 
+        if (!storage.bucket().equals(bucket)) {
+            return;
+        }
+        Optional<String> mediaId = attempts.findMediaIdByStorageKey(key);
+        if (mediaId.isEmpty()) {
+            log.info("Ignoring unrelated storage event bucket={} key={}", bucket, key);
+            return;
+        }
+        // Lock aggregate first, then attempt; upload callbacks use the same order.
+        MediaAsset captured = media.findByIdForUpdate(mediaId.get()).orElseThrow();
         Optional<MediaUploadAttempt> found = attempts.findByStorageKeyForUpdate(key);
 
-        if (found.isEmpty() || !storage.bucket().equals(bucket)) {
+        if (found.isEmpty()) {
             log.info("Ignoring unrelated storage event bucket={} key={}", bucket, key);
             return;
         }
@@ -58,7 +71,6 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
         if (inbox.existsByEventKey(eventKey)) {
             return;
         }
-        MediaAsset captured = attempt.getMedia();
         boolean latest = attempts.findFirstByMediaIdOrderByAttemptNumberDesc(captured.getId())
                 .map(current -> current.getId().equals(attempt.getId())).orElse(false);
 
@@ -72,23 +84,24 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
             return;
         }
 
-        String failure = verifyObject(captured, key);
+        String failure = verification.verify(captured, key);
 
         if (failure != null) {
             attempt.setStatus(UploadAttemptStatus.FAILED);
-            attempt.setFailureCode("STORAGE_VALIDATION_FAILED");
+            attempt.setFailureCode(MediaFailureCode.STORAGE_VALIDATION_FAILED.name());
             attempt.setFailureMessage(failure);
             attempt.setCompletedAt(Instant.now());
             attempts.save(attempt);
             captured.setValidationError(failure);
-            if (attempts.countByMediaIdAndManualAttemptFalse(captured.getId())
-                    >= MAX_AUTOMATIC_ATTEMPTS) {
+            if (policy.failureStatus(attempt.isManualAttempt(),
+                    attempts.countByMediaIdAndManualAttemptFalse(captured.getId()))
+                    == MediaStatus.MANUAL_UPLOAD_REQUIRED) {
                 requireManualUpload(captured, failure);
             } else {
                 captured.setMediaStatus(MediaStatus.RETRY_REQUIRED);
             }
             media.save(captured);
-            audit(captured, attempt, "VALIDATION_FAILED", failure);
+            audit(captured, attempt, MediaAuditAction.VALIDATION_FAILED, failure);
             recordEvent(eventKey, bucket, key);
             return;
         }
@@ -112,7 +125,7 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
         attempts.save(attempt);
         media.save(captured);
         manualTasks.findByMediaId(captured.getId()).ifPresent(task -> {
-            task.setStatus("RESOLVED");
+            task.setStatus(ManualUploadTaskStatus.RESOLVED);
             task.setResolvedAt(now);
             manualTasks.save(task);
         });
@@ -125,7 +138,7 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
             outbox.save(notification);
         }
 
-        audit(captured, attempt, "AVAILABLE", null);
+        audit(captured, attempt, MediaAuditAction.AVAILABLE, null);
         recordEvent(eventKey, bucket, key);
 
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -136,61 +149,6 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
                 }
             });
         }
-    }
-
-    private String verifyObject(MediaAsset captured, String key) {
-        var object = storage.inspect(captured.getS3Bucket(), key);
-
-        if (!captured.getFileSize().equals(object.contentLength())) {
-            return "Object size differs from capture metadata";
-        }
-
-        if (!captured.getContentType().equalsIgnoreCase(object.contentType())) {
-            return "Object content type differs from capture metadata";
-        }
-
-        if (!captured.getId().equals(object.metadata().get("media-id"))
-                || !captured.getChecksumSha256().equalsIgnoreCase(object.metadata().get("sha256"))) {
-            return "Object metadata differs from upload request";
-        }
-
-        try (InputStream stream = storage.open(captured.getS3Bucket(), key).inputStream()) {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] signature = stream.readNBytes(12);
-            digest.update(signature);
-            byte[] buffer = new byte[64 * 1024];
-            int read;
-
-            while ((read = stream.read(buffer)) != -1) {
-                digest.update(buffer, 0, read);
-            }
-
-            if (!validSignature(captured.getContentType(), signature)) {
-                return "File signature differs from declared content type";
-            }
-
-            if (!HexFormat.of().formatHex(digest.digest())
-                    .equalsIgnoreCase(captured.getChecksumSha256())) {
-                return "SHA-256 checksum mismatch";
-            }
-
-            return null;
-
-        } catch (IOException | NoSuchAlgorithmException error) {
-            throw new IllegalStateException("Cannot inspect uploaded object", error);
-        }
-    }
-
-    private boolean validSignature(String contentType, byte[] value) {
-        return switch (contentType) {
-            case "image/jpeg" -> value.length >= 3 && (value[0] & 0xff) == 0xff
-                    && (value[1] & 0xff) == 0xd8 && (value[2] & 0xff) == 0xff;
-            case "image/png" -> value.length >= 8 && Arrays.equals(Arrays.copyOf(value, 8),
-                    new byte[]{(byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a});
-            case "video/mp4" -> value.length >= 8 && value[4] == 'f' && value[5] == 't'
-                    && value[6] == 'y' && value[7] == 'p';
-            default -> false;
-        };
     }
 
     private void requireManualUpload(MediaAsset captured, String reason) {
@@ -206,14 +164,8 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
     }
 
     private void audit(MediaAsset captured, MediaUploadAttempt attempt,
-                       String action, String detail) {
-        MediaAuditLog entry = new MediaAuditLog();
-        entry.setMedia(captured);
-        entry.setAttemptId(attempt.getId());
-        entry.setActorId("s3-event-consumer");
-        entry.setAction(action);
-        entry.setDetail(detail);
-        auditLogs.save(entry);
+                       MediaAuditAction action, String detail) {
+        auditService.record(captured, attempt, "s3-event-consumer", action, detail);
     }
 
     private void recordEvent(String eventKey, String bucket, String key) {

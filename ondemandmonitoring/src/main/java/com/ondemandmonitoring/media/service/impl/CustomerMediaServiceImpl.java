@@ -12,6 +12,7 @@ import com.ondemandmonitoring.media.service.ICustomerMediaService;
 import com.ondemandmonitoring.mission.service.IMissionMediaAccessService;
 import com.ondemandmonitoring.s3.S3ObjectStorageService;
 import java.util.List;
+import com.ondemandmonitoring.media.mapper.MediaWorkflowMapper;
 
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
     MediaAssetRepository media;
     MediaNotificationOutboxRepository notifications;
     S3ObjectStorageService storage;
+    MediaWorkflowMapper mapper;
 
     @Override
     @Transactional(readOnly = true)
@@ -66,10 +68,7 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
         String canonicalMissionId = missionAccess.authorizeCustomer(missionId);
         return notifications.findByMedia_MissionIdOrderByCreatedAtDesc(canonicalMissionId).stream()
                 .filter(event -> event.getMedia().getMediaStatus() == MediaStatus.AVAILABLE)
-                .map(event -> new CustomerMediaNotificationResponse(event.getId(), event.getMedia().getId(),
-                        canonicalMissionId,
-                        event.getEventType(),
-                        event.getCreatedAt()))
+                .map(mapper::toNotificationResponse)
                 .toList();
     }
 
@@ -80,12 +79,7 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
         if (missionIds.isEmpty()) return List.of();
         return notifications.findByMedia_MissionIdInOrderByCreatedAtDesc(missionIds).stream()
                 .filter(event -> event.getMedia().getMediaStatus() == MediaStatus.AVAILABLE)
-                .map(event -> new CustomerMediaNotificationResponse(
-                        event.getId(),
-                        event.getMedia().getId(),
-                        event.getMedia().getMissionId(),
-                        event.getEventType(),
-                        event.getCreatedAt()))
+                .map(mapper::toNotificationResponse)
                 .toList();
     }
 
@@ -94,16 +88,7 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
     }
 
     private CustomerMediaResponse toResponse(MediaAsset asset) {
-        return new CustomerMediaResponse(
-                asset.getId(),
-                asset.getMissionId(),
-                asset.getDroneCode(),
-                asset.getType(),
-                asset.getOriginalFileName(),
-                asset.getContentType(),
-                asset.getFileSize(),
-                asset.getCapturedAt(),
-                asset.getAvailableAt(),
+        return mapper.toCustomerResponse(asset,
                 storage.createPresignedGetUrl(asset.getS3Bucket(), asset.getS3Key()));
     }
 }

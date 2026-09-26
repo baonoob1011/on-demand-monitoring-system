@@ -38,10 +38,50 @@ class MediaValidationServiceImplTest {
     @Mock MediaAssetRepository media;
     @Mock StorageEventInboxRepository inbox;
     @Mock ManualUploadTaskRepository manualTasks;
-    @Mock MediaAuditLogRepository auditLogs;
+    @Mock IMediaAuditService auditService;
+    @org.mockito.Spy com.ondemandmonitoring.media.policy.MediaUploadPolicy policy;
     @Mock MediaNotificationOutboxRepository outbox;
     @Mock S3ObjectStorageService storage;
-    @InjectMocks MediaValidationServiceImpl service;
+    MediaValidationServiceImpl service;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        service = new MediaValidationServiceImpl(attempts, media, inbox, manualTasks,
+                auditService, policy, outbox, storage,
+                new com.ondemandmonitoring.media.service.impl.MediaObjectVerificationServiceImpl(storage));
+    }
+
+    @Test
+    void failedManualValidationKeepsManualTaskAndLocksAggregateFirst() {
+        var asset = new MediaAsset();
+        asset.setId("media-manual");
+        asset.setMissionId("mission-1");
+        asset.setS3Bucket("media-bucket");
+        asset.setFileSize(10L);
+        var attempt = new MediaUploadAttempt();
+        attempt.setId("manual-attempt");
+        attempt.setMedia(asset);
+        attempt.setManualAttempt(true);
+        attempt.setStatus(UploadAttemptStatus.UPLOADED);
+        String key = "drone-media/staging/manual.jpg";
+        when(storage.bucket()).thenReturn("media-bucket");
+        when(attempts.findMediaIdByStorageKey(key)).thenReturn(Optional.of(asset.getId()));
+        when(media.findByIdForUpdate(asset.getId())).thenReturn(Optional.of(asset));
+        when(attempts.findByStorageKeyForUpdate(key)).thenReturn(Optional.of(attempt));
+        when(attempts.findFirstByMediaIdOrderByAttemptNumberDesc(asset.getId())).thenReturn(Optional.of(attempt));
+        when(storage.inspect("media-bucket", key)).thenReturn(
+                new S3ObjectStorageService.StoredObjectInfo(9L, "image/jpeg", Map.of()));
+        service.processObjectCreated("media-bucket", key, "manual-event");
+        assertThat(asset.getMediaStatus()).isEqualTo(MediaStatus.MANUAL_UPLOAD_REQUIRED);
+        assertThat(attempt.getStatus()).isEqualTo(UploadAttemptStatus.FAILED);
+        verify(manualTasks).save(any(com.ondemandmonitoring.media.domain.ManualUploadTask.class));
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(media, attempts);
+        order.verify(media).findByIdForUpdate(asset.getId());
+        order.verify(attempts).findByStorageKeyForUpdate(key);
+        org.mockito.Mockito.verify(storage, org.mockito.Mockito.never())
+                .copy(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString());
+    }
 
     @Test
     void successfulValidationPersistsMissionAndBucketForLegacySchema() throws Exception {
@@ -64,6 +104,8 @@ class MediaValidationServiceImplTest {
         attempt.setStatus(UploadAttemptStatus.UPLOADED);
 
         when(storage.bucket()).thenReturn(bucket);
+        when(attempts.findMediaIdByStorageKey(stagingKey)).thenReturn(Optional.of(captured.getId()));
+        when(media.findByIdForUpdate(captured.getId())).thenReturn(Optional.of(captured));
         when(attempts.findByStorageKeyForUpdate(stagingKey)).thenReturn(Optional.of(attempt));
         when(attempts.findFirstByMediaIdOrderByAttemptNumberDesc("media-1"))
                 .thenReturn(Optional.of(attempt));

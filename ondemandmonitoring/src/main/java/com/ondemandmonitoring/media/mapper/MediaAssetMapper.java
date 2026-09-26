@@ -6,7 +6,7 @@ import com.ondemandmonitoring.media.dto.response.MediaResponse;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
-@Mapper(componentModel = "spring")
+@Mapper(componentModel = "spring", builder = @org.mapstruct.Builder(disableBuilder = true))
 public interface MediaAssetMapper {
 
     MediaAssetResponse toResponse(MediaAsset mediaAsset);

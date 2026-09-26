@@ -43,6 +43,17 @@ class MediaModuleArchitectureTest {
                     .should().dependOnClassesThat().resideInAPackage("..repository..");
 
     @ArchTest
+    static final ArchRule CONTROLLERS_MUST_USE_SERVICE_INTERFACES =
+            noClasses().that().resideInAPackage("..media.controller..")
+                    .should().dependOnClassesThat().resideInAPackage("..service.impl..");
+
+    @ArchTest
+    static final ArchRule MEDIA_SERVICE_IMPLEMENTATIONS_USE_IMPL_SUFFIX =
+            classes().that().resideInAPackage("..media.service.impl..")
+                    .and().areAnnotatedWith(org.springframework.stereotype.Service.class)
+                    .should().haveSimpleNameEndingWith("Impl");
+
+    @ArchTest
     static final ArchRule MEDIA_ENTITIES_EXTEND_BASE_ENTITY =
             classes().that().resideInAPackage("..media.domain..")
                     .and().areAnnotatedWith(Entity.class).should().beAssignableTo(BaseEntity.class);
