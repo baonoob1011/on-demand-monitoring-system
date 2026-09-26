@@ -80,6 +80,9 @@ public class SecurityConfig {
             "/api/planning/environment/**",
             "/api/internal/v1/drone-telemetry/*",
             "/swagger-ui/**",
+            "/error",
+            "//mcp",
+            "/.well-known/**",
             "/swagger-ui.html"
     };
 
@@ -99,6 +102,9 @@ public class SecurityConfig {
                                 "/api/auth/login",
                                 "/ws",
                                 "/ws/**",
+                                "/error",
+                                "/.well-known/**",
+                                "/mcp/**",
                                 "/api/auth/first-login/change-password",
                                 "/api/auth/social/sync",
                                 "/api/auth/forgot-password",
