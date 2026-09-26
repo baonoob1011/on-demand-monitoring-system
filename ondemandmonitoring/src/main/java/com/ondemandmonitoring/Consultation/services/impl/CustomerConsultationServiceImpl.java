@@ -14,6 +14,7 @@ import com.ondemandmonitoring.Consultation.repositories.ConsultationLearningEntr
 import com.ondemandmonitoring.Consultation.repositories.ConsultationMessageRepository;
 import com.ondemandmonitoring.Consultation.repositories.CustomerConsultationRepository;
 import com.ondemandmonitoring.Consultation.services.AiConsultationService;
+import com.ondemandmonitoring.Consultation.services.ConsultationPromptTemplateService;
 import com.ondemandmonitoring.Consultation.services.CustomerConsultationService;
 import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.service.repository.ServiceRepository;
@@ -27,6 +28,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.text.Normalizer;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -45,6 +47,7 @@ public class CustomerConsultationServiceImpl
     private final CustomerConsultationMapper consultationMapper;
     private final AuthenticatedUserResolver authenticatedUserResolver;
     private final AiConsultationService aiConsultationService;
+    private final ConsultationPromptTemplateService promptTemplateService;
     private final ServiceRepository serviceRepository;
     private final ObjectMapper objectMapper;
 
@@ -776,42 +779,25 @@ public class CustomerConsultationServiceImpl
         }
 
         if (!crack && !hotSpot && !safety && !progress) {
-            return """
-                    Mình đã ghi nhận nhu cầu giám sát tòa nhà/công trình.
-
-                    Mục tiêu chính của lần giám sát này là kiểm tra nứt vỡ/hư hỏng, phát hiện điểm nóng, rà soát an toàn khu vực hay theo dõi tiến độ?
-                    """.trim();
+            return promptTemplateService.getRequired("FALLBACK_BUILDING_DELIVERABLE");
         }
 
         if (!priorityArea) {
-            return """
-                    Mình đã hiểu mục tiêu giám sát công trình là %s.
-
-                    Anh/chị muốn ưu tiên khu vực nào: mái, mặt đứng, mặt tiền, cổng ra vào, một tầng/khu cụ thể, hay toàn bộ công trình?
-                    """.formatted(buildProblemPhrase(crack, hotSpot, safety, progress)).trim();
+            return promptTemplateService.render(
+                    "FALLBACK_BUILDING_PRIORITY",
+                    Map.of("optionalGoal", buildOptionalProblemPhrase(crack, hotSpot, safety, progress))
+            );
         }
 
         if (!expectedOutcome) {
-            return """
-                    Mình đã rõ: đối tượng là tòa nhà/công trình, mục tiêu là %s, và đã có khu vực ưu tiên.
-
-                    Kết quả anh/chị muốn nhận là ảnh/video minh chứng, báo cáo vị trí nứt vỡ/điểm nóng, bản đồ đánh dấu khu vực bất thường, hay cả hai?
-                    """.formatted(buildProblemPhrase(crack, hotSpot, safety, progress)).trim();
+            return promptTemplateService.getRequired("FALLBACK_BUILDING_OUTCOME");
         }
 
         if (!notification) {
-            return """
-                    Request đã khá rõ: giám sát tòa nhà/công trình để %s, có khu vực ưu tiên và kết quả mong muốn.
-
-                    Khi phát hiện bất thường, anh/chị muốn được thông báo qua email, tin nhắn/SMS, hay chỉ tổng hợp trong báo cáo sau chuyến bay?
-                    """.formatted(buildProblemPhrase(crack, hotSpot, safety, progress)).trim();
+            return promptTemplateService.getRequired("FALLBACK_BUILDING_NOTIFICATION");
         }
 
-        return """
-                Mình đã có đủ thông tin chính để lập request giám sát công trình.
-
-                Tóm tắt: giám sát tòa nhà/công trình để %s; ưu tiên khu vực đã nêu; kết quả gồm minh chứng/báo cáo bất thường; thông báo theo kênh anh/chị đã chọn. Anh/chị kiểm tra lại thông tin bên phải, nếu đúng có thể tiếp tục sang bước thời gian và kết quả.
-                """.formatted(buildProblemPhrase(crack, hotSpot, safety, progress)).trim();
+        return promptTemplateService.getRequired("FALLBACK_BUILDING_READY");
     }
 
     private String buildNonBuildingFallbackReply(
@@ -835,137 +821,73 @@ public class CustomerConsultationServiceImpl
     ) {
 
         if (industrial) {
-            return """
-                    Mình đang hiểu nhu cầu là giám sát khu công nghiệp/nhà máy.
-
-                    Anh/chị muốn kiểm tra mái nhà, bồn chứa, khu vực nguy hiểm, hàng rào, tài sản ngoài trời hay lối ra vào? Mức ưu tiên là phát hiện hư hỏng, điểm nóng, rò rỉ, xâm nhập hay kiểm kê hiện trạng?
-                    """.trim();
+            return promptTemplateService.getRequired("FALLBACK_INDUSTRIAL");
         }
 
         if (logistics) {
-            return """
-                    Mình đang hiểu nhu cầu là giám sát kho bãi/logistics.
-
-                    Anh/chị muốn ưu tiên việc nào: kiểm kê container/xe/vật tư, phát hiện khu vực quá tải, theo dõi luồng ra vào hay kiểm tra an ninh? Kết quả cần ảnh tổng quan, danh sách vị trí bất thường hay báo cáo định kỳ?
-                    """.trim();
+            return promptTemplateService.getRequired("FALLBACK_LOGISTICS");
         }
 
         if (eventCrowd) {
-            return """
-                    Mình đang hiểu nhu cầu là giám sát sự kiện hoặc khu đông người.
-
-                    Anh/chị muốn theo dõi mật độ đám đông, luồng di chuyển, điểm ùn ứ, bãi đỗ xe hay khu vực an ninh? Cần cảnh báo theo thời gian thực hay chỉ báo cáo sau sự kiện?
-                    """.trim();
+            return promptTemplateService.getRequired("FALLBACK_EVENT_CROWD");
         }
 
         if (agriculture) {
             if (!priorityArea) {
-                return """
-                        Mình đang hiểu nhu cầu là giám sát nông nghiệp/cây trồng.
-
-                        Anh/chị muốn ưu tiên phát hiện vấn đề nào trước: cây sinh trưởng kém, thiếu nước, sâu bệnh, khu vực chết cây, hay thay đổi bất thường theo thời gian? Khu vực cần theo dõi là toàn bộ vườn hay một phần cụ thể?
-                        """.trim();
+                return promptTemplateService.getRequired("FALLBACK_AGRICULTURE_PRIORITY");
             }
             if (!frequency) {
-                return """
-                        Mình đã ghi nhận hướng giám sát cây trồng và khu vực ưu tiên.
-
-                        Anh/chị muốn kiểm tra một lần để biết hiện trạng hay theo dõi định kỳ hằng tuần/hằng tháng để so sánh xu hướng?
-                        """.trim();
+                return promptTemplateService.getRequired("FALLBACK_AGRICULTURE_FREQUENCY");
             }
         }
 
         if (environment) {
             if (!priorityArea) {
-                return """
-                        Mình đang hiểu nhu cầu là giám sát môi trường/khu vực rủi ro.
-
-                        Anh/chị muốn ưu tiên theo dõi ngập, sạt lở, xói mòn, ô nhiễm nguồn nước, hay điểm bất thường khác? Khu vực ưu tiên là ven sông/kênh, khu dân cư, nhà máy hay toàn bộ vùng?
-                        """.trim();
+                return promptTemplateService.getRequired("FALLBACK_ENVIRONMENT");
             }
         }
 
         if (fire) {
             if (!notification) {
-                return """
-                        Mình đang hiểu nhu cầu là phát hiện cháy rừng/điểm nhiệt.
-
-                        Anh/chị cần cảnh báo gần thời gian thực khi thấy khói/điểm nhiệt, hay chỉ cần bản đồ nguy cơ và báo cáo định kỳ? Kênh nhận cảnh báo là email, SMS/tin nhắn hay dashboard?
-                        """.trim();
+                return promptTemplateService.getRequired("FALLBACK_FIRE");
             }
         }
 
         if (security) {
             if (!frequency) {
-                return """
-                        Mình đang hiểu nhu cầu là giám sát an ninh khu vực.
-
-                        Anh/chị muốn tuần tra một lần, tuần tra theo khung giờ cố định, hay giám sát khi có sự kiện? Cần ưu tiên cổng ra vào, hàng rào, kho bãi hay điểm nhạy cảm nào?
-                        """.trim();
+                return promptTemplateService.getRequired("FALLBACK_SECURITY");
             }
         }
 
         if (traffic) {
-            return """
-                    Mình đang hiểu nhu cầu là giám sát giao thông.
-
-                    Anh/chị muốn theo dõi lưu lượng xe, ùn tắc, tai nạn, điểm nghẽn, hay tình trạng mặt đường? Kết quả cần là video quan sát, thống kê lưu lượng, hay báo cáo điểm bất thường?
-                    """.trim();
+            return promptTemplateService.getRequired("FALLBACK_TRAFFIC");
         }
 
         if (solar) {
-            return """
-                    Mình đang hiểu nhu cầu là kiểm tra tấm pin năng lượng mặt trời.
-
-                    Anh/chị muốn phát hiện điểm nóng, tấm lỗi, bụi bẩn/suy giảm hiệu suất, hay kiểm tra inverter/khu kỹ thuật? Kết quả cần ảnh nhiệt kèm vị trí từng tấm hay báo cáo tổng hợp theo dãy?
-                    """.trim();
+            return promptTemplateService.getRequired("FALLBACK_SOLAR");
         }
 
         if (powerLine) {
-            return """
-                    Mình đang hiểu nhu cầu là kiểm tra đường dây điện/trạm biến áp.
-
-                    Anh/chị muốn kiểm tra cột, sứ, dây dẫn, điểm nhiệt thiết bị, hành lang an toàn hay vật cản gần tuyến? Cần báo cáo theo từng vị trí/cột hay tổng hợp toàn tuyến?
-                    """.trim();
+            return promptTemplateService.getRequired("FALLBACK_POWER_LINE");
         }
 
         if (mapping) {
-            return """
-                    Mình đang hiểu nhu cầu là khảo sát bản đồ 2D/3D.
-
-                    Anh/chị cần orthomosaic 2D, mô hình 3D, point cloud, đo diện tích/thể tích hay bản đồ hiện trạng? Độ chi tiết mong muốn và phạm vi đo đạc là bao nhiêu?
-                    """.trim();
+            return promptTemplateService.getRequired("FALLBACK_MAPPING");
         }
 
         if (pipeline) {
-            return """
-                    Mình đang hiểu nhu cầu là kiểm tra đường ống/hành lang tuyến.
-
-                    Anh/chị muốn phát hiện rò rỉ, xâm lấn hành lang, hư hỏng bề mặt, điểm nhiệt hay vật cản trên tuyến? Cần báo cáo theo từng đoạn tuyến hay theo tọa độ điểm bất thường?
-                    """.trim();
+            return promptTemplateService.getRequired("FALLBACK_PIPELINE");
         }
 
         if (bridgeRoad) {
-            return """
-                    Mình đang hiểu nhu cầu là kiểm tra cầu/đường/hạ tầng giao thông.
-
-                    Anh/chị muốn phát hiện nứt vỡ, sụt lún, hư hỏng mặt đường, taluy/sạt lở hay điểm nguy hiểm giao thông? Khu vực ưu tiên là mặt cầu, mặt đường, mép taluy hay toàn tuyến?
-                    """.trim();
+            return promptTemplateService.getRequired("FALLBACK_BRIDGE_ROAD");
         }
 
         if (!expectedOutcome) {
-            return """
-                    Mình đang cần làm rõ request giám sát.
-
-                    Anh/chị cho biết đối tượng cần giám sát là gì, vấn đề chính muốn phát hiện, khu vực cần ưu tiên và kết quả mong muốn sau chuyến bay?
-                    """.trim();
+            return promptTemplateService.getRequired("FALLBACK_GENERIC_MISSING");
         }
 
-        return """
-                Mình đã ghi nhận nhu cầu giám sát của anh/chị.
-
-                Để chốt request rõ hơn, anh/chị bổ sung tần suất theo dõi, mức độ khẩn cấp và cách muốn nhận thông báo khi phát hiện bất thường nhé.
-                """.trim();
+        return promptTemplateService.getRequired("FALLBACK_GENERIC_RECEIVE_RESULT");
     }
 
     private void applyFallbackRecommendedService(
@@ -1031,17 +953,43 @@ public class CustomerConsultationServiceImpl
         boolean progress = containsAny(text, "tien do", "thi cong", "dinh ky", "hang tuan", "hang thang");
 
         if (building) {
-            return "Khách hàng muốn giám sát tòa nhà/công trình để "
-                    + buildProblemPhrase(crack, hotSpot, safety, progress)
-                    + ". Cần làm rõ thêm khu vực ưu tiên, kết quả bàn giao và cách thông báo khi phát hiện bất thường.";
+            return "Giám sát tòa nhà/công trình. "
+                    + buildSummaryProblemSentence(crack, hotSpot, safety, progress)
+                    + "Cần làm rõ khu vực ưu tiên và kết quả bàn giao ảnh/video hoặc báo cáo kèm hình.";
         }
         if (agriculture) {
-            return "Khách hàng muốn giám sát vườn/cây trồng"
-                    + (cropIssue ? " để phát hiện dấu hiệu bất thường, sâu bệnh hoặc thiếu nước" : "")
-                    + ". Cần làm rõ thêm khu vực ưu tiên, tần suất theo dõi và kết quả bàn giao mong muốn.";
+            return "Giám sát vườn/cây trồng. "
+                    + (cropIssue ? "Có yêu cầu phân tích thêm về sâu bệnh/thiếu nước/sinh trưởng. " : "")
+                    + "Cần làm rõ khu vực cần bay chụp, tần suất và kết quả bàn giao mong muốn.";
         }
 
-        return "Khách hàng muốn tạo yêu cầu giám sát nhưng cần làm rõ đối tượng, mục tiêu, phạm vi, kết quả mong muốn và cách nhận thông báo.";
+        return "Tạo yêu cầu giám sát. Cần làm rõ đối tượng/khu vực cần bay chụp, phạm vi và kết quả bàn giao mong muốn.";
+    }
+
+    private String buildOptionalProblemPhrase(
+            boolean crack,
+            boolean hotSpot,
+            boolean safety,
+            boolean progress
+    ) {
+        String phrase = buildProblemPhrase(crack, hotSpot, safety, progress);
+        if ("ghi nhận hình ảnh/video hiện trạng".equals(phrase)) {
+            return "";
+        }
+        return " với mục tiêu phụ là " + phrase;
+    }
+
+    private String buildSummaryProblemSentence(
+            boolean crack,
+            boolean hotSpot,
+            boolean safety,
+            boolean progress
+    ) {
+        String phrase = buildProblemPhrase(crack, hotSpot, safety, progress);
+        if ("ghi nhận hình ảnh/video hiện trạng".equals(phrase)) {
+            return "";
+        }
+        return "Mục tiêu phân tích thêm: " + phrase + ". ";
     }
 
     private String buildProblemPhrase(
@@ -1066,7 +1014,7 @@ public class CustomerConsultationServiceImpl
         }
 
         if (problems.isEmpty()) {
-            return "làm rõ tình trạng bất thường";
+            return "ghi nhận hình ảnh/video hiện trạng";
         }
 
         return String.join(", ", problems);
