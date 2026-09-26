@@ -40,6 +40,7 @@ public abstract class MissionMapper {
     @Mapping(target = "mediaType", ignore = true)
     @Mapping(target = "latitude", expression = "java(getLatitude(mission))")
     @Mapping(target = "longitude", expression = "java(getLongitude(mission))")
+    @Mapping(target = "radiusM", expression = "java(getRadiusM(mission))")
     @Mapping(target = "plan", expression = "java(getPlan(mission))")
     public abstract MissionResponse toResponse(Mission mission);
 
@@ -89,6 +90,36 @@ public abstract class MissionMapper {
     protected Double getLongitude(Mission mission) {
         if (mission.getOrder() != null && mission.getOrder().getPoint() != null) {
             return mission.getOrder().getPoint().getX();
+        }
+        return null;
+    }
+
+    protected Double getRadiusM(Mission mission) {
+        if (mission == null || mission.getOrder() == null || mission.getOrder().getDeliverables() == null) {
+            return null;
+        }
+
+        return mission.getOrder().getDeliverables().stream()
+                .filter(deliverable -> deliverable != null && deliverable.getRequirement() != null)
+                .map(deliverable -> {
+                    Double radius = toDouble(deliverable.getRequirement().get("radiusM"));
+                    return radius != null ? radius : toDouble(deliverable.getRequirement().get("radius_m"));
+                })
+                .filter(radius -> radius != null)
+                .findFirst()
+                .orElse(null);
+    }
+
+    protected Double toDouble(Object value) {
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return Double.parseDouble(text);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
         }
         return null;
     }

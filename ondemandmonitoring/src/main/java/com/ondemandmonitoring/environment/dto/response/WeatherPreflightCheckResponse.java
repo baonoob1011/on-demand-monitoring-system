@@ -4,6 +4,9 @@ import java.time.Instant;
 import java.util.List;
 
 public record WeatherPreflightCheckResponse(
+        String id,
+        String missionId,
+        String droneCode,
         String status,
         boolean safeToFly,
         String summary,

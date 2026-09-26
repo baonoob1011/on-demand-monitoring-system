@@ -25,6 +25,7 @@ public class MissionResponse {
     String droneCode;
     Double latitude;
     Double longitude;
+    Double radiusM;
     String address;
     Instant scheduledStartAt;
     Instant startedAt;

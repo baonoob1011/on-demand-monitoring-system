@@ -24,6 +24,7 @@ import com.ondemandmonitoring.mission.dto.response.FlightTokenResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionTelemetryReadinessResponse;
+import com.ondemandmonitoring.mission.dto.response.PostflightCheckResponse;
 import com.ondemandmonitoring.mission.dto.request.PostFlightStatusRequest;
 import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
@@ -35,6 +36,7 @@ import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.drone.mapper.PreflightCheckMapper;
 import com.ondemandmonitoring.mission.mapper.FlightTokenMapper;
 import com.ondemandmonitoring.mission.mapper.MissionMapper;
+import com.ondemandmonitoring.mission.mapper.PostflightCheckMapper;
 import com.ondemandmonitoring.mission.service.IDeviceConnectionService;
 import com.ondemandmonitoring.mission.service.IFlightTokenService;
 import com.ondemandmonitoring.mission.service.IMissionService;
@@ -90,6 +92,7 @@ public class MissionService implements IMissionService {
     MissionMapper missionMapper;
     FlightTokenMapper flightTokenMapper;
     PreflightCheckMapper preflightCheckMapper;
+    PostflightCheckMapper postflightCheckMapper;
 
     // Supporting audit & work order repositories
     MissionDroneAssignmentRepository missionDroneAssignmentRepository;
@@ -1079,6 +1082,15 @@ public class MissionService implements IMissionService {
             }
         }
         return true;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PostflightCheckResponse getLatestPostflightCheck(String missionId) {
+        return postflightCheckRepository.findTopByMissionIdOrderByCheckedAtDesc(missionId)
+                .map(postflightCheckMapper::toResponse)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
+                        "No postflight check found for mission " + missionId));
     }
 
     // =========================================================================
