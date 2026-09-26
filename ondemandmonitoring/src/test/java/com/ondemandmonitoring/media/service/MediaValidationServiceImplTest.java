@@ -64,7 +64,7 @@ class MediaValidationServiceImplTest {
         attempt.setStatus(UploadAttemptStatus.UPLOADED);
 
         when(storage.bucket()).thenReturn(bucket);
-        when(attempts.findByStorageKey(stagingKey)).thenReturn(Optional.of(attempt));
+        when(attempts.findByStorageKeyForUpdate(stagingKey)).thenReturn(Optional.of(attempt));
         when(attempts.findFirstByMediaIdOrderByAttemptNumberDesc("media-1"))
                 .thenReturn(Optional.of(attempt));
         when(storage.inspect(bucket, stagingKey)).thenReturn(

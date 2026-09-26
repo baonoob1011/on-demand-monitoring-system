@@ -3,8 +3,7 @@ package com.ondemandmonitoring.media.service.impl;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.drone.domain.Drone;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.drone.enums.DroneStatus;
-import com.ondemandmonitoring.drone.repository.DroneRepository;
+import com.ondemandmonitoring.drone.service.IDroneService;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.IMediaAssetService;
@@ -17,7 +16,6 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -47,7 +45,7 @@ public class MediaAssetService implements IMediaAssetService {
     S3ObjectStorageService s3ObjectStorageService;
     AwsS3Properties awsS3Properties;
     Environment environment;
-    DroneRepository droneRepository;
+    IDroneService droneService;
     MediaAssetRepository mediaAssetRepository;
 
     @Transactional
@@ -70,7 +68,7 @@ public class MediaAssetService implements IMediaAssetService {
         String mediaType = validate(file, requestedMediaType);
         validateRequired("missionId", missionId);
         validateRequired("droneId", droneId);
-        Drone drone = getOrCreateDrone(droneId);
+        Drone drone = droneService.getOrRegisterLegacySimulator(droneId);
 
         String originalFileName = safeFileName(file.getOriginalFilename());
         String contentType = file.getContentType();
@@ -395,20 +393,6 @@ public class MediaAssetService implements IMediaAssetService {
         }
 
         return message;
-    }
-
-    private Drone getOrCreateDrone(String droneCode) {
-        return droneRepository.findByDroneCode(droneCode)
-                .orElseGet(() -> {
-                    Drone drone = new Drone();
-                    drone.setDroneCode(droneCode);
-                    drone.setSerialNumber(droneCode);
-                    drone.setDroneName("PX4 SITL Drone");
-                    
-                    drone.setStatus(DroneStatus.AVAILABLE);
-                    drone.setLastSeenAt(LocalDateTime.now());
-                    return droneRepository.save(drone);
-                });
     }
 
     private String normalizeMediaType(String requestedMediaType) {

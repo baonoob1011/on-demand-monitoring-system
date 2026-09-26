@@ -3,19 +3,18 @@ package com.ondemandmonitoring.media.service.impl;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.drone.domain.Drone;
-import com.ondemandmonitoring.drone.repository.DroneRepository;
+import com.ondemandmonitoring.drone.service.IDroneService;
 import com.ondemandmonitoring.media.domain.*;
 import com.ondemandmonitoring.media.dto.request.CompleteMultipartRequest;
 import com.ondemandmonitoring.media.dto.request.PrepareMediaUploadRequest;
 import com.ondemandmonitoring.media.dto.request.ReportUploadFailureRequest;
 import com.ondemandmonitoring.media.dto.response.MediaUploadResponse;
+import com.ondemandmonitoring.media.dto.request.ManualMediaFileRequest;
+import com.ondemandmonitoring.media.dto.response.ManualMediaUploadResponse;
 import com.ondemandmonitoring.media.repository.*;
 import com.ondemandmonitoring.media.service.IMediaUploadService;
-import com.ondemandmonitoring.mission.domain.Mission;
-import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
-import com.ondemandmonitoring.mission.domain.MissionOperatorAssignment;
-import com.ondemandmonitoring.mission.enums.MissionStatus;
-import com.ondemandmonitoring.mission.repository.*;
+import com.ondemandmonitoring.mission.dto.response.MissionMediaContext;
+import com.ondemandmonitoring.mission.service.IMissionMediaAccessService;
 import com.ondemandmonitoring.s3.AwsS3Properties;
 import com.ondemandmonitoring.s3.S3ObjectStorageService;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
@@ -23,8 +22,6 @@ import java.time.Instant;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,14 +32,8 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     private static final long PART_SIZE = 8L * 1024 * 1024;
     private static final long MULTIPART_THRESHOLD = 16L * 1024 * 1024;
     private static final int MAX_AUTOMATIC_ATTEMPTS = 3;
-    private static final Set<MissionStatus> CAPTURE_STATUSES = Set.of(
-            MissionStatus.IN_FLIGHT, MissionStatus.IN_PROGRESS, MissionStatus.RETURNING,
-            MissionStatus.POSTFLIGHT_CHECKING, MissionStatus.COMPLETED);
-
-    private final MissionRepository missions;
-    private final MissionDroneAssignmentRepository droneAssignments;
-    private final MissionOperatorAssignmentRepository operatorAssignments;
-    private final DroneRepository drones;
+    private final IMissionMediaAccessService missionAccess;
+    private final IDroneService drones;
     private final MediaAssetRepository media;
     private final MediaUploadAttemptRepository attempts;
     private final ManualUploadTaskRepository manualTasks;
@@ -57,11 +48,53 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     private long maxVideoBytes;
 
     @Override
+    @Transactional(readOnly = true)
+    public List<ManualMediaUploadResponse> manualTasks(String missionId) {
+        MissionMediaContext mission = missionAccess.authorizeOperator(missionId);
+        return manualTasks.findOpenByMissionId(mission.getId()).stream().map(task -> {
+            MediaAsset asset = task.getMedia();
+            return new ManualMediaUploadResponse(
+                    task.getId(), asset.getId(), asset.getLocalMediaId(), asset.getMissionId(),
+                    asset.getDroneCode(), asset.getType(), asset.getOriginalFileName(),
+                    asset.getContentType(), asset.getFileSize(), asset.getChecksumSha256(),
+                    asset.getCapturedAt(), asset.getMediaStatus().name(), task.getReason());
+        }).toList();
+    }
+
+    @Override
+    @Transactional
+    public MediaUploadResponse prepareManualFile(String mediaId,
+            ManualMediaFileRequest request) {
+        MediaAsset asset = media.findByIdForUpdate(mediaId)
+                .orElseThrow(() -> new ApiException(ErrorCode.MEDIA_NOT_FOUND));
+        missionAccess.authorizeOperator(asset.getMissionId());
+        if (!asset.getFileSize().equals(request.fileSize())
+                || !asset.getContentType().equalsIgnoreCase(request.contentType())
+                || !asset.getChecksumSha256().equalsIgnoreCase(request.checksumSha256())) {
+            throw new ApiException(ErrorCode.MEDIA_IDEMPOTENCY_CONFLICT,
+                    "Selected file is not an exact copy of the original capture");
+        }
+        if (manualTasks.findByMediaId(mediaId).isEmpty()) {
+            throw new ApiException(ErrorCode.MEDIA_UPLOAD_ATTEMPT_INVALID, "No manual task exists");
+        }
+        if (asset.getMediaStatus() == MediaStatus.UPLOAD_PENDING) {
+            var latest = attempts.findFirstByMediaIdOrderByAttemptNumberDesc(mediaId);
+            if (latest.isPresent() && latest.get().isManualAttempt()
+                    && objectExists(asset.getS3Bucket(), latest.get().getStorageKey())) {
+                markUploaded(mediaId, latest.get().getId());
+                return status(mediaId);
+            }
+        }
+        MediaUploadResponse response = retry(mediaId, true);
+        audit(asset, null, "PC_BACKUP_SELECTED", "Exact backup selected for manual upload");
+        return response;
+    }
+
+    @Override
     @Transactional
     public MediaUploadResponse prepare(String missionId, PrepareMediaUploadRequest request) {
-        Mission mission = requireMission(missionId);
-        authorize(mission);
-        if (!CAPTURE_STATUSES.contains(mission.getStatus())) {
+        MissionMediaContext mission = missionAccess.authorizeOperator(missionId);
+        if (!mission.isCaptureAllowed()) {
             throw new ApiException(ErrorCode.MEDIA_UPLOAD_NOT_ALLOWED,
                     "Mission is not in a capture state");
         }
@@ -108,11 +141,22 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     @Override
     @Transactional
     public MediaUploadResponse retry(String mediaId, boolean manual) {
-        MediaAsset captured = requireMedia(mediaId);
-        authorize(requireMission(captured.getMissionId()));
+        // Serialize attempt allocation across browser tabs and backend instances.
+        MediaAsset captured = media.findByIdForUpdate(mediaId)
+                .orElseThrow(() -> new ApiException(ErrorCode.MEDIA_NOT_FOUND));
+        missionAccess.authorizeOperator(captured.getMissionId());
 
         if (captured.getMediaStatus() == MediaStatus.AVAILABLE) {
             return status(mediaId);
+        }
+
+        if (manual && captured.getMediaStatus() == MediaStatus.VALIDATING) {
+            return status(mediaId);
+        }
+        if (manual && captured.getMediaStatus() == MediaStatus.UPLOAD_PENDING
+                && attempts.findFirstByMediaIdOrderByAttemptNumberDesc(mediaId)
+                .map(MediaUploadAttempt::isManualAttempt).orElse(false)) {
+            return existingResponse(captured);
         }
 
         if (manual && captured.getMediaStatus() != MediaStatus.MANUAL_UPLOAD_REQUIRED) {
@@ -140,15 +184,26 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
                                              ReportUploadFailureRequest request) {
 
         MediaAsset captured = requireMedia(mediaId);
-        authorize(requireMission(captured.getMissionId()));
+        missionAccess.authorizeOperator(captured.getMissionId());
         MediaUploadAttempt attempt = requireAttempt(mediaId, attemptId);
 
-        if (attempt.getStatus() == UploadAttemptStatus.FAILED) {
+        if (attempt.getStatus() != UploadAttemptStatus.PENDING
+                || captured.getMediaStatus() == MediaStatus.AVAILABLE
+                || !attempts.findFirstByMediaIdOrderByAttemptNumberDesc(mediaId)
+                .map(latest -> latest.getId().equals(attemptId)).orElse(false)) {
             return status(mediaId);
         }
 
-        if (attempt.getStatus() != UploadAttemptStatus.PENDING) {
-            throw new ApiException(ErrorCode.MEDIA_UPLOAD_ATTEMPT_INVALID);
+        // A lost transfer response does not prove that S3 rejected the object.
+        // Only a confirmed 404 allows us to consume a retry attempt.
+        try {
+            storage.inspect(captured.getS3Bucket(), attempt.getStorageKey());
+            markUploaded(mediaId, attemptId);
+            return status(mediaId);
+        } catch (software.amazon.awssdk.services.s3.model.S3Exception exception) {
+            if (exception.statusCode() != 404) {
+                throw exception;
+            }
         }
 
         attempt.setStatus(UploadAttemptStatus.FAILED);
@@ -168,7 +223,8 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
 
         captured.setValidationError(request.getMessage());
         audit(captured, attempt, "UPLOAD_FAILED", request.getCode());
-        if (attempts.countByMediaIdAndManualAttemptFalse(mediaId) >= MAX_AUTOMATIC_ATTEMPTS) {
+        if (attempt.isManualAttempt()
+                || attempts.countByMediaIdAndManualAttemptFalse(mediaId) >= MAX_AUTOMATIC_ATTEMPTS) {
             return requireManualUpload(captured, request.getMessage());
         }
 
@@ -183,7 +239,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     public MediaUploadResponse status(String mediaId) {
 
         MediaAsset captured = requireMedia(mediaId);
-        authorize(requireMission(captured.getMissionId()));
+        missionAccess.authorizeOperator(captured.getMissionId());
         MediaUploadAttempt latest = attempts
                 .findFirstByMediaIdOrderByAttemptNumberDesc(mediaId).orElse(null);
 
@@ -197,7 +253,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     @Transactional(readOnly = true)
     public MediaUploadResponse presignPart(String mediaId, String attemptId, int partNumber) {
         MediaAsset captured = requireMedia(mediaId);
-        authorize(requireMission(captured.getMissionId()));
+        missionAccess.authorizeOperator(captured.getMissionId());
         MediaUploadAttempt attempt = requireAttempt(mediaId, attemptId);
         int count = partCount(captured.getFileSize());
 
@@ -226,7 +282,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
                                   CompleteMultipartRequest request) {
 
         MediaAsset captured = requireMedia(mediaId);
-        authorize(requireMission(captured.getMissionId()));
+        missionAccess.authorizeOperator(captured.getMissionId());
         MediaUploadAttempt attempt = requireAttempt(mediaId, attemptId);
 
         if (attempt.getStatus() == UploadAttemptStatus.UPLOADED
@@ -261,6 +317,11 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
                 .sorted(Comparator.comparingInt(CompleteMultipartRequest.Part::getPartNumber))
                 .map(part -> new S3ObjectStorageService.PartETag(part.getPartNumber(),
                         part.getETag())).toList();
+        // Complete may have succeeded in S3 while the previous acknowledgement was lost.
+        if (objectExists(captured.getS3Bucket(), attempt.getStorageKey())) {
+            markUploaded(mediaId, attemptId);
+            return;
+        }
         storage.completeMultipartUpload(
                 attempt.getStorageKey(),
                 attempt.getMultipartUploadId(),
@@ -269,11 +330,21 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
         markUploaded(mediaId, attemptId);
     }
 
+    private boolean objectExists(String bucket, String key) {
+        try {
+            storage.inspect(bucket, key);
+            return true;
+        } catch (software.amazon.awssdk.services.s3.model.S3Exception exception) {
+            if (exception.statusCode() == 404) return false;
+            throw exception;
+        }
+    }
+
     @Override
     @Transactional
     public void markUploaded(String mediaId, String attemptId) {
         MediaAsset captured = requireMedia(mediaId);
-        authorize(requireMission(captured.getMissionId()));
+        missionAccess.authorizeOperator(captured.getMissionId());
         MediaUploadAttempt attempt = requireAttempt(mediaId, attemptId);
         if (attempt.getStatus() == UploadAttemptStatus.SUCCEEDED
                 || attempt.getStatus() == UploadAttemptStatus.UPLOADED
@@ -448,59 +519,10 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
         }
     }
 
-    private Mission requireMission(String identifier) {
-        return missions.findById(identifier).or(() -> missions.findByMissionCode(identifier))
-                .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
-    }
-
-    private Drone requireAssignedDrone(Mission mission, String code) {
-
-        Drone drone = drones.findByDroneCode(code)
-                .orElseThrow(() -> new ApiException(ErrorCode.DRONE_NOT_FOUND));
-
-        boolean assigned = droneAssignments.findByMissionIdAndIsCurrentTrue(mission.getId())
-                .map(MissionDroneAssignment::getDrone).map(Drone::getId)
-                .filter(drone.getId()::equals).isPresent();
-
-        if (!assigned && mission.getStatus() == MissionStatus.COMPLETED) {
-            assigned = droneAssignments.findByMissionId(mission.getId()).stream()
-                    .anyMatch(entry -> entry.getDrone().getId().equals(drone.getId())
-                            && "MISSION_COMPLETE".equals(entry.getReleaseReason()));
-        }
-
-        if (!assigned) {
-            throw new ApiException(ErrorCode.ACCESS_DENIED, "Drone is not assigned to mission");
-        }
-
+    private Drone requireAssignedDrone(MissionMediaContext mission, String code) {
+        Drone drone = drones.getEntityByCode(code);
+        missionAccess.requireAssignedDrone(mission.getId(), drone.getId());
         return drone;
-    }
-
-    private void authorize(Mission mission) {
-
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-
-        if (auth == null || !auth.isAuthenticated()) {
-            throw new ApiException(ErrorCode.UNAUTHORIZED);
-        }
-
-        boolean privileged = auth.getAuthorities().stream().anyMatch(authority ->
-                authority.getAuthority().equals("ROLE_ADMIN")
-                        || authority.getAuthority().equals("ROLE_SYSTEM_OPERATOR"));
-
-        String userId = currentUser.getCurrentUser().getId().toString();
-
-        boolean assigned = operatorAssignments.findByMissionIdAndIsCurrentTrue(mission.getId())
-                .map(MissionOperatorAssignment::getOperatorId).filter(userId::equals).isPresent();
-
-        if (!assigned && mission.getStatus() == MissionStatus.COMPLETED) {
-            assigned = operatorAssignments.findByMissionId(mission.getId()).stream()
-                    .anyMatch(entry -> userId.equals(entry.getOperatorId())
-                            && "COMPLETED".equals(entry.getStatus()));
-        }
-
-        if (!privileged && !assigned) {
-            throw new ApiException(ErrorCode.ACCESS_DENIED, "Operator is not assigned to mission");
-        }
     }
 
     private MediaAsset requireMedia(String mediaId) {
@@ -523,7 +545,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     }
 
     private String actor() {
-        return currentUser.getCurrentUser().getId().toString();
+        return currentUser.getCurrentUserId();
     }
 
     private void audit(MediaAsset captured, MediaUploadAttempt attempt,

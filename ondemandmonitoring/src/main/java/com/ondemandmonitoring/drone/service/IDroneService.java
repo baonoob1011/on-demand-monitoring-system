@@ -16,6 +16,11 @@ public interface IDroneService {
 
     Drone getEntityById(String id);
 
+    Drone getEntityByCode(String code);
+
+    /** Compatibility registration for the legacy simulator upload flow only. */
+    Drone getOrRegisterLegacySimulator(String code);
+
     PageResponse<DroneResponse> getAll(Pageable pageable, String modelId, String payloadId, DroneStatus status);
 
     DroneResponse update(String id, DroneUpdateRequest request);

@@ -46,7 +46,7 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
             return;
         }
 
-        Optional<MediaUploadAttempt> found = attempts.findByStorageKey(key);
+        Optional<MediaUploadAttempt> found = attempts.findByStorageKeyForUpdate(key);
 
         if (found.isEmpty() || !storage.bucket().equals(bucket)) {
             log.info("Ignoring unrelated storage event bucket={} key={}", bucket, key);
@@ -54,6 +54,10 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
         }
 
         MediaUploadAttempt attempt = found.get();
+        // SQS and reconciliation can wait on the same row concurrently.
+        if (inbox.existsByEventKey(eventKey)) {
+            return;
+        }
         MediaAsset captured = attempt.getMedia();
         boolean latest = attempts.findFirstByMediaIdOrderByAttemptNumberDesc(captured.getId())
                 .map(current -> current.getId().equals(attempt.getId())).orElse(false);

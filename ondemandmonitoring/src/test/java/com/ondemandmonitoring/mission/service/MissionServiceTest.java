@@ -149,6 +149,7 @@ class MissionServiceTest {
                 missionMapper,
                 flightTokenMapper,
                 preflightCheckMapper,
+                mock(com.ondemandmonitoring.mission.mapper.PostflightCheckMapper.class),
                 missionDroneAssignmentRepository,
                 missionOperatorAssignmentRepository,
                 missionPlanRepository,

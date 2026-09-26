@@ -7,7 +7,8 @@ import static org.mockito.Mockito.*;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.drone.domain.Drone;
-import com.ondemandmonitoring.drone.repository.DroneRepository;
+import com.ondemandmonitoring.drone.service.IDroneService;
+import com.ondemandmonitoring.mission.service.impl.MissionMediaAccessServiceImpl;
 import com.ondemandmonitoring.media.domain.*;
 import com.ondemandmonitoring.media.dto.request.PrepareMediaUploadRequest;
 import com.ondemandmonitoring.media.repository.*;
@@ -34,7 +35,7 @@ class MediaUploadWorkflowTest {
     private final MissionRepository missions = mock(MissionRepository.class);
     private final MissionDroneAssignmentRepository droneAssignments = mock(MissionDroneAssignmentRepository.class);
     private final MissionOperatorAssignmentRepository operatorAssignments = mock(MissionOperatorAssignmentRepository.class);
-    private final DroneRepository drones = mock(DroneRepository.class);
+    private final IDroneService drones = mock(IDroneService.class);
     private final MediaAssetRepository media = mock(MediaAssetRepository.class);
     private final MediaUploadAttemptRepository attempts = mock(MediaUploadAttemptRepository.class);
     private final ManualUploadTaskRepository manualTasks = mock(ManualUploadTaskRepository.class);
@@ -42,8 +43,9 @@ class MediaUploadWorkflowTest {
     private final S3ObjectStorageService storage = mock(S3ObjectStorageService.class);
     private final AuthenticatedUserResolver userResolver = mock(AuthenticatedUserResolver.class);
     private final AwsS3Properties s3 = new AwsS3Properties();
-    private final MediaUploadServiceImpl service = new MediaUploadServiceImpl(missions, droneAssignments,
-            operatorAssignments, drones, media, attempts, manualTasks, audit, storage, s3, userResolver);
+    private final MediaUploadServiceImpl service = new MediaUploadServiceImpl(
+            new MissionMediaAccessServiceImpl(missions, droneAssignments, operatorAssignments, userResolver),
+            drones, media, attempts, manualTasks, audit, storage, s3, userResolver);
 
     @BeforeEach
     void setUp() {
@@ -54,6 +56,7 @@ class MediaUploadWorkflowTest {
         User user = new User();
         user.setId(UUID.randomUUID().toString());
         when(userResolver.getCurrentUser()).thenReturn(user);
+        when(userResolver.getCurrentUserId()).thenReturn(user.getId());
         Mission mission = new Mission();
         mission.setId("mission-id");
         mission.setStatus(MissionStatus.IN_FLIGHT);
@@ -65,7 +68,7 @@ class MediaUploadWorkflowTest {
         Drone drone = new Drone();
         drone.setId("drone-id");
         drone.setDroneCode("DRONE-01");
-        when(drones.findByDroneCode("DRONE-01")).thenReturn(Optional.of(drone));
+        when(drones.getEntityByCode("DRONE-01")).thenReturn(drone);
         MissionDroneAssignment assignment = new MissionDroneAssignment();
         assignment.setDrone(drone);
         when(droneAssignments.findByMissionIdAndIsCurrentTrue("mission-id"))
@@ -128,7 +131,7 @@ class MediaUploadWorkflowTest {
         operator.setStatus("COMPLETED");
         when(operatorAssignments.findByMissionId("mission-id")).thenReturn(List.of(operator));
         MissionDroneAssignment assignment = new MissionDroneAssignment();
-        assignment.setDrone(drones.findByDroneCode("DRONE-01").orElseThrow());
+        assignment.setDrone(drones.getEntityByCode("DRONE-01"));
         assignment.setReleaseReason("MISSION_COMPLETE");
         when(droneAssignments.findByMissionId("mission-id")).thenReturn(List.of(assignment));
         MediaAsset existing = new MediaAsset();
@@ -150,5 +153,123 @@ class MediaUploadWorkflowTest {
     private PrepareMediaUploadRequest request(String type, String contentType) {
         return new PrepareMediaUploadRequest("DRONE-01", "capture-1", type, "capture.jpg",
                 contentType, 100L, "a".repeat(64), Instant.now());
+    }
+
+    @Test
+    void thirdConfirmedFailureCreatesOneManualTask() {
+        var asset = pendingAsset();
+        when(attempts.countByMediaIdAndManualAttemptFalse("media-id")).thenReturn(3L);
+        when(storage.inspect("test-bucket", "staging/capture.jpg"))
+                .thenThrow(software.amazon.awssdk.services.s3.model.S3Exception.builder()
+                        .statusCode(404).build());
+        var failure = new com.ondemandmonitoring.media.dto.request.ReportUploadFailureRequest();
+        failure.setCode("TRANSFER_FAILED");
+        failure.setMessage("Connection lost");
+
+        assertThat(service.reportFailure("media-id", "attempt-id", failure).getStatus())
+                .isEqualTo(MediaStatus.MANUAL_UPLOAD_REQUIRED);
+        assertThat(asset.getMediaStatus()).isEqualTo(MediaStatus.MANUAL_UPLOAD_REQUIRED);
+        verify(manualTasks).save(any(ManualUploadTask.class));
+    }
+
+    @Test
+    void lostResponseDoesNotConsumeRetryWhenObjectExists() {
+        pendingAsset();
+        when(storage.inspect("test-bucket", "staging/capture.jpg"))
+                .thenReturn(new S3ObjectStorageService.StoredObjectInfo(100L, "image/jpeg", Map.of()));
+        var failure = new com.ondemandmonitoring.media.dto.request.ReportUploadFailureRequest();
+        failure.setCode("TRANSFER_FAILED");
+        failure.setMessage("Response lost");
+
+        assertThat(service.reportFailure("media-id", "attempt-id", failure).getStatus())
+                .isEqualTo(MediaStatus.VALIDATING);
+        verify(manualTasks, never()).save(any());
+    }
+
+    private MediaAsset pendingAsset() {
+        var asset = new MediaAsset();
+        asset.setId("media-id");
+        asset.setMissionId("mission-id");
+        asset.setS3Bucket("test-bucket");
+        asset.setMediaStatus(MediaStatus.UPLOAD_PENDING);
+        var attempt = new MediaUploadAttempt();
+        attempt.setId("attempt-id");
+        attempt.setStorageKey("staging/capture.jpg");
+        attempt.setStatus(UploadAttemptStatus.PENDING);
+        when(media.findById("media-id")).thenReturn(Optional.of(asset));
+        when(attempts.findByIdAndMediaId("attempt-id", "media-id")).thenReturn(Optional.of(attempt));
+        when(attempts.findFirstByMediaIdOrderByAttemptNumberDesc("media-id"))
+                .thenReturn(Optional.of(attempt));
+        return asset;
+    }
+
+    @Test
+    void pcBackupMismatchIsRejectedBeforeAllocatingAttempt() {
+        var asset = pendingAsset();
+        asset.setFileSize(100L);
+        asset.setContentType("image/jpeg");
+        asset.setChecksumSha256("a".repeat(64));
+        when(media.findByIdForUpdate("media-id")).thenReturn(Optional.of(asset));
+        var request = new com.ondemandmonitoring.media.dto.request.ManualMediaFileRequest(
+                100L, "image/jpeg", "b".repeat(64));
+
+        assertThatThrownBy(() -> service.prepareManualFile("media-id", request))
+                .isInstanceOf(ApiException.class).hasMessageContaining("exact copy");
+        verify(attempts, never()).save(any());
+        verifyNoInteractions(storage);
+    }
+
+    @Test
+    void manualTasksReturnOriginalMetadataWithoutDependingOnFlightController() {
+        var asset = pendingAsset();
+        asset.setLocalMediaId("capture-1");
+        asset.setFileSize(100L);
+        asset.setContentType("image/jpeg");
+        asset.setChecksumSha256("a".repeat(64));
+        asset.setMediaStatus(MediaStatus.MANUAL_UPLOAD_REQUIRED);
+        var task = new ManualUploadTask();
+        task.setId("manual-task");
+        task.setMedia(asset);
+        when(manualTasks.findOpenByMissionId("mission-id")).thenReturn(List.of(task));
+
+        var result = service.manualTasks("mission-id");
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().backendMediaId()).isEqualTo("media-id");
+        assertThat(result.getFirst().checksumSha256()).isEqualTo("a".repeat(64));
+        verifyNoInteractions(storage);
+    }
+
+    @Test
+    void exactPcBackupResumesPendingManualAttemptWithoutCreatingAnother() {
+        var asset = pendingAsset();
+        asset.setFileSize(100L);
+        asset.setContentType("image/jpeg");
+        asset.setChecksumSha256("a".repeat(64));
+        when(media.findByIdForUpdate("media-id")).thenReturn(Optional.of(asset));
+        var existing = attempts.findByIdAndMediaId("attempt-id", "media-id").orElseThrow();
+        existing.setManualAttempt(true);
+        when(manualTasks.findByMediaId("media-id")).thenReturn(Optional.of(new ManualUploadTask()));
+        when(storage.inspect("test-bucket", "staging/capture.jpg"))
+                .thenThrow(software.amazon.awssdk.services.s3.model.S3Exception.builder().statusCode(404).build());
+        when(storage.createPresignedPutUrl(any(), any(), anyLong(), any()))
+                .thenReturn(new S3ObjectStorageService.PresignedUpload("https://s3.test", Map.of(), 900));
+
+        var response = service.prepareManualFile("media-id",
+                new com.ondemandmonitoring.media.dto.request.ManualMediaFileRequest(100L, "image/jpeg", "a".repeat(64)));
+
+        assertThat(response.getAttemptId()).isEqualTo("attempt-id");
+        verify(attempts).save(existing);
+        verify(media, never()).save(any());
+    }
+
+    @Test
+    void manualTasksRejectOperatorNotAssignedToMission() {
+        var assignment = new MissionOperatorAssignment();
+        assignment.setOperatorId("another-operator");
+        when(operatorAssignments.findByMissionIdAndIsCurrentTrue("mission-id"))
+                .thenReturn(Optional.of(assignment));
+
+        assertThatThrownBy(() -> service.manualTasks("mission-id")).isInstanceOf(ApiException.class);
+        verify(manualTasks, never()).findOpenByMissionId(anyString());
     }
 }
