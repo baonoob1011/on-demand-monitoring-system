@@ -30,6 +30,8 @@ public class ConsultationRequirements {
 
     private String abnormalityHandling;
 
+    private Boolean aiAnalysisRequested;
+
     @Builder.Default
     private List<String> additionalRequirements = new ArrayList<>();
 

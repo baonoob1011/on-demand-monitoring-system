@@ -26,6 +26,7 @@ import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
 import com.ondemandmonitoring.mission.mapper.FlightTokenMapper;
 import com.ondemandmonitoring.mission.mapper.MissionMapper;
 import com.ondemandmonitoring.drone.mapper.PreflightCheckMapper;
+import com.ondemandmonitoring.mission.mapper.PostflightCheckMapper;
 import com.ondemandmonitoring.mission.repository.FlightTokenRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.mission.service.impl.DeviceConnectionService;
@@ -66,6 +67,7 @@ class MissionServiceTest {
     MissionMapper missionMapper;
     FlightTokenMapper flightTokenMapper;
     PreflightCheckMapper preflightCheckMapper;
+    PostflightCheckMapper postflightCheckMapper;
 
     MissionDroneAssignmentRepository missionDroneAssignmentRepository;
     MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
@@ -113,6 +115,7 @@ class MissionServiceTest {
         missionMapper                         = mock(MissionMapper.class);
         flightTokenMapper                     = mock(FlightTokenMapper.class);
         preflightCheckMapper                  = mock(PreflightCheckMapper.class);
+        postflightCheckMapper                 = mock(PostflightCheckMapper.class);
         missionDroneAssignmentRepository     = mock(MissionDroneAssignmentRepository.class);
         missionOperatorAssignmentRepository  = mock(MissionOperatorAssignmentRepository.class);
         missionPlanRepository                = mock(MissionPlanRepository.class);
@@ -149,6 +152,7 @@ class MissionServiceTest {
                 missionMapper,
                 flightTokenMapper,
                 preflightCheckMapper,
+                postflightCheckMapper,
                 missionDroneAssignmentRepository,
                 missionOperatorAssignmentRepository,
                 missionPlanRepository,
