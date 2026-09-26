@@ -17,6 +17,7 @@ public class MissionResponse {
     String id;
     String orderId;
     String orderTitle;
+    String serviceName;
     String customerName;
     String missionCode;
     MissionStatus status;
