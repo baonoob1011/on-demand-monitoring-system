@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.environment.service;
 
-import com.ondemandmonitoring.drone.domain.Drone;
-import com.ondemandmonitoring.drone.dto.request.TelemetryRequest;
+import com.ondemandmonitoring.device.domain.Drone;
+import com.ondemandmonitoring.device.dto.request.TelemetryRequest;
 import com.ondemandmonitoring.environment.domain.EnvironmentalMeasurement;
 import com.ondemandmonitoring.environment.enums.MeasurementType;
 import com.ondemandmonitoring.environment.repository.EnvironmentalMeasurementRepository;

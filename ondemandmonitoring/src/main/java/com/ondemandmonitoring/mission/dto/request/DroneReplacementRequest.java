@@ -1,6 +1,5 @@
 package com.ondemandmonitoring.mission.dto.request;
 
-import jakarta.validation.constraints.NotBlank;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
@@ -12,7 +11,15 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class DroneReplacementRequest {
 
-    @NotBlank(message = "Drone replacement code cannot blank!")
+    String newDeviceCode;
+
     String newDroneCode;
+
+    public String resolvedDeviceCode() {
+        if (newDeviceCode != null && !newDeviceCode.isBlank()) {
+            return newDeviceCode;
+        }
+        return newDroneCode;
+    }
 }
 

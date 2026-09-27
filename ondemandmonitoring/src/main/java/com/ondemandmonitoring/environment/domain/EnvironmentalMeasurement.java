@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.environment.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.drone.domain.Drone;
+import com.ondemandmonitoring.device.domain.Drone;
 import com.ondemandmonitoring.environment.enums.MeasurementType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

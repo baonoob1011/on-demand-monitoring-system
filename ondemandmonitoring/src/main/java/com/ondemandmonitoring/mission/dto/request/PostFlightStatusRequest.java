@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.mission.dto.request;
 
-import com.ondemandmonitoring.drone.enums.DroneStatus;
+import com.ondemandmonitoring.device.enums.DroneStatus;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;

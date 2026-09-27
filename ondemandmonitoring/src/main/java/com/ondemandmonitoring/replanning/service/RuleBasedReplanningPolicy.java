@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.replanning.service;
 
-import com.ondemandmonitoring.drone.domain.DroneTelemetry;
+import com.ondemandmonitoring.device.domain.DroneTelemetry;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.domain.PlanWaypoint;
 import com.ondemandmonitoring.replanning.config.ReplanningProperties;

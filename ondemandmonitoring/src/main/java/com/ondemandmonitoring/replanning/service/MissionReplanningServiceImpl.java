@@ -2,7 +2,7 @@ package com.ondemandmonitoring.replanning.service;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.drone.domain.DroneTelemetry;
+import com.ondemandmonitoring.device.domain.DroneTelemetry;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.planning.service.MissionPlanningService;
 import com.ondemandmonitoring.replanning.domain.ReplanningReason;

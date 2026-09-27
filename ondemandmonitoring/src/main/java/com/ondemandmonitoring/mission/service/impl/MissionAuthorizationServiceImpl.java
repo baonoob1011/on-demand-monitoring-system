@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.mission.service.impl;
 
-import com.ondemandmonitoring.drone.repository.PersistedPreflightCheckRepository;
+import com.ondemandmonitoring.device.repository.PersistedPreflightCheckRepository;
 import com.ondemandmonitoring.mission.repository.MissionOperatorAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.mission.enums.MissionStatus;

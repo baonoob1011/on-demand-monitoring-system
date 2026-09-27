@@ -4,7 +4,7 @@ import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
+import com.ondemandmonitoring.device.dto.response.PreflightCheckResponse;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.dto.response.MediaAssetResponse;
 import com.ondemandmonitoring.media.mapper.MediaAssetMapper;
@@ -165,7 +165,10 @@ public class MissionController {
             @PathVariable String id,
             @Valid @RequestBody MissionResourceAssignmentRequest request) {
         MissionResponse response = missionService.assignResources(
-                id, request.getDroneId(), request.getOperatorId());
+                id, request.getDeviceId() != null && !request.getDeviceId().isBlank()
+                        ? request.getDeviceId()
+                        : request.getDroneId(),
+                request.getOperatorId());
         return ResponseEntity.ok(ApiResponse.ok("Mission resources assigned successfully", response));
     }
 
@@ -289,7 +292,7 @@ public class MissionController {
     public ResponseEntity<ApiResponse<MissionResponse>> replaceDrone(
             @PathVariable String id,
             @Valid @RequestBody DroneReplacementRequest request) {
-        MissionResponse response = missionService.replaceDrone(id, request.getNewDroneCode());
+        MissionResponse response = missionService.replaceDrone(id, request.resolvedDeviceCode());
         return ResponseEntity.ok(ApiResponse.ok("Drone successfully replaced", response));
     }
 

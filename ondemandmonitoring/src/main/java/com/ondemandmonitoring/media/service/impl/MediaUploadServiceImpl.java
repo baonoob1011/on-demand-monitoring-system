@@ -2,8 +2,8 @@ package com.ondemandmonitoring.media.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.drone.domain.Drone;
-import com.ondemandmonitoring.drone.service.IDroneService;
+import com.ondemandmonitoring.device.domain.Drone;
+import com.ondemandmonitoring.device.service.IDroneService;
 import com.ondemandmonitoring.media.domain.*;
 import com.ondemandmonitoring.media.dto.request.CompleteMultipartRequest;
 import com.ondemandmonitoring.media.dto.request.PrepareMediaUploadRequest;

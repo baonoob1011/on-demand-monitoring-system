@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.mission.service;
 
-import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
-import com.ondemandmonitoring.drone.enums.DroneStatus;
+import com.ondemandmonitoring.device.dto.response.PreflightCheckResponse;
+import com.ondemandmonitoring.device.enums.DroneStatus;
 import com.ondemandmonitoring.mission.dto.response.PostflightCheckResponse;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;

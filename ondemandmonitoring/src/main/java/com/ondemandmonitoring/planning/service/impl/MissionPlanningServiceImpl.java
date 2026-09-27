@@ -2,8 +2,8 @@ package com.ondemandmonitoring.planning.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.drone.domain.DroneTelemetry;
-import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
+import com.ondemandmonitoring.device.domain.DroneTelemetry;
+import com.ondemandmonitoring.device.repository.DroneTelemetryRepository;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
 import com.ondemandmonitoring.mission.domain.MissionPlan;

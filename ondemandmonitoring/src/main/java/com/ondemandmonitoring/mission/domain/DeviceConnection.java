@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.mission.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.drone.domain.Drone;
+import com.ondemandmonitoring.device.domain.Drone;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;

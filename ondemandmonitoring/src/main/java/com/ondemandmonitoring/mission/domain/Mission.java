@@ -35,11 +35,20 @@ public class Mission extends BaseEntity {
     @Column(name = "scheduled_start_at")
     Instant scheduledStartAt;
 
+    @Column(name = "scheduled_end_at")
+    Instant scheduledEndAt;
+
     @Column(name = "started_at")
     Instant startedAt;
 
     @Column(name = "completed_at")
     Instant completedAt;
+
+    @Column(name = "actual_start_at")
+    Instant actualStartAt;
+
+    @Column(name = "actual_end_at")
+    Instant actualEndAt;
 
     // ===== Mission information =====
 

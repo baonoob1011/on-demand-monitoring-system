@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.replanning.service;
 
-import com.ondemandmonitoring.drone.domain.DroneTelemetry;
-import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
+import com.ondemandmonitoring.device.domain.DroneTelemetry;
+import com.ondemandmonitoring.device.repository.DroneTelemetryRepository;
 import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
