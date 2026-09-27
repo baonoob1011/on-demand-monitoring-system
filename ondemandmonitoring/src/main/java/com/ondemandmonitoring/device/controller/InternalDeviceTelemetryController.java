@@ -4,7 +4,7 @@ import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.device.dto.request.TelemetryRequest;
-import com.ondemandmonitoring.device.service.IDroneTelemetryService;
+import com.ondemandmonitoring.device.service.IDeviceTelemetryService;
 import jakarta.validation.Valid;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -20,28 +20,30 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/internal/v1/drone-telemetry")
+@RequestMapping({"/api/internal/v1/device-telemetry", "/api/internal/v1/drone-telemetry"})
 @RequiredArgsConstructor
-public class InternalDroneTelemetryController {
+public class InternalDeviceTelemetryController {
 
-    private final IDroneTelemetryService droneTelemetryService;
+    private final IDeviceTelemetryService deviceTelemetryService;
 
-    @Value("${DRONE_TELEMETRY_SECRET:}")
+    @Value("${DEVICE_TELEMETRY_SECRET:${DRONE_TELEMETRY_SECRET:}}")
     private String configuredSecret;
 
-    @PostMapping("/{droneCode}")
+    @PostMapping("/{deviceCode}")
     public ResponseEntity<ApiResponse<Void>> receive(
-            @PathVariable String droneCode,
-            @RequestHeader(value = "X-Drone-Telemetry-Secret", required = false) String suppliedSecret,
+            @PathVariable String deviceCode,
+            @RequestHeader(value = "X-Device-Telemetry-Secret", required = false) String suppliedSecret,
+            @RequestHeader(value = "X-Drone-Telemetry-Secret", required = false) String legacySuppliedSecret,
             @Valid @RequestBody TelemetryRequest request) {
+        String effectiveSecret = suppliedSecret != null ? suppliedSecret : legacySuppliedSecret;
         if (configuredSecret == null || configuredSecret.isBlank()
-                || suppliedSecret == null
+                || effectiveSecret == null
                 || !MessageDigest.isEqual(
                         configuredSecret.getBytes(StandardCharsets.UTF_8),
-                        suppliedSecret.getBytes(StandardCharsets.UTF_8))) {
-            throw new ApiException(ErrorCode.ACCESS_DENIED, "Drone telemetry credential is invalid");
+                        effectiveSecret.getBytes(StandardCharsets.UTF_8))) {
+            throw new ApiException(ErrorCode.ACCESS_DENIED, "Device telemetry credential is invalid");
         }
-        droneTelemetryService.saveForRegisteredDrone(droneCode, request);
+        deviceTelemetryService.saveForRegisteredDrone(deviceCode, request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created("Telemetry recorded", null));
     }

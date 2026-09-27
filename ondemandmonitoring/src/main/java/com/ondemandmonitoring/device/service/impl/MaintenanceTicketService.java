@@ -1,14 +1,14 @@
 package com.ondemandmonitoring.device.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.device.domain.Drone;
+import com.ondemandmonitoring.device.domain.Device;
 import com.ondemandmonitoring.device.domain.MaintenanceTicket;
 import com.ondemandmonitoring.device.dto.request.AssignTechnicianRequest;
 import com.ondemandmonitoring.device.dto.request.ResolveMaintenanceTicketRequest;
 import com.ondemandmonitoring.device.dto.response.MaintenanceTicketResponse;
-import com.ondemandmonitoring.device.enums.DroneStatus;
-import com.ondemandmonitoring.device.repository.DroneRepository;
+import com.ondemandmonitoring.device.enums.DeviceOperationalStatus;
+import com.ondemandmonitoring.device.enums.DeviceStatus;
+import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.device.repository.MaintenanceTicketRepository;
 import com.ondemandmonitoring.device.service.IMaintenanceTicketService;
 import com.ondemandmonitoring.user.domain.User;
@@ -30,7 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class MaintenanceTicketService implements IMaintenanceTicketService {
 
     MaintenanceTicketRepository maintenanceTicketRepository;
-    DroneRepository droneRepository;
+    DeviceRepository deviceRepository;
     UserRepository userRepository;
 
     @Override
@@ -78,12 +78,13 @@ public class MaintenanceTicketService implements IMaintenanceTicketService {
         ticket.setStatus("RESOLVED");
         ticket.setResolvedAt(Instant.now());
 
-        // Update the associated Drone status back to AVAILABLE (or requested status)
-        Drone drone = ticket.getDevice();
-        if (drone != null) {
-            DroneStatus targetStatus = request.getNewDroneStatus() != null ? request.getNewDroneStatus() : DroneStatus.AVAILABLE;
-            drone.setStatus(targetStatus);
-            droneRepository.save(drone);
+        // Update the associated device status back to AVAILABLE (or requested status).
+        Device device = ticket.getDevice();
+        if (device != null) {
+            DeviceOperationalStatus targetStatus = request.getNewDeviceStatus() != null ? request.getNewDeviceStatus() : DeviceOperationalStatus.AVAILABLE;
+            device.setOperationalStatus(targetStatus);
+            device.setStatus(toDeviceStatus(targetStatus));
+            deviceRepository.save(device);
         }
 
         MaintenanceTicket saved = maintenanceTicketRepository.save(ticket);
@@ -108,5 +109,15 @@ public class MaintenanceTicketService implements IMaintenanceTicketService {
                 .resolvedAt(ticket.getResolvedAt())
                 .closedAt(ticket.getClosedAt())
                 .build();
+    }
+
+    private DeviceStatus toDeviceStatus(DeviceOperationalStatus status) {
+        if (status == DeviceOperationalStatus.MAINTENANCE) {
+            return DeviceStatus.MAINTENANCE;
+        }
+        if (status == DeviceOperationalStatus.AVAILABLE || status == DeviceOperationalStatus.IDLE) {
+            return DeviceStatus.AVAILABLE;
+        }
+        return DeviceStatus.IN_USE;
     }
 }

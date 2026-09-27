@@ -1,6 +1,7 @@
 package com.ondemandmonitoring.device.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
+import com.ondemandmonitoring.device.enums.DeviceOperationalStatus;
 import com.ondemandmonitoring.device.enums.DeviceStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -9,6 +10,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -36,4 +38,11 @@ public class Device extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
     private DeviceStatus status;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "operational_status", nullable = false, length = 50)
+    private DeviceOperationalStatus operationalStatus = DeviceOperationalStatus.AVAILABLE;
+
+    @OneToOne(mappedBy = "device", fetch = FetchType.LAZY)
+    private Drone droneProfile;
 }

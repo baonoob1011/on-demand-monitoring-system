@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.replanning.service;
 
-import com.ondemandmonitoring.device.domain.DroneTelemetry;
+import com.ondemandmonitoring.device.domain.DeviceTelemetry;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.domain.PlanWaypoint;
 import com.ondemandmonitoring.replanning.config.ReplanningProperties;
@@ -18,7 +18,7 @@ public class RuleBasedReplanningPolicy implements ReplanningPolicy {
     private final ReplanningProperties properties;
 
     @Override
-    public ReplanningDecision evaluate(DroneTelemetry telemetry, MissionPlan currentPlan) {
+    public ReplanningDecision evaluate(DeviceTelemetry telemetry, MissionPlan currentPlan) {
         if (!properties.isEnabled()) {
             return ReplanningDecision.none("Dynamic replanning disabled.");
         }
@@ -34,7 +34,7 @@ public class RuleBasedReplanningPolicy implements ReplanningPolicy {
         return evaluateRouteDeviation(telemetry, currentPlan);
     }
 
-    private ReplanningDecision evaluateBattery(DroneTelemetry telemetry, MissionPlan currentPlan) {
+    private ReplanningDecision evaluateBattery(DeviceTelemetry telemetry, MissionPlan currentPlan) {
         if (!validBattery(telemetry.getBatteryPercent())) {
             return ReplanningDecision.none("Telemetry has no valid battery percent.");
         }
@@ -57,7 +57,7 @@ public class RuleBasedReplanningPolicy implements ReplanningPolicy {
         return ReplanningDecision.none("Current battery remains above plan reserve.");
     }
 
-    private ReplanningDecision evaluateRouteDeviation(DroneTelemetry telemetry, MissionPlan currentPlan) {
+    private ReplanningDecision evaluateRouteDeviation(DeviceTelemetry telemetry, MissionPlan currentPlan) {
         List<PlanWaypoint> waypoints = currentPlan.getWaypoints().stream()
                 .filter(waypoint -> finite(waypoint.getSimX()) && finite(waypoint.getSimY()))
                 .sorted(Comparator.comparing(PlanWaypoint::getSequence))
@@ -111,7 +111,7 @@ public class RuleBasedReplanningPolicy implements ReplanningPolicy {
         return Math.hypot(px - closestX, py - closestY);
     }
 
-    private boolean validPosition(DroneTelemetry telemetry) {
+    private boolean validPosition(DeviceTelemetry telemetry) {
         return finite(telemetry.getSimX()) && finite(telemetry.getSimY());
     }
 

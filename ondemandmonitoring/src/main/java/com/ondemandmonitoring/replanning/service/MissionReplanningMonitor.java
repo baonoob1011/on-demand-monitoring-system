@@ -1,15 +1,15 @@
 package com.ondemandmonitoring.replanning.service;
 
-import com.ondemandmonitoring.device.domain.DroneTelemetry;
-import com.ondemandmonitoring.device.repository.DroneTelemetryRepository;
-import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
+import com.ondemandmonitoring.device.domain.DeviceTelemetry;
+import com.ondemandmonitoring.device.repository.DeviceTelemetryRepository;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
-import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionPlanRepository;
 import com.ondemandmonitoring.replanning.config.ReplanningProperties;
 import com.ondemandmonitoring.replanning.dto.ReplanningDecision;
-import com.ondemandmonitoring.replanning.event.DroneTelemetrySavedEvent;
+import com.ondemandmonitoring.replanning.event.DeviceTelemetrySavedEvent;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -32,8 +32,8 @@ public class MissionReplanningMonitor {
             MissionStatus.IN_FLIGHT,
             MissionStatus.IN_PROGRESS);
 
-    private final DroneTelemetryRepository droneTelemetryRepository;
-    private final MissionDroneAssignmentRepository missionDroneAssignmentRepository;
+    private final DeviceTelemetryRepository DeviceTelemetryRepository;
+    private final MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
     private final MissionPlanRepository missionPlanRepository;
     private final ReplanningPolicy replanningPolicy;
     private final MissionReplanningService missionReplanningService;
@@ -42,7 +42,7 @@ public class MissionReplanningMonitor {
     private final Map<String, AtomicBoolean> runningByMission = new ConcurrentHashMap<>();
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void onTelemetrySaved(DroneTelemetrySavedEvent event) {
+    public void onTelemetrySaved(DeviceTelemetrySavedEvent event) {
         if (!properties.isEnabled()) {
             return;
         }
@@ -58,21 +58,21 @@ public class MissionReplanningMonitor {
         }
     }
 
-    private void evaluate(DroneTelemetrySavedEvent event) {
-        DroneTelemetry telemetry = droneTelemetryRepository.findById(event.telemetryId()).orElse(null);
+    private void evaluate(DeviceTelemetrySavedEvent event) {
+        DeviceTelemetry telemetry = DeviceTelemetryRepository.findById(event.telemetryId()).orElse(null);
         if (telemetry == null) {
             return;
         }
 
-        List<MissionDroneAssignment> assignments =
-                missionDroneAssignmentRepository.findCurrentByDroneCodeAndMissionStatusIn(
+        List<MissionDeviceAssignment> assignments =
+                missionDeviceAssignmentRepository.findCurrentByDeviceCodeAndMissionStatusIn(
                         event.droneCode(),
                         ACTIVE_STATUSES);
         if (assignments.isEmpty()) {
             return;
         }
 
-        for (MissionDroneAssignment assignment : assignments) {
+        for (MissionDeviceAssignment assignment : assignments) {
             String missionId = assignment.getMission().getId();
             Optional<MissionPlan> currentPlan = missionPlanRepository.findByMissionId(missionId);
             if (currentPlan.isEmpty()) {
@@ -110,7 +110,7 @@ public class MissionReplanningMonitor {
         return running.compareAndSet(false, true);
     }
 
-    private void runReplan(String missionId, DroneTelemetry telemetry, ReplanningDecision decision) {
+    private void runReplan(String missionId, DeviceTelemetry telemetry, ReplanningDecision decision) {
         try {
             Instant startedAt = Instant.now();
             MissionPlan plan = missionReplanningService.replanFromTelemetry(missionId, telemetry, decision.reason());

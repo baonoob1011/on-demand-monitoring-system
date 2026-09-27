@@ -3,7 +3,7 @@ package com.ondemandmonitoring.media.service.impl;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.device.domain.Drone;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.device.service.IDroneService;
+import com.ondemandmonitoring.device.service.IDroneProfileService;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.IMediaAssetService;
@@ -45,7 +45,7 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
     S3ObjectStorageService s3ObjectStorageService;
     AwsS3Properties awsS3Properties;
     Environment environment;
-    IDroneService droneService;
+    IDroneProfileService droneService;
     MediaAssetRepository mediaAssetRepository;
 
     @Transactional

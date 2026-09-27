@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.environment.service;
 
-import com.ondemandmonitoring.device.domain.Drone;
+import com.ondemandmonitoring.device.domain.Device;
 import com.ondemandmonitoring.device.dto.request.TelemetryRequest;
 import com.ondemandmonitoring.environment.domain.EnvironmentalMeasurement;
 import com.ondemandmonitoring.environment.enums.MeasurementType;
@@ -20,7 +20,7 @@ public class EnvironmentalMeasurementService {
     AirPressureSimulationService airPressureSimulationService;
     EnvironmentalMeasurementRepository environmentalMeasurementRepository;
 
-    public EnvironmentalMeasurement recordAirPressure(Drone drone, String droneCode, TelemetryRequest request) {
+    public EnvironmentalMeasurement recordAirPressure(Device device, String deviceCode, TelemetryRequest request) {
         Double altitudeM = resolveAltitudeM(request);
         if (altitudeM == null) {
             return null;
@@ -28,8 +28,8 @@ public class EnvironmentalMeasurementService {
 
         double pressurePa = airPressureSimulationService.calculatePressurePa(altitudeM);
         EnvironmentalMeasurement measurement = new EnvironmentalMeasurement();
-        measurement.setDrone(drone);
-        measurement.setDroneCode(droneCode);
+        measurement.setDevice(device);
+        measurement.setDeviceCode(deviceCode);
         measurement.setMeasurementType(MeasurementType.AIR_PRESSURE);
         measurement.setValue(pressurePa);
         measurement.setUnit("Pa");

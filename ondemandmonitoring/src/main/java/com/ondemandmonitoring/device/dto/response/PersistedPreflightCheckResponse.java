@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.device.dto.response;
 
-import com.ondemandmonitoring.device.domain.PersistedPreflightCheck;
+import com.ondemandmonitoring.device.domain.PreflightCheck;
 import com.ondemandmonitoring.device.enums.PreflightCheckLevel;
 import com.ondemandmonitoring.device.enums.PreflightCheckStatus;
 import com.ondemandmonitoring.device.enums.PreflightItemStatus;
@@ -39,7 +39,7 @@ public class PersistedPreflightCheckResponse {
         Instant checkedAt;
     }
 
-    public static PersistedPreflightCheckResponse from(PersistedPreflightCheck run) {
+    public static PersistedPreflightCheckResponse from(PreflightCheck run) {
         int total = run.getTotalChecks() == null ? 0 : run.getTotalChecks();
         int done = run.getItems().stream()
                 .filter(i -> i.getStatus() == PreflightItemStatus.PASSED
@@ -51,12 +51,12 @@ public class PersistedPreflightCheckResponse {
                 .id(run.getId())
                 .missionId(run.getMission().getId())
                 .deviceConnectionId(run.getDeviceConnection() == null ? null : run.getDeviceConnection().getId())
-                .droneId(run.getDeviceConnection() == null || run.getDeviceConnection().getDrone() == null
+                .droneId(run.getDeviceConnection() == null || run.getDeviceConnection().getDevice() == null
                         ? null
-                        : run.getDeviceConnection().getDrone().getId())
-                .droneCode(run.getDeviceConnection() == null || run.getDeviceConnection().getDrone() == null
+                        : run.getDeviceConnection().getDevice().getId())
+                .droneCode(run.getDeviceConnection() == null || run.getDeviceConnection().getDevice() == null
                         ? null
-                        : run.getDeviceConnection().getDrone().getDroneCode())
+                        : run.getDeviceConnection().getDevice().getSerialNumber())
                 .status(run.getStatus())
                 .totalChecks(total)
                 .passedChecks(run.getPassedChecks())

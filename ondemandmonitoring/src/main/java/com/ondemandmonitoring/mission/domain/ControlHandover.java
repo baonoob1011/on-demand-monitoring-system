@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.mission.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.device.domain.Drone;
+import com.ondemandmonitoring.device.domain.Device;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -22,8 +22,8 @@ public class ControlHandover extends BaseEntity {
     DeviceConnection deviceConnection;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "drone_id", nullable = false)
-    Drone drone;
+    @JoinColumn(name = "device_id", nullable = false)
+    Device device;
 
     @Column(name = "operator_id", nullable = false, length = 100)
     String operatorId;

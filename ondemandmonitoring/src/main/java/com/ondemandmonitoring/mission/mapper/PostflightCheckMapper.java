@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.mission.mapper;
 
-import com.ondemandmonitoring.mission.domain.PostflightCheck;
+import com.ondemandmonitoring.device.domain.PostflightCheck;
 import com.ondemandmonitoring.mission.dto.response.PostflightCheckResponse;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -9,6 +9,7 @@ import org.mapstruct.Mapping;
 public interface PostflightCheckMapper {
 
     @Mapping(source = "mission.id", target = "missionId")
-    @Mapping(source = "drone.droneCode", target = "droneCode")
+    @Mapping(source = "deviceConnection.id", target = "deviceConnectionId")
+    @Mapping(source = "deviceConnection.device.serialNumber", target = "droneCode")
     PostflightCheckResponse toResponse(PostflightCheck check);
 }

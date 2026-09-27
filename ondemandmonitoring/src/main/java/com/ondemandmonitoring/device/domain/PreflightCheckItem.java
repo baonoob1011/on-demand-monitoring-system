@@ -28,11 +28,11 @@ import lombok.Setter;
         indexes = @Index(
                 name = "idx_preflight_run_item_run",
                 columnList = "preflight_run_id"))
-public class PersistedPreflightCheckItem extends BaseEntity {
+public class PreflightCheckItem extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "preflight_run_id", nullable = false)
-    PersistedPreflightCheck preflightCheck;
+    PreflightCheck preflightCheck;
 
     @Column(name = "check_type", nullable = false, length = 50)
     String checkType;

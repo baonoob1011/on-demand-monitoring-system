@@ -1,12 +1,12 @@
 package com.ondemandmonitoring.device.repository;
 
-import com.ondemandmonitoring.device.domain.PersistedPreflightCheckItem;
+import com.ondemandmonitoring.device.domain.PreflightCheckItem;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface PersistedPreflightCheckItemRepository extends JpaRepository<PersistedPreflightCheckItem, String> {
+public interface PersistedPreflightCheckItemRepository extends JpaRepository<PreflightCheckItem, String> {
 
-    Optional<PersistedPreflightCheckItem> findByPreflightCheckIdAndCheckType(
+    Optional<PreflightCheckItem> findByPreflightCheckIdAndCheckType(
             String preflightCheckId,
             String checkType);
 }

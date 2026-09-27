@@ -2,8 +2,8 @@ package com.ondemandmonitoring.device.controller;
 
 import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.device.dto.request.TelemetryRequest;
-import com.ondemandmonitoring.device.domain.DroneTelemetry;
-import com.ondemandmonitoring.device.service.IDroneTelemetryService;
+import com.ondemandmonitoring.device.domain.DeviceTelemetry;
+import com.ondemandmonitoring.device.service.IDeviceTelemetryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -18,21 +18,21 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "Drone Telemetry", description = "APIs for receiving live telemetry data sent by PX4 / MAVSDK drone sensors")
+@Tag(name = "Device Telemetry", description = "APIs for receiving live telemetry data sent by registered devices")
 @RestController
-@RequestMapping("/api/drones/{droneCode}/telemetry")
+@RequestMapping({"/api/devices/{deviceCode}/telemetry", "/api/drones/{deviceCode}/telemetry"})
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-public class DroneTelemetryController {
+public class DeviceTelemetryController {
 
-    IDroneTelemetryService droneTelemetryService;
+    IDeviceTelemetryService deviceTelemetryService;
     
-    @Operation(summary = "Receive drone telemetry", description = "Persists live telemetry snapshot (battery, GPS fix, sensors, altitude, speed) sent from drone")
+    @Operation(summary = "Receive device telemetry", description = "Persists live telemetry snapshot (battery, GPS fix, sensors, altitude, speed) sent from a registered device")
     @PostMapping
-    public ResponseEntity<ApiResponse<DroneTelemetry>> create(
-            @PathVariable String droneCode,
+    public ResponseEntity<ApiResponse<DeviceTelemetry>> create(
+            @PathVariable String deviceCode,
             @Valid @RequestBody TelemetryRequest request) {
-        DroneTelemetry telemetry = droneTelemetryService.save(droneCode, request);
+        DeviceTelemetry telemetry = deviceTelemetryService.save(deviceCode, request);
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)

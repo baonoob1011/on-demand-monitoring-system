@@ -8,15 +8,15 @@ import lombok.Setter;
 @Entity
 @Getter
 @Setter
-@Table(name = "drone_telemetries")
-public class DroneTelemetry extends BaseEntity {
+@Table(name = "device_telemetries")
+public class DeviceTelemetry extends BaseEntity {
 
-    @Column(name = "drone_code", nullable = false, length = 50)
-    private String droneCode;
+    @Column(name = "device_code", nullable = false, length = 50)
+    private String deviceCode;
 
     @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "drone_id", nullable = false, unique = true)
-    private Drone drone;
+    @JoinColumn(name = "device_id", nullable = false, unique = true)
+    private Device device;
 
     private Double latitude;
 
@@ -120,4 +120,20 @@ public class DroneTelemetry extends BaseEntity {
 
     @Column(name = "geofence_passed")
     private Boolean geofencePassed;
+
+    public String getDroneCode() {
+        return deviceCode;
+    }
+
+    public void setDroneCode(String droneCode) {
+        this.deviceCode = droneCode;
+    }
+
+    public Drone getDrone() {
+        return device != null ? device.getDroneProfile() : null;
+    }
+
+    public void setDrone(Drone drone) {
+        this.device = drone != null ? drone.getDevice() : null;
+    }
 }

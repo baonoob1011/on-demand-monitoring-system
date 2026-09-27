@@ -21,16 +21,21 @@ public interface DroneMapper {
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "version", ignore = true)
+    @Mapping(target = "device", ignore = true)
     @Mapping(target = "droneModel", ignore = true)
     @Mapping(target = "dronePayload", ignore = true)
     Drone toEntity(DroneCreateRequest request);
 
+    @Mapping(source = "device.id", target = "deviceId")
+    @Mapping(source = "device.serialNumber", target = "deviceCode")
+    @Mapping(source = "device.name", target = "deviceName")
     DroneResponse toResponse(Drone entity);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "version", ignore = true)
+    @Mapping(target = "device", ignore = true)
     @Mapping(target = "droneModel", ignore = true)
     @Mapping(target = "dronePayload", ignore = true)
     void updateEntityFromRequest(DroneUpdateRequest request, @MappingTarget Drone entity);

@@ -3,7 +3,7 @@ package com.ondemandmonitoring.media.service.impl;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.device.domain.Drone;
-import com.ondemandmonitoring.device.service.IDroneService;
+import com.ondemandmonitoring.device.service.IDroneProfileService;
 import com.ondemandmonitoring.media.domain.*;
 import com.ondemandmonitoring.media.dto.request.CompleteMultipartRequest;
 import com.ondemandmonitoring.media.dto.request.PrepareMediaUploadRequest;
@@ -36,7 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class MediaUploadServiceImpl implements IMediaUploadService {
 
     IMissionMediaAccessService missionAccess;
-    IDroneService drones;
+    IDroneProfileService drones;
     MediaAssetRepository media;
     MediaUploadAttemptRepository attempts;
     ManualUploadTaskRepository manualTasks;

@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.mission.service;
 
 import com.ondemandmonitoring.device.dto.response.PreflightCheckResponse;
-import com.ondemandmonitoring.device.enums.DroneStatus;
+import com.ondemandmonitoring.device.enums.DeviceOperationalStatus;
 import com.ondemandmonitoring.mission.dto.response.PostflightCheckResponse;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
@@ -235,15 +235,15 @@ public interface IMissionService {
      * Updates postflight status and device health notes.
      *
      * @param missionId Mission ID
-     * @param newDroneStatus New device status (e.g., AVAILABLE, MAINTENANCE)
+     * @param newDeviceStatus New device status (e.g., AVAILABLE, MAINTENANCE)
      * @param notes Diagnostic notes
      * @return {@link MissionResponse} Updated mission DTO
      */
-    MissionResponse updatePostFlightStatus(String missionId, DroneStatus newDroneStatus, String notes);
+    MissionResponse updatePostFlightStatus(String missionId, DeviceOperationalStatus newDeviceStatus, String notes);
 
     MissionResponse recordPostFlightInspection(
             String missionId,
-            DroneStatus newDroneStatus,
+            DeviceOperationalStatus newDeviceStatus,
             String notes,
             java.util.Map<String, com.ondemandmonitoring.mission.enums.InspectionResult> results,
             com.ondemandmonitoring.mission.dto.request.PostFlightStatusRequest.TelemetrySnapshot telemetrySnapshot);

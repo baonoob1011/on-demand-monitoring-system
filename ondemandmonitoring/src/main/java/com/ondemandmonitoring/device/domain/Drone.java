@@ -1,14 +1,13 @@
 package com.ondemandmonitoring.device.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.device.enums.DroneStatus;
+import com.ondemandmonitoring.device.enums.DeviceOperationalStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
@@ -24,14 +23,9 @@ import lombok.Setter;
 @AllArgsConstructor
 public class Drone extends BaseEntity {
 
-    @Column(name = "drone_code", unique = true, length = 50)
-    private String droneCode;
-
-    @Column(name = "drone_name", length = 100)
-    private String droneName;
-
-    @Column(name = "serial_number", nullable = false, unique = true, length = 100)
-    private String serialNumber;
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "device_id", unique = true)
+    private Device device;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "model_id", nullable = false)
@@ -41,10 +35,45 @@ public class Drone extends BaseEntity {
     @JoinColumn(name = "payload_id")
     private DronePayload dronePayload;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 50)
-    private DroneStatus status;
-
     @Column(name = "last_seen_at")
     private LocalDateTime lastSeenAt;
+
+    public String getDroneCode() {
+        return device != null ? device.getSerialNumber() : null;
+    }
+
+    public void setDroneCode(String droneCode) {
+        ensureDevice().setSerialNumber(droneCode);
+    }
+
+    public String getDroneName() {
+        return device != null ? device.getName() : null;
+    }
+
+    public void setDroneName(String droneName) {
+        ensureDevice().setName(droneName);
+    }
+
+    public String getSerialNumber() {
+        return device != null ? device.getSerialNumber() : null;
+    }
+
+    public void setSerialNumber(String serialNumber) {
+        ensureDevice().setSerialNumber(serialNumber);
+    }
+
+    public DeviceOperationalStatus getStatus() {
+        return device != null ? device.getOperationalStatus() : null;
+    }
+
+    public void setStatus(DeviceOperationalStatus status) {
+        ensureDevice().setOperationalStatus(status);
+    }
+
+    private Device ensureDevice() {
+        if (device == null) {
+            device = new Device();
+        }
+        return device;
+    }
 }

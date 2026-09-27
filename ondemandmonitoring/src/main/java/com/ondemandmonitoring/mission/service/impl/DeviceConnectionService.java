@@ -2,17 +2,19 @@ package com.ondemandmonitoring.mission.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.device.domain.Drone;
-import com.ondemandmonitoring.device.enums.DroneStatus;
-import com.ondemandmonitoring.device.repository.DroneRepository;
+import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.device.enums.DeviceOperationalStatus;
+import com.ondemandmonitoring.device.enums.DeviceStatus;
+import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
-import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
+import com.ondemandmonitoring.mission.enums.DeviceRole;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.mapper.MissionMapper;
 import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
-import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionOperatorAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.mission.service.IDeviceConnectionService;
@@ -34,9 +36,9 @@ public class DeviceConnectionService implements IDeviceConnectionService {
 
     private final MissionRepository missionRepository;
     private final DeviceConnectionRepository deviceConnectionRepository;
-    private final MissionDroneAssignmentRepository missionDroneAssignmentRepository;
+    private final MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
     private final MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
-    private final DroneRepository droneRepository;
+    private final DeviceRepository deviceRepository;
     private final MissionMapper missionMapper;
 
     @Override
@@ -52,31 +54,28 @@ public class DeviceConnectionService implements IDeviceConnectionService {
 
         mission.setStatus(MissionStatus.CONNECTED);
 
-        Drone device = getAssignedDevice(missionId);
+        Device device = getAssignedDevice(missionId);
         if (device != null) {
-            device.setStatus(DroneStatus.PREFLIGHT);
-            droneRepository.save(device);
+            device.setOperationalStatus(DeviceOperationalStatus.PREFLIGHT);
+            device.setStatus(DeviceStatus.IN_USE);
+            deviceRepository.save(device);
 
             DeviceConnection connection = new DeviceConnection();
             connection.setMission(mission);
-            connection.setDrone(device);
+            connection.setDevice(device);
             connection.setOperatorId(getCurrentOperatorId(missionId));
             connection.setConnectionStatus("CONNECTED");
             connection.setTelemetryActive(true);
             connection.setConnectedAt(Instant.now());
             deviceConnectionRepository.save(connection);
 
-            missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                    .orElseGet(() -> {
-                        MissionDroneAssignment mda = new MissionDroneAssignment();
-                        mda.setMission(mission);
-                        mda.setDrone(device);
-                        mda.setAssignmentSource("MANUAL_MANAGER");
-                        mda.setStatus("ACTIVE");
-                        mda.setIsCurrent(true);
-                        mda.setAssignedAt(Instant.now());
-                        return missionDroneAssignmentRepository.save(mda);
-                    });
+            missionDeviceAssignmentRepository.findFirstByMissionIdAndDeviceRoleOrderByCreatedAtDesc(missionId, DeviceRole.MAIN)
+                    .orElseGet(() -> missionDeviceAssignmentRepository.save(MissionDeviceAssignment.builder()
+                            .mission(mission)
+                            .device(device)
+                            .deviceRole(DeviceRole.MAIN)
+                            .postcheckStatus("CONNECTED")
+                            .build()));
         }
 
         log.info("Mission {} device connected", missionId);
@@ -120,10 +119,11 @@ public class DeviceConnectionService implements IDeviceConnectionService {
                 });
 
         mission.setStatus(MissionStatus.RETURNING);
-        Drone device = getAssignedDevice(missionId);
+        Device device = getAssignedDevice(missionId);
         if (device != null) {
-            device.setStatus(DroneStatus.RETURNING);
-            droneRepository.save(device);
+            device.setOperationalStatus(DeviceOperationalStatus.RETURNING);
+            device.setStatus(DeviceStatus.IN_USE);
+            deviceRepository.save(device);
         }
         log.warn("[RTL-TRIGGER] Mission {} status set to RETURNING due to device signal loss. Device status updated to RETURNING.", missionId);
 
@@ -131,9 +131,10 @@ public class DeviceConnectionService implements IDeviceConnectionService {
         return missionMapper.toResponse(saved);
     }
 
-    private Drone getAssignedDevice(String missionId) {
-        return missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                .map(MissionDroneAssignment::getDrone)
+    private Device getAssignedDevice(String missionId) {
+        return missionDeviceAssignmentRepository.findFirstByMissionIdAndDeviceRoleOrderByCreatedAtDesc(missionId, DeviceRole.MAIN)
+                .or(() -> missionDeviceAssignmentRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId))
+                .map(MissionDeviceAssignment::getDevice)
                 .orElse(null);
     }
 

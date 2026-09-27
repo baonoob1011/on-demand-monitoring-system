@@ -409,11 +409,11 @@ public class MissionController {
             @Valid @RequestBody PostFlightStatusRequest request) {
         MissionResponse response = missionService.recordPostFlightInspection(
                 id,
-                request.getNewDroneStatus(),
+                request.getNewDeviceStatus(),
                 request.getNotes(),
                 request.getInspectionResults(),
                 request.getTelemetrySnapshot());
-        return ResponseEntity.ok(ApiResponse.ok("Cập nhật trạng thái drone sau bay thành công", response));
+        return ResponseEntity.ok(ApiResponse.ok("Cập nhật trạng thái thiết bị sau nhiệm vụ thành công", response));
     }
 
     @GetMapping("/{id}/postflight-checks/latest")

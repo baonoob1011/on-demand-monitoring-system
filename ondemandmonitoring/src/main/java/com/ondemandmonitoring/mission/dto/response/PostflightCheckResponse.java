@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.experimental.FieldDefaults;
 
 import java.time.Instant;
+import java.util.List;
 
 @Getter
 @Builder
@@ -13,6 +14,7 @@ import java.time.Instant;
 public class PostflightCheckResponse {
     String id;
     String missionId;
+    String deviceConnectionId;
     String droneCode;
     String checkedBy;
     Boolean batteryOk;
@@ -31,4 +33,17 @@ public class PostflightCheckResponse {
     Double landingHeadingDeg;
     Boolean landingTelemetryOnline;
     Instant checkedAt;
+    List<Item> items;
+
+    @Getter
+    @Builder
+    @FieldDefaults(level = AccessLevel.PRIVATE)
+    public static class Item {
+        String id;
+        String checkType;
+        String checkName;
+        String status;
+        String message;
+        Instant checkedAt;
+    }
 }

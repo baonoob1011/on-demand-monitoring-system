@@ -5,10 +5,10 @@ import com.ondemandmonitoring.device.domain.Drone;
 import com.ondemandmonitoring.device.dto.request.DroneCreateRequest;
 import com.ondemandmonitoring.device.dto.request.DroneUpdateRequest;
 import com.ondemandmonitoring.device.dto.response.DroneResponse;
-import com.ondemandmonitoring.device.enums.DroneStatus;
+import com.ondemandmonitoring.device.enums.DeviceOperationalStatus;
 import org.springframework.data.domain.Pageable;
 
-public interface IDroneService {
+public interface IDroneProfileService {
 
     DroneResponse create(DroneCreateRequest request);
 
@@ -21,7 +21,7 @@ public interface IDroneService {
     /** Compatibility registration for the legacy simulator upload flow only. */
     Drone getOrRegisterLegacySimulator(String code);
 
-    PageResponse<DroneResponse> getAll(Pageable pageable, String modelId, String payloadId, DroneStatus status);
+    PageResponse<DroneResponse> getAll(Pageable pageable, String modelId, String payloadId, DeviceOperationalStatus status);
 
     DroneResponse update(String id, DroneUpdateRequest request);
 

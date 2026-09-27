@@ -1,6 +1,7 @@
 package com.ondemandmonitoring.device.dto.request;
 
-import com.ondemandmonitoring.device.enums.DroneStatus;
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.ondemandmonitoring.device.enums.DeviceOperationalStatus;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -19,8 +20,17 @@ public class ResolveMaintenanceTicketRequest {
     private String resolutionNotes;
 
     /**
-     * Target status for the drone after resolution (e.g. AVAILABLE).
+     * Target operational status for the device after resolution (e.g. AVAILABLE).
      * Defaults to AVAILABLE if null.
      */
-    private DroneStatus newDroneStatus;
+    @JsonAlias("newDroneStatus")
+    private DeviceOperationalStatus newDeviceStatus;
+
+    public DeviceOperationalStatus getNewDroneStatus() {
+        return newDeviceStatus;
+    }
+
+    public void setNewDroneStatus(DeviceOperationalStatus newDroneStatus) {
+        this.newDeviceStatus = newDroneStatus;
+    }
 }

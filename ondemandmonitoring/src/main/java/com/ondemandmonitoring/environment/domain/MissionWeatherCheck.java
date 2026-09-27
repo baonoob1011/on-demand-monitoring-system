@@ -27,8 +27,8 @@ public class MissionWeatherCheck extends BaseEntity {
     @JoinColumn(name = "mission_id", nullable = false)
     Mission mission;
 
-    @Column(name = "drone_code", length = 50)
-    String droneCode;
+    @Column(name = "device_code", length = 50)
+    String deviceCode;
 
     @Column(nullable = false, length = 20)
     String status;
@@ -62,4 +62,12 @@ public class MissionWeatherCheck extends BaseEntity {
 
     @Column(name = "checked_at", nullable = false)
     Instant checkedAt;
+
+    public String getDroneCode() {
+        return deviceCode;
+    }
+
+    public void setDroneCode(String droneCode) {
+        this.deviceCode = droneCode;
+    }
 }

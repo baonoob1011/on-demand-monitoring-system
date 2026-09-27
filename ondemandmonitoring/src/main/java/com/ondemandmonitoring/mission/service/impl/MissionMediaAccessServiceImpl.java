@@ -6,7 +6,8 @@ import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.response.MissionMediaContext;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
-import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
+import com.ondemandmonitoring.mission.enums.DeviceRole;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionOperatorAssignmentRepository;
 import com.ondemandmonitoring.mission.service.IMissionMediaAccessService;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
@@ -30,7 +31,7 @@ public class MissionMediaAccessServiceImpl implements IMissionMediaAccessService
             MissionStatus.POSTFLIGHT_CHECKING, MissionStatus.COMPLETED);
 
     MissionRepository missions;
-    MissionDroneAssignmentRepository droneAssignments;
+    MissionDeviceAssignmentRepository deviceAssignments;
     MissionOperatorAssignmentRepository operatorAssignments;
     AuthenticatedUserResolver currentUser;
 
@@ -63,15 +64,19 @@ public class MissionMediaAccessServiceImpl implements IMissionMediaAccessService
         // Independently authorize the public boundary, even when called outside media.
         authorizeOperator(missionId);
         Mission mission = requireMission(missionId);
-        boolean assigned = droneAssignments.findByMissionIdAndIsCurrentTrue(mission.getId())
-                .map(entry -> droneId.equals(entry.getDrone().getId())).orElse(false);
+        boolean assigned = deviceAssignments.findFirstByMissionIdAndDeviceRoleOrderByCreatedAtDesc(mission.getId(), DeviceRole.MAIN)
+                .or(() -> deviceAssignments.findFirstByMissionIdOrderByCreatedAtDesc(mission.getId()))
+                .map(entry -> droneId.equals(entry.getDevice().getId())
+                        || droneId.equals(entry.getDevice().getSerialNumber()))
+                .orElse(false);
         if (!assigned && mission.getStatus() == MissionStatus.COMPLETED) {
-            assigned = droneAssignments.findByMissionId(mission.getId()).stream()
-                    .anyMatch(entry -> droneId.equals(entry.getDrone().getId())
-                            && "MISSION_COMPLETE".equals(entry.getReleaseReason()));
+            assigned = deviceAssignments.findByMissionId(mission.getId()).stream()
+                    .anyMatch(entry -> (droneId.equals(entry.getDevice().getId())
+                            || droneId.equals(entry.getDevice().getSerialNumber()))
+                            && "MISSION_COMPLETE".equals(entry.getPostcheckStatus()));
         }
         if (!assigned) {
-            throw new ApiException(ErrorCode.ACCESS_DENIED, "Drone is not assigned to mission");
+            throw new ApiException(ErrorCode.ACCESS_DENIED, "Device is not assigned to mission");
         }
     }
 

@@ -3,7 +3,7 @@ package com.ondemandmonitoring.device.config;
 import com.ondemandmonitoring.device.domain.Drone;
 import com.ondemandmonitoring.device.domain.DroneModel;
 import com.ondemandmonitoring.device.domain.DronePayload;
-import com.ondemandmonitoring.device.enums.DroneStatus;
+import com.ondemandmonitoring.device.enums.DeviceOperationalStatus;
 import com.ondemandmonitoring.device.repository.DroneModelRepository;
 import com.ondemandmonitoring.device.repository.DronePayloadRepository;
 import com.ondemandmonitoring.device.repository.DroneRepository;
@@ -69,7 +69,7 @@ public class DroneSeedDataInitializer implements ApplicationRunner {
             drone.setSerialNumber("SIM-X500-" + seed.code());
             drone.setDroneModel(model);
             drone.setDronePayload(payload);
-            drone.setStatus(DroneStatus.AVAILABLE);
+            drone.setStatus(DeviceOperationalStatus.AVAILABLE);
             droneRepository.save(drone);
         }
     }

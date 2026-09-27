@@ -30,7 +30,7 @@ import lombok.Setter;
         indexes = @Index(
                 name = "idx_preflight_runs_mission_created",
                 columnList = "mission_id,created_at"))
-public class PersistedPreflightCheck extends BaseEntity {
+public class PreflightCheck extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "mission_id", nullable = false)
@@ -61,5 +61,5 @@ public class PersistedPreflightCheck extends BaseEntity {
 
     @OneToMany(mappedBy = "preflightCheck", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id asc")
-    List<PersistedPreflightCheckItem> items = new ArrayList<>();
+    List<PreflightCheckItem> items = new ArrayList<>();
 }

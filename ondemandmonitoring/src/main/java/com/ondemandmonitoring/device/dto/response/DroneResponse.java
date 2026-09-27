@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.device.dto.response;
 
-import com.ondemandmonitoring.device.enums.DroneStatus;
+import com.ondemandmonitoring.device.enums.DeviceOperationalStatus;
 import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -16,10 +16,13 @@ import lombok.Setter;
 public class DroneResponse {
 
     private String id;
+    private String deviceId;
+    private String deviceCode;
+    private String deviceName;
     private String serialNumber;
     private DroneModelResponse droneModel;
     private DronePayloadResponse dronePayload;
-    private DroneStatus status;
+    private DeviceOperationalStatus status;
     private Instant createdAt;
     private Instant updatedAt;
     private Long version;

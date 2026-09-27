@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.device.dto.request;
 
-import com.ondemandmonitoring.device.enums.DroneStatus;
+import com.ondemandmonitoring.device.enums.DeviceOperationalStatus;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -25,5 +25,5 @@ public class DroneUpdateRequest {
     private String dronePayloadId;
 
     @NotNull(message = "Status is required")
-    private DroneStatus status;
+    private DeviceOperationalStatus status;
 }

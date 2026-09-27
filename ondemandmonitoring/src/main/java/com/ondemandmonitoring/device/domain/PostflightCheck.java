@@ -1,7 +1,8 @@
-package com.ondemandmonitoring.mission.domain;
+package com.ondemandmonitoring.device.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.device.domain.Drone;
+import com.ondemandmonitoring.mission.domain.DeviceConnection;
+import com.ondemandmonitoring.mission.domain.Mission;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -9,6 +10,8 @@ import lombok.Setter;
 import lombok.experimental.FieldDefaults;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 @Getter
 @Setter
@@ -22,8 +25,8 @@ public class PostflightCheck extends BaseEntity {
     Mission mission;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "drone_id", nullable = false)
-    Drone drone;
+    @JoinColumn(name = "device_connection_id", nullable = false)
+    DeviceConnection deviceConnection;
 
     @Column(name = "checked_by", length = 100)
     String checkedBy;
@@ -75,4 +78,8 @@ public class PostflightCheck extends BaseEntity {
 
     @Column(name = "checked_at", nullable = false)
     Instant checkedAt = Instant.now();
+
+    @OneToMany(mappedBy = "postflightCheck", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("id asc")
+    List<PostflightCheckItem> items = new ArrayList<>();
 }

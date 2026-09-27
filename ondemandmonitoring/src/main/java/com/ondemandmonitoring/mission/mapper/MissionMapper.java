@@ -17,7 +17,6 @@ import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.ondemandmonitoring.mission.enums.DeviceRole;
 import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
-import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionOperatorAssignmentRepository;
 
 @Mapper(componentModel = "spring")
@@ -25,9 +24,6 @@ public abstract class MissionMapper {
 
     @Autowired
     protected MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
-
-    @Autowired
-    protected MissionDroneAssignmentRepository missionDroneAssignmentRepository;
 
     @Autowired
     protected MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
@@ -59,7 +55,7 @@ public abstract class MissionMapper {
                 .findFirstByMissionIdAndDeviceRoleOrderByCreatedAtDesc(mission.getId(), DeviceRole.MAIN)
                 .or(() -> missionDeviceAssignmentRepository.findFirstByMissionIdOrderByCreatedAtDesc(mission.getId()))
                 .map(assignment -> assignment.getDevice() != null ? assignment.getDevice().getId() : null)
-                .orElseGet(() -> getLegacyDroneId(mission));
+                .orElse(null);
     }
 
     protected String getDeviceCode(Mission mission) {
@@ -68,7 +64,7 @@ public abstract class MissionMapper {
                 .findFirstByMissionIdAndDeviceRoleOrderByCreatedAtDesc(mission.getId(), DeviceRole.MAIN)
                 .or(() -> missionDeviceAssignmentRepository.findFirstByMissionIdOrderByCreatedAtDesc(mission.getId()))
                 .map(assignment -> assignment.getDevice() != null ? assignment.getDevice().getSerialNumber() : null)
-                .orElseGet(() -> getLegacyDroneCode(mission));
+                .orElse(null);
     }
 
     protected String getDroneId(Mission mission) {
@@ -77,26 +73,6 @@ public abstract class MissionMapper {
 
     protected String getDroneCode(Mission mission) {
         return getDeviceCode(mission);
-    }
-
-    protected String getLegacyDroneId(Mission mission) {
-        if (mission == null || mission.getId() == null) return null;
-        return missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
-                .or(() -> isTerminal(mission)
-                        ? missionDroneAssignmentRepository.findFirstByMissionIdOrderByAssignedAtDesc(mission.getId())
-                        : Optional.empty())
-                .map(mda -> mda.getDrone() != null ? mda.getDrone().getId() : null)
-                .orElse(null);
-    }
-
-    protected String getLegacyDroneCode(Mission mission) {
-        if (mission == null || mission.getId() == null) return null;
-        return missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
-                .or(() -> isTerminal(mission)
-                        ? missionDroneAssignmentRepository.findFirstByMissionIdOrderByAssignedAtDesc(mission.getId())
-                        : Optional.empty())
-                .map(mda -> mda.getDrone() != null ? mda.getDrone().getDroneCode() : null)
-                .orElse(null);
     }
 
     protected String getOperatorId(Mission mission) {

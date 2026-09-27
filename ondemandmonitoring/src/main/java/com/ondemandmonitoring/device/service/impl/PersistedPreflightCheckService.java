@@ -4,8 +4,8 @@ import com.ondemandmonitoring.device.service.IPersistedPreflightCheckService;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.device.domain.PersistedPreflightCheck;
-import com.ondemandmonitoring.device.domain.PersistedPreflightCheckItem;
+import com.ondemandmonitoring.device.domain.PreflightCheck;
+import com.ondemandmonitoring.device.domain.PreflightCheckItem;
 import com.ondemandmonitoring.device.dto.request.PreflightItemUpdateRequest;
 import com.ondemandmonitoring.device.dto.response.PersistedPreflightCheckResponse;
 import com.ondemandmonitoring.device.enums.PreflightCheckLevel;
@@ -52,7 +52,7 @@ public class PersistedPreflightCheckService implements IPersistedPreflightCheckS
                         ErrorCode.MISSION_NOT_FOUND,
                         "Mission not found: " + missionId));
 
-        PersistedPreflightCheck run = new PersistedPreflightCheck();
+        PreflightCheck run = new PreflightCheck();
         run.setMission(mission);
         run.setDeviceConnection(activeConnection(missionId));
         run.setStatus(PreflightCheckStatus.CHECKING);
@@ -62,7 +62,7 @@ public class PersistedPreflightCheckService implements IPersistedPreflightCheckS
         run.setStartedAt(Instant.now());
 
         for (Definition definition : CHECKS) {
-            PersistedPreflightCheckItem item = new PersistedPreflightCheckItem();
+            PreflightCheckItem item = new PreflightCheckItem();
             item.setPreflightCheck(run);
             item.setCheckType(definition.type);
             item.setCheckName(definition.name);
@@ -108,12 +108,12 @@ public class PersistedPreflightCheckService implements IPersistedPreflightCheckS
     @Transactional
     @Override
     public PersistedPreflightCheckResponse update(String id, String type, PreflightItemUpdateRequest request) {
-        PersistedPreflightCheck run = runRepository.findByIdForUpdate(id)
+        PreflightCheck run = runRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.RESOURCE_NOT_FOUND,
                         "Preflight check not found: " + id));
 
-        PersistedPreflightCheckItem item = run.getItems().stream()
+        PreflightCheckItem item = run.getItems().stream()
                 .filter(candidate -> type.equals(candidate.getCheckType()))
                 .findFirst()
                 .orElseThrow(() -> new ApiException(

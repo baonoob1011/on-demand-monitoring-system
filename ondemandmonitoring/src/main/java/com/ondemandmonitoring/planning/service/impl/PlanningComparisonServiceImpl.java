@@ -2,13 +2,13 @@ package com.ondemandmonitoring.planning.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.device.domain.DroneTelemetry;
-import com.ondemandmonitoring.device.repository.DroneTelemetryRepository;
+import com.ondemandmonitoring.device.domain.DeviceTelemetry;
+import com.ondemandmonitoring.device.repository.DeviceTelemetryRepository;
 import com.ondemandmonitoring.mission.domain.Mission;
-import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
-import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.planning.dto.AlgorithmPlanningResult;
@@ -38,8 +38,8 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
     private static final int EPSG_4326_SRID = 4326;
 
     private final MissionRepository missionRepository;
-    private final MissionDroneAssignmentRepository missionDroneAssignmentRepository;
-    private final DroneTelemetryRepository droneTelemetryRepository;
+    private final MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
+    private final DeviceTelemetryRepository DeviceTelemetryRepository;
     private final RoutePlanner directRoutePlanner;
     private final RoutePlanner aStarShortestRoutePlanner;
     private final RoutePlanner aStarEnergyAwareRoutePlanner;
@@ -49,8 +49,8 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
 
     public PlanningComparisonServiceImpl(
             MissionRepository missionRepository,
-            MissionDroneAssignmentRepository missionDroneAssignmentRepository,
-            DroneTelemetryRepository droneTelemetryRepository,
+            MissionDeviceAssignmentRepository missionDeviceAssignmentRepository,
+            DeviceTelemetryRepository DeviceTelemetryRepository,
             @Qualifier("directRoutePlanner") RoutePlanner directRoutePlanner,
             @Qualifier("aStarShortestRoutePlanner") RoutePlanner aStarShortestRoutePlanner,
             @Qualifier("aStarEnergyAwareRoutePlanner") RoutePlanner aStarEnergyAwareRoutePlanner,
@@ -58,8 +58,8 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
             PlanningEnvironment planningEnvironment,
             MissionEnergyEstimator missionEnergyEstimator) {
         this.missionRepository = missionRepository;
-        this.missionDroneAssignmentRepository = missionDroneAssignmentRepository;
-        this.droneTelemetryRepository = droneTelemetryRepository;
+        this.missionDeviceAssignmentRepository = missionDeviceAssignmentRepository;
+        this.DeviceTelemetryRepository = DeviceTelemetryRepository;
         this.directRoutePlanner = directRoutePlanner;
         this.aStarShortestRoutePlanner = aStarShortestRoutePlanner;
         this.aStarEnergyAwareRoutePlanner = aStarEnergyAwareRoutePlanner;
@@ -222,11 +222,11 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
     }
 
     private Optional<Double> resolveAvailableBatteryPercent(String missionId) {
-        return missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                .map(MissionDroneAssignment::getDrone)
-                .filter(drone -> drone.getDroneCode() != null && !drone.getDroneCode().isBlank())
-                .flatMap(drone -> droneTelemetryRepository.findByDroneCode(drone.getDroneCode()))
-                .map(DroneTelemetry::getBatteryPercent)
+        return missionDeviceAssignmentRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId)
+                .map(MissionDeviceAssignment::getDevice)
+                .filter(device -> device.getSerialNumber() != null && !device.getSerialNumber().isBlank())
+                .flatMap(device -> DeviceTelemetryRepository.findByDroneCode(device.getSerialNumber()))
+                .map(DeviceTelemetry::getBatteryPercent)
                 .filter(this::isValidBatteryPercent);
     }
 

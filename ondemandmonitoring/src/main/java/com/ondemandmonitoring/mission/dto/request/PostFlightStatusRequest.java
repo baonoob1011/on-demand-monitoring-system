@@ -1,6 +1,7 @@
 package com.ondemandmonitoring.mission.dto.request;
 
-import com.ondemandmonitoring.device.enums.DroneStatus;
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.ondemandmonitoring.device.enums.DeviceOperationalStatus;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
@@ -11,14 +12,15 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.FieldDefaults;
 
-/** Post-flight status update submitted by Drone Operator after the mission. */
+/** Post-flight status update submitted by an operator after the mission. */
 @Getter
 @Setter
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class PostFlightStatusRequest {
 
-    @NotNull(message = "Drone status after flight cannot be null")
-    DroneStatus newDroneStatus;
+    @JsonAlias("newDroneStatus")
+    @NotNull(message = "Device status after mission cannot be null")
+    DeviceOperationalStatus newDeviceStatus;
 
     @NotEmpty(message = "Inspection results are required")
     Map<String, InspectionResult> inspectionResults;
@@ -27,6 +29,14 @@ public class PostFlightStatusRequest {
     String notes;
 
     TelemetrySnapshot telemetrySnapshot;
+
+    public DeviceOperationalStatus getNewDroneStatus() {
+        return newDeviceStatus;
+    }
+
+    public void setNewDroneStatus(DeviceOperationalStatus newDroneStatus) {
+        this.newDeviceStatus = newDroneStatus;
+    }
 
     @Getter
     @Setter
