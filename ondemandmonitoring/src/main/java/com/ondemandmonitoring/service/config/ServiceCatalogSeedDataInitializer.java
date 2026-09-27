@@ -57,8 +57,28 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
 
         List<ServiceSeed> seeds = List.of(
                 new ServiceSeed(
+                        "Giám sát Kho bãi / Logistics",
+                        "Giám sát bãi logistics, container, khu bốc xếp, luồng xe ra vào và khu vực lưu trữ ngoài trời bằng drone."
+                ),
+                new ServiceSeed(
                         "Giám sát Đập nước / Hồ chứa",
                         "Giám sát khu vực đập nước, hồ chứa, cửa xả, thân đập và vùng thượng/hạ lưu; bàn giao ảnh/video hiện trạng và báo cáo kèm hình."
+                ),
+                new ServiceSeed(
+                        "Giám sát Rừng / Điểm nhiệt",
+                        "Giám sát khu rừng, thảm thực vật, khu vực tìm kiếm và điểm nhiệt có nguy cơ cháy bằng ảnh/video và dữ liệu nhiệt."
+                ),
+                new ServiceSeed(
+                        "Giám sát Nông nghiệp / Cây trồng",
+                        "Giám sát khu canh tác, sức khỏe cây trồng, khu vực phát triển không đồng đều, dấu hiệu khô hạn và bất thường mùa vụ."
+                ),
+                new ServiceSeed(
+                        "Kiểm tra Sân bay / Đường băng",
+                        "Kiểm tra đường băng, sân đỗ, khu vực vận hành máy bay và vùng hạn chế để hỗ trợ giám sát an toàn."
+                ),
+                new ServiceSeed(
+                        "Giám sát Kho công nghiệp / Nhà xưởng",
+                        "Giám sát kho công nghiệp, mái nhà, bồn chứa, sân bãi và tài sản ngoài trời bằng ảnh/video drone."
                 ),
                 new ServiceSeed(
                         "Giám sát Mặt nước / Dòng chảy",
@@ -79,6 +99,22 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
                 new ServiceSeed(
                         "Giám sát Tiến độ Xây dựng",
                         "Theo dõi công trường xây dựng, tiến độ thi công và hiện trạng khu vực làm việc bằng ảnh/video."
+                ),
+                new ServiceSeed(
+                        "Giám sát Sạt lở / Ngập lụt",
+                        "Giám sát khu vực sạt lở, ngập lụt, tuyến đường bị chặn, dòng chảy bất thường và thay đổi địa hình sau mưa lũ."
+                ),
+                new ServiceSeed(
+                        "Kiểm tra Tháp viễn thông",
+                        "Kiểm tra tháp viễn thông, anten, kết cấu cao, thiết bị gắn trên tháp và khu vực xung quanh từ góc nhìn an toàn."
+                ),
+                new ServiceSeed(
+                        "Giám sát Mục tiêu xa",
+                        "Giám sát mục tiêu ở khoảng cách xa bằng waypoint, bay vòng quan sát, ghi nhận hiện trạng và kiểm tra khu vực khó tiếp cận."
+                ),
+                new ServiceSeed(
+                        "Giám sát Bãi đáp / Trạm drone",
+                        "Giám sát bãi đáp, khu vực cất hạ cánh, điểm quay về, hành lang an toàn và trạng thái khu vực vận hành drone."
                 )
         );
 
@@ -114,7 +150,13 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
         List<LegacyServiceName> legacyNames = List.of(
                 new LegacyServiceName("Construction Progress Monitoring", "Giám sát Tiến độ Xây dựng"),
                 new LegacyServiceName("Thermal Hotspot Monitoring", "Đo nhiệt độ / Điểm nhiệt"),
-                new LegacyServiceName("Water Surface Monitoring", "Giám sát Mặt nước / Dòng chảy")
+                new LegacyServiceName("Water Surface Monitoring", "Giám sát Mặt nước / Dòng chảy"),
+                new LegacyServiceName("Warehouse / Logistics Monitoring", "Giám sát Kho bãi / Logistics"),
+                new LegacyServiceName("Telecom Tower Inspection", "Kiểm tra Tháp viễn thông"),
+                new LegacyServiceName("Agricultural / Crop Monitoring", "Giám sát Nông nghiệp / Cây trồng"),
+                new LegacyServiceName("Forest Fire / Thermal Hotspot Monitoring", "Giám sát Rừng / Điểm nhiệt"),
+                new LegacyServiceName("Landslide / Flood Monitoring", "Giám sát Sạt lở / Ngập lụt"),
+                new LegacyServiceName("Industrial Site / Factory Monitoring", "Giám sát Kho công nghiệp / Nhà xưởng")
         );
 
         for (LegacyServiceName legacyName : legacyNames) {
@@ -212,12 +254,18 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
         int count = 0;
 
         Map<String, List<String>> mapping = new LinkedHashMap<>();
+        mapping.put("Giám sát Kho bãi / Logistics", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình"));
         mapping.put("Giám sát Đập nước / Hồ chứa", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình", "Báo cáo Phân tích Nhiệt"));
+        mapping.put("Giám sát Rừng / Điểm nhiệt", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình", "Báo cáo Phân tích Nhiệt"));
+        mapping.put("Giám sát Nông nghiệp / Cây trồng", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình"));
+        mapping.put("Giám sát Kho công nghiệp / Nhà xưởng", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình", "Báo cáo Phân tích Nhiệt"));
         mapping.put("Giám sát Mặt nước / Dòng chảy", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình"));
         mapping.put("Đo nhiệt độ / Điểm nhiệt", List.of("Báo cáo Phân tích Nhiệt", "Hình ảnh Kiểm tra", "Video Ghi hình"));
         mapping.put("Đo nhiệt độ / Áp suất", List.of("Báo cáo Nhiệt độ / Áp suất", "Báo cáo Giám sát", "Hình ảnh Kiểm tra"));
         mapping.put("Kiểm tra Công trình thủy lợi", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình"));
         mapping.put("Giám sát Tiến độ Xây dựng", List.of("Báo cáo Tiến độ", "Hình ảnh Kiểm tra", "Video Ghi hình"));
+        mapping.put("Giám sát Sạt lở / Ngập lụt", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình"));
+        mapping.put("Kiểm tra Tháp viễn thông", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình"));
 
         for (Map.Entry<String, List<String>> entry : mapping.entrySet()) {
             Service service = serviceRepository.findByNameIgnoreCase(entry.getKey()).orElse(null);
