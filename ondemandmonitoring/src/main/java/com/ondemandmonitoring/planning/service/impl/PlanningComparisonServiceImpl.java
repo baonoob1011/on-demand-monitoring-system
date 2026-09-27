@@ -2,7 +2,7 @@ package com.ondemandmonitoring.planning.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.drone.domain.DroneTelemetry;
+import com.ondemandmonitoring.drone.domain.DeviceTelemetry;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
@@ -83,7 +83,8 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
     @Override
     @Transactional(readOnly = true)
     public PlanningComparisonResult compare(PlanningComparisonInput input) {
-        if (input == null) throw new IllegalArgumentException("Planning comparison input is required.");
+        if (input == null)
+            throw new IllegalArgumentException("Planning comparison input is required.");
         if (input.contextId() == null || input.contextId().isBlank()) {
             throw new IllegalArgumentException("Planning comparison context ID is required.");
         }
@@ -114,7 +115,8 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
         AlgorithmPlanningResult direct = run(
                 PlanningAlgorithm.DIRECT, directRoutePlanner, home, target, homeWorldZ, availableBattery);
         AlgorithmPlanningResult shortest = run(
-                PlanningAlgorithm.ASTAR_SHORTEST, aStarShortestRoutePlanner, home, target, homeWorldZ, availableBattery);
+                PlanningAlgorithm.ASTAR_SHORTEST, aStarShortestRoutePlanner, home, target, homeWorldZ,
+                availableBattery);
         AlgorithmPlanningResult energyAware = run(
                 PlanningAlgorithm.ASTAR_ENERGY_AWARE, aStarEnergyAwareRoutePlanner,
                 home, target, homeWorldZ, availableBattery);
@@ -193,7 +195,8 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
         double x = point.getX();
         double y = point.getY();
         if (!Double.isFinite(x) || !Double.isFinite(y)) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Mission order target point must contain finite coordinates.");
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Mission order target point must contain finite coordinates.");
         }
         if (point.getSRID() == EPSG_4326_SRID && looksLikeLongitudeLatitude(x, y)) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
@@ -223,10 +226,10 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
 
     private Optional<Double> resolveAvailableBatteryPercent(String missionId) {
         return missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                .map(MissionDroneAssignment::getDrone)
-                .filter(drone -> drone.getDroneCode() != null && !drone.getDroneCode().isBlank())
-                .flatMap(drone -> droneTelemetryRepository.findByDroneCode(drone.getDroneCode()))
-                .map(DroneTelemetry::getBatteryPercent)
+                .map(MissionDroneAssignment::getDevice)
+                .filter(device -> device.getDeviceCode() != null && !device.getDeviceCode().isBlank())
+                .flatMap(device -> droneTelemetryRepository.findByDeviceCode(device.getDeviceCode()))
+                .map(DeviceTelemetry::getBatteryPercent)
                 .filter(this::isValidBatteryPercent);
     }
 
@@ -251,7 +254,8 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
     }
 
     private Double percentage(Double numerator, Double denominator) {
-        if (numerator == null || denominator == null || denominator == 0.0) return null;
+        if (numerator == null || denominator == null || denominator == 0.0)
+            return null;
         double value = numerator / denominator * 100.0;
         return Double.isFinite(value) ? value : null;
     }

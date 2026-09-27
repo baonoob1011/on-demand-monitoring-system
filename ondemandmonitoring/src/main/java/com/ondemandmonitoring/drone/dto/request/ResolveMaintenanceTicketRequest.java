@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.drone.dto.request;
 
-import com.ondemandmonitoring.drone.enums.DroneStatus;
+import com.ondemandmonitoring.device.enums.DeviceStatus;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -22,5 +22,5 @@ public class ResolveMaintenanceTicketRequest {
      * Target status for the drone after resolution (e.g. AVAILABLE).
      * Defaults to AVAILABLE if null.
      */
-    private DroneStatus newDroneStatus;
+    private DeviceStatus newDroneStatus;
 }

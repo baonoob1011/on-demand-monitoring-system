@@ -17,7 +17,7 @@ public class CustomerMediaResponse {
 
     String mediaId;
     String missionId;
-    String droneCode;
+    String deviceCode;
     String mediaType;
     String fileName;
     String contentType;

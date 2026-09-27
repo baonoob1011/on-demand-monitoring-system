@@ -2,7 +2,7 @@ package com.ondemandmonitoring.planning.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.drone.domain.DroneTelemetry;
+import com.ondemandmonitoring.drone.domain.DeviceTelemetry;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
@@ -116,7 +116,8 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         long planningTimeMs = Math.max(0L, (System.nanoTime() - startedAtNanos) / 1_000_000L);
 
         MissionPlan missionPlan = missionPlanRepository.findByMissionId(missionId)
-                .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REQUEST, "Mission has no active plan to replan: " + missionId));
+                .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REQUEST,
+                        "Mission has no active plan to replan: " + missionId));
         int nextVersion = Math.max(1, Optional.ofNullable(missionPlan.getPlanVersion()).orElse(1)) + 1;
 
         if (!route.feasible()) {
@@ -158,7 +159,8 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         applyEnergyEstimate(missionPlan, energyEstimate, context.mission().getId());
 
         for (int sequence = 0; sequence < route.points().size(); sequence++) {
-            missionPlan.getWaypoints().add(toWaypoint(missionPlan, sequence, route.points().get(sequence), route.points().size()));
+            missionPlan.getWaypoints()
+                    .add(toWaypoint(missionPlan, sequence, route.points().get(sequence), route.points().size()));
         }
 
         return missionPlanRepository.save(missionPlan);
@@ -207,7 +209,8 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
             applyEnergyEstimate(missionPlan, energyEstimate, context.mission().getId());
 
             for (int sequence = 0; sequence < route.points().size(); sequence++) {
-                missionPlan.getWaypoints().add(toWaypoint(missionPlan, sequence, route.points().get(sequence), route.points().size()));
+                missionPlan.getWaypoints()
+                        .add(toWaypoint(missionPlan, sequence, route.points().get(sequence), route.points().size()));
             }
         }
 
@@ -276,7 +279,8 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         if (homeSample.surfaceElevationM() == null) {
             throw new ApiException(
                     ErrorCode.INVALID_REQUEST,
-                    String.format("Home point has no planning surface elevation near x=%.2f, y=%.2f.", home.x(), home.y()));
+                    String.format("Home point has no planning surface elevation near x=%.2f, y=%.2f.", home.x(),
+                            home.y()));
         }
         return homeSample.surfaceElevationM();
     }
@@ -285,17 +289,17 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         if (missionId == null) {
             return new BatterySnapshot(false, Optional.empty());
         }
-        Optional<MissionDroneAssignment> assignment =
-                missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId);
+        Optional<MissionDroneAssignment> assignment = missionDroneAssignmentRepository
+                .findByMissionIdAndIsCurrentTrue(missionId);
         if (assignment.isEmpty()) {
             return new BatterySnapshot(false, Optional.empty());
         }
 
         Optional<Double> batteryPercent = assignment
-                .map(MissionDroneAssignment::getDrone)
-                .filter(drone -> drone.getDroneCode() != null && !drone.getDroneCode().isBlank())
-                .flatMap(drone -> droneTelemetryRepository.findByDroneCode(drone.getDroneCode()))
-                .map(DroneTelemetry::getBatteryPercent)
+                .map(MissionDroneAssignment::getDevice)
+                .filter(device -> device.getDeviceCode() != null && !device.getDeviceCode().isBlank())
+                .flatMap(device -> droneTelemetryRepository.findByDeviceCode(device.getDeviceCode()))
+                .map(DeviceTelemetry::getBatteryPercent)
                 .filter(this::isValidBatteryPercent);
         return new BatterySnapshot(true, batteryPercent);
     }
@@ -368,7 +372,8 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         double targetY = point.getY();
 
         if (!Double.isFinite(targetX) || !Double.isFinite(targetY)) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Mission order target point must contain finite coordinates.");
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Mission order target point must contain finite coordinates.");
         }
 
         if (point.getSRID() == EPSG_4326_SRID && looksLikeLongitudeLatitude(targetX, targetY)) {

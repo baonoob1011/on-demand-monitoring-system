@@ -2,11 +2,11 @@ package com.ondemandmonitoring.drone.service;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.drone.domain.DroneTelemetry;
-import com.ondemandmonitoring.drone.domain.Drone;
+import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.device.enums.DeviceStatus;
+import com.ondemandmonitoring.device.repository.DeviceRepository;
+import com.ondemandmonitoring.drone.domain.DeviceTelemetry;
 import com.ondemandmonitoring.drone.domain.PreflightCheck;
-import com.ondemandmonitoring.drone.enums.DroneStatus;
-import com.ondemandmonitoring.drone.repository.DroneRepository;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
 import java.time.Duration;
 import java.time.Instant;
@@ -31,7 +31,7 @@ public class PreflightCheckService {
     /** Minimum storage required on drone for a mission (100 MB). */
     private static final long MIN_STORAGE_MB = 100L;
 
-    DroneRepository droneRepository;
+    DeviceRepository deviceRepository;
     DroneTelemetryRepository droneTelemetryRepository;
 
     public PreflightCheck run(String droneCode) {
@@ -41,15 +41,17 @@ public class PreflightCheckService {
     /**
      * Run pre-flight check in-memory for the given drone and mission.
      * Reads live telemetry sent by the drone via MQTT/telemetry_sender.py,
-     * validates all sensor fields, and returns an in-memory {@link PreflightCheck} snapshot.
+     * validates all sensor fields, and returns an in-memory {@link PreflightCheck}
+     * snapshot.
      *
      * @param droneCode drone drone code
-     * @param missionId  mission this check belongs to (nullable for stand-alone checks)
+     * @param missionId mission this check belongs to (nullable for stand-alone
+     *                  checks)
      */
     @Transactional
     public PreflightCheck run(String droneCode, String missionId) {
-        Drone drone = getOrCreateDrone(droneCode);
-        DroneTelemetry telemetry = droneTelemetryRepository.findByDroneCode(droneCode)
+        Device device = getOrCreateDevice(droneCode);
+        DeviceTelemetry telemetry = droneTelemetryRepository.findByDeviceCode(droneCode)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.INVALID_REQUEST,
                         "No telemetry available for drone " + droneCode
@@ -58,7 +60,7 @@ public class PreflightCheckService {
         List<String> failures = validate(telemetry);
         String faultType = classifyFault(telemetry, failures);
 
-        PreflightCheck preflightCheck = fromTelemetry(drone, telemetry);
+        PreflightCheck preflightCheck = fromTelemetry(device, telemetry);
         preflightCheck.setMissionId(missionId);
         preflightCheck.setOverallPassed(failures.isEmpty());
         preflightCheck.setFailureReason(failures.isEmpty() ? null : String.join("; ", failures));
@@ -68,9 +70,7 @@ public class PreflightCheckService {
         return preflightCheck;
     }
 
-
-
-    private List<String> validate(DroneTelemetry telemetry) {
+    private List<String> validate(DeviceTelemetry telemetry) {
         List<String> failures = new ArrayList<>();
 
         // --- Checklist 5: Telemetry stable (connection + freshness) ---
@@ -104,12 +104,15 @@ public class PreflightCheckService {
 
     /**
      * Classify the type of failure:
-     * - "BATTERY" if the only/main failure is low battery (handled by charge station).
-     * - "HARDWARE" for any sensor/hardware-level failure (handled by maintenance team).
+     * - "BATTERY" if the only/main failure is low battery (handled by charge
+     * station).
+     * - "HARDWARE" for any sensor/hardware-level failure (handled by maintenance
+     * team).
      * Returns null when there is no failure.
      */
-    String classifyFault(DroneTelemetry telemetry, List<String> failures) {
-        if (failures.isEmpty()) return null;
+    String classifyFault(DeviceTelemetry telemetry, List<String> failures) {
+        if (failures.isEmpty())
+            return null;
 
         boolean batteryLow = telemetry.getBatteryPercent() != null
                 && telemetry.getBatteryPercent() < MIN_BATTERY_PERCENT;
@@ -120,14 +123,16 @@ public class PreflightCheckService {
                 || !Boolean.TRUE.equals(telemetry.getArmable())
                 || !Boolean.TRUE.equals(telemetry.getConnected());
 
-        if (hardwareFault) return "HARDWARE";
-        if (batteryLow)    return "BATTERY";
+        if (hardwareFault)
+            return "HARDWARE";
+        if (batteryLow)
+            return "BATTERY";
         return "HARDWARE"; // default: assume hardware fault for any other issue
     }
 
-    private PreflightCheck fromTelemetry(Drone drone, DroneTelemetry telemetry) {
+    private PreflightCheck fromTelemetry(Device device, DeviceTelemetry telemetry) {
         PreflightCheck preflightCheck = new PreflightCheck();
-        preflightCheck.setDrone(drone);
+        preflightCheck.setDevice(device);
         preflightCheck.setBatteryPercent(telemetry.getBatteryPercent());
         preflightCheck.setLatitude(telemetry.getLatitude());
         preflightCheck.setLongitude(telemetry.getLongitude());
@@ -205,7 +210,7 @@ public class PreflightCheckService {
         }
     }
 
-    private void requireFreshTelemetry(List<String> failures, DroneTelemetry telemetry) {
+    private void requireFreshTelemetry(List<String> failures, DeviceTelemetry telemetry) {
         Instant updatedAt = telemetry.getUpdatedAt();
         if (updatedAt == null) {
             failures.add("Telemetry timestamp is missing");
@@ -218,17 +223,17 @@ public class PreflightCheckService {
         }
     }
 
-    private Drone getOrCreateDrone(String droneCode) {
-        return droneRepository.findByDroneCode(droneCode)
+    private Device getOrCreateDevice(String droneCode) {
+        return deviceRepository.findByDeviceCode(droneCode)
                 .orElseGet(() -> {
-                    Drone drone = new Drone();
-                    drone.setDroneCode(droneCode);
-                    drone.setSerialNumber(droneCode);
-                    drone.setDroneName("PX4 SITL Drone");
-                    
-                    drone.setStatus(DroneStatus.AVAILABLE);
-                    drone.setLastSeenAt(LocalDateTime.now());
-                    return droneRepository.save(drone);
+                    Device device = new Device();
+                    device.setDeviceCode(droneCode);
+                    device.setSerialNumber(droneCode);
+                    device.setName("PX4 SITL Drone");
+
+                    device.setStatus(DeviceStatus.AVAILABLE);
+                    device.setLastSeenAt(LocalDateTime.now());
+                    return deviceRepository.save(device);
                 });
     }
 }

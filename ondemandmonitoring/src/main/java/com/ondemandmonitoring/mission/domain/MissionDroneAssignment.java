@@ -1,7 +1,9 @@
 package com.ondemandmonitoring.mission.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.drone.domain.Drone;
+import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.missionv2.enums.DeviceRole;
+
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -22,14 +24,12 @@ public class MissionDroneAssignment extends BaseEntity {
     Mission mission;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "drone_id", nullable = false)
-    Drone drone;
+    @JoinColumn(name = "device_id", nullable = false)
+    Device device;
 
-    @Column(name = "assigned_by", length = 100)
-    String assignedBy;
-
-    @Column(name = "assignment_source", length = 50)
-    String assignmentSource; // AUTO_SYSTEM / MANUAL_MANAGER
+    @Enumerated(EnumType.STRING)
+    @Column(name = "device_role", nullable = false, length = 50)
+    DeviceRole deviceRole = DeviceRole.MAIN;
 
     @Column(name = "status", nullable = false, length = 50)
     String status; // ACTIVE / RELEASED

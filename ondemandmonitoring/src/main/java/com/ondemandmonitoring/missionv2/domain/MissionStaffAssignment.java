@@ -1,6 +1,7 @@
 package com.ondemandmonitoring.missionv2.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
+import com.ondemandmonitoring.missionv2.enums.MissionStaffRole;
 import com.ondemandmonitoring.missionv2.enums.StaffResponseStatus;
 import com.ondemandmonitoring.user.domain.User;
 import jakarta.persistence.*;
@@ -27,8 +28,9 @@ public class MissionStaffAssignment extends BaseEntity {
     @JoinColumn(name = "staff_id", nullable = false)
     User staff;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "assigned_role", length = 50)
-    String assignedRole;
+    MissionStaffRole assignedRole;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "response_status", length = 50)

@@ -1,6 +1,9 @@
 package com.ondemandmonitoring.drone.domain;
 
 import java.time.Instant;
+
+import com.ondemandmonitoring.device.domain.Device;
+
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
@@ -9,7 +12,8 @@ import lombok.experimental.FieldDefaults;
 /**
  * In-memory snapshot of Preflight Diagnostic Checklist results.
  * Note: Per the final DB schema design, preflight checks run in-memory
- * and results are saved inline on the Mission table (no preflight_checks table).
+ * and results are saved inline on the Mission table (no preflight_checks
+ * table).
  */
 @Getter
 @Setter
@@ -17,9 +21,12 @@ import lombok.experimental.FieldDefaults;
 public class PreflightCheck {
 
     String id;
-    Drone drone;
+    Device device;
 
-    /** Mission this pre-flight check was performed for. Nullable for legacy stand-alone checks. */
+    /**
+     * Mission this pre-flight check was performed for. Nullable for legacy
+     * stand-alone checks.
+     */
     String missionId;
 
     Double batteryPercent;

@@ -13,7 +13,7 @@ import lombok.experimental.FieldDefaults;
 public class PreflightCheckResponse {
 
     String id;
-    String droneCode;
+    String deviceCode;
     String missionId;
     Boolean overallPassed;
     String failureReason;

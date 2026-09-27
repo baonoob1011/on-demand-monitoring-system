@@ -2,9 +2,9 @@ package com.ondemandmonitoring.mission.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.drone.domain.Drone;
-import com.ondemandmonitoring.drone.enums.DroneStatus;
-import com.ondemandmonitoring.drone.repository.DroneRepository;
+import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.device.enums.DeviceStatus;
+import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
@@ -24,7 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 
 /**
- * Service implementation managing device connection sessions (`device_connections`)
+ * Service implementation managing device connection sessions
+ * (`device_connections`)
  * and automated safety triggers (such as Return-To-Launch on signal loss).
  */
 @Slf4j
@@ -36,7 +37,7 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     private final DeviceConnectionRepository deviceConnectionRepository;
     private final MissionDroneAssignmentRepository missionDroneAssignmentRepository;
     private final MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
-    private final DroneRepository droneRepository;
+    private final DeviceRepository deviceRepository;
     private final MissionMapper missionMapper;
 
     @Override
@@ -52,14 +53,14 @@ public class DeviceConnectionService implements IDeviceConnectionService {
 
         mission.setStatus(MissionStatus.CONNECTED);
 
-        Drone device = getAssignedDevice(missionId);
+        Device device = getAssignedDevice(missionId);
         if (device != null) {
-            device.setStatus(DroneStatus.PREFLIGHT);
-            droneRepository.save(device);
+            device.setStatus(DeviceStatus.PREFLIGHT);
+            deviceRepository.save(device);
 
             DeviceConnection connection = new DeviceConnection();
             connection.setMission(mission);
-            connection.setDrone(device);
+            connection.setDevice(device);
             connection.setOperatorId(getCurrentOperatorId(missionId));
             connection.setConnectionStatus("CONNECTED");
             connection.setTelemetryActive(true);
@@ -70,8 +71,7 @@ public class DeviceConnectionService implements IDeviceConnectionService {
                     .orElseGet(() -> {
                         MissionDroneAssignment mda = new MissionDroneAssignment();
                         mda.setMission(mission);
-                        mda.setDrone(device);
-                        mda.setAssignmentSource("MANUAL_MANAGER");
+                        mda.setDevice(device);
                         mda.setStatus("ACTIVE");
                         mda.setIsCurrent(true);
                         mda.setAssignedAt(Instant.now());
@@ -95,9 +95,11 @@ public class DeviceConnectionService implements IDeviceConnectionService {
                     session.setConnectionStatus("DISCONNECTED");
                     session.setTelemetryActive(false);
                     session.setDisconnectedAt(Instant.now());
-                    session.setDisconnectReason(disconnectReason != null && !disconnectReason.isBlank() ? disconnectReason : "NORMAL");
+                    session.setDisconnectReason(
+                            disconnectReason != null && !disconnectReason.isBlank() ? disconnectReason : "NORMAL");
                     deviceConnectionRepository.save(session);
-                    log.info("[DEVICE-DISCONNECT] Mission {} device session disconnected cleanly. Reason: {}", missionId, session.getDisconnectReason());
+                    log.info("[DEVICE-DISCONNECT] Mission {} device session disconnected cleanly. Reason: {}",
+                            missionId, session.getDisconnectReason());
                 });
 
         return missionMapper.toResponse(mission);
@@ -116,30 +118,33 @@ public class DeviceConnectionService implements IDeviceConnectionService {
                     session.setDisconnectedAt(Instant.now());
                     session.setDisconnectReason(reason != null && !reason.isBlank() ? reason : "SIGNAL_LOSS");
                     deviceConnectionRepository.save(session);
-                    log.warn("[DEVICE-LOST] Mission {} device telemetry signal LOST. Reason: {}", missionId, session.getDisconnectReason());
+                    log.warn("[DEVICE-LOST] Mission {} device telemetry signal LOST. Reason: {}", missionId,
+                            session.getDisconnectReason());
                 });
 
         mission.setStatus(MissionStatus.RETURNING);
-        Drone device = getAssignedDevice(missionId);
+        Device device = getAssignedDevice(missionId);
         if (device != null) {
-            device.setStatus(DroneStatus.RETURNING);
-            droneRepository.save(device);
+            device.setStatus(DeviceStatus.RETURNING);
+            deviceRepository.save(device);
         }
-        log.warn("[RTL-TRIGGER] Mission {} status set to RETURNING due to device signal loss. Device status updated to RETURNING.", missionId);
+        log.warn(
+                "[RTL-TRIGGER] Mission {} status set to RETURNING due to device signal loss. Device status updated to RETURNING.",
+                missionId);
 
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
     }
 
-    private Drone getAssignedDevice(String missionId) {
+    private Device getAssignedDevice(String missionId) {
         return missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                .map(MissionDroneAssignment::getDrone)
+                .map(MissionDroneAssignment::getDevice)
                 .orElse(null);
     }
 
     private String getCurrentOperatorId(String missionId) {
         return missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                .map(mda -> mda.getOperatorId())
+                .map(mda -> mda.getStaff().getId())
                 .orElse(null);
     }
 }

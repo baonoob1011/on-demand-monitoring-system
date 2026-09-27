@@ -49,4 +49,5 @@ public class MissionDeviceAssignment extends BaseEntity {
 
     @Column(name = "failure_notes", columnDefinition = "TEXT")
     String failureNotes;
+
 }

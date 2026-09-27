@@ -1,6 +1,7 @@
 package com.ondemandmonitoring.mission.mapper;
 
 import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.domain.MissionOperatorAssignment;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.domain.PlanWaypoint;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
@@ -30,8 +31,8 @@ public abstract class MissionMapper {
     @Autowired
     protected MissionPlanRepository missionPlanRepository;
 
-    @Mapping(target = "droneId", expression = "java(getDroneId(mission))")
-    @Mapping(target = "droneCode", expression = "java(getDroneCode(mission))")
+    @Mapping(target = "deviceId", expression = "java(getDeviceId(mission))")
+    @Mapping(target = "deviceCode", expression = "java(getDeviceCode(mission))")
     @Mapping(target = "operatorId", expression = "java(getOperatorId(mission))")
     @Mapping(source = "order.id", target = "orderId")
     @Mapping(source = "order.title", target = "orderTitle")
@@ -44,33 +45,36 @@ public abstract class MissionMapper {
     @Mapping(target = "plan", expression = "java(getPlan(mission))")
     public abstract MissionResponse toResponse(Mission mission);
 
-    protected String getDroneId(Mission mission) {
-        if (mission == null || mission.getId() == null) return null;
+    protected String getDeviceId(Mission mission) {
+        if (mission == null || mission.getId() == null)
+            return null;
         return missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
                 .or(() -> isTerminal(mission)
                         ? missionDroneAssignmentRepository.findFirstByMissionIdOrderByAssignedAtDesc(mission.getId())
                         : Optional.empty())
-                .map(mda -> mda.getDrone() != null ? mda.getDrone().getId() : null)
+                .map(mda -> mda.getDevice() != null ? mda.getDevice().getId() : null)
                 .orElse(null);
     }
 
-    protected String getDroneCode(Mission mission) {
-        if (mission == null || mission.getId() == null) return null;
+    protected String getDeviceCode(Mission mission) {
+        if (mission == null || mission.getId() == null)
+            return null;
         return missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
                 .or(() -> isTerminal(mission)
                         ? missionDroneAssignmentRepository.findFirstByMissionIdOrderByAssignedAtDesc(mission.getId())
                         : Optional.empty())
-                .map(mda -> mda.getDrone() != null ? mda.getDrone().getDroneCode() : null)
+                .map(mda -> mda.getDevice() != null ? mda.getDevice().getDeviceCode() : null)
                 .orElse(null);
     }
 
     protected String getOperatorId(Mission mission) {
-        if (mission == null || mission.getId() == null) return null;
+        if (mission == null || mission.getId() == null)
+            return null;
         return missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
                 .or(() -> isTerminal(mission)
                         ? missionOperatorAssignmentRepository.findFirstByMissionIdOrderByAssignedAtDesc(mission.getId())
                         : Optional.empty())
-                .map(com.ondemandmonitoring.mission.domain.MissionOperatorAssignment::getOperatorId)
+                .map(moa -> moa.getStaff().getId())
                 .orElse(null);
     }
 
@@ -125,7 +129,8 @@ public abstract class MissionMapper {
     }
 
     protected MissionPlanResponse getPlan(Mission mission) {
-        if (mission == null || mission.getId() == null) return null;
+        if (mission == null || mission.getId() == null)
+            return null;
 
         return missionPlanRepository.findByMissionId(mission.getId())
                 .map(this::toPlanResponse)

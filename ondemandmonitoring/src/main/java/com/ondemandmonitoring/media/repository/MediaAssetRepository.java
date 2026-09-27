@@ -8,17 +8,20 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface MediaAssetRepository extends JpaRepository<MediaAsset, String> {
 
-    Optional<MediaAsset> findByMissionIdAndDroneCodeAndLocalMediaId(
-            String missionId, String droneCode, String localMediaId);
+        Optional<MediaAsset> findByMissionIdAndDroneCodeAndLocalMediaId(
+                        String missionId, String droneCode, String localMediaId);
 
-    List<MediaAsset> findByMissionIdOrderByCapturedAtDesc(String missionId);
+        List<MediaAsset> findByMissionIdOrderByCapturedAtDesc(String missionId);
 
-    List<MediaAsset> findByMissionIdInAndMediaStatusOrderByCapturedAtDesc(
-            List<String> missionIds, MediaStatus status);
+        List<MediaAsset> findByMissionIdInAndMediaStatusOrderByCapturedAtDesc(
+                        List<String> missionIds, MediaStatus status);
 
-    List<MediaAsset> findByMissionIdAndTypeOrderByCapturedAtDesc(String missionId, String type);
+        List<MediaAsset> findByMissionIdAndTypeOrderByCapturedAtDesc(String missionId, String type);
 
-    List<MediaAsset> findByDroneCodeOrderByCapturedAtDesc(String droneCode);
+        List<MediaAsset> findByDroneCodeOrderByCapturedAtDesc(String droneCode);
 
-    List<MediaAsset> findByDroneCodeAndTypeOrderByCapturedAtDesc(String droneCode, String type);
+        List<MediaAsset> findByDroneCodeAndTypeOrderByCapturedAtDesc(String droneCode, String type);
+
+        Optional<MediaAsset> findByMissionIdAndDeviceCodeAndLocalMediaId(String id, String deviceCode,
+                        String localMediaId);
 }

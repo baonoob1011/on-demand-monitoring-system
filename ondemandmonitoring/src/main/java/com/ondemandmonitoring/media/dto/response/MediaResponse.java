@@ -13,7 +13,7 @@ public class MediaResponse {
 
     String id;
     String missionId;
-    String droneId;
+    String deviceId;
     String type;
     String url;
     Long expiresIn;

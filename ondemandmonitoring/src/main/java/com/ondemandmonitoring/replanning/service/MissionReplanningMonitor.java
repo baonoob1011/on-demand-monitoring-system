@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.replanning.service;
 
-import com.ondemandmonitoring.drone.domain.DroneTelemetry;
+import com.ondemandmonitoring.drone.domain.DeviceTelemetry;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
 import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
@@ -59,13 +59,13 @@ public class MissionReplanningMonitor {
     }
 
     private void evaluate(DroneTelemetrySavedEvent event) {
-        DroneTelemetry telemetry = droneTelemetryRepository.findById(event.telemetryId()).orElse(null);
+        DeviceTelemetry telemetry = droneTelemetryRepository.findById(event.telemetryId()).orElse(null);
         if (telemetry == null) {
             return;
         }
 
-        List<MissionDroneAssignment> assignments =
-                missionDroneAssignmentRepository.findCurrentByDroneCodeAndMissionStatusIn(
+        List<MissionDroneAssignment> assignments = missionDroneAssignmentRepository
+                .findCurrentByDroneCodeAndMissionStatusIn(
                         event.droneCode(),
                         ACTIVE_STATUSES);
         if (assignments.isEmpty()) {
@@ -110,7 +110,7 @@ public class MissionReplanningMonitor {
         return running.compareAndSet(false, true);
     }
 
-    private void runReplan(String missionId, DroneTelemetry telemetry, ReplanningDecision decision) {
+    private void runReplan(String missionId, DeviceTelemetry telemetry, ReplanningDecision decision) {
         try {
             Instant startedAt = Instant.now();
             MissionPlan plan = missionReplanningService.replanFromTelemetry(missionId, telemetry, decision.reason());
@@ -118,7 +118,7 @@ public class MissionReplanningMonitor {
             log.info(
                     "Dynamic replan evaluated missionId={} droneCode={} reason={} detail={} planVersion={} status={} battery={} simX={} simY={} durationMs={}",
                     missionId,
-                    telemetry.getDroneCode(),
+                    telemetry.getDeviceCode(),
                     decision.reason(),
                     decision.detail(),
                     plan.getPlanVersion(),
@@ -132,7 +132,7 @@ public class MissionReplanningMonitor {
             log.warn(
                     "Dynamic replan failed missionId={} droneCode={} reason={} detail={}: {}",
                     missionId,
-                    telemetry.getDroneCode(),
+                    telemetry.getDeviceCode(),
                     decision.reason(),
                     decision.detail(),
                     exception.getMessage(),

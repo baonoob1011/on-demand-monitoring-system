@@ -15,7 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 
 /**
- * Dedicated service for issuing 60-minute HMAC-SHA256 flight tokens and validating operator authorization.
+ * Dedicated service for issuing 60-minute HMAC-SHA256 flight tokens and
+ * validating operator authorization.
  */
 @Slf4j
 @Service
@@ -33,7 +34,8 @@ public class FlightTokenService implements IFlightTokenService {
         if (operatorId != null && !operatorId.isBlank()) {
             missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
                     .ifPresent(assignment -> {
-                        if (assignment.getOperatorId() != null && !assignment.getOperatorId().equals(operatorId)) {
+                        if (assignment.getStaff().getId() != null
+                                && !assignment.getStaff().getId().equals(operatorId)) {
                             throw new ApiException(ErrorCode.INVALID_REQUEST,
                                     "Operator " + operatorId + " is not assigned to mission " + missionId);
                         }

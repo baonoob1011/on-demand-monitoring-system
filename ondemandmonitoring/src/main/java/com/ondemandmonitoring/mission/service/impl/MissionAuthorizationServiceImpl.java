@@ -18,33 +18,35 @@ import org.springframework.transaction.annotation.Transactional;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class MissionAuthorizationServiceImpl implements IMissionAuthorizationService {
 
-    MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
-    MissionRepository missionRepository;
-    PersistedPreflightCheckRepository persistedPreflightCheckRepository;
-    AuthenticatedUserResolver authenticatedUserResolver;
+        MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
+        MissionRepository missionRepository;
+        PersistedPreflightCheckRepository persistedPreflightCheckRepository;
+        AuthenticatedUserResolver authenticatedUserResolver;
 
-    @Override
-    @Transactional(readOnly = true)
-    public boolean isAssignedOperator(String missionId) {
-        User currentUser = authenticatedUserResolver.getCurrentUser();
-        boolean currentAssignment = missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                .map(assignment -> currentUser.getId().toString().equals(assignment.getOperatorId()))
-                .orElse(false);
-        if (currentAssignment) return true;
-        return missionRepository.findById(missionId)
-                .filter(mission -> mission.getStatus() == MissionStatus.COMPLETED
-                        || mission.getStatus() == MissionStatus.FAILED
-                        || mission.getStatus() == MissionStatus.CANCELLED)
-                .map(mission -> missionOperatorAssignmentRepository.existsByMissionIdAndOperatorId(
-                        missionId, currentUser.getId().toString()))
-                .orElse(false);
-    }
+        @Override
+        @Transactional(readOnly = true)
+        public boolean isAssignedOperator(String missionId) {
+                User currentUser = authenticatedUserResolver.getCurrentUser();
+                boolean currentAssignment = missionOperatorAssignmentRepository
+                                .findByMissionIdAndIsCurrentTrue(missionId)
+                                .map(assignment -> currentUser.getId().toString().equals(assignment.getStaff().getId()))
+                                .orElse(false);
+                if (currentAssignment)
+                        return true;
+                return missionRepository.findById(missionId)
+                                .filter(mission -> mission.getStatus() == MissionStatus.COMPLETED
+                                                || mission.getStatus() == MissionStatus.FAILED
+                                                || mission.getStatus() == MissionStatus.CANCELLED)
+                                .map(mission -> missionOperatorAssignmentRepository.existsByMissionIdAndOperatorId(
+                                                missionId, currentUser.getId().toString()))
+                                .orElse(false);
+        }
 
-    @Override
-    @Transactional(readOnly = true)
-    public boolean isAssignedOperatorForPreflight(String preflightId) {
-        return persistedPreflightCheckRepository.findById(preflightId)
-                .map(run -> isAssignedOperator(run.getMission().getId()))
-                .orElse(false);
-    }
+        @Override
+        @Transactional(readOnly = true)
+        public boolean isAssignedOperatorForPreflight(String preflightId) {
+                return persistedPreflightCheckRepository.findById(preflightId)
+                                .map(run -> isAssignedOperator(run.getMission().getId()))
+                                .orElse(false);
+        }
 }

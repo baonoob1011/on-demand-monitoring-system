@@ -2,7 +2,7 @@ package com.ondemandmonitoring.drone.controller;
 
 import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.drone.dto.request.TelemetryRequest;
-import com.ondemandmonitoring.drone.domain.DroneTelemetry;
+import com.ondemandmonitoring.drone.domain.DeviceTelemetry;
 import com.ondemandmonitoring.drone.service.IDroneTelemetryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -26,13 +26,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class DroneTelemetryController {
 
     IDroneTelemetryService droneTelemetryService;
-    
+
     @Operation(summary = "Receive drone telemetry", description = "Persists live telemetry snapshot (battery, GPS fix, sensors, altitude, speed) sent from drone")
     @PostMapping
-    public ResponseEntity<ApiResponse<DroneTelemetry>> create(
+    public ResponseEntity<ApiResponse<DeviceTelemetry>> create(
             @PathVariable String droneCode,
             @Valid @RequestBody TelemetryRequest request) {
-        DroneTelemetry telemetry = droneTelemetryService.save(droneCode, request);
+        DeviceTelemetry telemetry = droneTelemetryService.save(droneCode, request);
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)

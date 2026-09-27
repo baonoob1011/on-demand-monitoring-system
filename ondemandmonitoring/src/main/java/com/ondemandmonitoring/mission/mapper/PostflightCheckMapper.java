@@ -9,6 +9,6 @@ import org.mapstruct.Mapping;
 public interface PostflightCheckMapper {
 
     @Mapping(source = "mission.id", target = "missionId")
-    @Mapping(source = "drone.droneCode", target = "droneCode")
+    @Mapping(source = "device.deviceCode", target = "deviceCode")
     PostflightCheckResponse toResponse(PostflightCheck check);
 }

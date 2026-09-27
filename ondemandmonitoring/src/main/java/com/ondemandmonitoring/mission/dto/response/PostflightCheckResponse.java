@@ -13,7 +13,7 @@ import java.time.Instant;
 public class PostflightCheckResponse {
     String id;
     String missionId;
-    String droneCode;
+    String deviceCode;
     String checkedBy;
     Boolean batteryOk;
     Boolean motorOk;

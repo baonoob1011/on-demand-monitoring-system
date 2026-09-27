@@ -21,15 +21,16 @@ public class MissionResponse {
     String missionCode;
     MissionStatus status;
     String operatorId;
-    String droneId;
-    String droneCode;
+    String deviceId;
+    String deviceCode;
     Double latitude;
     Double longitude;
     Double radiusM;
     String address;
     Instant scheduledStartAt;
-    Instant startedAt;
-    Instant completedAt;
+    Instant scheduledEndAt;
+    Instant actualStartAt;
+    Instant actualEndAt;
     String description;
     String failureReason;
     String rejectionReason;
@@ -43,4 +44,3 @@ public class MissionResponse {
     String preflightFailureReason;
     Instant preflightCheckedAt;
 }
-

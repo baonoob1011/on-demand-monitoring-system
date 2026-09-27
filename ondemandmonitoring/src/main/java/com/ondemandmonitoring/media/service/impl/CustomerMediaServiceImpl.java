@@ -45,9 +45,10 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
     @Transactional(readOnly = true)
     public List<CustomerMediaResponse> listAllAvailable() {
         List<String> missionIds = ownMissionIds();
-        if (missionIds.isEmpty()) return List.of();
+        if (missionIds.isEmpty())
+            return List.of();
         return media.findByMissionIdInAndMediaStatusOrderByCapturedAtDesc(missionIds,
-                        MediaStatus.AVAILABLE)
+                MediaStatus.AVAILABLE)
                 .stream().map(this::toResponse).toList();
     }
 
@@ -80,7 +81,8 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
     @Transactional(readOnly = true)
     public List<CustomerMediaNotificationResponse> listAllNotifications() {
         List<String> missionIds = ownMissionIds();
-        if (missionIds.isEmpty()) return List.of();
+        if (missionIds.isEmpty())
+            return List.of();
         return notifications.findByMedia_MissionIdInOrderByCreatedAtDesc(missionIds).stream()
                 .filter(event -> event.getMedia().getMediaStatus() == MediaStatus.AVAILABLE)
                 .map(event -> new CustomerMediaNotificationResponse(
@@ -102,7 +104,7 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
                 .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
         if (mission.getOrder() == null || mission.getOrder().getCustomer() == null
                 || !mission.getOrder().getCustomer().getId()
-                .equals(currentUser.getCurrentUser().getId())) {
+                        .equals(currentUser.getCurrentUser().getId())) {
             throw new ApiException(ErrorCode.ACCESS_DENIED);
         }
         return mission;
@@ -112,7 +114,7 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
         return new CustomerMediaResponse(
                 asset.getId(),
                 asset.getMissionId(),
-                asset.getDroneCode(),
+                asset.getDeviceId(),
                 asset.getType(),
                 asset.getOriginalFileName(),
                 asset.getContentType(),

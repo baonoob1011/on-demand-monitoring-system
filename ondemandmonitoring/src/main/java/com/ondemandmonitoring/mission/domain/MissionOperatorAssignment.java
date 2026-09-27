@@ -1,6 +1,10 @@
 package com.ondemandmonitoring.mission.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
+import com.ondemandmonitoring.missionv2.enums.MissionStaffRole;
+import com.ondemandmonitoring.missionv2.enums.StaffResponseStatus;
+import com.ondemandmonitoring.user.domain.User;
+
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -20,14 +24,17 @@ public class MissionOperatorAssignment extends BaseEntity {
     @JoinColumn(name = "mission_id", nullable = false)
     Mission mission;
 
-    @Column(name = "operator_id", nullable = false, length = 100)
-    String operatorId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "staff_id", nullable = false)
+    User staff;
 
-    @Column(name = "assigned_by", length = 100)
-    String assignedBy;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "assigned_role", length = 50)
+    MissionStaffRole assignedRole;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
-    String status; // PENDING / ACCEPTED / REJECTED
+    StaffResponseStatus status; // PENDING / ACCEPTED / REJECTED
 
     @Column(name = "rejection_reason", length = 500)
     String rejectionReason;

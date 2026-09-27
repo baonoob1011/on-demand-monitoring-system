@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.drone.controller;
 
 import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.drone.domain.DroneTelemetry;
+import com.ondemandmonitoring.drone.domain.DeviceTelemetry;
 import com.ondemandmonitoring.drone.dto.request.TelemetryRequest;
 import com.ondemandmonitoring.drone.service.impl.DroneTelemetryService;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,7 +41,7 @@ class InternalDroneTelemetryControllerTest {
     @Test
     void savesAuthenticatedTelemetryForRequestedDrone() {
         TelemetryRequest request = new TelemetryRequest();
-        DroneTelemetry telemetry = new DroneTelemetry();
+        DeviceTelemetry telemetry = new DeviceTelemetry();
         when(service.saveForRegisteredDrone("DRN-0048", request)).thenReturn(telemetry);
 
         var response = controller.receive("DRN-0048", "local-test-secret", request);

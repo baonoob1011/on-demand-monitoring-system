@@ -4,11 +4,11 @@ import com.ondemandmonitoring.drone.service.IDroneTelemetryService;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.drone.domain.Drone;
+import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.device.enums.DeviceStatus;
+import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.drone.dto.request.TelemetryRequest;
-import com.ondemandmonitoring.drone.domain.DroneTelemetry;
-import com.ondemandmonitoring.drone.enums.DroneStatus;
-import com.ondemandmonitoring.drone.repository.DroneRepository;
+import com.ondemandmonitoring.drone.domain.DeviceTelemetry;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
 import com.ondemandmonitoring.environment.service.EnvironmentalMeasurementService;
 import com.ondemandmonitoring.replanning.event.DroneTelemetrySavedEvent;
@@ -19,32 +19,36 @@ import lombok.experimental.FieldDefaults;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 @Service
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class DroneTelemetryService implements IDroneTelemetryService {
     DroneTelemetryRepository droneTelemetryRepository;
-    DroneRepository droneRepository;
+    DeviceRepository deviceRepository;
     EnvironmentalMeasurementService environmentalMeasurementService;
     ApplicationEventPublisher eventPublisher;
+
     @Transactional
     @Override
-    public DroneTelemetry save(String droneCode, TelemetryRequest request) {
-        return saveSnapshot(getOrCreateDrone(droneCode), droneCode, request);
+    public DeviceTelemetry save(String droneCode, TelemetryRequest request) {
+        return saveSnapshot(getOrCreateDevice(droneCode), droneCode, request);
     }
+
     @Transactional
     @Override
-    public DroneTelemetry saveForRegisteredDrone(String droneCode, TelemetryRequest request) {
-        Drone drone = droneRepository.findByDroneCode(droneCode)
-                .orElseThrow(() -> new ApiException(ErrorCode.DRONE_NOT_FOUND,
-                        "Registered drone not found: " + droneCode));
-        return saveSnapshot(drone, droneCode, request);
+    public DeviceTelemetry saveForRegisteredDrone(String deviceCode, TelemetryRequest request) {
+        Device device = deviceRepository.findByDeviceCode(deviceCode)
+                .orElseThrow(() -> new ApiException(ErrorCode.DEVICE_NOT_FOUND,
+                        "Registered device not found: " + deviceCode));
+        return saveSnapshot(device, deviceCode, request);
     }
-    private DroneTelemetry saveSnapshot(Drone drone, String droneCode, TelemetryRequest request) {
-        DroneTelemetry telemetry = droneTelemetryRepository.findByDroneCode(droneCode)
-                .orElseGet(DroneTelemetry::new);
-        telemetry.setDroneCode(droneCode);
-        telemetry.setDrone(drone);
+
+    private DeviceTelemetry saveSnapshot(Device device, String deviceCode, TelemetryRequest request) {
+        DeviceTelemetry telemetry = droneTelemetryRepository.findByDeviceCode(deviceCode)
+                .orElseGet(DeviceTelemetry::new);
+        telemetry.setDeviceCode(deviceCode);
+        telemetry.setDevice(device);
         telemetry.setLatitude(request.getLatitude());
         telemetry.setLongitude(request.getLongitude());
         telemetry.setAltitude(request.getAltitude());
@@ -82,24 +86,22 @@ public class DroneTelemetryService implements IDroneTelemetryService {
         telemetry.setGeofenceConfigured(request.getGeofenceConfigured());
         telemetry.setGeofencePassed(request.getGeofencePassed());
 
-        DroneTelemetry saved = droneTelemetryRepository.save(telemetry);
-        environmentalMeasurementService.recordAirPressure(drone, droneCode, request);
-        eventPublisher.publishEvent(new DroneTelemetrySavedEvent(saved.getId(), droneCode));
+        DeviceTelemetry saved = droneTelemetryRepository.save(telemetry);
+        environmentalMeasurementService.recordAirPressure(device, deviceCode, request);
+        eventPublisher.publishEvent(new DroneTelemetrySavedEvent(saved.getId(), deviceCode));
         return saved;
     }
 
-    private Drone getOrCreateDrone(String droneCode) {
-        return droneRepository.findByDroneCode(droneCode)
+    private Device getOrCreateDevice(String deviceCode) {
+        return deviceRepository.findByDeviceCode(deviceCode)
                 .orElseGet(() -> {
-                    Drone drone = new Drone();
-                    drone.setDroneCode(droneCode);
-                    drone.setSerialNumber(droneCode);
-                    drone.setDroneName("PX4 SITL Drone");
-                    
-                    drone.setStatus(DroneStatus.AVAILABLE);
-                    drone.setLastSeenAt(LocalDateTime.now());
-                    return droneRepository.save(drone);
+                    Device device = new Device();
+                    device.setDeviceCode(deviceCode);
+                    device.setSerialNumber(deviceCode);
+                    device.setName("PX4 SITL Drone");
+                    device.setStatus(DeviceStatus.AVAILABLE);
+                    device.setLastSeenAt(LocalDateTime.now());
+                    return deviceRepository.save(device);
                 });
     }
 }
-

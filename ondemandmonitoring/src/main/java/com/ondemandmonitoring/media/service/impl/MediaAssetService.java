@@ -1,10 +1,10 @@
 package com.ondemandmonitoring.media.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.drone.domain.Drone;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.drone.enums.DroneStatus;
-import com.ondemandmonitoring.drone.repository.DroneRepository;
+import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.device.enums.DeviceStatus;
+import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.IMediaAssetService;
@@ -47,7 +47,7 @@ public class MediaAssetService implements IMediaAssetService {
     S3ObjectStorageService s3ObjectStorageService;
     AwsS3Properties awsS3Properties;
     Environment environment;
-    DroneRepository droneRepository;
+    DeviceRepository deviceRepository;
     MediaAssetRepository mediaAssetRepository;
 
     @Transactional
@@ -59,25 +59,25 @@ public class MediaAssetService implements IMediaAssetService {
     @Transactional
     @Override
     public MediaAsset upload(String missionId, String droneId,
-                             Instant capturedAt, MultipartFile file) {
+            Instant capturedAt, MultipartFile file) {
         return upload(missionId, droneId, capturedAt, file, MEDIA_TYPE_IMAGE);
     }
 
     @Transactional
     @Override
     public MediaAsset upload(String missionId, String droneId,
-                             Instant capturedAt, MultipartFile file, String requestedMediaType) {
+            Instant capturedAt, MultipartFile file, String requestedMediaType) {
         String mediaType = validate(file, requestedMediaType);
         validateRequired("missionId", missionId);
         validateRequired("droneId", droneId);
-        Drone drone = getOrCreateDrone(droneId);
+        Device device = getOrCreateDevice(droneId);
 
         String originalFileName = safeFileName(file.getOriginalFilename());
         String contentType = file.getContentType();
 
         if (!useS3Storage()) {
             return saveLocal(
-                    drone,
+                    device,
                     missionId,
                     droneId,
                     capturedAt,
@@ -91,7 +91,7 @@ public class MediaAssetService implements IMediaAssetService {
         if (bucket == null || bucket.isBlank()) {
             log.warn("AWS S3 bucket is not configured; storing image locally");
             return saveLocal(
-                    drone,
+                    device,
                     missionId,
                     droneId,
                     capturedAt,
@@ -103,7 +103,8 @@ public class MediaAssetService implements IMediaAssetService {
 
         String key = buildS3Key(missionId, droneId, mediaType);
         String diagnosticPrefix = MEDIA_TYPE_VIDEO.equals(mediaType)
-                ? "[S3-VIDEO]" : "[S3-IMAGE]";
+                ? "[S3-VIDEO]"
+                : "[S3-IMAGE]";
         StoredObject storedObject;
 
         try {
@@ -123,8 +124,8 @@ public class MediaAssetService implements IMediaAssetService {
 
         try {
             MediaAsset image = new MediaAsset();
-            image.setDroneCode(droneId);
-            image.setDrone(drone);
+            image.setDeviceId(droneId);
+            image.setDevice(device);
             image.setMissionId(missionId);
             image.setType(mediaType);
             image.setStorageProvider(STORAGE_PROVIDER_S3);
@@ -169,7 +170,7 @@ public class MediaAssetService implements IMediaAssetService {
     public MediaAsset getByDroneAndId(String droneCode, String mediaId) {
         validateRequired("droneCode", droneCode);
         MediaAsset mediaAsset = getById(mediaId);
-        if (!droneCode.equals(mediaAsset.getDroneCode())) {
+        if (!droneCode.equals(mediaAsset.getDeviceId())) {
             throw new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Media not found for drone");
         }
         return mediaAsset;
@@ -329,7 +330,7 @@ public class MediaAssetService implements IMediaAssetService {
     }
 
     private MediaAsset saveLocal(
-            Drone drone,
+            Device drone,
             String missionId,
             String droneId,
             Instant capturedAt,
@@ -359,8 +360,8 @@ public class MediaAssetService implements IMediaAssetService {
         }
 
         MediaAsset image = new MediaAsset();
-        image.setDroneCode(droneId);
-        image.setDrone(drone);
+        image.setDeviceId(droneId);
+        image.setDevice(drone);
         image.setMissionId(missionId);
         image.setType(mediaType);
         image.setStorageProvider(STORAGE_PROVIDER_LOCAL);
@@ -397,17 +398,16 @@ public class MediaAssetService implements IMediaAssetService {
         return message;
     }
 
-    private Drone getOrCreateDrone(String droneCode) {
-        return droneRepository.findByDroneCode(droneCode)
+    private Device getOrCreateDevice(String deviceCode) {
+        return deviceRepository.findByDeviceCode(deviceCode)
                 .orElseGet(() -> {
-                    Drone drone = new Drone();
-                    drone.setDroneCode(droneCode);
-                    drone.setSerialNumber(droneCode);
-                    drone.setDroneName("PX4 SITL Drone");
-                    
-                    drone.setStatus(DroneStatus.AVAILABLE);
-                    drone.setLastSeenAt(LocalDateTime.now());
-                    return droneRepository.save(drone);
+                    Device device = new Device();
+                    device.setDeviceCode(deviceCode);
+                    device.setSerialNumber(deviceCode);
+                    device.setName("PX4 SITL Drone");
+                    device.setStatus(DeviceStatus.AVAILABLE);
+                    device.setLastSeenAt(LocalDateTime.now());
+                    return deviceRepository.save(device);
                 });
     }
 

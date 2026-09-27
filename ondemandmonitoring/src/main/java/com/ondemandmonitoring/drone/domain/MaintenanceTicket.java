@@ -1,6 +1,7 @@
 package com.ondemandmonitoring.drone.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
+import com.ondemandmonitoring.device.domain.Device;
 import com.ondemandmonitoring.user.domain.User;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -14,8 +15,10 @@ import java.time.Instant;
  * Maintenance work order for a device (Drone or any future device type).
  * <p>
  * Relationships:
- * - 1 Device (Drone) → many MaintenanceTickets  (one device can accumulate fault history)
- * - 1 User (technician) → many MaintenanceTickets (one technician can be assigned to many tickets)
+ * - 1 Device (Drone) → many MaintenanceTickets (one device can accumulate fault
+ * history)
+ * - 1 User (technician) → many MaintenanceTickets (one technician can be
+ * assigned to many tickets)
  */
 @Getter
 @Setter
@@ -33,7 +36,7 @@ public class MaintenanceTicket extends BaseEntity {
      */
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "device_id", nullable = false)
-    Drone device; // field name is 'device' to be device-type agnostic
+    Device device; // field name is 'device' to be device-type agnostic
 
     /**
      * The technician/staff user assigned to resolve this ticket.
@@ -71,4 +74,3 @@ public class MaintenanceTicket extends BaseEntity {
     @Column(name = "closed_at")
     Instant closedAt; // set when ticket is formally closed after verification
 }
-

@@ -2,7 +2,7 @@ package com.ondemandmonitoring.mission.service;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.drone.domain.Drone;
-import com.ondemandmonitoring.drone.domain.DroneTelemetry;
+import com.ondemandmonitoring.drone.domain.DeviceTelemetry;
 import com.ondemandmonitoring.drone.domain.PersistedPreflightCheck;
 import com.ondemandmonitoring.drone.domain.PreflightCheck;
 import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
@@ -422,7 +422,7 @@ class MissionServiceTest {
             when(missionRepository.findById("m-stale-preflight")).thenReturn(Optional.of(mission));
             when(droneRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(drone));
             stubFreshAssignedTelemetry("m-stale-preflight", drone, 100.0);
-            DroneTelemetry stale = new DroneTelemetry();
+            DeviceTelemetry stale = new DeviceTelemetry();
             stale.setConnected(true);
             stale.setBatteryPercent(100.0);
             stale.setUpdatedAt(Instant.now().minusSeconds(60));
@@ -441,7 +441,7 @@ class MissionServiceTest {
             when(missionRepository.findById("m-runtime-pass")).thenReturn(Optional.of(mission));
             when(droneRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(drone));
             stubFreshAssignedTelemetry("m-runtime-pass", drone, 100.0);
-            DroneTelemetry stale = new DroneTelemetry();
+            DeviceTelemetry stale = new DeviceTelemetry();
             stale.setDroneCode("DRONE-01");
             stale.setConnected(true);
             stale.setBatteryPercent(100.0);
@@ -475,7 +475,7 @@ class MissionServiceTest {
             when(missionRepository.findById("m-runtime-pass-no-battery")).thenReturn(Optional.of(mission));
             when(droneRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(drone));
             stubFreshAssignedTelemetry("m-runtime-pass-no-battery", drone, 100.0);
-            DroneTelemetry telemetry = new DroneTelemetry();
+            DeviceTelemetry telemetry = new DeviceTelemetry();
             telemetry.setDroneCode("DRONE-01");
             telemetry.setConnected(true);
             telemetry.setUpdatedAt(Instant.now());
@@ -544,7 +544,7 @@ class MissionServiceTest {
             Drone drone = buildDrone("DRN-0048", DroneStatus.PREFLIGHT);
             MissionDroneAssignment assignment = new MissionDroneAssignment();
             assignment.setDrone(drone);
-            DroneTelemetry telemetry = new DroneTelemetry();
+            DeviceTelemetry telemetry = new DeviceTelemetry();
             telemetry.setConnected(true);
             telemetry.setUpdatedAt(Instant.now());
             when(missionRepository.findById("m-ready")).thenReturn(Optional.of(mission));
@@ -565,7 +565,7 @@ class MissionServiceTest {
             Drone drone = buildDrone("DRN-0048", DroneStatus.PREFLIGHT);
             MissionDroneAssignment assignment = new MissionDroneAssignment();
             assignment.setDrone(drone);
-            DroneTelemetry telemetry = new DroneTelemetry();
+            DeviceTelemetry telemetry = new DeviceTelemetry();
             telemetry.setConnected(true);
             telemetry.setUpdatedAt(Instant.now().minusSeconds(60));
             when(missionRepository.findById("m-stale")).thenReturn(Optional.of(mission));
@@ -1268,7 +1268,7 @@ class MissionServiceTest {
         assignment.setDrone(drone);
         when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId))
                 .thenReturn(Optional.of(assignment));
-        DroneTelemetry telemetry = new DroneTelemetry();
+        DeviceTelemetry telemetry = new DeviceTelemetry();
         telemetry.setDroneCode(drone.getDroneCode());
         telemetry.setConnected(true);
         telemetry.setUpdatedAt(Instant.now());

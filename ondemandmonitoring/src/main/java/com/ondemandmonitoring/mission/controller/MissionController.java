@@ -41,7 +41,8 @@ import java.time.ZoneId;
 
 /**
  * REST entry point for all Flow 3 (Drone Operator) mission lifecycle use cases.
- * Enterprise pattern: Thin controller receiving DTOs directly from Service layer.
+ * Enterprise pattern: Thin controller receiving DTOs directly from Service
+ * layer.
  *
  * Base path: /api/missions
  */
@@ -63,7 +64,8 @@ public class MissionController {
 
     /**
      * GET /api/missions?operatorId={id}
-     * List all missions assigned to a drone operator, sorted by scheduledStartAt desc.
+     * List all missions assigned to a drone operator, sorted by scheduledStartAt
+     * desc.
      */
     @GetMapping
     @PreAuthorize("hasAnyRole('STAFF', 'SYSTEM_OPERATOR', 'ADMIN')")
@@ -73,7 +75,10 @@ public class MissionController {
         return ResponseEntity.ok(ApiResponse.ok(missions));
     }
 
-    /** Staff-only search; leaves the operator-scoped GET /api/missions contract unchanged. */
+    /**
+     * Staff-only search; leaves the operator-scoped GET /api/missions contract
+     * unchanged.
+     */
     @GetMapping("/staff")
     @PreAuthorize("hasAnyRole('STAFF', 'SYSTEM_OPERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<PageResponse<MissionResponse>>> searchStaffMissions(
@@ -176,7 +181,8 @@ public class MissionController {
     /**
      * PATCH /api/missions/{id}/accept
      * Drone Operator confirms they accept the mission.
-     * Transitions: WAITING_OPERATOR_ACCEPTANCE → ASTAR_ENERGY_AWARE planning → SCHEDULED
+     * Transitions: WAITING_OPERATOR_ACCEPTANCE → ASTAR_ENERGY_AWARE planning →
+     * SCHEDULED
      */
     @PatchMapping("/{id}/accept")
     @PreAuthorize("hasRole('DRONE_OPERATOR') and @missionAuthorizationService.isAssignedOperator(#id)")
@@ -254,7 +260,8 @@ public class MissionController {
 
     /**
      * POST /api/missions/{id}/gcs-lost
-     * Report GCS telemetry signal loss (LOST), triggering automatic Return-To-Launch (RTL).
+     * Report GCS telemetry signal loss (LOST), triggering automatic
+     * Return-To-Launch (RTL).
      */
     @PostMapping("/{id}/gcs-lost")
     @PreAuthorize("hasRole('DRONE_OPERATOR') and @missionAuthorizationService.isAssignedOperator(#id)")
@@ -406,7 +413,7 @@ public class MissionController {
             @Valid @RequestBody PostFlightStatusRequest request) {
         MissionResponse response = missionService.recordPostFlightInspection(
                 id,
-                request.getNewDroneStatus(),
+                request.getNewDeviceStatus(),
                 request.getNotes(),
                 request.getInspectionResults(),
                 request.getTelemetrySnapshot());

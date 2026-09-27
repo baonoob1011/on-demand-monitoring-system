@@ -7,6 +7,7 @@ import com.ondemandmonitoring.device.enums.DeviceStatus;
 import com.ondemandmonitoring.missionv2.enums.CheckupStatus;
 import com.ondemandmonitoring.missionv2.enums.DeviceRole;
 import com.ondemandmonitoring.missionv2.enums.LockStatus;
+import com.ondemandmonitoring.missionv2.enums.MissionStaffRole;
 import com.ondemandmonitoring.missionv2.enums.MissionV2Status;
 import com.ondemandmonitoring.missionv2.enums.StaffResponseStatus;
 import com.ondemandmonitoring.missionv2.domain.MissionDeviceAssignment;
@@ -297,7 +298,7 @@ public class MissionV2Service implements IMissionV2Service {
         MissionStaffAssignment assignment = MissionStaffAssignment.builder()
                 .mission(mission)
                 .staff(staff)
-                .assignedRole(assignedRole)
+                .assignedRole(MissionStaffRole.PILOT)
                 .responseStatus(StaffResponseStatus.PENDING)
                 .assignedAt(Instant.now())
                 .build();
