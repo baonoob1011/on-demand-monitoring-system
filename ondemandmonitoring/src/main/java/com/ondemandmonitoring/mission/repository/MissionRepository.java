@@ -4,6 +4,8 @@ import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.Lock;
@@ -29,6 +31,13 @@ public interface MissionRepository extends JpaRepository<Mission, String>, JpaSp
     Optional<Mission> findByMissionCode(String missionCode);
 
     List<Mission> findByOrder_Customer_Id(String customerId);
+
+    @EntityGraph(attributePaths = "order")
+    Page<Mission> findByOrder_Customer_IdAndStatusIn(
+            String customerId, List<MissionStatus> statuses, Pageable pageable);
+
+    @EntityGraph(attributePaths = "order")
+    Optional<Mission> findByIdAndOrder_Customer_Id(String id, String customerId);
 
     @Query("""
             SELECT DISTINCT m FROM Mission m
