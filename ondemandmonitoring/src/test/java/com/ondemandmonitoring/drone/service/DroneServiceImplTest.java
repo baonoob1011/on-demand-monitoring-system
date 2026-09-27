@@ -38,6 +38,35 @@ import org.springframework.data.domain.Pageable;
 @ExtendWith(MockitoExtension.class)
 class DroneServiceImplTest {
 
+    @Test
+    void legacyRegistrationReturnsExistingDroneWithoutChangingIt() {
+        var drone = new Drone();
+        drone.setDroneCode("DRN-0048");
+        drone.setStatus(DroneStatus.RESERVED);
+        when(droneRepository.findByDroneCode("DRN-0048")).thenReturn(Optional.of(drone));
+
+        assertThat(droneService.getOrRegisterLegacySimulator("DRN-0048")).isSameAs(drone);
+        assertThat(drone.getStatus()).isEqualTo(DroneStatus.RESERVED);
+        org.mockito.Mockito.verify(droneRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void strictCodeLookupDoesNotAutoCreateMissingDrone() {
+        when(droneRepository.findByDroneCode("missing")).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> droneService.getEntityByCode("missing")).isInstanceOf(ApiException.class);
+        org.mockito.Mockito.verify(droneRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void legacyRegistrationPreservesSimulatorDefaultsForNewDrone() {
+        when(droneRepository.findByDroneCode("SIM-001")).thenReturn(Optional.empty());
+        when(droneRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var drone = droneService.getOrRegisterLegacySimulator("SIM-001");
+        assertThat(drone.getDroneCode()).isEqualTo("SIM-001");
+        assertThat(drone.getSerialNumber()).isEqualTo("SIM-001");
+        assertThat(drone.getStatus()).isEqualTo(DroneStatus.AVAILABLE);
+    }
+
     @Mock
     private DroneRepository droneRepository;
 

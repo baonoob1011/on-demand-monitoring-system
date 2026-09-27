@@ -2,6 +2,7 @@ package com.ondemandmonitoring.mission.service;
 
 import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
 import com.ondemandmonitoring.drone.enums.DroneStatus;
+import com.ondemandmonitoring.mission.dto.response.PostflightCheckResponse;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
@@ -246,4 +247,6 @@ public interface IMissionService {
             String notes,
             java.util.Map<String, com.ondemandmonitoring.mission.enums.InspectionResult> results,
             com.ondemandmonitoring.mission.dto.request.PostFlightStatusRequest.TelemetrySnapshot telemetrySnapshot);
+
+    PostflightCheckResponse getLatestPostflightCheck(String missionId);
 }

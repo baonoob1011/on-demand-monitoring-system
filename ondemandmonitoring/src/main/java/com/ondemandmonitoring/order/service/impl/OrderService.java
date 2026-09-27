@@ -52,7 +52,7 @@ public class OrderService implements IOrderService {
 
     @Override
     @Transactional
-    public MissionResponse approveOrder(String orderId) {
+    public OrderCreateResponse approveOrder(String orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
 
@@ -64,7 +64,7 @@ public class OrderService implements IOrderService {
         orderRepository.save(order);
 
         // Flow 2: Create mission for the approved order
-        return missionService.createMissionForOrder(orderId);
+        return orderMapper.toResponse(order);
     }
 
     @Override
@@ -86,7 +86,8 @@ public class OrderService implements IOrderService {
 
         // 4. Validate Date Range
         if (request.getPreferredDateFrom().isAfter(request.getPreferredDateTo())) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "preferredDateFrom must be before or equal to preferredDateTo");
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "preferredDateFrom must be before or equal to preferredDateTo");
         }
 
         // 5. Convert & validate GeoJSON geometries

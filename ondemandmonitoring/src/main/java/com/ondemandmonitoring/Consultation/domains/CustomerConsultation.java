@@ -77,6 +77,20 @@ public class CustomerConsultation extends BaseEntity {
     @Column(name = "requirement_summary", columnDefinition = "TEXT")
     private String requirementSummary;
 
+    /**
+     * AI-generated request title used to pre-fill the create request form.
+     * Customer can still edit the final Order title before submitting.
+     */
+    @Column(name = "request_title", length = 255)
+    private String requestTitle;
+
+    /**
+     * AI-generated request description used to pre-fill the create request form.
+     * Customer can still edit the final Order description before submitting.
+     */
+    @Column(name = "request_summary", columnDefinition = "TEXT")
+    private String requestSummary;
+
     @Builder.Default
     @OneToMany(
             mappedBy = "consultation",

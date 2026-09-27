@@ -52,7 +52,8 @@ public class OrderController {
     @GetMapping("/mine")
     public ResponseEntity<ApiResponse<List<OrderCreateResponse>>> getMyOrders(
             @RequestParam(required = false) OrderStatus status) {
-        return ResponseEntity.ok(ApiResponse.ok("Customer orders retrieved successfully", orderService.getMyOrders(status)));
+        return ResponseEntity
+                .ok(ApiResponse.ok("Customer orders retrieved successfully", orderService.getMyOrders(status)));
     }
 
     @Operation(summary = "Get order details", description = "Retrieves details of a specific order by ID")
@@ -76,9 +77,9 @@ public class OrderController {
 
     @Operation(summary = "Approve an order", description = "Manager approves an order and creates a mission")
     @PostMapping("/{orderId}/approve")
-    public ResponseEntity<ApiResponse<MissionResponse>> approveOrder(@PathVariable String orderId) {
-        MissionResponse mission = orderService.approveOrder(orderId);
-        return ResponseEntity.ok(ApiResponse.ok("Order approved and mission created successfully", mission));
+    public ResponseEntity<ApiResponse<OrderCreateResponse>> approveOrder(@PathVariable String orderId) {
+        OrderCreateResponse order = orderService.approveOrder(orderId);
+        return ResponseEntity.ok(ApiResponse.ok("Order approved successfully", order));
     }
 
     @Operation(summary = "Submit approval decision", description = "Manager submits rejection or need-info decision with reason")

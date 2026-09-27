@@ -161,7 +161,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
         return List.of(
                 new ThermalSeed(
                         "FOREST_AMBIENT",
-                        "Forest Ambient",
+                        "Nền nhiệt khu rừng",
                         "FOREST_MONITORING_AREA",
                         ThermalType.AMBIENT,
                         28.0,
@@ -171,7 +171,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                         true),
                 new ThermalSeed(
                         "FOREST_BURNT_GROUND_01",
-                        "Forest Burnt Ground",
+                        "Khu đất cháy trong rừng",
                         "FOREST_MONITORING_AREA",
                         ThermalType.WARM_AREA,
                         50.0,
@@ -181,7 +181,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                         true),
                 new ThermalSeed(
                         "FOREST_HOTSPOT_01",
-                        "Forest Hotspot 01",
+                        "Điểm nhiệt rừng 01",
                         "FOREST_MONITORING_AREA",
                         ThermalType.HOTSPOT,
                         110.0,
@@ -191,7 +191,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                         true),
                 new ThermalSeed(
                         "FOREST_HOTSPOT_02",
-                        "Forest Hotspot 02",
+                        "Điểm nhiệt rừng 02",
                         "FOREST_MONITORING_AREA",
                         ThermalType.HOTSPOT,
                         145.0,
@@ -201,7 +201,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                         true),
                 new ThermalSeed(
                         "FOREST_FIRE_CORE_01",
-                        "Forest Fire Core 01",
+                        "Tâm cháy rừng 01",
                         "FOREST_MONITORING_AREA",
                         ThermalType.FIRE,
                         250.0,
@@ -451,13 +451,13 @@ public class SimulationZoneSeeder implements CommandLineRunner {
         return List.of(
                 new SimulationZone(
                         "LOGISTICS_YARD",
-                        "Logistics Yard",
+                        "Bãi logistics",
                         "LOGISTICS",
                         false,
                         139.145693419814,
                         -321.3862851742284,
                         114.11964890958473,
-                        "Container, loading and storage yard monitoring",
+                        "Giám sát container, khu bốc xếp và bãi lưu trữ",
                         polygonExact(
                                 new Coordinate(68.95623066280409, -388.330972884988),
                                 new Coordinate(211.95623066280407, -381.230972884988),
@@ -465,13 +465,13 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                                 new Coordinate(57.366230662804085, -241.79097288498798))),
                 new SimulationZone(
                         "DAM",
-                        "Dam",
+                        "Đập nước",
                         "DAM",
                         false,
                         12.519335019577102,
                         28.76067421310007,
                         291.70433026930954,
-                        "Dam wall, spillway and water discharge inspection",
+                        "Kiểm tra thân đập, cửa xả và khu vực thoát nước",
                         polygonExact(
                                 new Coordinate(-61.7002342063322, -236.34594164407727),
                                 new Coordinate(51.3562107367149, -260.3467684140278),
@@ -483,13 +483,13 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                                 new Coordinate(-91.2270513985826, 234.42134151454093))),
                 new SimulationZone(
                         "FOREST_MONITORING_AREA",
-                        "Forest Monitoring Area",
+                        "Khu giám sát rừng",
                         "FOREST",
                         false,
                         -153.07958631557224,
                         -5.74990159281607,
                         176.41741086945504,
-                        "Forest survey, vegetation monitoring and search-area inspection",
+                        "Khảo sát rừng, giám sát thảm thực vật và kiểm tra khu vực tìm kiếm",
                         polygonExact(
                                 new Coordinate(-114.64592817410448, -66.79729515949634),
                                 new Coordinate(-86.14678571391302, -54.43734152071602),
@@ -499,13 +499,13 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                                 new Coordinate(-296.816785713913, -108.03734152071601))),
                 new SimulationZone(
                         "AGRICULTURAL_FIELD",
-                        "Agricultural Field",
+                        "Khu canh tác nông nghiệp",
                         "AGRICULTURE",
                         false,
                         189.22019372570196,
                         -217.91925413365598,
                         126.44561576835451,
-                        "Crop health survey and dry-area detection",
+                        "Khảo sát sức khỏe cây trồng và phát hiện khu vực khô hạn",
                         polygonExact(
                                 new Coordinate(64.7619773618294, -240.24963985719037),
                                 new Coordinate(255.94144817148606, -294.0631097252151),
@@ -513,13 +513,13 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                                 new Coordinate(129.28248911984485, -159.94784365646754))),
                 new SimulationZone(
                         "AIRPORT",
-                        "Airport",
+                        "Sân bay",
                         "AIRPORT",
                         true,
                         -191.25102446379535,
                         -282.98745476687617,
                         165.58532543676702,
-                        "Runway and aircraft operating area inspection",
+                        "Kiểm tra đường băng và khu vực vận hành máy bay",
                         polygonExact(
                                 new Coordinate(-303.75102446379543, -404.48745476687617),
                                 new Coordinate(-78.7510244637952, -404.48745476687617),
@@ -527,13 +527,13 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                                 new Coordinate(-303.75102446379543, -161.4874547668761))),
                 new SimulationZone(
                         "INDUSTRIAL_WAREHOUSE",
-                        "Industrial Warehouse",
+                        "Kho công nghiệp",
                         "INDUSTRIAL",
                         false,
                         -143.23062371562537,
                         -114.81108969620317,
                         113.32913184143027,
-                        "Warehouse, tank, roof and yard monitoring",
+                        "Giám sát kho, bồn chứa, mái nhà và sân bãi",
                         polygonExact(
                                 new Coordinate(-187.36306346370972, -158.17978765074838),
                                 new Coordinate(-78.09292524404549, -159.34636969449593),
@@ -541,13 +541,13 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                                 new Coordinate(-256.1915857600335, -105.68348442789366))),
                 new SimulationZone(
                         "CONSTRUCTION_SITE",
-                        "Construction Site",
+                        "Công trường xây dựng",
                         "CONSTRUCTION",
                         false,
                         194.28785918114278,
                         -98.75079262560652,
                         115.2411810661449,
-                        "Construction progress and restricted area inspection",
+                        "Theo dõi tiến độ thi công và kiểm tra khu vực hạn chế",
                         polygonExact(
                                 new Coordinate(104.0271568575314, -156.553660742234),
                                 new Coordinate(299.4839317714034, -145.8073131631964),
@@ -555,13 +555,13 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                                 new Coordinate(98.95355904858229, -44.43152924084802))),
                 new SimulationZone(
                         "LANDSLIDE_FLOOD_AREA",
-                        "Landslide / Flood Area",
+                        "Khu sạt lở / ngập lụt",
                         "ENVIRONMENTAL_HAZARD",
                         false,
                         -219.3346554204865,
                         100.63047130709104,
                         222.77629271229262,
-                        "Landslide, blocked trail and flood inspection",
+                        "Kiểm tra sạt lở, tuyến đường bị chặn và ngập lụt",
                         polygonExact(
                                 new Coordinate(-300.8895268681381, 203.62155736914286),
                                 new Coordinate(-301.6295268681381, -106.3884426308571),
@@ -569,13 +569,13 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                                 new Coordinate(-80.29952686813812, 214.5815573691429))),
                 new SimulationZone(
                         "TELECOM_TOWER",
-                        "Telecom Tower",
+                        "Tháp viễn thông",
                         "TELECOM",
                         false,
                         182.71799184259135,
                         110.65620524037989,
                         64.66197446625816,
-                        "Communication tower inspection",
+                        "Kiểm tra tháp truyền thông",
                         polygonExact(
                                 new Coordinate(231.60551522410242, 149.08727480280152),
                                 new Coordinate(183.3938203235917, 143.74187559672214),
@@ -587,13 +587,13 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                                 new Coordinate(232.3238203235917, 104.88187559672213))),
                 new SimulationZone(
                         "REMOTE_MONITORING_TARGET",
-                        "Remote Monitoring Target",
+                        "Mục tiêu giám sát xa",
                         "REMOTE_TARGET",
                         false,
                         199.76439304467283,
                         18.025160134743047,
                         122.01357653407322,
-                        "Longer-distance waypoint target and orbit inspection",
+                        "Kiểm tra mục tiêu xa bằng waypoint và quỹ đạo bay vòng",
                         polygonExact(
                                 new Coordinate(287.1689564234234, 60.86550243555595),
                                 new Coordinate(264.4389564234234, 83.59550243555594),
@@ -605,13 +605,13 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                                 new Coordinate(287.1689564234234, 28.72550243555594))),
                 new SimulationZone(
                         "DRONE_BASE",
-                        "Helipad / Drone Base",
+                        "Bãi đáp / Trạm drone",
                         "HOME",
                         false,
                         -14.307585446249302,
                         -298.25494173650185,
                         82.49692575887347,
-                        "Takeoff, landing, return-to-launch, operations staging",
+                        "Cất cánh, hạ cánh, quay về điểm xuất phát và chuẩn bị vận hành",
                         polygonExact(
                                 new Coordinate(-55.36315623932795, -361.9725239938444),
                                 new Coordinate(36.82684376067205, -337.5325239938444),
@@ -623,13 +623,13 @@ public class SimulationZoneSeeder implements CommandLineRunner {
         return List.of(
                 new MapFeature(
                         "MAP_BOUNDARY",
-                        "Compact Simulation Boundary",
+                        "Ranh giới bản đồ mô phỏng",
                         "BOUNDARY",
                         1,
                         rectangle(-452.0, -415.0, 450.0, 686.497)),
                 new MapFeature(
                         "RIVER_CORRIDOR",
-                        "Central River Corridor",
+                        "Hành lang sông trung tâm",
                         "WATER",
                         2,
                         polygon(
@@ -647,7 +647,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                                 new Coordinate(18.0, -392.0))),
                 new MapFeature(
                         "MAIN_ROAD",
-                        "Main Road",
+                        "Đường chính",
                         "ROAD",
                         3,
                         line(
@@ -660,7 +660,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                                 new Coordinate(330.0, 20.0))),
                 new MapFeature(
                         "NORTH_SERVICE_ROAD",
-                        "North Service Road",
+                        "Đường dịch vụ phía Bắc",
                         "ROAD",
                         4,
                         line(
@@ -673,7 +673,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                                 new Coordinate(260.0, 230.0))),
                 new MapFeature(
                         "SOUTH_SERVICE_ROAD",
-                        "South Service Road",
+                        "Đường dịch vụ phía Nam",
                         "ROAD",
                         5,
                         line(
@@ -686,25 +686,25 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                                 new Coordinate(280.0, -202.0))),
                 new MapFeature(
                         "DRONE_LAUNCH_PAD",
-                        "Drone Launch Pad",
+                        "Bãi cất cánh drone",
                         "LANDING_PAD",
                         6,
                         rectangle(-40.0, -320.0, 40.0, -240.0)),
                 new MapFeature(
                         "CONSTRUCTION_BLOCK",
-                        "Construction Block",
+                        "Khối công trường",
                         "WORK_AREA",
                         7,
                         rectangle(132.0, -112.0, 298.0, 12.0)),
                 new MapFeature(
                         "INDUSTRIAL_BLOCK",
-                        "Industrial Warehouse Block",
+                        "Khối kho công nghiệp",
                         "WORK_AREA",
                         8,
                         rectangle(-286.0, -114.0, -128.0, 4.0)),
                 new MapFeature(
                         "FOREST_BLOCK",
-                        "Forest Block",
+                        "Khối rừng",
                         "FOREST",
                         9,
                         polygon(
@@ -716,7 +716,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                                 new Coordinate(-304.0, 62.0))),
                 new MapFeature(
                         "REMOTE_TARGET_BLOCK",
-                        "Remote Target Block",
+                        "Khối mục tiêu xa",
                         "TARGET",
                         10,
                         rectangle(210.0, 5.0, 292.0, 87.0)));

@@ -5,6 +5,9 @@ import com.ondemandmonitoring.media.dto.request.CompleteMultipartRequest;
 import com.ondemandmonitoring.media.dto.request.PrepareMediaUploadRequest;
 import com.ondemandmonitoring.media.dto.request.ReportUploadFailureRequest;
 import com.ondemandmonitoring.media.dto.response.MediaUploadResponse;
+import com.ondemandmonitoring.media.dto.response.ManualMediaUploadResponse;
+import com.ondemandmonitoring.media.dto.request.ManualMediaFileRequest;
+import java.util.List;
 import com.ondemandmonitoring.media.service.IMediaUploadService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -31,6 +34,20 @@ import org.springframework.web.bind.annotation.RestController;
 public class MediaUploadController {
 
     IMediaUploadService uploads;
+
+    @Operation(summary = "List unresolved manual media uploads for an authorized mission")
+    @GetMapping("/missions/{missionId}/manual-media-uploads")
+    public ResponseEntity<ApiResponse<List<ManualMediaUploadResponse>>> manualTasks(
+            @PathVariable String missionId) {
+        return ResponseEntity.ok(ApiResponse.ok(uploads.manualTasks(missionId)));
+    }
+
+    @Operation(summary = "Prepare manual upload of an exact PC backup")
+    @PostMapping("/media/{mediaId}/manual-file-upload")
+    public ResponseEntity<ApiResponse<MediaUploadResponse>> manualFile(@PathVariable String mediaId,
+            @Valid @RequestBody ManualMediaFileRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(uploads.prepareManualFile(mediaId, request)));
+    }
 
     @Operation(summary = "Prepare media upload", description = "Validates media metadata and creates presigned S3 upload URL or multipart upload session")
     @PostMapping("/missions/{missionId}/media-uploads")

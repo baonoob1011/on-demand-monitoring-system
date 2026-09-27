@@ -74,7 +74,9 @@ public enum ErrorCode {
     /**
      * Support Ticket Error Codes
      */
-    SUPPORT_TICKET_NOT_FOUND("Support ticket not found with specified ID", HttpStatus.NOT_FOUND);
+    SUPPORT_TICKET_NOT_FOUND("Support ticket not found with specified ID", HttpStatus.NOT_FOUND),
+    DEVICE_NOT_AVAILABLE("Device is not available", HttpStatus.CONFLICT);
+
     String message;
     HttpStatus status;
 }

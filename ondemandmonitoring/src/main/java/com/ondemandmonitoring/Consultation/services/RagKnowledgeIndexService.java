@@ -5,5 +5,4 @@ public interface RagKnowledgeIndexService {
     void indexServices();
     void indexServiceDeliverables();
     void indexDeliverableTypes();
-    void indexDronePayloads();
 }

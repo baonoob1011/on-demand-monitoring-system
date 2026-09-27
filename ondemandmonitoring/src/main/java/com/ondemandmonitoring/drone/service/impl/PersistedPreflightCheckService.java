@@ -12,7 +12,9 @@ import com.ondemandmonitoring.drone.enums.PreflightCheckLevel;
 import com.ondemandmonitoring.drone.enums.PreflightCheckStatus;
 import com.ondemandmonitoring.drone.enums.PreflightItemStatus;
 import com.ondemandmonitoring.drone.repository.PersistedPreflightCheckRepository;
+import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import java.time.Instant;
 import java.util.List;
@@ -40,6 +42,7 @@ public class PersistedPreflightCheckService implements IPersistedPreflightCheckS
 
     private final PersistedPreflightCheckRepository runRepository;
     private final MissionRepository missionRepository;
+    private final DeviceConnectionRepository deviceConnectionRepository;
 
     @Transactional
     @Override
@@ -51,6 +54,7 @@ public class PersistedPreflightCheckService implements IPersistedPreflightCheckS
 
         PersistedPreflightCheck run = new PersistedPreflightCheck();
         run.setMission(mission);
+        run.setDeviceConnection(activeConnection(missionId));
         run.setStatus(PreflightCheckStatus.CHECKING);
         run.setTotalChecks(CHECKS.size());
         run.setPassedChecks(0);
@@ -157,6 +161,14 @@ public class PersistedPreflightCheckService implements IPersistedPreflightCheckS
                     ErrorCode.MISSION_NOT_FOUND,
                     "Mission not found: " + id);
         }
+    }
+
+    private DeviceConnection activeConnection(String missionId) {
+        return deviceConnectionRepository
+                .findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED")
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.INVALID_REQUEST,
+                        "Connect GCS and bind the mission before preflight."));
     }
 
     private record Definition(String type, String name, PreflightCheckLevel level) {}

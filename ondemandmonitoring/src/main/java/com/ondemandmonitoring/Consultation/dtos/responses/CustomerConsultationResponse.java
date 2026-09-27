@@ -28,6 +28,10 @@ public class CustomerConsultationResponse {
 
     private String requirementSummary;
 
+    private String requestTitle;
+
+    private String requestSummary;
+
     private Instant startedAt;
 
     private Instant completedAt;

@@ -17,6 +17,7 @@ public class MissionResponse {
     String id;
     String orderId;
     String orderTitle;
+    String serviceName;
     String customerName;
     String missionCode;
     MissionStatus status;
@@ -25,6 +26,7 @@ public class MissionResponse {
     String droneCode;
     Double latitude;
     Double longitude;
+    Double radiusM;
     String address;
     Instant scheduledStartAt;
     Instant startedAt;

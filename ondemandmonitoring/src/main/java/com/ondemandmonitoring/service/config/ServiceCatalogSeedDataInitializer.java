@@ -3,8 +3,10 @@ package com.ondemandmonitoring.service.config;
 import com.ondemandmonitoring.service.domain.DeliverableType;
 import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.service.domain.ServiceDeliverable;
+import com.ondemandmonitoring.service.domain.ServiceRequirementSuggestion;
 import com.ondemandmonitoring.service.repository.DeliverableTypeRepository;
 import com.ondemandmonitoring.service.repository.ServiceDeliverableRepository;
+import com.ondemandmonitoring.service.repository.ServiceRequirementSuggestionRepository;
 import com.ondemandmonitoring.service.repository.ServiceRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Component
 @Order(20)
@@ -28,6 +31,7 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
     private final ServiceRepository serviceRepository;
     private final DeliverableTypeRepository deliverableTypeRepository;
     private final ServiceDeliverableRepository serviceDeliverableRepository;
+    private final ServiceRequirementSuggestionRepository suggestionRepository;
 
     @Override
     @Transactional
@@ -36,13 +40,15 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
         int legacyServicesCleaned = cleanupLegacyEnglishServices();
         int deliverablesUpserted = seedDeliverableTypes();
         int linksCreated = seedServiceDeliverables();
+        int suggestionsUpserted = seedRequirementSuggestions();
 
         log.info(
-                "Service catalog seed completed: services={}, legacyServicesCleaned={}, deliverableTypes={}, serviceDeliverables={}",
+                "Service catalog seed completed: services={}, legacyServicesCleaned={}, deliverableTypes={}, serviceDeliverables={}, requirementSuggestions={}",
                 servicesUpserted,
                 legacyServicesCleaned,
                 deliverablesUpserted,
-                linksCreated
+                linksCreated,
+                suggestionsUpserted
         );
     }
 
@@ -51,76 +57,28 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
 
         List<ServiceSeed> seeds = List.of(
                 new ServiceSeed(
-                        "Giám sát Tòa nhà / Cơ sở hạ tầng",
-                        "Kiểm tra tòa nhà, cầu, mái, mặt đứng và hạ tầng khó tiếp cận; phát hiện hư hỏng, nứt vỡ, điểm nóng và rủi ro an toàn."
+                        "Giám sát Đập nước / Hồ chứa",
+                        "Giám sát khu vực đập nước, hồ chứa, cửa xả, thân đập và vùng thượng/hạ lưu; bàn giao ảnh/video hiện trạng và báo cáo kèm hình."
                 ),
                 new ServiceSeed(
-                        "Giám sát Nông nghiệp / Cây trồng",
-                        "Theo dõi sức khỏe cây trồng, vùng thiếu nước, dấu hiệu sâu bệnh, mật độ sinh trưởng và bất thường theo khu vực canh tác."
+                        "Giám sát Mặt nước / Dòng chảy",
+                        "Theo dõi mặt nước, dòng chảy và bờ sông/kênh trên bản đồ mô phỏng; bàn giao ảnh/video và báo cáo giám sát."
                 ),
                 new ServiceSeed(
-                        "Giám sát Môi trường",
-                        "Theo dõi thay đổi môi trường, ô nhiễm, khu vực ngập, sạt lở, xói mòn và các điểm bất thường cần cảnh báo sớm."
+                        "Đo nhiệt độ / Điểm nhiệt",
+                        "Đo nhiệt độ và ghi nhận ảnh nhiệt trong khu vực giám sát; bàn giao ảnh nhiệt và báo cáo phân tích nhiệt."
+                ),
+                new ServiceSeed(
+                        "Đo nhiệt độ / Áp suất",
+                        "Theo dõi nhiệt độ và áp suất khí quyển theo khu vực bay, hỗ trợ đánh giá điều kiện môi trường và rủi ro vận hành drone."
+                ),
+                new ServiceSeed(
+                        "Kiểm tra Công trình thủy lợi",
+                        "Kiểm tra cầu, kè, cống, đường nội bộ, nhà điều hành và hạng mục kỹ thuật quanh khu vực đập/hồ bằng ảnh/video."
                 ),
                 new ServiceSeed(
                         "Giám sát Tiến độ Xây dựng",
-                        "Ghi nhận hiện trạng công trường, so sánh tiến độ, kiểm tra an toàn lao động và tổng hợp hình ảnh định kỳ."
-                ),
-                new ServiceSeed(
-                        "Kiểm tra Tấm pin Năng lượng Mặt trời",
-                        "Kiểm tra bề mặt và ảnh nhiệt hệ thống điện mặt trời để phát hiện điểm nóng, tấm lỗi, bụi bẩn và suy giảm hiệu suất."
-                ),
-                new ServiceSeed(
-                        "Giám sát Cháy rừng / Điểm nhiệt",
-                        "Quét khu vực rừng hoặc đất trống để phát hiện khói, điểm nhiệt, vùng khô nguy cơ cao và hỗ trợ phản ứng nhanh."
-                ),
-                new ServiceSeed(
-                        "Giám sát An ninh Khu vực",
-                        "Tuần tra khu vực, kiểm tra xâm nhập, theo dõi perimeter, cổng ra vào, kho bãi và các điểm nhạy cảm."
-                ),
-                new ServiceSeed(
-                        "Giám sát Giao thông",
-                        "Quan sát lưu lượng, ùn tắc, tai nạn, điểm nghẽn và tình trạng mặt đường tại khu vực cần điều phối."
-                ),
-                new ServiceSeed(
-                        "Khảo sát Bản đồ 2D/3D",
-                        "Thu thập dữ liệu ảnh phục vụ orthomosaic, bản đồ hiện trạng, mô hình 3D, point cloud và đo đạc khu vực."
-                ),
-                new ServiceSeed(
-                        "Kiểm tra Đường dây Điện / Trạm biến áp",
-                        "Kiểm tra tuyến điện, cột, sứ, dây dẫn, hành lang an toàn và điểm nhiệt tại thiết bị điện."
-                ),
-                new ServiceSeed(
-                        "Giám sát Kho bãi / Logistics",
-                        "Theo dõi bãi hàng, container, luồng xe, tồn kho ngoài trời, an toàn vận hành và khu vực bốc dỡ."
-                ),
-                new ServiceSeed(
-                        "Giám sát Sạt lở / Ngập lụt",
-                        "Quan sát vùng nguy cơ sạt lở, mực nước, dòng chảy, điểm ngập và thay đổi địa hình sau mưa bão."
-                ),
-                new ServiceSeed(
-                        "Giám sát Sự kiện / Đám đông",
-                        "Theo dõi mật độ đám đông, lối ra vào, khu vực quá tải và hỗ trợ điều phối an ninh sự kiện."
-                ),
-                new ServiceSeed(
-                        "Kiểm tra Đường ống / Hạ tầng tuyến tính",
-                        "Giám sát tuyến ống, kênh mương, hành lang kỹ thuật, rò rỉ, sụt lún và vật cản trên tuyến."
-                ),
-                new ServiceSeed(
-                        "Giám sát Công trình Cầu / Đường",
-                        "Kiểm tra mặt đường, cầu, taluy, biển báo, lan can, mố trụ và các hư hỏng ảnh hưởng giao thông."
-                ),
-                new ServiceSeed(
-                        "Kiểm kê Tài sản Ngoài trời",
-                        "Đếm và ghi nhận tài sản ngoài trời như xe, thiết bị, vật tư, container, trụ đèn hoặc hạng mục phân tán."
-                ),
-                new ServiceSeed(
-                        "Giám sát Khu công nghiệp / Nhà máy",
-                        "Quan sát khu sản xuất, mái nhà xưởng, bãi vật liệu, tuyến nội bộ, an toàn vận hành và điểm bất thường."
-                ),
-                new ServiceSeed(
-                        "Giám sát Bờ biển / Mặt nước",
-                        "Theo dõi bờ biển, sông hồ, tàu thuyền, rác nổi, xói lở bờ và tình trạng mặt nước."
+                        "Theo dõi công trường xây dựng, tiến độ thi công và hiện trạng khu vực làm việc bằng ảnh/video."
                 )
         );
 
@@ -129,34 +87,34 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
                 count++;
             }
         }
+        deactivateServicesOutsideMapCatalog(seeds);
 
         return count;
+    }
+
+    private void deactivateServicesOutsideMapCatalog(List<ServiceSeed> activeSeeds) {
+        List<String> activeNames = activeSeeds.stream()
+                .map(ServiceSeed::name)
+                .toList();
+
+        for (Service service : serviceRepository.findAll()) {
+            if (activeNames.stream().anyMatch(name -> name.equalsIgnoreCase(service.getName()))) {
+                continue;
+            }
+            if (Boolean.TRUE.equals(service.getIsActive())) {
+                service.setIsActive(false);
+                serviceRepository.save(service);
+            }
+        }
     }
 
     private int cleanupLegacyEnglishServices() {
         int count = 0;
 
         List<LegacyServiceName> legacyNames = List.of(
-                new LegacyServiceName("Building / Infrastructure Monitoring", "Giám sát Tòa nhà / Cơ sở hạ tầng"),
-                new LegacyServiceName("Agricultural / Crop Monitoring", "Giám sát Nông nghiệp / Cây trồng"),
-                new LegacyServiceName("Environmental Monitoring", "Giám sát Môi trường"),
                 new LegacyServiceName("Construction Progress Monitoring", "Giám sát Tiến độ Xây dựng"),
-                new LegacyServiceName("Solar Panel Inspection", "Kiểm tra Tấm pin Năng lượng Mặt trời"),
-                new LegacyServiceName("Security Area Patrol", "Giám sát An ninh Khu vực"),
-                new LegacyServiceName("Traffic and Event Monitoring", "Giám sát Giao thông"),
-                new LegacyServiceName("Traffic / Event Monitoring", "Giám sát Giao thông"),
-                new LegacyServiceName("2D/3D Mapping (Orthomosaic)", "Khảo sát Bản đồ 2D/3D"),
-                new LegacyServiceName("2D/3D Mapping", "Khảo sát Bản đồ 2D/3D"),
-                new LegacyServiceName("Forest Fire / Thermal Hotspot Monitoring", "Giám sát Cháy rừng / Điểm nhiệt"),
-                new LegacyServiceName("Power Line / Substation Inspection", "Kiểm tra Đường dây Điện / Trạm biến áp"),
-                new LegacyServiceName("Warehouse / Logistics Monitoring", "Giám sát Kho bãi / Logistics"),
-                new LegacyServiceName("Landslide / Flood Monitoring", "Giám sát Sạt lở / Ngập lụt"),
-                new LegacyServiceName("Crowd / Event Monitoring", "Giám sát Sự kiện / Đám đông"),
-                new LegacyServiceName("Pipeline / Linear Infrastructure Inspection", "Kiểm tra Đường ống / Hạ tầng tuyến tính"),
-                new LegacyServiceName("Bridge / Roadwork Monitoring", "Giám sát Công trình Cầu / Đường"),
-                new LegacyServiceName("Outdoor Asset Inventory", "Kiểm kê Tài sản Ngoài trời"),
-                new LegacyServiceName("Industrial Site / Factory Monitoring", "Giám sát Khu công nghiệp / Nhà máy"),
-                new LegacyServiceName("Coastal / Water Surface Monitoring", "Giám sát Bờ biển / Mặt nước")
+                new LegacyServiceName("Thermal Hotspot Monitoring", "Đo nhiệt độ / Điểm nhiệt"),
+                new LegacyServiceName("Water Surface Monitoring", "Giám sát Mặt nước / Dòng chảy")
         );
 
         for (LegacyServiceName legacyName : legacyNames) {
@@ -236,14 +194,8 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
                 new DeliverableTypeSeed("Hình ảnh Kiểm tra", "JPG"),
                 new DeliverableTypeSeed("Video Ghi hình", "MP4"),
                 new DeliverableTypeSeed("Báo cáo Phân tích Nhiệt", "PDF"),
-                new DeliverableTypeSeed("Báo cáo Bất thường", "PDF"),
                 new DeliverableTypeSeed("Báo cáo Tiến độ", "PDF"),
-                new DeliverableTypeSeed("Bản đồ Khu vực", "GeoJSON"),
-                new DeliverableTypeSeed("Orthomosaic 2D", "GeoTIFF"),
-                new DeliverableTypeSeed("Mô hình 3D / Point Cloud", "LAS/OBJ"),
-                new DeliverableTypeSeed("Báo cáo NDVI / Sức khỏe cây trồng", "PDF"),
-                new DeliverableTypeSeed("Livestream Giám sát", "HLS"),
-                new DeliverableTypeSeed("Nhật ký Sự kiện", "CSV")
+                new DeliverableTypeSeed("Báo cáo Nhiệt độ / Áp suất", "PDF")
         );
 
         for (DeliverableTypeSeed seed : seeds) {
@@ -251,6 +203,7 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
                 count++;
             }
         }
+        deactivateUnsupportedDeliverableTypes(seeds);
 
         return count;
     }
@@ -259,24 +212,12 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
         int count = 0;
 
         Map<String, List<String>> mapping = new LinkedHashMap<>();
-        mapping.put("Giám sát Tòa nhà / Cơ sở hạ tầng", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình", "Báo cáo Phân tích Nhiệt", "Báo cáo Bất thường", "Mô hình 3D / Point Cloud"));
-        mapping.put("Giám sát Nông nghiệp / Cây trồng", List.of("Báo cáo Giám sát", "Bản đồ Khu vực", "Orthomosaic 2D", "Báo cáo NDVI / Sức khỏe cây trồng", "Hình ảnh Kiểm tra", "Báo cáo Bất thường"));
-        mapping.put("Giám sát Môi trường", List.of("Báo cáo Giám sát", "Bản đồ Khu vực", "Video Ghi hình", "Báo cáo Phân tích Nhiệt", "Báo cáo Bất thường"));
-        mapping.put("Giám sát Tiến độ Xây dựng", List.of("Báo cáo Tiến độ", "Hình ảnh Kiểm tra", "Video Ghi hình", "Orthomosaic 2D", "Mô hình 3D / Point Cloud"));
-        mapping.put("Kiểm tra Tấm pin Năng lượng Mặt trời", List.of("Báo cáo Phân tích Nhiệt", "Hình ảnh Kiểm tra", "Báo cáo Bất thường", "Báo cáo Giám sát"));
-        mapping.put("Giám sát Cháy rừng / Điểm nhiệt", List.of("Báo cáo Phân tích Nhiệt", "Livestream Giám sát", "Báo cáo Bất thường", "Bản đồ Khu vực", "Video Ghi hình"));
-        mapping.put("Giám sát An ninh Khu vực", List.of("Livestream Giám sát", "Video Ghi hình", "Nhật ký Sự kiện", "Báo cáo Bất thường", "Hình ảnh Kiểm tra"));
-        mapping.put("Giám sát Giao thông", List.of("Video Ghi hình", "Báo cáo Giám sát", "Nhật ký Sự kiện", "Bản đồ Khu vực"));
-        mapping.put("Khảo sát Bản đồ 2D/3D", List.of("Bản đồ Khu vực", "Orthomosaic 2D", "Mô hình 3D / Point Cloud", "Hình ảnh Kiểm tra"));
-        mapping.put("Kiểm tra Đường dây Điện / Trạm biến áp", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Báo cáo Phân tích Nhiệt", "Báo cáo Bất thường", "Video Ghi hình"));
-        mapping.put("Giám sát Kho bãi / Logistics", List.of("Báo cáo Giám sát", "Video Ghi hình", "Nhật ký Sự kiện", "Hình ảnh Kiểm tra", "Bản đồ Khu vực"));
-        mapping.put("Giám sát Sạt lở / Ngập lụt", List.of("Báo cáo Giám sát", "Bản đồ Khu vực", "Orthomosaic 2D", "Video Ghi hình", "Báo cáo Bất thường"));
-        mapping.put("Giám sát Sự kiện / Đám đông", List.of("Livestream Giám sát", "Video Ghi hình", "Nhật ký Sự kiện", "Báo cáo Bất thường"));
-        mapping.put("Kiểm tra Đường ống / Hạ tầng tuyến tính", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình", "Bản đồ Khu vực", "Báo cáo Bất thường"));
-        mapping.put("Giám sát Công trình Cầu / Đường", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình", "Báo cáo Bất thường", "Mô hình 3D / Point Cloud"));
-        mapping.put("Kiểm kê Tài sản Ngoài trời", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Nhật ký Sự kiện", "Bản đồ Khu vực"));
-        mapping.put("Giám sát Khu công nghiệp / Nhà máy", List.of("Báo cáo Giám sát", "Video Ghi hình", "Báo cáo Phân tích Nhiệt", "Báo cáo Bất thường", "Hình ảnh Kiểm tra"));
-        mapping.put("Giám sát Bờ biển / Mặt nước", List.of("Báo cáo Giám sát", "Video Ghi hình", "Bản đồ Khu vực", "Orthomosaic 2D", "Báo cáo Bất thường"));
+        mapping.put("Giám sát Đập nước / Hồ chứa", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình", "Báo cáo Phân tích Nhiệt"));
+        mapping.put("Giám sát Mặt nước / Dòng chảy", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình"));
+        mapping.put("Đo nhiệt độ / Điểm nhiệt", List.of("Báo cáo Phân tích Nhiệt", "Hình ảnh Kiểm tra", "Video Ghi hình"));
+        mapping.put("Đo nhiệt độ / Áp suất", List.of("Báo cáo Nhiệt độ / Áp suất", "Báo cáo Giám sát", "Hình ảnh Kiểm tra"));
+        mapping.put("Kiểm tra Công trình thủy lợi", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình"));
+        mapping.put("Giám sát Tiến độ Xây dựng", List.of("Báo cáo Tiến độ", "Hình ảnh Kiểm tra", "Video Ghi hình"));
 
         for (Map.Entry<String, List<String>> entry : mapping.entrySet()) {
             Service service = serviceRepository.findByNameIgnoreCase(entry.getKey()).orElse(null);
@@ -304,6 +245,8 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
                 count++;
             }
         }
+
+        pruneUnsupportedServiceDeliverables();
 
         return count;
     }
@@ -339,6 +282,115 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
                 });
     }
 
+    private int seedRequirementSuggestions() {
+        int count = 0;
+        deactivateLegacySeedSuggestions();
+        count += seedGlobalSuggestions();
+
+        Map<String, List<SuggestionSeed>> byServiceName = Map.ofEntries(
+                Map.entry("Giám sát Đập nước / Hồ chứa", List.of(
+                        new SuggestionSeed("Hình thức giám sát", "Giám sát một lần.", "Tôi muốn giám sát một lần.", 10),
+                        new SuggestionSeed("Hình thức giám sát", "Giám sát định kỳ.", "Tôi muốn giám sát định kỳ.", 20),
+                        new SuggestionSeed("Kết quả cần nhận", "Nhận ảnh/video.", "Tôi muốn nhận ảnh/video hiện trạng.", 30),
+                        new SuggestionSeed("Kết quả cần nhận", "Nhận báo cáo kèm hình.", "Tôi muốn nhận báo cáo kèm hình ảnh.", 40)
+                )),
+                Map.entry("Giám sát Mặt nước / Dòng chảy", List.of(
+                        new SuggestionSeed("Hình thức giám sát", "Giám sát một lần.", "Tôi muốn giám sát một lần.", 10),
+                        new SuggestionSeed("Hình thức giám sát", "Giám sát cố định.", "Tôi muốn giám sát cố định khu vực này.", 20),
+                        new SuggestionSeed("Kết quả cần nhận", "Nhận ảnh/video.", "Tôi muốn nhận ảnh/video hiện trạng.", 30),
+                        new SuggestionSeed("Kết quả cần nhận", "Nhận báo cáo kèm hình.", "Tôi muốn nhận báo cáo kèm hình ảnh.", 40)
+                )),
+                Map.entry("Đo nhiệt độ / Điểm nhiệt", List.of(
+                        new SuggestionSeed("Hình thức giám sát", "Đo một lần.", "Tôi muốn đo một lần.", 10),
+                        new SuggestionSeed("Hình thức giám sát", "Đo định kỳ.", "Tôi muốn đo định kỳ.", 20),
+                        new SuggestionSeed("Kết quả cần nhận", "Nhận ảnh nhiệt.", "Tôi muốn nhận ảnh nhiệt.", 30),
+                        new SuggestionSeed("Kết quả cần nhận", "Nhận báo cáo kèm hình.", "Tôi muốn nhận báo cáo kèm hình ảnh.", 40)
+                )),
+                Map.entry("Kiểm tra Công trình thủy lợi", List.of(
+                        new SuggestionSeed("Hình thức giám sát", "Kiểm tra một lần.", "Tôi muốn kiểm tra một lần.", 10),
+                        new SuggestionSeed("Hình thức giám sát", "Kiểm tra định kỳ.", "Tôi muốn kiểm tra định kỳ.", 20),
+                        new SuggestionSeed("Kết quả cần nhận", "Nhận ảnh/video.", "Tôi muốn nhận ảnh/video hiện trạng.", 30),
+                        new SuggestionSeed("Kết quả cần nhận", "Nhận báo cáo kèm hình.", "Tôi muốn nhận báo cáo kèm hình ảnh.", 40)
+                ))
+        );
+
+        for (Map.Entry<String, List<SuggestionSeed>> entry : byServiceName.entrySet()) {
+            Service service = serviceRepository.findByNameIgnoreCase(entry.getKey()).orElse(null);
+            if (service == null) continue;
+            for (SuggestionSeed seed : entry.getValue()) {
+                if (upsertSuggestion(service, seed)) count++;
+            }
+        }
+
+        return count;
+    }
+
+    private int seedGlobalSuggestions() {
+        int count = 0;
+        for (SuggestionSeed seed : List.of(
+                new SuggestionSeed("Hình thức giám sát", "Giám sát một lần.", "Tôi muốn giám sát một lần.", 900),
+                new SuggestionSeed("Hình thức giám sát", "Giám sát định kỳ.", "Tôi muốn giám sát định kỳ.", 910),
+                new SuggestionSeed("Hình thức giám sát", "Giám sát cố định.", "Tôi muốn giám sát cố định.", 920),
+                new SuggestionSeed("Kết quả cần nhận", "Nhận ảnh/video.", "Tôi muốn nhận ảnh/video hiện trạng.", 930),
+                new SuggestionSeed("Kết quả cần nhận", "Nhận báo cáo kèm hình.", "Tôi muốn nhận báo cáo kèm hình ảnh.", 940)
+        )) {
+            if (upsertSuggestion(null, seed)) count++;
+        }
+        return count;
+    }
+
+    private void deactivateLegacySeedSuggestions() {
+        suggestionRepository.findAll().stream()
+                .filter(row -> "SEED".equalsIgnoreCase(row.getSource()))
+                .forEach(row -> {
+                    row.setActive(false);
+                    suggestionRepository.save(row);
+                });
+    }
+
+    private boolean upsertSuggestion(Service service, SuggestionSeed seed) {
+        ServiceRequirementSuggestion suggestion = service == null
+                ? suggestionRepository.findByActiveTrueAndServiceIsNullOrderBySortOrderAscCreatedAtAsc().stream()
+                        .filter(row -> row.getCategory().equalsIgnoreCase(seed.category())
+                                && row.getLabel().equalsIgnoreCase(seed.label()))
+                        .findFirst()
+                        .orElse(null)
+                : suggestionRepository
+                        .findByServiceIdAndCategoryIgnoreCaseAndLabelIgnoreCase(service.getId(), seed.category(), seed.label())
+                        .orElse(null);
+
+        if (suggestion == null) {
+            suggestion = new ServiceRequirementSuggestion();
+            suggestion.setService(service);
+            suggestion.setCategory(seed.category());
+            suggestion.setLabel(seed.label());
+        }
+
+        boolean changed = false;
+        if (!seed.message().equals(suggestion.getMessage())) {
+            suggestion.setMessage(seed.message());
+            changed = true;
+        }
+        if (!seed.sortOrder().equals(suggestion.getSortOrder())) {
+            suggestion.setSortOrder(seed.sortOrder());
+            changed = true;
+        }
+        if (!Boolean.TRUE.equals(suggestion.getActive())) {
+            suggestion.setActive(true);
+            changed = true;
+        }
+        if (!"SEED".equals(suggestion.getSource())) {
+            suggestion.setSource("SEED");
+            changed = true;
+        }
+
+        if (suggestion.getId() == null || changed) {
+            suggestionRepository.save(suggestion);
+            return true;
+        }
+        return false;
+    }
+
     private boolean upsertDeliverableType(DeliverableTypeSeed seed) {
         return deliverableTypeRepository.findByNameIgnoreCase(seed.name())
                 .map(existing -> {
@@ -370,6 +422,28 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
                 });
     }
 
+    private void deactivateUnsupportedDeliverableTypes(List<DeliverableTypeSeed> supportedSeeds) {
+        Set<String> supportedNames = supportedSeeds.stream()
+                .map(seed -> seed.name().toLowerCase())
+                .collect(java.util.stream.Collectors.toSet());
+
+        deliverableTypeRepository.findAll().stream()
+                .filter(type -> type.getName() != null)
+                .filter(type -> !supportedNames.contains(type.getName().toLowerCase()))
+                .filter(type -> Boolean.TRUE.equals(type.getIsActive()))
+                .forEach(type -> {
+                    type.setIsActive(false);
+                    deliverableTypeRepository.save(type);
+                });
+    }
+
+    private void pruneUnsupportedServiceDeliverables() {
+        serviceDeliverableRepository.findAll().stream()
+                .filter(link -> link.getDeliverableType() == null
+                        || !Boolean.TRUE.equals(link.getDeliverableType().getIsActive()))
+                .forEach(serviceDeliverableRepository::delete);
+    }
+
     private record ServiceSeed(String name, String description) {
     }
 
@@ -377,5 +451,8 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
     }
 
     private record DeliverableTypeSeed(String name, String defaultFormat) {
+    }
+
+    private record SuggestionSeed(String category, String label, String message, Integer sortOrder) {
     }
 }

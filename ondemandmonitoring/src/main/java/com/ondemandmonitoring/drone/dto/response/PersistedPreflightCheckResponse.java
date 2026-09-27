@@ -15,6 +15,9 @@ public class PersistedPreflightCheckResponse {
 
     String id;
     String missionId;
+    String deviceConnectionId;
+    String droneId;
+    String droneCode;
     PreflightCheckStatus status;
     Integer totalChecks;
     Integer passedChecks;
@@ -47,6 +50,13 @@ public class PersistedPreflightCheckResponse {
         return builder()
                 .id(run.getId())
                 .missionId(run.getMission().getId())
+                .deviceConnectionId(run.getDeviceConnection() == null ? null : run.getDeviceConnection().getId())
+                .droneId(run.getDeviceConnection() == null || run.getDeviceConnection().getDrone() == null
+                        ? null
+                        : run.getDeviceConnection().getDrone().getId())
+                .droneCode(run.getDeviceConnection() == null || run.getDeviceConnection().getDrone() == null
+                        ? null
+                        : run.getDeviceConnection().getDrone().getDroneCode())
                 .status(run.getStatus())
                 .totalChecks(total)
                 .passedChecks(run.getPassedChecks())

@@ -46,7 +46,8 @@ class OrderControllerTest {
         PreAuthorize preAuthorize = createOrderMethod.getAnnotation(PreAuthorize.class);
 
         assertNotNull(preAuthorize, "createOrder method should be annotated with @PreAuthorize");
-        assertEquals("hasRole('CUSTOMER')", preAuthorize.value(), "Role authorization should be restricted to 'hasRole(\\'CUSTOMER\\')'");
+        assertEquals("hasRole('CUSTOMER')", preAuthorize.value(),
+                "Role authorization should be restricted to 'hasRole(\\'CUSTOMER\\')'");
     }
 
     @Test
@@ -122,13 +123,13 @@ class OrderControllerTest {
     @Test
     @DisplayName("approveOrder returns the mission created for the approved order")
     void approveOrder_ReturnsCreatedMission() {
-        MissionResponse mission = MissionResponse.builder().id("mission-123").build();
-        when(orderService.approveOrder("ord-123")).thenReturn(mission);
+        OrderCreateResponse order = OrderCreateResponse.builder().id("ord-123").build();
+        when(orderService.approveOrder("ord-123")).thenReturn(order);
 
-        ResponseEntity<ApiResponse<MissionResponse>> responseEntity = orderController.approveOrder("ord-123");
+        ResponseEntity<ApiResponse<OrderCreateResponse>> responseEntity = orderController.approveOrder("ord-123");
 
         assertEquals(HttpStatus.OK, responseEntity.getStatusCode());
-        assertEquals("mission-123", responseEntity.getBody().getData().getId());
+        assertEquals("ord-123", responseEntity.getBody().getData().getId());
         verify(orderService).approveOrder("ord-123");
     }
 
@@ -142,11 +143,11 @@ class OrderControllerTest {
     @Test
     @DisplayName("submitApproval delegates to rejectOrder when decision is REJECTED")
     void submitApproval_Rejected_DelegatesToRejectOrder() {
-        ResponseEntity<ApiResponse<Void>> responseEntity = orderController.submitApproval("ord-123", Map.of("decision", "REJECTED", "reason", "Out of zone"));
+        ResponseEntity<ApiResponse<Void>> responseEntity = orderController.submitApproval("ord-123",
+                Map.of("decision", "REJECTED", "reason", "Out of zone"));
 
         assertNotNull(responseEntity);
         assertEquals(HttpStatus.OK, responseEntity.getStatusCode());
         verify(orderService).rejectOrder("ord-123", "Out of zone");
     }
 }
-

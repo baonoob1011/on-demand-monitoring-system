@@ -16,6 +16,7 @@ import com.ondemandmonitoring.mission.dto.request.PostFlightStatusRequest;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionTelemetryReadinessResponse;
+import com.ondemandmonitoring.mission.dto.response.PostflightCheckResponse;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.service.IMissionMediaUploadService;
 import com.ondemandmonitoring.mission.service.IMissionService;
@@ -410,5 +411,12 @@ public class MissionController {
                 request.getInspectionResults(),
                 request.getTelemetrySnapshot());
         return ResponseEntity.ok(ApiResponse.ok("Cập nhật trạng thái drone sau bay thành công", response));
+    }
+
+    @GetMapping("/{id}/postflight-checks/latest")
+    @PreAuthorize("hasRole('DRONE_OPERATOR') and @missionAuthorizationService.isAssignedOperator(#id)")
+    public ResponseEntity<ApiResponse<PostflightCheckResponse>> getLatestPostflightCheck(@PathVariable String id) {
+        PostflightCheckResponse response = missionService.getLatestPostflightCheck(id);
+        return ResponseEntity.ok(ApiResponse.ok("Lấy kết quả postflight mới nhất thành công", response));
     }
 }
