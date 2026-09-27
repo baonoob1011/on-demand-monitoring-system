@@ -12,6 +12,10 @@ import com.ondemandmonitoring.media.service.ICustomerMediaService;
 import com.ondemandmonitoring.mission.service.IMissionMediaAccessService;
 import com.ondemandmonitoring.s3.S3ObjectStorageService;
 import java.util.List;
+import com.ondemandmonitoring.common.api.PageResponse;
+import com.ondemandmonitoring.media.dto.response.CustomerMissionMediaStatusResponse;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import com.ondemandmonitoring.media.mapper.MediaWorkflowMapper;
 
 import lombok.AccessLevel;
@@ -30,6 +34,43 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
     MediaNotificationOutboxRepository notifications;
     S3ObjectStorageService storage;
     MediaWorkflowMapper mapper;
+
+    @Override
+    @Transactional(readOnly = true)
+    public CustomerMissionMediaStatusResponse getMissionMediaStatus(String missionId) {
+        String canonicalId = missionAccess.authorizeCustomer(missionId);
+        return CustomerMissionMediaStatusResponse.builder()
+                .availableCount(media.countByMissionIdAndMediaStatus(canonicalId, MediaStatus.AVAILABLE))
+                .processingCount(media.countByMissionIdAndMediaStatusIn(canonicalId, List.of(
+                        MediaStatus.UPLOAD_PENDING, MediaStatus.UPLOADING, MediaStatus.VALIDATING,
+                        MediaStatus.RETRY_REQUIRED, MediaStatus.MANUAL_UPLOAD_REQUIRED)))
+                .rejectedCount(media.countByMissionIdAndMediaStatus(canonicalId, MediaStatus.REJECTED))
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<CustomerMediaResponse> listAvailablePage(
+            String missionId, int page, int size) {
+        String canonicalId = missionAccess.authorizeCustomer(missionId);
+        var pageable = PageRequest.of(page, size,
+                Sort.by(Sort.Direction.DESC,
+                        "capturedAt", "id"));
+        return PageResponse.from(
+                media.findByMissionIdAndMediaStatus(canonicalId, MediaStatus.AVAILABLE, pageable)
+                        .map(this::toResponse));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CustomerMediaResponse getAvailableInMission(String missionId, String mediaId) {
+        String canonicalId = missionAccess.authorizeCustomer(missionId);
+        return media.findById(mediaId)
+                .filter(asset -> canonicalId.equals(asset.getMissionId()))
+                .filter(asset -> asset.getMediaStatus() == MediaStatus.AVAILABLE)
+                .map(this::toResponse)
+                .orElseThrow(() -> new ApiException(ErrorCode.MEDIA_NOT_FOUND));
+    }
 
     @Override
     @Transactional(readOnly = true)

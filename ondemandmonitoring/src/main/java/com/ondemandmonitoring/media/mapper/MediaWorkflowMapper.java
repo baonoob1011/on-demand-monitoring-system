@@ -10,6 +10,12 @@ import org.mapstruct.Mapping;
 
 @Mapper(componentModel = "spring", builder = @Builder(disableBuilder = true), imports = MediaStatus.class)
 public interface MediaWorkflowMapper {
+    @Mapping(target = "mediaId", source = "asset.id")
+    @Mapping(target = "mediaType", source = "asset.type")
+    @Mapping(target = "fileName", source = "asset.originalFileName")
+    OperatorMissionMediaResponse toOperatorResponse(MediaAsset asset, String downloadUrl,
+            java.time.Instant urlExpiresAt);
+
     @Mapping(target = "manualTaskId", source = "id")
     @Mapping(target = "backendMediaId", source = "media.id")
     @Mapping(target = "localMediaId", source = "media.localMediaId")

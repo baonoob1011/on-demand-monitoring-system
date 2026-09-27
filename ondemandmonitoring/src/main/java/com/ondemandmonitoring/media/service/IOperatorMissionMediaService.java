@@ -1,0 +1,11 @@
+package com.ondemandmonitoring.media.service;
+
+import com.ondemandmonitoring.common.api.PageResponse;
+import com.ondemandmonitoring.media.dto.response.OperatorMissionMediaResponse;
+
+public interface IOperatorMissionMediaService {
+
+    PageResponse<OperatorMissionMediaResponse> listAvailable(String missionId, int page, int size);
+
+    OperatorMissionMediaResponse getAvailable(String missionId, String mediaId);
+}
