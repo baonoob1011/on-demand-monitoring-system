@@ -38,8 +38,7 @@ public class FlightTokenService implements IFlightTokenService {
         MissionDeviceAssignment deviceAssignment = missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
                 .filter(assignment -> assignment.getDevice() != null
                         && (deviceId == null || deviceId.isBlank()
-                                || deviceId.equals(assignment.getDevice().getId())
-                                || deviceId.equals(assignment.getDevice().getDeviceCode())))
+                                || deviceId.equals(assignment.getDevice().getId())))
                 .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REQUEST,
                         "Device " + deviceId + " is not assigned to mission " + missionId));
 
@@ -51,9 +50,7 @@ public class FlightTokenService implements IFlightTokenService {
                 .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REQUEST,
                         "Staff " + staffId + " is not assigned to mission " + missionId));
 
-        String resolvedDeviceId = deviceAssignment.getDevice().getDeviceCode() != null
-                ? deviceAssignment.getDevice().getDeviceCode()
-                : deviceAssignment.getDevice().getId();
+        String resolvedDeviceId = deviceAssignment.getDevice().getId();
         String resolvedStaffId = staffAssignment.getStaff().getId().toString();
         Instant now = Instant.now();
         FlightToken token = new FlightToken();

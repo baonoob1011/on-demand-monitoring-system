@@ -29,6 +29,8 @@ public interface MissionRepository extends JpaRepository<Mission, String>, JpaSp
 
     Optional<Mission> findByMissionCode(String missionCode);
 
+    Optional<Mission> findByOrderId(String orderId);
+
     boolean existsByMissionCode(String missionCode);
 
     boolean existsByOrderId(String orderId);

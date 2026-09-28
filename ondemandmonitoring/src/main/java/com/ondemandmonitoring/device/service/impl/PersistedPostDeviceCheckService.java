@@ -88,9 +88,7 @@ public class PersistedPostDeviceCheckService implements IPersistedPostDeviceChec
         ensureMission(missionId);
         return runRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId)
                 .map(PersistedPostDeviceCheckResponse::from)
-                .orElseThrow(() -> new ApiException(
-                        ErrorCode.RESOURCE_NOT_FOUND,
-                        "No post-device check found"));
+                .orElse(null);
     }
 
     @Transactional(readOnly = true)

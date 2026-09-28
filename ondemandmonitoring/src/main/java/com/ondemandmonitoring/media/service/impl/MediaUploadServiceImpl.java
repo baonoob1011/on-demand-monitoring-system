@@ -65,7 +65,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
             throw new ApiException(ErrorCode.MEDIA_UPLOAD_NOT_ALLOWED,
                     "Mission is not in a capture state");
         }
-        Device device = requireAssignedDevice(mission, request.getDeviceCode());
+        Device device = requireAssignedDevice(mission, request.getDeviceId());
         validateMetadata(request);
         Optional<MediaAsset> existing = media.findByMissionIdAndDeviceIdAndLocalMediaId(
                 mission.getId(), device.getId(), request.getLocalMediaId());
@@ -453,9 +453,9 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
                 .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
     }
 
-    private Device requireAssignedDevice(Mission mission, String code) {
+    private Device requireAssignedDevice(Mission mission, String deviceId) {
 
-        Device device = devicerRepository.findByDeviceCode(code)
+        Device device = devicerRepository.findById(deviceId)
                 .orElseThrow(() -> new ApiException(ErrorCode.DEVICE_NOT_FOUND));
 
         boolean assigned = deviceAssignments.findByMissionIdAndIsCurrentTrue(mission.getId())

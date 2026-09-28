@@ -5,7 +5,6 @@ import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.service.IOrderService;
-import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import io.swagger.v3.oas.annotations.Operation;
@@ -75,7 +74,7 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.ok("Latest analysis retrieved", null));
     }
 
-    @Operation(summary = "Approve an order", description = "Manager approves an order and creates a mission")
+    @Operation(summary = "Approve an order", description = "Manager approves an order. Mission scheduling is assigned later by staff.")
     @PostMapping("/{orderId}/approve")
     public ResponseEntity<ApiResponse<OrderCreateResponse>> approveOrder(@PathVariable String orderId) {
         OrderCreateResponse order = orderService.approveOrder(orderId);

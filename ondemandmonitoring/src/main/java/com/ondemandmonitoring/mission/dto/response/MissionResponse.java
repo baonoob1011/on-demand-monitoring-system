@@ -27,6 +27,29 @@ public class MissionResponse {
     @Schema(description = "ID of the associated order", example = "123e4567-e89b-12d3-a456-426614174000")
     String orderId;
 
+    String orderTitle;
+
+    String serviceName;
+
+    String customerName;
+
+    String address;
+
+    Double latitude;
+
+    Double longitude;
+
+    Double radiusM;
+
+    String deviceId;
+
+
+    String staffId;
+
+    String operatorId;
+
+    MissionPlanResponse plan;
+
     @Schema(description = "Scheduled start timestamp")
     Instant scheduledStartAt;
 

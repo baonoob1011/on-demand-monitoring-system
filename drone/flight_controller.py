@@ -2805,7 +2805,7 @@ async def main() -> None:
             "runtimeSessionId": RUNTIME_SESSION_ID,
             "missionId": active_mission_id,
             "missionCode": active_mission_code,
-            "deviceCode": active_drone_id,
+            "deviceId": active_drone_id,
             "positionReady": local_position_ready,
             "positionNed": {
                 "northM": current_local_north_m,
@@ -2894,16 +2894,16 @@ async def main() -> None:
     def bind_control_session(payload: dict) -> dict:
         nonlocal active_mission_id, active_mission_code, active_drone_id, media_library
         mission_id = str(payload.get("missionId", "")).strip()
-        drone_code = str(payload.get("droneCode", "")).strip()
+        device_id = str(payload.get("deviceId", "")).strip()
         access_token = str(payload.get("accessToken", "")).strip()
         if not mission_id or len(mission_id) > 255:
             raise ValueError("missionId is required")
-        if not drone_code or len(drone_code) > 50:
-            raise ValueError("droneCode is required")
+        if not device_id or len(device_id) > 80:
+            raise ValueError("deviceId is required")
         if not access_token or len(access_token) > 4096 or any(char.isspace() for char in access_token):
             raise ValueError("A valid operator access token is required")
         if video_recorder.is_recording() or current_in_air:
-            if mission_id != active_mission_id or drone_code != active_drone_id:
+            if mission_id != active_mission_id or device_id != active_drone_id:
                 raise ValueError("Cannot switch control session while recording or in flight")
 
         assigned_mission = None
@@ -2938,24 +2938,28 @@ async def main() -> None:
                     raise ValueError("Backend rejected the operator access token; sign in again")
                 raise ValueError("Flight Controller cannot reach the backend mission API")
             raise ValueError("Mission is not assigned to the authenticated operator")
-        assigned_drone = str(assigned_mission.get("droneCode") or "").strip()
-        if not assigned_drone:
-            raise ValueError("Mission has no assigned drone code in the backend")
-        if assigned_drone != drone_code:
-            raise ValueError("Drone does not match the mission assignment")
+        assigned_device = str(assigned_mission.get("deviceId") or "").strip()
+        if not assigned_device:
+            raise ValueError("Mission has no assigned deviceId in the backend")
+        if assigned_device != device_id:
+            raise ValueError("Device does not match the mission assignment")
 
         active_mission_id = mission_id
         active_mission_code = str(assigned_mission.get("missionCode") or "").strip() or None
-        active_drone_id = assigned_drone
-        media_library = LocalMediaLibrary(media_root, mission_id, assigned_drone, active_mission_code)
+        active_drone_id = assigned_device
+        media_library = LocalMediaLibrary(media_root, mission_id, assigned_device, active_mission_code)
         camera.media_library = media_library
         control_api.media_library = media_library
         control_api.preflight_persistence = PreflightPersistenceBridge(
             backend_urls, mission_id, access_token)
         control_api.preflight_check_id = None
         control_api.preflight_started_at_s = None
-        print(f"[SESSION] Bound mission={active_mission_code or mission_id} id={mission_id} drone={assigned_drone}", flush=True)
-        return {"missionId": mission_id, "missionCode": active_mission_code, "droneCode": assigned_drone}
+        print(f"[SESSION] Bound mission={active_mission_code or mission_id} id={mission_id} device={assigned_device}", flush=True)
+        return {
+            "missionId": mission_id,
+            "missionCode": active_mission_code,
+            "deviceId": assigned_device,
+        }
 
     def release_control_session(payload: dict) -> dict:
         nonlocal active_mission_id, active_mission_code, active_drone_id, media_library, current_in_air

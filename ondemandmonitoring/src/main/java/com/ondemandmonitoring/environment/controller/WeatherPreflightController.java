@@ -115,9 +115,11 @@ public class WeatherPreflightController {
     @GetMapping("/preflight-checks/latest")
     public ResponseEntity<ApiResponse<WeatherPreflightCheckResponse>> latest(
             @RequestParam String missionId) {
-        MissionWeatherCheck check = weatherCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Weather preflight check not found"));
-        return ResponseEntity.ok(ApiResponse.ok("Latest weather preflight check", toResponse(check)));
+        return ResponseEntity.ok(ApiResponse.ok(
+                "Latest weather preflight check",
+                weatherCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId)
+                        .map(WeatherPreflightController::toResponse)
+                        .orElse(null)));
     }
 
     private static WeatherPreflightCheckResponse toResponse(MissionWeatherCheck check) {

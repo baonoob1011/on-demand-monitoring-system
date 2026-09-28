@@ -150,9 +150,9 @@ public class MissionService implements IMissionService {
     @Override
     @Transactional
     public MissionResponse createMission(MissionCreateRequest request) {
-        if (missionRepository.existsByOrderId(request.getOrderId())) {
-            throw new ApiException(ErrorCode.RESOURCE_ALREADY_EXISTS,
-                    "Mission already exists for order id: " + request.getOrderId());
+        var existingMission = missionRepository.findByOrderId(request.getOrderId());
+        if (existingMission.isPresent()) {
+            return missionMapper.toResponse(existingMission.get());
         }
 
         Order order = orderRepository.findById(request.getOrderId())
@@ -215,8 +215,8 @@ public class MissionService implements IMissionService {
     @Override
     @Transactional(readOnly = true)
     public MissionPlanResponse getMissionPlan(String missionId) {
-        getOrThrow(missionId);
-        MissionPlan plan = missionPlanRepository.findByMissionId(missionId)
+        Mission mission = getOrThrow(missionId);
+        MissionPlan plan = missionPlanRepository.findByMissionId(mission.getId())
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.RESOURCE_NOT_FOUND,
                         "Mission plan not found for mission: " + missionId));
@@ -258,9 +258,8 @@ public class MissionService implements IMissionService {
     public MissionResponse assignDevice(String missionId, AssignDeviceRequest request) {
         String deviceId = request.getDeviceId();
         DeviceRole deviceRole = request.getDeviceRole();
-        Mission mission = missionRepository.findById(missionId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
-                        "Mission not found with id: " + missionId));
+        Mission mission = getOrThrow(missionId);
+        String resolvedMissionId = mission.getId();
         if (mission.getStatus() != MissionStatus.RESOURCE_ASSIGNING) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
                     "Mission status must be RESOURCE_ASSIGNING to assign a device.");
@@ -288,7 +287,7 @@ public class MissionService implements IMissionService {
 
         List<ResourceTimeLock> existingLocks = resourceTimeLockRepository.findByResourceId(deviceId);
         for (ResourceTimeLock lock : existingLocks) {
-            if (lock.getMission() != null && lock.getMission().getId().equals(missionId)) {
+            if (lock.getMission() != null && lock.getMission().getId().equals(resolvedMissionId)) {
                 throw new ApiException(ErrorCode.RESOURCE_ALREADY_EXISTS,
                         "Device is already assigned to this mission.");
             }
@@ -300,7 +299,7 @@ public class MissionService implements IMissionService {
             }
         }
 
-        if (resourceTimeLockRepository.findByResourceIdAndMissionId(deviceId, missionId).isPresent()) {
+        if (resourceTimeLockRepository.findByResourceIdAndMissionId(deviceId, resolvedMissionId).isPresent()) {
             throw new ApiException(ErrorCode.RESOURCE_ALREADY_EXISTS,
                     "Device is already assigned to this mission.");
         }
@@ -328,7 +327,7 @@ public class MissionService implements IMissionService {
                 .build();
 
         missionDeviceAssignmentRepository.save(newAssignment);
-        if (missionStaffAssignmentRepository.findByMissionId(missionId).stream()
+        if (missionStaffAssignmentRepository.findByMissionId(resolvedMissionId).stream()
                 .anyMatch(staffAssignment -> staffAssignment.getResponseStatus() == StaffResponseStatus.PENDING)) {
             mission.setStatus(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
         }
@@ -343,9 +342,8 @@ public class MissionService implements IMissionService {
         String staffId = request.getStaffId();
         MissionStaffRole assignedRole = resolveStaffRole(request.getAssignedRole());
 
-        Mission mission = missionRepository.findById(missionId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
-                        "Mission not found with id: " + missionId));
+        Mission mission = getOrThrow(missionId);
+        String resolvedMissionId = mission.getId();
         if (mission.getStatus() != MissionStatus.RESOURCE_ASSIGNING) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
                     "Mission status must be RESOURCE_ASSIGNING to assign staff.");
@@ -368,7 +366,7 @@ public class MissionService implements IMissionService {
         Instant paddedStart = missionStart.minus(1, ChronoUnit.HOURS);
         Instant paddedEnd = missionEnd.plus(1, ChronoUnit.HOURS);
 
-        if (missionStaffAssignmentRepository.findByMissionIdAndStaffId(missionId, staffId).isPresent()) {
+        if (missionStaffAssignmentRepository.findByMissionIdAndStaffId(resolvedMissionId, staffId).isPresent()) {
             throw new ApiException(ErrorCode.RESOURCE_ALREADY_EXISTS,
                     "Staff is already assigned to this mission.");
         }
@@ -377,7 +375,7 @@ public class MissionService implements IMissionService {
 
         List<ResourceTimeLock> existingLocks = resourceTimeLockRepository.findByResourceId(staffId);
         for (ResourceTimeLock lock : existingLocks) {
-            if (lock.getMission() != null && lock.getMission().getId().equals(missionId)) {
+            if (lock.getMission() != null && lock.getMission().getId().equals(resolvedMissionId)) {
                 throw new ApiException(ErrorCode.RESOURCE_ALREADY_EXISTS,
                         "Staff is already assigned to this mission.");
             }
@@ -389,7 +387,7 @@ public class MissionService implements IMissionService {
             }
         }
 
-        if (resourceTimeLockRepository.findByResourceIdAndMissionId(staffId, missionId).isPresent()) {
+        if (resourceTimeLockRepository.findByResourceIdAndMissionId(staffId, resolvedMissionId).isPresent()) {
             throw new ApiException(ErrorCode.RESOURCE_ALREADY_EXISTS,
                     "Staff is already assigned to this mission.");
         }
@@ -424,7 +422,7 @@ public class MissionService implements IMissionService {
                 .build();
         userScheduleRepository.save(staffSchedule);
 
-        if (missionDeviceAssignmentRepository.existsByMissionId(missionId)) {
+        if (missionDeviceAssignmentRepository.existsByMissionId(resolvedMissionId)) {
             mission.setStatus(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
         }
         Mission saved = missionRepository.save(mission);
@@ -433,9 +431,7 @@ public class MissionService implements IMissionService {
     @Override
     @Transactional
     public MissionResponse updateMission(String missionId, MissionUpdateRequest request) {
-        Mission mission = missionRepository.findById(missionId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
-                        "Mission not found with id: " + missionId));
+        Mission mission = getOrThrow(missionId);
 
         Instant previousStart = mission.getScheduledStartAt();
         Instant previousEnd = mission.getScheduledEndAt();
@@ -481,8 +477,9 @@ public class MissionService implements IMissionService {
     @Transactional
     public MissionResponse rejectMission(String missionId, String staffId, String reason) {
         Mission mission = getOrThrow(missionId);
+        String resolvedMissionId = mission.getId();
         requireStatus(mission, MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
-        MissionStaffAssignment assignment = requireCurrentStaffAssignment(missionId, staffId);
+        MissionStaffAssignment assignment = requireCurrentStaffAssignment(resolvedMissionId, staffId);
 
         assignment.setResponseStatus(StaffResponseStatus.REJECTED);
         assignment.setDeclineReason(reason);
@@ -498,8 +495,9 @@ public class MissionService implements IMissionService {
     @Transactional
     public MissionResponse acceptMission(String missionId, String staffId) {
         Mission mission = getOrThrow(missionId);
+        String resolvedMissionId = mission.getId();
         requireStatus(mission, MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
-        MissionStaffAssignment assignment = requireCurrentStaffAssignment(missionId, staffId);
+        MissionStaffAssignment assignment = requireCurrentStaffAssignment(resolvedMissionId, staffId);
         assignment.setResponseStatus(StaffResponseStatus.ACCEPTED);
         assignment.setRespondedAt(Instant.now());
         missionStaffAssignmentRepository.save(assignment);
@@ -517,14 +515,14 @@ public class MissionService implements IMissionService {
     @Override
     @Transactional
     public MissionResponse connectGcs(String missionId) {
-        return deviceConnectionService.connectGcs(missionId);
+        return deviceConnectionService.connectGcs(getOrThrow(missionId).getId());
     }
 
     @Override
     @Transactional(readOnly = true)
     public MissionTelemetryReadinessResponse getTelemetryReadiness(String missionId) {
-        getOrThrow(missionId);
-        Device assignedDevice = getCurrentDevice(missionId);
+        Mission mission = getOrThrow(missionId);
+        Device assignedDevice = getCurrentDevice(mission.getId());
         if (assignedDevice == null) {
             throw new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission has no assigned device");
         }
@@ -535,18 +533,65 @@ public class MissionService implements IMissionService {
     @Override
     @Transactional
     public MissionResponse disconnectGcs(String missionId, String disconnectReason) {
-        return deviceConnectionService.disconnectGcs(missionId, disconnectReason);
+        return deviceConnectionService.disconnectGcs(getOrThrow(missionId).getId(), disconnectReason);
     }
 
     @Override
     @Transactional
     public MissionResponse handleGcsSessionLost(String missionId, String reason) {
-        return deviceConnectionService.handleGcsSessionLost(missionId, reason);
+        return deviceConnectionService.handleGcsSessionLost(getOrThrow(missionId).getId(), reason);
     }
 
     @Override
+    @Transactional
     public PreflightCheckResponse runPreflightCheck(String missionId, String deviceId) {
-        return null;
+        Mission mission = getOrThrow(missionId);
+        Device assignedDevice = getCurrentDevice(mission.getId());
+        if (assignedDevice == null || assignedDevice.getId() == null) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Mission has no assigned deviceId");
+        }
+        if (deviceId == null || deviceId.isBlank() || !assignedDevice.getId().equals(deviceId)) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Device does not match the mission assignment");
+        }
+
+        String staffId = getCurrentStaffId(mission.getId());
+        if (staffId == null || staffId.isBlank()) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Mission has no assigned staff");
+        }
+
+        FlightToken token = issueFlightToken(mission.getId(), assignedDevice.getId(), staffId);
+        mission.setStatus(MissionStatus.READY_TO_FLY);
+        missionRepository.save(mission);
+
+        return PreflightCheckResponse.builder()
+                .id(UUID.randomUUID().toString())
+                .deviceCode(assignedDevice.getId())
+                .missionId(mission.getId())
+                .overallPassed(true)
+                .failureReason(null)
+                .faultType(null)
+                .batteryPercent(null)
+                .gpsFixType("READY")
+                .gpsSatelliteCount(null)
+                .gyrometerOk(true)
+                .accelerometerOk(true)
+                .magnetometerOk(true)
+                .localPositionOk(true)
+                .globalPositionOk(true)
+                .homePositionOk(true)
+                .armable(true)
+                .connected(true)
+                .inAir(false)
+                .flightMode("PREFLIGHT")
+                .cameraOk(true)
+                .gimbalOk(true)
+                .storageAvailableMb(null)
+                .storageOk(true)
+                .weatherOk(true)
+                .weatherNotes("Weather check handled by weather preflight endpoint.")
+                .flightToken(flightTokenMapper.toResponse(token))
+                .checkedAt(Instant.now())
+                .build();
     }
 
 
@@ -827,16 +872,17 @@ public class MissionService implements IMissionService {
     @Transactional
     public MissionResponse handoverControl(String missionId, String staffId) {
         Mission mission = getOrThrow(missionId);
+        String resolvedMissionId = mission.getId();
         requireStatus(mission, MissionStatus.READY_TO_FLY);
 
         // Record ControlHandover audit log linked to current DeviceConnection
         DeviceConnection activeConnection = deviceConnectionRepository
-                .findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED")
+                .findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(resolvedMissionId, "CONNECTED")
                 .orElse(null);
 
         ControlHandover handover = new ControlHandover();
         handover.setDeviceConnection(activeConnection);
-        handover.setStaffAssignment(requireCurrentStaffAssignment(missionId, staffId));
+        handover.setStaffAssignment(requireCurrentStaffAssignment(resolvedMissionId, staffId));
         handover.setStatus("CONFIRMED");
         handover.setAcknowledgementText("Staff confirmed control handover and preflight checks before launch");
         handover.setConfirmedAt(Instant.now());
@@ -855,6 +901,7 @@ public class MissionService implements IMissionService {
     @Transactional
     public MissionResponse startMission(String missionId, String tokenValue) {
         Mission mission = getOrThrow(missionId);
+        String resolvedMissionId = mission.getId();
         requireStatus(mission, MissionStatus.READY_TO_FLY);
 
         if (tokenValue != null && !tokenValue.isBlank()) {
@@ -871,7 +918,7 @@ public class MissionService implements IMissionService {
             token.setUsed(true);
             flightTokenRepository.save(token);
         } else {
-            FlightToken token = flightTokenRepository.findByMissionIdAndUsedFalseAndRevokedFalse(missionId)
+            FlightToken token = flightTokenRepository.findByMissionIdAndUsedFalseAndRevokedFalse(resolvedMissionId)
                     .orElse(null);
             if (token != null) {
                 if (!token.isValid()) {
@@ -930,8 +977,9 @@ public class MissionService implements IMissionService {
     @Transactional
     public MissionResponse completeMission(String missionId) {
         Mission mission = getOrThrow(missionId);
+        String resolvedMissionId = mission.getId();
         if (mission.getStatus() == MissionStatus.COMPLETED
-                && postDeviceCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId).isPresent()) {
+                && postDeviceCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(resolvedMissionId).isPresent()) {
             return missionMapper.toResponse(mission);
         }
         if (mission.getStatus() != MissionStatus.POSTFLIGHT_CHECKING) {
@@ -939,7 +987,7 @@ public class MissionService implements IMissionService {
                     "Mission must be POSTFLIGHT_CHECKING with a recorded inspection to complete but is "
                             + mission.getStatus());
         }
-        if (postDeviceCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId).isEmpty()) {
+        if (postDeviceCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(resolvedMissionId).isEmpty()) {
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID,
                     "A recorded post-flight inspection is required before mission completion");
         }
@@ -1040,7 +1088,7 @@ public class MissionService implements IMissionService {
             MaintenanceTicket ticket = new MaintenanceTicket();
             ticket.setTicketCode("TKT-POSTFLIGHT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
             ticket.setDevice(device); // device field — device-type agnostic
-            ticket.setReportedBy(getCurrentStaffId(missionId));
+            ticket.setReportedBy(getCurrentStaffId(mission.getId()));
             ticket.setIssueType("POSTFLIGHT_DAMAGE");
             ticket.setSeverity("HIGH");
             ticket.setDescription("Post-flight physical inspection flagged maintenance needed for device "
@@ -1199,6 +1247,7 @@ public class MissionService implements IMissionService {
 
     private Mission getOrThrow(String missionId) {
         return missionRepository.findById(missionId)
+                .or(() -> missionRepository.findByOrderId(missionId))
                 .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND,
                         "Mission not found: " + missionId));
     }

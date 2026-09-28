@@ -44,8 +44,8 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     @Override
     @Transactional
     public MissionResponse connectGcs(String missionId) {
-        Mission mission = missionRepository.findById(missionId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission not found: " + missionId));
+        Mission mission = getMission(missionId);
+        String resolvedMissionId = mission.getId();
 
         if (mission.getStatus() != MissionStatus.SCHEDULED && mission.getStatus() != MissionStatus.CONNECTED) {
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID,
@@ -54,9 +54,9 @@ public class DeviceConnectionService implements IDeviceConnectionService {
 
         mission.setStatus(MissionStatus.CONNECTED);
 
-        MissionDeviceAssignment deviceAssignment = getAssignedDeviceAssignment(missionId).orElse(null);
+        MissionDeviceAssignment deviceAssignment = getAssignedDeviceAssignment(resolvedMissionId).orElse(null);
         Device device = deviceAssignment == null ? null : deviceAssignment.getDevice();
-        MissionStaffAssignment staffAssignment = getCurrentStaffAssignment(missionId);
+        MissionStaffAssignment staffAssignment = getCurrentStaffAssignment(resolvedMissionId);
         if (device != null && staffAssignment != null) {
             device.setStatus(DeviceStatus.PREFLIGHT);
             deviceRepository.save(device);
@@ -79,10 +79,10 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     @Override
     @Transactional
     public MissionResponse disconnectGcs(String missionId, String disconnectReason) {
-        Mission mission = missionRepository.findById(missionId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission not found: " + missionId));
+        Mission mission = getMission(missionId);
+        String resolvedMissionId = mission.getId();
 
-        deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED")
+        deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(resolvedMissionId, "CONNECTED")
                 .ifPresent(session -> {
                     session.setConnectionStatus("DISCONNECTED");
                     session.setTelemetryActive(false);
@@ -100,10 +100,10 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     @Override
     @Transactional
     public MissionResponse handleGcsSessionLost(String missionId, String reason) {
-        Mission mission = missionRepository.findById(missionId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission not found: " + missionId));
+        Mission mission = getMission(missionId);
+        String resolvedMissionId = mission.getId();
 
-        deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED")
+        deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(resolvedMissionId, "CONNECTED")
                 .ifPresent(session -> {
                     session.setConnectionStatus("LOST");
                     session.setTelemetryActive(false);
@@ -115,7 +115,7 @@ public class DeviceConnectionService implements IDeviceConnectionService {
                 });
 
         mission.setStatus(MissionStatus.RETURNING);
-        Device device = getAssignedDevice(missionId);
+        Device device = getAssignedDevice(resolvedMissionId);
         if (device != null) {
             device.setStatus(DeviceStatus.RETURNING);
             deviceRepository.save(device);
@@ -141,5 +141,11 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     private MissionStaffAssignment getCurrentStaffAssignment(String missionId) {
         return missionStaffAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
                 .orElse(null);
+    }
+
+    private Mission getMission(String missionId) {
+        return missionRepository.findById(missionId)
+                .or(() -> missionRepository.findByOrderId(missionId))
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission not found: " + missionId));
     }
 }

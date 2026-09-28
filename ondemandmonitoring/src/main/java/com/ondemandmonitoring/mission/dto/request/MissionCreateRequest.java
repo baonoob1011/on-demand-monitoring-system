@@ -1,5 +1,6 @@
 package com.ondemandmonitoring.mission.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -13,9 +14,11 @@ public class MissionCreateRequest {
     @NotBlank(message = "orderId is required")
     private String orderId;
 
+    @JsonAlias("scheduledStart")
     @NotNull(message = "scheduledStartAt is required")
     private Instant scheduledStartAt;
 
+    @JsonAlias("scheduledEnd")
     @NotNull(message = "scheduledEndAt is required")
     private Instant scheduledEndAt;
 }

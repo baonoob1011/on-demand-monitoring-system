@@ -3,7 +3,6 @@ package com.ondemandmonitoring.media.service.impl;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.device.domain.Device;
-import com.ondemandmonitoring.device.enums.DeviceStatus;
 import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
@@ -17,7 +16,6 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -70,7 +68,7 @@ public class MediaAssetService implements IMediaAssetService {
         String mediaType = validate(file, requestedMediaType);
         validateRequired("missionId", missionId);
         validateRequired("deviceId", deviceId);
-        Device device = getOrCreateDevice(deviceId);
+        Device device = requireDevice(deviceId);
 
         String originalFileName = safeFileName(file.getOriginalFilename());
         String contentType = file.getContentType();
@@ -398,17 +396,9 @@ public class MediaAssetService implements IMediaAssetService {
         return message;
     }
 
-    private Device getOrCreateDevice(String deviceCode) {
-        return deviceRepository.findByDeviceCode(deviceCode)
-                .orElseGet(() -> {
-                    Device device = new Device();
-                    device.setDeviceCode(deviceCode);
-                    device.setSerialNumber(deviceCode);
-                    device.setName("PX4 SITL device");
-                    device.setStatus(DeviceStatus.AVAILABLE);
-                    device.setLastSeenAt(LocalDateTime.now());
-                    return deviceRepository.save(device);
-                });
+    private Device requireDevice(String deviceId) {
+        return deviceRepository.findById(deviceId)
+                .orElseThrow(() -> new ApiException(ErrorCode.DEVICE_NOT_FOUND));
     }
 
     private String normalizeMediaType(String requestedMediaType) {

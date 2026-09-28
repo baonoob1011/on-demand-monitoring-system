@@ -1,13 +1,17 @@
 package com.ondemandmonitoring.mission.mapper;
 
 import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
+import com.ondemandmonitoring.mission.domain.MissionStaffAssignment;
 import com.ondemandmonitoring.mission.domain.PlanWaypoint;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.dto.response.PlanWaypointResponse;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionPlanRepository;
+import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepository;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
@@ -23,8 +27,24 @@ public abstract class MissionMapper {
     @Autowired
     protected MissionPlanRepository missionPlanRepository;
 
+    @Autowired
+    protected MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
+
+    @Autowired
+    protected MissionStaffAssignmentRepository missionStaffAssignmentRepository;
 
     @Mapping(source = "order.id", target = "orderId")
+    @Mapping(source = "order.title", target = "orderTitle")
+    @Mapping(source = "order.service.name", target = "serviceName")
+    @Mapping(source = "order.customer.fullName", target = "customerName")
+    @Mapping(source = "order.address", target = "address")
+    @Mapping(target = "latitude", expression = "java(getLatitude(mission))")
+    @Mapping(target = "longitude", expression = "java(getLongitude(mission))")
+    @Mapping(target = "radiusM", expression = "java(getRadiusM(mission))")
+    @Mapping(target = "deviceId", expression = "java(getDeviceId(mission))")
+    @Mapping(target = "staffId", expression = "java(getStaffId(mission))")
+    @Mapping(target = "operatorId", expression = "java(getStaffId(mission))")
+    @Mapping(target = "plan", expression = "java(getPlan(mission))")
     public abstract MissionResponse toResponse(Mission mission);
 
 
@@ -66,6 +86,44 @@ public abstract class MissionMapper {
                 .filter(radius -> radius != null)
                 .findFirst()
                 .orElse(null);
+    }
+
+    protected String getDeviceId(Mission mission) {
+        MissionDeviceAssignment assignment = getCurrentDeviceAssignment(mission).orElse(null);
+        if (assignment == null || assignment.getDevice() == null) {
+            return null;
+        }
+        return assignment.getDevice().getId();
+    }
+
+    protected String getStaffId(Mission mission) {
+        MissionStaffAssignment assignment = getCurrentStaffAssignment(mission).orElse(null);
+        if (assignment == null || assignment.getStaff() == null) {
+            return null;
+        }
+        return assignment.getStaff().getId();
+    }
+
+    private Optional<MissionDeviceAssignment> getCurrentDeviceAssignment(Mission mission) {
+        if (mission == null || mission.getId() == null) {
+            return Optional.empty();
+        }
+        Optional<MissionDeviceAssignment> current =
+                missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId());
+        return current.isPresent()
+                ? current
+                : missionDeviceAssignmentRepository.findFirstByMissionIdOrderByCreatedAtDesc(mission.getId());
+    }
+
+    private Optional<MissionStaffAssignment> getCurrentStaffAssignment(Mission mission) {
+        if (mission == null || mission.getId() == null) {
+            return Optional.empty();
+        }
+        Optional<MissionStaffAssignment> current =
+                missionStaffAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId());
+        return current.isPresent()
+                ? current
+                : missionStaffAssignmentRepository.findFirstByMissionIdOrderByAssignedAtDesc(mission.getId());
     }
 
     protected Double toDouble(Object value) {

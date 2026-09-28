@@ -87,9 +87,7 @@ public class PersistedPreflightCheckService implements IPersistedPreflightCheckS
 
         return runRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId)
                 .map(PersistedPreDeviceCheckResponse::from)
-                .orElseThrow(() -> new ApiException(
-                        ErrorCode.RESOURCE_NOT_FOUND,
-                        "No preflight check found"));
+                .orElse(null);
     }
 
     @Transactional(readOnly = true)
@@ -161,4 +159,3 @@ public class PersistedPreflightCheckService implements IPersistedPreflightCheckS
 
     private record Definition(String type, String name, PreflightCheckLevel level) {}
 }
-

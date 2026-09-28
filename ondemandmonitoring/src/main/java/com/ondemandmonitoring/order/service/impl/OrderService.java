@@ -2,8 +2,6 @@ package com.ondemandmonitoring.order.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.mission.service.IMissionService;
-import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.domain.OrderDeliverable;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
@@ -27,6 +25,7 @@ import com.ondemandmonitoring.zone.domain.Zone;
 import com.ondemandmonitoring.zone.repository.ZoneRepository;
 import java.util.ArrayList;
 import java.util.List;
+import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -47,7 +46,6 @@ public class OrderService implements IOrderService {
     PreferredTimeRepository preferredTimeRepository;
     ZoneRepository zoneRepository;
     AuthenticatedUserResolver authenticatedUserResolver;
-    IMissionService missionService;
     OrderMapper orderMapper;
 
     @Override
@@ -61,9 +59,10 @@ public class OrderService implements IOrderService {
         }
 
         order.setOrderStatus(OrderStatus.APPROVED);
+        order.setReviewBy(authenticatedUserResolver.getCurrentUser());
+        order.setReviewAt(Instant.now());
         orderRepository.save(order);
 
-        // Flow 2: Create mission for the approved order
         return orderMapper.toResponse(order);
     }
 

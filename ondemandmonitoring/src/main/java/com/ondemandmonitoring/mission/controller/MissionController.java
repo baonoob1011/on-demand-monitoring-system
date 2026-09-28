@@ -389,8 +389,8 @@ public class MissionController {
         return ResponseEntity.ok(ApiResponse.ok("device đang quay trở về", response));
     }
 
-    /** POST /api/missions/{id}/post-device – device landed, POSTFLIGHT_CHECKING */
-    @PostMapping("/{id}/post-device")
+    /** POST /api/missions/{id}/post-device or /postflight – device landed, POSTFLIGHT_CHECKING */
+    @PostMapping({"/{id}/post-device", "/{id}/postflight"})
     @PreAuthorize("hasRole('DRONE_OPERATOR') and @missionAuthorizationService.isAssignedStaff(#id)")
     public ResponseEntity<ApiResponse<MissionResponse>> startPostflight(@PathVariable String id) {
         MissionResponse response = missionService.startPostDeviceChecking(id);

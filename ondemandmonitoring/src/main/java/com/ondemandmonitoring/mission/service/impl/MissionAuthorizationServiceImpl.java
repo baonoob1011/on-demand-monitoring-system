@@ -25,8 +25,12 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
 
         @Override
         @Transactional(readOnly = true)
-        public boolean isAssignedStaff(String missionId) {
+        public boolean isAssignedStaff(String missionIdOrOrderId) {
                 User currentUser = authenticatedUserResolver.getCurrentUser();
+                String missionId = missionRepository.findById(missionIdOrOrderId)
+                                .or(() -> missionRepository.findByOrderId(missionIdOrOrderId))
+                                .map(mission -> mission.getId())
+                                .orElse(missionIdOrOrderId);
                 boolean currentAssignment = missionStaffAssignmentRepository
                                 .findByMissionIdAndIsCurrentTrue(missionId)
                                 .map(assignment -> currentUser.getId().toString().equals(assignment.getStaff().getId()))
