@@ -20,14 +20,6 @@ import lombok.Setter;
 @Getter
 @Setter
 @Entity
-@Table(
-        name = "post_device_check_items",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uk_post_device_item_type",
-                columnNames = {"post_device_check_id", "check_type"}),
-        indexes = @Index(
-                name = "idx_post_device_item_run",
-                columnList = "post_device_check_id"))
 public class PersistedPostDeviceCheckItem extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
