@@ -19,6 +19,8 @@ import com.ondemandmonitoring.planning.dto.PlanningExperimentResult;
 import com.ondemandmonitoring.planning.dto.PlanningExperimentScenario;
 import com.ondemandmonitoring.planning.dto.response.EnvironmentSample;
 import jakarta.persistence.EntityManager;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -162,6 +164,8 @@ class PlanningExperimentRunnerE2ETest {
         mission.setMissionCode("E2E_EXPERIMENT_READ_ONLY_" + UUID.randomUUID().toString().substring(0, 8));
         mission.setStatus(MissionStatus.CREATED);
         mission.setOrder(order);
+        mission.setScheduledStartAt(Instant.now());
+        mission.setScheduledEndAt(Instant.now().plus(Duration.ofHours(2)));
         mission = missionRepository.saveAndFlush(mission);
         return missionPlanningService.generateDirectPlan(mission.getId());
     }

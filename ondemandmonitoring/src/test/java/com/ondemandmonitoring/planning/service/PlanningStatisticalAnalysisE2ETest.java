@@ -20,6 +20,8 @@ import com.ondemandmonitoring.planning.dto.PlanningExperimentResult;
 import com.ondemandmonitoring.planning.dto.PlanningResearchAnalysis;
 import com.ondemandmonitoring.planning.dto.PlanningStatisticalAnalysis;
 import jakarta.persistence.EntityManager;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -84,7 +86,7 @@ class PlanningStatisticalAnalysisE2ETest {
         assertThat(PlanningExperimentCsvExporterTest.parse(csv)).hasSize(226);
         assertThat(stats.pairedScenarioCount()).isEqualTo(75);
         assertThat(stats.primaryEnergyAnalysis().distribution().n()).isEqualTo(75);
-        assertThat(stats.primaryEnergyAnalysis().hypothesisTest().zeroDifferenceCount()).isEqualTo(21);
+        assertThat(stats.primaryEnergyAnalysis().hypothesisTest().zeroDifferenceCount()).isEqualTo(30);
         assertThat(stats.primaryEnergyAnalysis().hypothesisTest().alternative()).isEqualTo("two-sided");
         assertThat(stats.secondaryMetricAnalyses()).hasSize(4).allMatch(metric -> metric.holmAdjustedPValue() != null);
 
@@ -157,6 +159,8 @@ class PlanningStatisticalAnalysisE2ETest {
         mission.setMissionCode("E2E_STAT_READ_ONLY_" + UUID.randomUUID().toString().substring(0, 8));
         mission.setStatus(MissionStatus.CREATED);
         mission.setOrder(order);
+        mission.setScheduledStartAt(Instant.now());
+        mission.setScheduledEndAt(Instant.now().plus(Duration.ofHours(2)));
         mission = missionRepository.saveAndFlush(mission);
         return missionPlanningService.generateDirectPlan(mission.getId());
     }

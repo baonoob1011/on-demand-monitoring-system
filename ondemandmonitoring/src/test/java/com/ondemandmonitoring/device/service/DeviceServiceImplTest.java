@@ -171,7 +171,7 @@ class DeviceServiceImplTest {
     void update_success() {
         DeviceUpdateRequest request = DeviceUpdateRequest.builder()
                 .serialNumber("SN-1002")
-                .status(DeviceStatus.IN_USE)
+                .status(DeviceStatus.IN_MISSION)
                 .build();
 
         Device entity = new Device();
@@ -181,7 +181,7 @@ class DeviceServiceImplTest {
         DeviceResponse response = DeviceResponse.builder()
                 .id("device-123")
                 .serialNumber("SN-1002")
-                .status(DeviceStatus.IN_USE)
+                .status(DeviceStatus.IN_MISSION)
                 .build();
 
         when(deviceRepository.findById("device-123")).thenReturn(Optional.of(entity));

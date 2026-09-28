@@ -8,13 +8,19 @@ import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.device.domain.Drone;
+import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.device.domain.DeviceTelemetry;
+import com.ondemandmonitoring.device.repository.DeviceTelemetryRepository;
+import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.domain.PlanWaypoint;
 import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
 import com.ondemandmonitoring.mission.enums.WaypointReason;
+import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionPlanRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.order.domain.Order;
@@ -41,9 +47,11 @@ class MissionPlanningServiceTest {
 
     private final MissionRepository missionRepository = org.mockito.Mockito.mock(MissionRepository.class);
     private final MissionPlanRepository missionPlanRepository = org.mockito.Mockito.mock(MissionPlanRepository.class);
-    private final MissionDroneAssignmentRepository missionDroneAssignmentRepository = org.mockito.Mockito
-            .mock(MissionDroneAssignmentRepository.class);
-    private final DeviceTelemetryRepository DeviceTelemetryRepository = org.mockito.Mockito
+    private final MissionDeviceAssignmentRepository missionDeviceAssignmentRepository = org.mockito.Mockito
+            .mock(MissionDeviceAssignmentRepository.class);
+    private final DeviceConnectionRepository deviceConnectionRepository = org.mockito.Mockito
+            .mock(DeviceConnectionRepository.class);
+    private final DeviceTelemetryRepository deviceTelemetryRepository = org.mockito.Mockito
             .mock(DeviceTelemetryRepository.class);
     private final RoutePlanner directRoutePlanner = org.mockito.Mockito.mock(RoutePlanner.class);
     private final RoutePlanner aStarShortestRoutePlanner = org.mockito.Mockito.mock(RoutePlanner.class);
@@ -56,8 +64,9 @@ class MissionPlanningServiceTest {
     private final MissionPlanningService service = new MissionPlanningServiceImpl(
             missionRepository,
             missionPlanRepository,
-            missionDroneAssignmentRepository,
-            DeviceTelemetryRepository,
+            missionDeviceAssignmentRepository,
+            deviceConnectionRepository,
+            deviceTelemetryRepository,
             directRoutePlanner,
             aStarShortestRoutePlanner,
             aStarEnergyAwareRoutePlanner,
@@ -305,11 +314,17 @@ class MissionPlanningServiceTest {
     void availableBatteryAtPlanningComesFromCurrentAssignedDroneTelemetryWhenPresent() {
         Mission mission = missionWithOrder(point(260.0, 230.0));
         mission.setId("mission-1");
-        Drone drone = new Drone();
-        drone.setDroneCode("DRONE-01");
-        MissionDroneAssignment assignment = new MissionDroneAssignment();
+        Device device = new Device();
+        device.setId("DEV-01");
+        device.setDeviceCode("DEVICE-01");
+        MissionDeviceAssignment assignment = new MissionDeviceAssignment();
         assignment.setMission(mission);
-        assignment.setDrone(drone);
+        assignment.setDevice(device);
+        DeviceConnection connection = new DeviceConnection();
+        connection.setId("CONN-01");
+        connection.setDeviceAssignment(assignment);
+        connection.setConnectionStatus("CONNECTED");
+        connection.setTelemetryActive(true);
         DeviceTelemetry telemetry = new DeviceTelemetry();
         telemetry.setBatteryPercent(72.5);
 
@@ -319,9 +334,11 @@ class MissionPlanningServiceTest {
         when(planningEnvironment.sample(0.0, -280.0)).thenReturn(homeSample(12.0));
         when(directRoutePlanner.plan(0.0, -280.0, 260.0, 230.0)).thenReturn(feasibleRoute());
         when(missionEnergyEstimator.estimate(Mockito.any())).thenReturn(energyEstimate());
-        when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1"))
+        when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1"))
                 .thenReturn(Optional.of(assignment));
-        when(DeviceTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(telemetry));
+        when(deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc("mission-1", "CONNECTED"))
+                .thenReturn(Optional.of(connection));
+        when(deviceTelemetryRepository.findTopByDeviceConnectionIdOrderByRecordedAtDesc("CONN-01")).thenReturn(Optional.of(telemetry));
         when(missionPlanRepository.save(Mockito.any(MissionPlan.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -361,16 +378,18 @@ class MissionPlanningServiceTest {
     void assignedDroneWithoutTelemetryDoesNotAssumeFullBattery() {
         Mission mission = missionWithOrder(point(260.0, 230.0));
         mission.setId("mission-1");
-        Drone drone = new Drone();
-        drone.setDroneCode("DRONE-01");
-        MissionDroneAssignment assignment = new MissionDroneAssignment();
+        Device device = new Device();
+        device.setId("DEV-01");
+        device.setDeviceCode("DEVICE-01");
+        MissionDeviceAssignment assignment = new MissionDeviceAssignment();
         assignment.setMission(mission);
-        assignment.setDrone(drone);
+        assignment.setDevice(device);
 
         arrangeFeasiblePlanning(mission, energyEstimateWithBatteryUse(18.0));
-        when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1"))
+        when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1"))
                 .thenReturn(Optional.of(assignment));
-        when(DeviceTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.empty());
+        when(deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc("mission-1", "CONNECTED"))
+                .thenReturn(Optional.empty());
 
         MissionPlan missionPlan = service.generateDirectPlan("mission-1");
 
@@ -701,18 +720,26 @@ class MissionPlanningServiceTest {
     private MissionPlan planWithAssignedDroneBattery(double batteryPercent, EnergyEstimate estimate) {
         Mission mission = missionWithOrder(point(260.0, 230.0));
         mission.setId("mission-1");
-        Drone drone = new Drone();
-        drone.setDroneCode("DRONE-01");
-        MissionDroneAssignment assignment = new MissionDroneAssignment();
+        Device device = new Device();
+        device.setId("DEV-01");
+        device.setDeviceCode("DEVICE-01");
+        MissionDeviceAssignment assignment = new MissionDeviceAssignment();
         assignment.setMission(mission);
-        assignment.setDrone(drone);
+        assignment.setDevice(device);
+        DeviceConnection connection = new DeviceConnection();
+        connection.setId("CONN-01");
+        connection.setDeviceAssignment(assignment);
+        connection.setConnectionStatus("CONNECTED");
+        connection.setTelemetryActive(true);
         DeviceTelemetry telemetry = new DeviceTelemetry();
         telemetry.setBatteryPercent(batteryPercent);
 
         arrangeFeasiblePlanning(mission, estimate);
-        when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1"))
+        when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1"))
                 .thenReturn(Optional.of(assignment));
-        when(DeviceTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(telemetry));
+        when(deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc("mission-1", "CONNECTED"))
+                .thenReturn(Optional.of(connection));
+        when(deviceTelemetryRepository.findTopByDeviceConnectionIdOrderByRecordedAtDesc("CONN-01")).thenReturn(Optional.of(telemetry));
 
         return service.generateDirectPlan("mission-1");
     }

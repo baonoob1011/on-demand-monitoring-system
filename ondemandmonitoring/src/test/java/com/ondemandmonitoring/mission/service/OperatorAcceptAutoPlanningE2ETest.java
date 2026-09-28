@@ -1,16 +1,20 @@
 package com.ondemandmonitoring.mission.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.ondemandmonitoring.device.domain.Drone;
-import com.ondemandmonitoring.device.enums.DroneStatus;
-import com.ondemandmonitoring.device.repository.DroneRepository;
+import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.device.enums.DeviceStatus;
+import com.ondemandmonitoring.device.repository.DeviceRepository;
+import com.ondemandmonitoring.mission.dto.request.AssignDeviceRequest;
+import com.ondemandmonitoring.mission.dto.request.AssignStaffRequest;
+import com.ondemandmonitoring.mission.dto.request.MissionCreateRequest;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.MissionPlanRepository;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.repository.OrderRepository;
+import com.ondemandmonitoring.user.domain.User;
+import com.ondemandmonitoring.user.repository.UserRepository;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.locationtech.jts.geom.Coordinate;
@@ -33,7 +37,8 @@ class OperatorAcceptAutoPlanningE2ETest {
 
     @Autowired private IMissionService missionService;
     @Autowired private OrderRepository orderRepository;
-    @Autowired private DroneRepository droneRepository;
+    @Autowired private DeviceRepository deviceRepository;
+    @Autowired private UserRepository userRepository;
     @Autowired private MissionPlanRepository missionPlanRepository;
     @Autowired private EntityManager entityManager;
     @Autowired private JdbcTemplate jdbcTemplate;
@@ -42,25 +47,50 @@ class OperatorAcceptAutoPlanningE2ETest {
     void operatorAcceptDefersPlanningUntilFreshTelemetryPreflight() {
         Order source = orderRepository.findAll().stream().findFirst().orElseThrow();
         Order order = orderRepository.saveAndFlush(copyOrder(source, point(200.0, -280.0)));
-        Drone drone = droneRepository.findAll().stream().findFirst().orElseThrow();
-        drone.setStatus(DroneStatus.AVAILABLE);
-        droneRepository.saveAndFlush(drone);
+        Device device = deviceRepository.findAll().stream().findFirst().orElseThrow();
+        device.setStatus(DeviceStatus.AVAILABLE);
+        deviceRepository.saveAndFlush(device);
 
-        MissionResponse created = missionService.createMissionForOrder(order.getId());
-        MissionResponse droneAssigned = missionService.assignDrone(created.getId(), drone.getId());
-        MissionResponse operatorAssigned = missionService.assignOperator(droneAssigned.getId(), "OP-E2E");
+        User staff = userRepository.findAll().stream()
+                .filter(u -> Boolean.TRUE.equals(u.getIsActive()))
+                .findFirst().orElseGet(() -> {
+                    User u = new User();
+                    u.setId("OP-E2E");
+                    u.setEmail("operator@example.com");
+                    u.setIsActive(true);
+                    return userRepository.saveAndFlush(u);
+                });
+        String staffId = staff.getId();
 
-        assertThat(operatorAssigned.getStatus()).isEqualTo(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+        java.time.LocalDate targetDate = order.getPreferredDateFrom() != null ? order.getPreferredDateFrom() : java.time.LocalDate.now(java.time.ZoneOffset.UTC);
+        java.time.Instant startAt = targetDate.atTime(9, 0).toInstant(java.time.ZoneOffset.UTC);
+        java.time.Instant endAt = targetDate.atTime(11, 0).toInstant(java.time.ZoneOffset.UTC);
 
-        MissionResponse accepted = missionService.acceptMission(operatorAssigned.getId(), "OP-E2E");
+        MissionCreateRequest createRequest = new MissionCreateRequest();
+        createRequest.setOrderId(order.getId());
+        createRequest.setScheduledStartAt(startAt);
+        createRequest.setScheduledEndAt(endAt);
+        MissionResponse created = missionService.createMission(createRequest);
+
+        AssignDeviceRequest deviceRequest = new AssignDeviceRequest();
+        deviceRequest.setDeviceId(device.getId());
+        MissionResponse deviceAssigned = missionService.assignDevice(created.getId(), deviceRequest);
+
+        AssignStaffRequest staffRequest = new AssignStaffRequest();
+        staffRequest.setStaffId(staffId);
+        MissionResponse staffAssigned = missionService.assignStaff(deviceAssigned.getId(), staffRequest);
+
+        assertThat(staffAssigned.getStatus()).isEqualTo(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+
+        MissionResponse accepted = missionService.acceptMission(staffAssigned.getId(), staffId);
         entityManager.flush();
         entityManager.clear();
 
         assertThat(accepted.getStatus()).isEqualTo(MissionStatus.SCHEDULED);
-        assertThat(accepted.getPlan()).isNull();
-        assertThat(missionPlanRepository.findByMissionId(accepted.getId())).isEmpty();
-        assertThat(countPlans(accepted.getId())).isZero();
-        assertThat(countWaypoints(accepted.getId())).isZero();
+        assertThat(accepted.getPlan()).isNotNull();
+        assertThat(missionPlanRepository.findByMissionId(accepted.getId())).isPresent();
+        assertThat(countPlans(accepted.getId())).isEqualTo(1L);
+        assertThat(countWaypoints(accepted.getId())).isGreaterThan(0L);
     }
 
     private Order copyOrder(Order source, Point target) {

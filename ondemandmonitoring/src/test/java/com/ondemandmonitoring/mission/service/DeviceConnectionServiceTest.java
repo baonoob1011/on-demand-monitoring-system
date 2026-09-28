@@ -1,15 +1,19 @@
 package com.ondemandmonitoring.mission.service;
 
-import com.ondemandmonitoring.device.domain.Drone;
-import com.ondemandmonitoring.device.enums.DroneStatus;
-import com.ondemandmonitoring.device.repository.DroneRepository;
+import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.device.enums.DeviceStatus;
+import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
+import com.ondemandmonitoring.mission.domain.MissionStaffAssignment;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.mapper.MissionMapper;
 import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
+import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepository;
 import com.ondemandmonitoring.mission.service.impl.DeviceConnectionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -33,11 +37,11 @@ class DeviceConnectionServiceTest {
     @Mock
     private DeviceConnectionRepository deviceConnectionRepository;
     @Mock
-    private MissionDroneAssignmentRepository missionDroneAssignmentRepository;
+    private MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
     @Mock
-    private MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
+    private MissionStaffAssignmentRepository missionStaffAssignmentRepository;
     @Mock
-    private DroneRepository droneRepository;
+    private DeviceRepository deviceRepository;
     @Mock
     private MissionMapper missionMapper;
 
@@ -48,9 +52,9 @@ class DeviceConnectionServiceTest {
         deviceConnectionService = new DeviceConnectionService(
                 missionRepository,
                 deviceConnectionRepository,
-                missionDroneAssignmentRepository,
-                missionOperatorAssignmentRepository,
-                droneRepository,
+                missionDeviceAssignmentRepository,
+                missionStaffAssignmentRepository,
+                deviceRepository,
                 missionMapper
         );
 
@@ -73,17 +77,22 @@ class DeviceConnectionServiceTest {
         mission.setId(missionId);
         mission.setStatus(MissionStatus.SCHEDULED);
 
-        Drone device = new Drone();
+        Device device = new Device();
         device.setId("D-1");
-        device.setDroneCode("DRONE-01");
+        device.setDeviceCode("DRONE-01");
 
-        MissionDroneAssignment mda = new MissionDroneAssignment();
+        MissionDeviceAssignment mda = new MissionDeviceAssignment();
         mda.setMission(mission);
-        mda.setDrone(device);
+        mda.setDevice(device);
         mda.setIsCurrent(true);
 
+        MissionStaffAssignment msa = new MissionStaffAssignment();
+        msa.setMission(mission);
+        msa.setIsCurrent(true);
+
         when(missionRepository.findById(missionId)).thenReturn(Optional.of(mission));
-        when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)).thenReturn(Optional.of(mda));
+        when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)).thenReturn(Optional.of(mda));
+        when(missionStaffAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)).thenReturn(Optional.of(msa));
         when(missionRepository.save(any(Mission.class))).thenAnswer(inv -> inv.getArgument(0));
 
         MissionResponse response = deviceConnectionService.connectGcs(missionId);
@@ -131,13 +140,13 @@ class DeviceConnectionServiceTest {
         mission.setId(missionId);
         mission.setStatus(MissionStatus.IN_PROGRESS);
 
-        Drone device = new Drone();
+        Device device = new Device();
         device.setId("D-1");
-        device.setStatus(DroneStatus.ACTIVE_MISSION);
+        device.setStatus(DeviceStatus.ACTIVE_MISSION);
 
-        MissionDroneAssignment mda = new MissionDroneAssignment();
+        MissionDeviceAssignment mda = new MissionDeviceAssignment();
         mda.setMission(mission);
-        mda.setDrone(device);
+        mda.setDevice(device);
         mda.setIsCurrent(true);
 
         DeviceConnection activeSession = new DeviceConnection();
@@ -147,17 +156,17 @@ class DeviceConnectionServiceTest {
         when(missionRepository.findById(missionId)).thenReturn(Optional.of(mission));
         when(deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED"))
                 .thenReturn(Optional.of(activeSession));
-        when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)).thenReturn(Optional.of(mda));
+        when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)).thenReturn(Optional.of(mda));
         when(missionRepository.save(any(Mission.class))).thenAnswer(inv -> inv.getArgument(0));
 
         MissionResponse response = deviceConnectionService.handleGcsSessionLost(missionId, "SIGNAL_LOSS_COMM_TIMEOUT");
 
         assertThat(response.getStatus()).isEqualTo(MissionStatus.RETURNING);
-        assertThat(device.getStatus()).isEqualTo(DroneStatus.RETURNING);
+        assertThat(device.getStatus()).isEqualTo(DeviceStatus.RETURNING);
         assertThat(activeSession.getConnectionStatus()).isEqualTo("LOST");
         assertThat(activeSession.getDisconnectReason()).isEqualTo("SIGNAL_LOSS_COMM_TIMEOUT");
 
         verify(deviceConnectionRepository).save(activeSession);
-        verify(droneRepository).save(device);
+        verify(deviceRepository).save(device);
     }
 }

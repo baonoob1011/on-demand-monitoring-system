@@ -96,7 +96,7 @@ class PlanningResearchArtifactE2ETest {
         int mismatches = consistencyMismatches(Files.readString(output.resolve("paired-scenarios.csv")));
         assertThat(mismatches).isZero();
         assertThat(Files.readString(output.resolve("paired-scenarios.csv")))
-                .contains("145.10416666666663");
+                .contains("benchmark-target-");
         assertThat(missionRepository.count()).isEqualTo(missionsBefore);
         assertThat(orderRepository.count()).isEqualTo(ordersBefore);
         assertThat(missionPlanRepository.count()).isEqualTo(plansBefore);

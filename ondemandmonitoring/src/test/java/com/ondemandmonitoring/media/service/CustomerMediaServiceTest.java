@@ -12,8 +12,8 @@ import com.ondemandmonitoring.media.repository.MediaNotificationOutboxRepository
 import com.ondemandmonitoring.media.service.impl.CustomerMediaServiceImpl;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
-import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
-import com.ondemandmonitoring.mission.repository.MissionOperatorAssignmentRepository;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
+import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepository;
 import com.ondemandmonitoring.mission.service.impl.MissionMediaAccessServiceImpl;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.s3.S3ObjectStorageService;
@@ -31,8 +31,8 @@ class CustomerMediaServiceTest {
     private final S3ObjectStorageService storage = mock(S3ObjectStorageService.class);
     private final AuthenticatedUserResolver currentUser = mock(AuthenticatedUserResolver.class);
     private final CustomerMediaServiceImpl service = new CustomerMediaServiceImpl(
-            new MissionMediaAccessServiceImpl(missions, mock(MissionDroneAssignmentRepository.class),
-                    mock(MissionOperatorAssignmentRepository.class), currentUser), media, notifications, storage,
+            new MissionMediaAccessServiceImpl(missions, mock(MissionDeviceAssignmentRepository.class),
+                    mock(MissionStaffAssignmentRepository.class), currentUser), media, notifications, storage,
             org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class));
 
     @Test

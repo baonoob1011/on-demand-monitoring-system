@@ -8,9 +8,12 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.common.exception.ApiException;
+import com.ondemandmonitoring.device.repository.DeviceTelemetryRepository;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
+import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.planning.dto.AlgorithmPlanningResult;
@@ -34,7 +37,8 @@ class PlanningComparisonServiceTest {
     private static final GeometryFactory GEOMETRY = new GeometryFactory(new PrecisionModel(), 0);
 
     private final MissionRepository missionRepository = Mockito.mock(MissionRepository.class);
-    private final MissionDroneAssignmentRepository assignmentRepository = Mockito.mock(MissionDroneAssignmentRepository.class);
+    private final MissionDeviceAssignmentRepository assignmentRepository = Mockito.mock(MissionDeviceAssignmentRepository.class);
+    private final DeviceConnectionRepository deviceConnectionRepository = Mockito.mock(DeviceConnectionRepository.class);
     private final DeviceTelemetryRepository telemetryRepository = Mockito.mock(DeviceTelemetryRepository.class);
     private final RoutePlanner direct = Mockito.mock(RoutePlanner.class);
     private final RoutePlanner shortest = Mockito.mock(RoutePlanner.class);
@@ -43,7 +47,7 @@ class PlanningComparisonServiceTest {
     private final PlanningEnvironment environment = Mockito.mock(PlanningEnvironment.class);
     private final MissionEnergyEstimator estimator = Mockito.mock(MissionEnergyEstimator.class);
     private final PlanningComparisonService service = new PlanningComparisonServiceImpl(
-            missionRepository, assignmentRepository, telemetryRepository, direct, shortest, aware,
+            missionRepository, assignmentRepository, deviceConnectionRepository, telemetryRepository, direct, shortest, aware,
             homeProvider, environment, estimator);
 
     @Test
@@ -175,7 +179,7 @@ class PlanningComparisonServiceTest {
         assertThat(result.targetY()).isEqualTo(40.0);
         assertThat(result.results()).hasSize(3).allMatch(value ->
                 value.availableBatteryPercentAtPlanning() == null);
-        verifyNoInteractions(missionRepository, assignmentRepository, telemetryRepository, homeProvider);
+        verifyNoInteractions(missionRepository, assignmentRepository, deviceConnectionRepository, telemetryRepository, homeProvider);
         verify(direct).plan(10.0, 20.0, 30.0, 40.0);
         verify(shortest).plan(10.0, 20.0, 30.0, 40.0);
         verify(aware).plan(10.0, 20.0, 30.0, 40.0);

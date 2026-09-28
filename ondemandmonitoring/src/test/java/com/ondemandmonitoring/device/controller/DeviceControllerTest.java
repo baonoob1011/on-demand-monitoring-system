@@ -126,7 +126,7 @@ class DeviceControllerTest {
         DeviceResponse response = DeviceResponse.builder()
                 .id("device-123")
                 .serialNumber("SN-1002")
-                .status(DeviceStatus.IN_USE)
+                .status(DeviceStatus.IN_MISSION)
                 .build();
 
         when(deviceService.update(eq("device-123"), any())).thenReturn(response);
@@ -136,14 +136,14 @@ class DeviceControllerTest {
                         .content("""
                                 {
                                   "serialNumber": "SN-1002",
-                                  "status": "IN_USE"
+                                  "status": "IN_MISSION"
                                 }
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.message").value("Device updated successfully"))
                 .andExpect(jsonPath("$.data.serialNumber").value("SN-1002"))
-                .andExpect(jsonPath("$.data.status").value("IN_USE"));
+                .andExpect(jsonPath("$.data.status").value("IN_MISSION"));
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.ondemandmonitoring.replanning.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.ondemandmonitoring.device.domain.DeviceTelemetry;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.domain.PlanWaypoint;
 import com.ondemandmonitoring.replanning.config.ReplanningProperties;

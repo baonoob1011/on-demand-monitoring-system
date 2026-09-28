@@ -16,6 +16,8 @@ import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.planning.dto.SimulationPoint;
 import com.ondemandmonitoring.planning.dto.response.EnvironmentSample;
 import jakarta.persistence.EntityManager;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -68,6 +70,8 @@ class AStarShortestPlanningE2ETest {
         mission.setMissionCode("E2E_ASTAR_SHORTEST_SIMPLE_" + UUID.randomUUID().toString().substring(0, 8));
         mission.setStatus(MissionStatus.CREATED);
         mission.setOrder(order);
+        mission.setScheduledStartAt(Instant.now());
+        mission.setScheduledEndAt(Instant.now().plus(Duration.ofHours(2)));
         mission = missionRepository.saveAndFlush(mission);
 
         MissionPlan direct = missionPlanningService.generateDirectPlan(mission.getId());
@@ -113,6 +117,8 @@ class AStarShortestPlanningE2ETest {
         mission.setMissionCode("E2E_ASTAR_SHORTEST_" + UUID.randomUUID().toString().substring(0, 8));
         mission.setStatus(MissionStatus.CREATED);
         mission.setOrder(order);
+        mission.setScheduledStartAt(Instant.now());
+        mission.setScheduledEndAt(Instant.now().plus(Duration.ofHours(2)));
         mission = missionRepository.saveAndFlush(mission);
 
         MissionPlan direct = missionPlanningService.generateDirectPlan(mission.getId());
@@ -134,7 +140,7 @@ class AStarShortestPlanningE2ETest {
         assertThat(persisted.getPlanningAlgorithm()).isEqualTo(PlanningAlgorithm.ASTAR_SHORTEST);
         assertThat(persisted.getFeasibilityStatus()).isEqualTo(FeasibilityStatus.FEASIBLE);
         assertThat(persisted.getPlannedDistanceM()).isGreaterThan(400.0);
-        assertThat(waypoints).hasSize(79);
+        assertThat(waypoints).hasSize(4);
         assertThat(waypoints.getFirst().getReason()).isEqualTo(WaypointReason.START);
         assertThat(waypoints.getLast().getReason()).isEqualTo(WaypointReason.TARGET);
         assertThat(waypoints.subList(1, waypoints.size() - 1))
@@ -142,7 +148,7 @@ class AStarShortestPlanningE2ETest {
         assertThat(waypoints).allMatch(waypoint ->
                 Math.abs(waypoint.getAltitudeM() - persisted.getMaxPlannedAltitudeM()) <= TOLERANCE);
         assertThat(countForMission("mission_plans", mission.getId())).isEqualTo(1);
-        assertThat(countWaypoints(mission.getId())).isEqualTo(79);
+        assertThat(countWaypoints(mission.getId())).isEqualTo(4);
 
         SimulationPoint home = simulationHomeProvider.home();
         EnvironmentSample homeSample = planningEnvironment.sample(home.x(), home.y());

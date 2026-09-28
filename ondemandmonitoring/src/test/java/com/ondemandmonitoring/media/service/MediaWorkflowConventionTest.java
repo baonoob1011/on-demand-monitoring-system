@@ -36,7 +36,8 @@ class MediaWorkflowConventionTest {
     @Test
     void mapperPreservesWireStatusAndExplicitUrlExpiration() {
         var mapper = Mappers.getMapper(MediaWorkflowMapper.class);
-        var asset = MediaAsset.builder().mediaStatus(MediaStatus.UPLOAD_PENDING).build();
+        var asset = new MediaAsset();
+        asset.setMediaStatus(MediaStatus.UPLOAD_PENDING);
         asset.setId("media-1");
         var attempt = MediaUploadAttempt.builder().attemptNumber(2).build();
         attempt.setId("attempt-2");

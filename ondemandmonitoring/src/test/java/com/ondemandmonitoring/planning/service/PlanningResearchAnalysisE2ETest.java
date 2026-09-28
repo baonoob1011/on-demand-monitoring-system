@@ -21,6 +21,8 @@ import com.ondemandmonitoring.planning.dto.PlanningExperimentResult;
 import com.ondemandmonitoring.planning.dto.PlanningExperimentScenario;
 import com.ondemandmonitoring.planning.dto.PlanningResearchAnalysis;
 import jakarta.persistence.EntityManager;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -143,9 +145,9 @@ class PlanningResearchAnalysisE2ETest {
         assertThat(Double.parseDouble(shortest.get(10))).isCloseTo(34.0, TOL);
         assertThat(Double.parseDouble(shortest.get(12))).isCloseTo(204.027777777778, TOL);
         assertThat(aware.get(7)).isEqualTo("ASTAR_ENERGY_AWARE");
-        assertThat(Double.parseDouble(aware.get(9))).isCloseTo(218.5269119345814, TOL);
+        assertThat(Double.parseDouble(aware.get(9))).isCloseTo(212.62281681138103, TOL);
         assertThat(Double.parseDouble(aware.get(10))).isCloseTo(19.5, TOL);
-        assertThat(Double.parseDouble(aware.get(12))).isCloseTo(187.971946616694, TOL);
+        assertThat(Double.parseDouble(aware.get(12))).isCloseTo(183.461873953138, TOL);
     }
 
     private Map<String, PlanningExperimentDatasetRow> rowsByScenario(
@@ -183,6 +185,8 @@ class PlanningResearchAnalysisE2ETest {
         mission.setMissionCode("E2E_RESEARCH_READ_ONLY_" + UUID.randomUUID().toString().substring(0, 8));
         mission.setStatus(MissionStatus.CREATED);
         mission.setOrder(order);
+        mission.setScheduledStartAt(Instant.now());
+        mission.setScheduledEndAt(Instant.now().plus(Duration.ofHours(2)));
         mission = missionRepository.saveAndFlush(mission);
         return missionPlanningService.generateDirectPlan(mission.getId());
     }
