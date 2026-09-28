@@ -1,9 +1,9 @@
-package com.ondemandmonitoring.device.controller;
+package com.ondemandmonitoring.devicecheck.controller;
 
 import com.ondemandmonitoring.common.api.ApiResponse;
-import com.ondemandmonitoring.device.dto.request.DeviceCheckItemUpdateRequest;
-import com.ondemandmonitoring.device.dto.response.PersistedPostDeviceCheckResponse;
-import com.ondemandmonitoring.device.service.IPersistedPostDeviceCheckService;
+import com.ondemandmonitoring.devicecheck.dto.request.PreDeviceCheckItemUpdateRequest;
+import com.ondemandmonitoring.devicecheck.dto.response.PersistedPreDeviceCheckResponse;
+import com.ondemandmonitoring.devicecheck.service.IPersistedPreDeviceCheckService;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -19,48 +19,47 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-public class PersistedPostDeviceCheckController {
+public class PersistedPreDeviceCheckController {
 
-    private final IPersistedPostDeviceCheckService service;
+    private final IPersistedPreDeviceCheckService service;
 
-    @PostMapping("/api/missions/{missionId}/post-device-checks")
+    @PostMapping("/api/missions/{missionId}/pre-device-checks")
     @PreAuthorize("hasRole('DRONE_OPERATOR') and @missionAuthorizationService.isAssignedOperator(#missionId)")
-    public ResponseEntity<ApiResponse<PersistedPostDeviceCheckResponse>> start(
+    public ResponseEntity<ApiResponse<PersistedPreDeviceCheckResponse>> start(
             @PathVariable String missionId) {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.created(service.start(missionId)));
     }
 
-    @GetMapping("/api/missions/{missionId}/post-device-checks")
+    @GetMapping("/api/missions/{missionId}/pre-device-checks")
     @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedOperator(#missionId)")
-    public ApiResponse<List<PersistedPostDeviceCheckResponse>> history(
+    public ApiResponse<List<PersistedPreDeviceCheckResponse>> history(
             @PathVariable String missionId) {
         return ApiResponse.ok(service.history(missionId));
     }
 
-    @GetMapping("/api/missions/{missionId}/post-device-checks/current")
+    @GetMapping("/api/missions/{missionId}/pre-device-checks/current")
     @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedOperator(#missionId)")
-    public ApiResponse<PersistedPostDeviceCheckResponse> current(
+    public ApiResponse<PersistedPreDeviceCheckResponse> current(
             @PathVariable String missionId) {
         return ApiResponse.ok(service.current(missionId));
     }
 
-    @GetMapping("/api/post-device-checks/{id}")
-    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
-    public ApiResponse<PersistedPostDeviceCheckResponse> get(
+    @GetMapping("/api/pre-device-checks/{id}")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedStaffForPreDeviceCheck(#id)")
+    public ApiResponse<PersistedPreDeviceCheckResponse> get(
             @PathVariable String id) {
         return ApiResponse.ok(service.get(id));
     }
 
-    @PatchMapping("/api/post-device-checks/{id}/items/{checkType}")
-    @PreAuthorize("hasRole('DRONE_OPERATOR')")
-    public ApiResponse<PersistedPostDeviceCheckResponse> update(
+    @PatchMapping("/api/pre-device-checks/{id}/items/{checkType}")
+    @PreAuthorize("hasRole('DRONE_OPERATOR') and @missionAuthorizationService.isAssignedStaffForPreDeviceCheck(#id)")
+    public ApiResponse<PersistedPreDeviceCheckResponse> update(
             @PathVariable String id,
             @PathVariable String checkType,
-            @Valid @RequestBody DeviceCheckItemUpdateRequest request) {
+            @Valid @RequestBody PreDeviceCheckItemUpdateRequest request) {
         return ApiResponse.ok(service.update(id, checkType, request));
     }
 }
-
 

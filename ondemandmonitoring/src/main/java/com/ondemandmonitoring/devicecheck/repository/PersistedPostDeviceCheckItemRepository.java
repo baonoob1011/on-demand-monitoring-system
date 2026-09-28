@@ -1,6 +1,6 @@
-package com.ondemandmonitoring.device.repository;
+package com.ondemandmonitoring.devicecheck.repository;
 
-import com.ondemandmonitoring.device.domain.PersistedPostDeviceCheckItem;
+import com.ondemandmonitoring.devicecheck.domain.PersistedPostDeviceCheckItem;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 

@@ -1,7 +1,7 @@
-package com.ondemandmonitoring.device.domain;
+package com.ondemandmonitoring.devicecheck.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.device.enums.DeviceCheckStatus;
+import com.ondemandmonitoring.devicecheck.enums.DeviceCheckStatus;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
 import jakarta.persistence.CascadeType;

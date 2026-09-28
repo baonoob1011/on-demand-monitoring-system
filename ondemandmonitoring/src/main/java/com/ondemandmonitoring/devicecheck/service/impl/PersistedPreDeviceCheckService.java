@@ -1,20 +1,21 @@
-package com.ondemandmonitoring.device.service.impl;
+package com.ondemandmonitoring.devicecheck.service.impl;
 
-import com.ondemandmonitoring.device.service.IPersistedPreflightCheckService;
+import com.ondemandmonitoring.devicecheck.service.IPersistedPreDeviceCheckService;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.device.domain.PersistedPreDeviceCheck;
-import com.ondemandmonitoring.device.domain.PersistedPreDeviceCheckItem;
-import com.ondemandmonitoring.device.dto.request.PreflightItemUpdateRequest;
-import com.ondemandmonitoring.device.dto.response.PersistedPreDeviceCheckResponse;
-import com.ondemandmonitoring.device.enums.PreflightCheckLevel;
-import com.ondemandmonitoring.device.enums.PreflightCheckStatus;
-import com.ondemandmonitoring.device.enums.PreflightItemStatus;
-import com.ondemandmonitoring.device.repository.PersistedPreflightCheckRepository;
+import com.ondemandmonitoring.devicecheck.domain.PersistedPreDeviceCheck;
+import com.ondemandmonitoring.devicecheck.domain.PersistedPreDeviceCheckItem;
+import com.ondemandmonitoring.devicecheck.dto.request.PreDeviceCheckItemUpdateRequest;
+import com.ondemandmonitoring.devicecheck.dto.response.PersistedPreDeviceCheckResponse;
+import com.ondemandmonitoring.devicecheck.enums.PreDeviceCheckStatus;
+import com.ondemandmonitoring.devicecheck.enums.PreDeviceCheckType;
+import com.ondemandmonitoring.devicecheck.enums.PreDeviceItemStatus;
+import com.ondemandmonitoring.devicecheck.repository.PersistedPreDeviceCheckRepository;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -22,23 +23,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-public class PersistedPreflightCheckService implements IPersistedPreflightCheckService {
+public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckService {
 
-    private static final List<Definition> CHECKS = List.of(
-            new Definition("GAZEBO", "Gazebo Simulation", PreflightCheckLevel.CRITICAL),
-            new Definition("PX4", "PX4 Flight Controller", PreflightCheckLevel.CRITICAL),
-            new Definition("MAVSDK", "MAVSDK Connection", PreflightCheckLevel.CRITICAL),
-            new Definition("PX4_CONTROL", "PX4 Control", PreflightCheckLevel.CRITICAL),
-            new Definition("LOCAL_POSITION", "Local Position", PreflightCheckLevel.CRITICAL),
-            new Definition("MAVSDK_HEALTH", "MAVSDK Health", PreflightCheckLevel.CRITICAL),
-            new Definition("BATTERY", "Battery", PreflightCheckLevel.CRITICAL),
-            new Definition("LIDAR", "LiDAR", PreflightCheckLevel.WARNING),
-            new Definition("CAMERA", "Downward Camera", PreflightCheckLevel.WARNING),
-            new Definition("BACKEND", "Backend Connection", PreflightCheckLevel.WARNING),
-            new Definition("MEDIA", "Media Upload", PreflightCheckLevel.INFO),
-            new Definition("MODULES", "Module Check", PreflightCheckLevel.INFO));
+    private static final List<PreDeviceCheckType> CHECKS = Arrays.asList(PreDeviceCheckType.values());
 
-    private final PersistedPreflightCheckRepository runRepository;
+    private final PersistedPreDeviceCheckRepository runRepository;
     private final MissionRepository missionRepository;
 
     @Transactional
@@ -51,18 +40,18 @@ public class PersistedPreflightCheckService implements IPersistedPreflightCheckS
 
         PersistedPreDeviceCheck run = new PersistedPreDeviceCheck();
         run.setMission(mission);
-        run.setStatus(PreflightCheckStatus.CHECKING);
+        run.setStatus(PreDeviceCheckStatus.CHECKING);
         run.setTotalChecks(CHECKS.size());
         run.setPassedChecks(0);
         run.setFailedChecks(0);
         run.setStartedAt(Instant.now());
 
-        for (Definition definition : CHECKS) {
+        for (PreDeviceCheckType definition : CHECKS) {
             PersistedPreDeviceCheckItem item = new PersistedPreDeviceCheckItem();
-            item.setPreflightCheck(run);
-            item.setCheckType(definition.type);
-            item.setCheckName(definition.name);
-            item.setCheckLevel(definition.level);
+            item.setPreDeviceCheck(run);
+            item.setCheckType(definition.code());
+            item.setCheckName(definition.displayName());
+            item.setCheckLevel(definition.level());
             run.getItems().add(item);
         }
 
@@ -101,7 +90,7 @@ public class PersistedPreflightCheckService implements IPersistedPreflightCheckS
 
     @Transactional
     @Override
-    public PersistedPreDeviceCheckResponse update(String id, String type, PreflightItemUpdateRequest request) {
+    public PersistedPreDeviceCheckResponse update(String id, String type, PreDeviceCheckItemUpdateRequest request) {
         PersistedPreDeviceCheck run = runRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.RESOURCE_NOT_FOUND,
@@ -119,30 +108,29 @@ public class PersistedPreflightCheckService implements IPersistedPreflightCheckS
         item.setCheckedAt(Instant.now());
 
         int passed = (int) run.getItems().stream()
-                .filter(i -> i.getStatus() == PreflightItemStatus.PASSED)
+                .filter(i -> i.getStatus() == PreDeviceItemStatus.PASSED)
                 .count();
         int failed = (int) run.getItems().stream()
-                .filter(i -> i.getStatus() == PreflightItemStatus.FAILED)
+                .filter(i -> i.getStatus() == PreDeviceItemStatus.FAILED)
                 .count();
-        boolean criticalFailed = run.getItems().stream()
-                .anyMatch(i -> i.getCheckLevel() == PreflightCheckLevel.CRITICAL
-                        && i.getStatus() == PreflightItemStatus.FAILED);
+        boolean failedItem = run.getItems().stream()
+                .anyMatch(i -> i.getStatus() == PreDeviceItemStatus.FAILED);
         boolean finished = run.getItems().stream()
-                .allMatch(i -> i.getStatus() == PreflightItemStatus.PASSED
-                        || i.getStatus() == PreflightItemStatus.FAILED);
+                .allMatch(i -> i.getStatus() == PreDeviceItemStatus.PASSED
+                        || i.getStatus() == PreDeviceItemStatus.FAILED);
 
         run.setPassedChecks(passed);
         run.setFailedChecks(failed);
 
-        if (criticalFailed) {
-            run.setStatus(PreflightCheckStatus.FAILED);
+        if (failedItem) {
+            run.setStatus(PreDeviceCheckStatus.FAILED);
         } else if (finished) {
-            run.setStatus(PreflightCheckStatus.PASSED);
+            run.setStatus(PreDeviceCheckStatus.PASSED);
         } else {
-            run.setStatus(PreflightCheckStatus.CHECKING);
+            run.setStatus(PreDeviceCheckStatus.CHECKING);
         }
 
-        if (run.getStatus() != PreflightCheckStatus.CHECKING) {
+        if (run.getStatus() != PreDeviceCheckStatus.CHECKING) {
             run.setCompletedAt(Instant.now());
         }
 
@@ -156,6 +144,4 @@ public class PersistedPreflightCheckService implements IPersistedPreflightCheckS
                     "Mission not found: " + id);
         }
     }
-
-    private record Definition(String type, String name, PreflightCheckLevel level) {}
 }

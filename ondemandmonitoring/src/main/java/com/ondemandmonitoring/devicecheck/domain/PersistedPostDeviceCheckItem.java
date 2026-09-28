@@ -1,8 +1,8 @@
-package com.ondemandmonitoring.device.domain;
+package com.ondemandmonitoring.devicecheck.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.device.enums.PreflightCheckLevel;
-import com.ondemandmonitoring.device.enums.PreflightItemStatus;
+import com.ondemandmonitoring.devicecheck.enums.DeviceCheckItemStatus;
+import com.ondemandmonitoring.devicecheck.enums.DeviceCheckLevel;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -20,11 +20,11 @@ import lombok.Setter;
 @Getter
 @Setter
 @Entity
-public class PersistedPreDeviceCheckItem extends BaseEntity {
+public class PersistedPostDeviceCheckItem extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "preflight_run_id", nullable = false)
-    PersistedPreDeviceCheck preflightCheck;
+    @JoinColumn(name = "post_device_check_id", nullable = false)
+    PersistedPostDeviceCheck postDeviceCheck;
 
     @Column(name = "check_type", nullable = false, length = 50)
     String checkType;
@@ -34,11 +34,11 @@ public class PersistedPreDeviceCheckItem extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    PreflightItemStatus status = PreflightItemStatus.PENDING;
+    DeviceCheckItemStatus status = DeviceCheckItemStatus.PENDING;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "check_level", nullable = false, length = 20)
-    PreflightCheckLevel checkLevel;
+    DeviceCheckLevel checkLevel;
 
     @Column(length = 1000)
     String message;
@@ -46,4 +46,5 @@ public class PersistedPreDeviceCheckItem extends BaseEntity {
     @Column(name = "checked_at")
     Instant checkedAt;
 }
+
 

@@ -48,6 +48,15 @@ def resolve_project_root() -> Path:
 PROJECT_ROOT = resolve_project_root()
 RUNTIME_SESSION_ID = uuid.uuid4().hex
 
+
+def build_media_probe_jpeg() -> bytes:
+    buffer = BytesIO()
+    PilImage.new("RGB", (1, 1), (18, 139, 84)).save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
+MEDIA_PROBE_JPEG = build_media_probe_jpeg()
+
 DRONE_DIR = PROJECT_ROOT / "drone"
 
 if "/usr/lib/python3/dist-packages" not in sys.path:
@@ -1166,7 +1175,7 @@ class PreflightPersistenceBridge:
         for base_url in self.backend_urls.candidates():
             try:
                 response = httpx.post(
-                    f"{base_url}/api/missions/{self.mission_id}/preflight-checks",
+                    f"{base_url}/api/missions/{self.mission_id}/pre-device-checks",
                     headers=self._headers(),
                     timeout=1.5,
                 )
@@ -1183,7 +1192,7 @@ class PreflightPersistenceBridge:
                 self.base_url = base_url
                 self.warned_unavailable = False
                 print(
-                    f"[PREFLIGHT-DB] Created run={self.run_id} mission={self.mission_id}",
+                    f"[PRE-DEVICE-DB] Created run={self.run_id} mission={self.mission_id}",
                     flush=True,
                 )
                 return self.run_id
@@ -1192,7 +1201,7 @@ class PreflightPersistenceBridge:
 
         if not self.warned_unavailable:
             print(
-                f"[PREFLIGHT-DB] Not saved. Backend unavailable or mission missing: {self.mission_id}",
+                f"[PRE-DEVICE-DB] Not saved. Backend unavailable or mission missing: {self.mission_id}",
                 flush=True,
             )
             self.warned_unavailable = True
@@ -1216,7 +1225,7 @@ class PreflightPersistenceBridge:
 
             try:
                 response = httpx.patch(
-                    f"{self.base_url}/api/preflight-checks/{self.run_id}/items/{check_type}",
+                    f"{self.base_url}/api/pre-device-checks/{self.run_id}/items/{check_type}",
                     headers=self._headers(),
                     json={"status": status, "message": message},
                     timeout=1.0,
@@ -1228,6 +1237,76 @@ class PreflightPersistenceBridge:
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.access_token}"} if self.access_token else {}
+
+    def verify_media_upload_cycle(
+            self,
+            media_library: LocalMediaLibrary | None,
+            jpeg: bytes,
+    ) -> tuple[bool, str]:
+        if not self.base_url:
+            return False, "Backend run was not created, cannot verify media upload"
+        if media_library is None or not media_library.mission_id or not media_library.device_id:
+            return False, "Media library is not bound to an assigned mission and device"
+
+        mission_id = media_library.mission_id
+        device_id = media_library.device_id
+        media_id: str | None = None
+        headers = self._headers()
+        try:
+            with httpx.Client(timeout=8.0) as client:
+                upload = client.post(
+                    f"{self.base_url}/api/missions/{mission_id}/images",
+                    headers=headers,
+                    params={
+                        "deviceId": device_id,
+                        "capturedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                    },
+                    files={"image": ("pre-device-media-probe.jpg", jpeg, "image/jpeg")},
+                )
+                upload.raise_for_status()
+                payload = upload.json()
+                data = payload.get("data") if isinstance(payload, dict) else None
+                media_id = (
+                    str(data.get("id") or data.get("mediaId"))
+                    if isinstance(data, dict) and (data.get("id") or data.get("mediaId"))
+                    else None
+                )
+                if not media_id:
+                    return False, "Upload succeeded but backend did not return media id"
+
+                metadata = client.get(
+                    f"{self.base_url}/api/devices/{device_id}/media/{media_id}",
+                    headers=headers,
+                )
+                metadata.raise_for_status()
+
+                media_file = client.get(
+                    f"{self.base_url}/api/devices/{device_id}/media/{media_id}/file",
+                    headers=headers,
+                )
+                media_file.raise_for_status()
+                if not media_file.content:
+                    return False, "Uploaded media file could not be read back"
+
+                deleted = client.delete(
+                    f"{self.base_url}/api/devices/{device_id}/media/{media_id}",
+                    headers=headers,
+                )
+                deleted.raise_for_status()
+                media_id = None
+                return True, "Uploaded, read back, and deleted probe media successfully"
+        except Exception as exc:
+            return False, f"Real media upload/read/delete probe failed: {exc}"
+        finally:
+            if media_id:
+                try:
+                    httpx.delete(
+                        f"{self.base_url}/api/devices/{device_id}/media/{media_id}",
+                        headers=headers,
+                        timeout=3.0,
+                    )
+                except httpx.HTTPError:
+                    pass
 
     @staticmethod
     def _to_backend_status(status: str) -> str | None:
@@ -2627,6 +2706,10 @@ async def main() -> None:
     current_velocity_east_m_s = 0.0
     current_velocity_down_m_s = 0.0
     current_px4_battery_percent = None
+    current_px4_battery_update_s = None
+    media_probe_check_id = None
+    media_probe_status = "PENDING"
+    media_probe_message = "Media upload probe has not run yet"
     current_armed = False
     current_in_air = False
     current_health = None
@@ -2658,9 +2741,11 @@ async def main() -> None:
         }
 
     def build_preflight_status(check_id: str, started_at_s: float | None) -> dict:
+        nonlocal media_probe_check_id, media_probe_status, media_probe_message
         now_s = time.monotonic()
         local_age_s = now_s - local_position_update_s if local_position_update_s is not None else None
         health_age_s = now_s - current_health_update_s if current_health_update_s is not None else None
+        px4_battery_age_s = now_s - current_px4_battery_update_s if current_px4_battery_update_s is not None else None
         camera_age_s = camera.latest_frame_age_s("DOWN")
         lidar_age_s = lidar.latest_scan_age_s() if lidar is not None and hasattr(lidar, "latest_scan_age_s") else None
         connection_age_s = connection_manager.connection_age_s()
@@ -2684,9 +2769,27 @@ async def main() -> None:
         ) if current_health is not None else False
         module_ok = LIDAR_IMPORT_ERROR is None and Node is not None and GzImage is not None
         backend_ok, backend_target = backend_urls.reachable()
-        battery_snapshot = simulated_battery.snapshot()
-        simulated_battery_percent = battery_snapshot.battery_percent
-        battery_ready_status, battery_ready_message = preflight_battery_check(simulated_battery_percent)
+        if media_probe_check_id != check_id:
+            media_probe_check_id = check_id
+            media_probe_status = "CHECKING"
+            media_probe_message = "Running real upload/read/delete media probe"
+            if module_ok and backend_ok and control_api.preflight_persistence is not None:
+                media_ok, media_message = control_api.preflight_persistence.verify_media_upload_cycle(
+                    media_library,
+                    MEDIA_PROBE_JPEG,
+                )
+                media_probe_status = "PASS" if media_ok else "FAIL"
+                media_probe_message = media_message
+            else:
+                media_probe_status = "FAIL"
+                media_probe_message = "Media probe needs loaded modules and reachable backend"
+
+        if current_px4_battery_percent is not None and fresh(px4_battery_age_s, 10.0):
+            battery_ready_status, battery_ready_message = preflight_battery_check(current_px4_battery_percent)
+            battery_ready_message = f"{current_px4_battery_percent:.1f}% PX4 battery telemetry - {battery_ready_message}"
+        else:
+            battery_ready_status = "FAIL"
+            battery_ready_message = "No fresh PX4 battery telemetry received"
 
         checks = [
             check_item(
@@ -2762,8 +2865,8 @@ async def main() -> None:
             check_item(
                 "MEDIA",
                 "Media Upload",
-                "PASS" if module_ok else "WARN",
-                "Media capture pipeline ready" if module_ok else "Media capture pipeline not fully verified",
+                media_probe_status,
+                media_probe_message,
                 False,
             ),
             check_item(
@@ -3082,8 +3185,10 @@ async def main() -> None:
 
     def update_battery(percent: float | None) -> None:
         nonlocal current_px4_battery_percent
+        nonlocal current_px4_battery_update_s
         if percent is not None:
             current_px4_battery_percent = percent
+            current_px4_battery_update_s = time.monotonic()
 
     def update_in_air(in_air: bool) -> None:
         nonlocal current_in_air

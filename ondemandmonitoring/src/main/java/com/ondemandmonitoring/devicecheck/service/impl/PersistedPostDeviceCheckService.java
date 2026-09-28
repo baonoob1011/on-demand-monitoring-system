@@ -1,16 +1,16 @@
-package com.ondemandmonitoring.device.service.impl;
+package com.ondemandmonitoring.devicecheck.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.device.domain.PersistedPostDeviceCheck;
-import com.ondemandmonitoring.device.domain.PersistedPostDeviceCheckItem;
-import com.ondemandmonitoring.device.dto.request.DeviceCheckItemUpdateRequest;
-import com.ondemandmonitoring.device.dto.response.PersistedPostDeviceCheckResponse;
-import com.ondemandmonitoring.device.enums.DeviceCheckItemStatus;
-import com.ondemandmonitoring.device.enums.DeviceCheckLevel;
-import com.ondemandmonitoring.device.enums.DeviceCheckStatus;
-import com.ondemandmonitoring.device.repository.PersistedPostDeviceCheckRepository;
-import com.ondemandmonitoring.device.service.IPersistedPostDeviceCheckService;
+import com.ondemandmonitoring.devicecheck.domain.PersistedPostDeviceCheck;
+import com.ondemandmonitoring.devicecheck.domain.PersistedPostDeviceCheckItem;
+import com.ondemandmonitoring.devicecheck.dto.request.DeviceCheckItemUpdateRequest;
+import com.ondemandmonitoring.devicecheck.dto.response.PersistedPostDeviceCheckResponse;
+import com.ondemandmonitoring.devicecheck.enums.DeviceCheckItemStatus;
+import com.ondemandmonitoring.devicecheck.enums.DeviceCheckLevel;
+import com.ondemandmonitoring.devicecheck.enums.DeviceCheckStatus;
+import com.ondemandmonitoring.devicecheck.repository.PersistedPostDeviceCheckRepository;
+import com.ondemandmonitoring.devicecheck.service.IPersistedPostDeviceCheckService;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;

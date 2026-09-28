@@ -4,7 +4,7 @@ import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.device.dto.response.PreflightCheckResponse;
+import com.ondemandmonitoring.devicecheck.dto.response.PreDeviceCheckResponse;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.dto.response.MediaAssetResponse;
 import com.ondemandmonitoring.media.mapper.MediaAssetMapper;
@@ -49,7 +49,7 @@ import java.time.ZoneId;
  *
  * Base path: /api/missions
  */
-@Tag(name = "Mission Operations (Flow 3)", description = "APIs for staff mission lifecycle, GCS pairing, preflight checks, and flight execution")
+@Tag(name = "Mission Operations (Flow 3)", description = "APIs for staff mission lifecycle, GCS pairing, pre-device checks, and flight execution")
 @RestController
 @RequestMapping("/api/missions")
 @RequiredArgsConstructor
@@ -302,18 +302,18 @@ public class MissionController {
         return ResponseEntity.ok(ApiResponse.ok("GCS signal LOST – Return-To-Launch (RTL) triggered", response));
     }
 
-    @PostMapping("/{id}/preflight-check")
+    @PostMapping("/{id}/pre-device-check")
     @PreAuthorize("hasRole('DRONE_OPERATOR') and @missionAuthorizationService.isAssignedStaff(#id)")
-    public ResponseEntity<ApiResponse<PreflightCheckResponse>> runPreflightCheck(
+    public ResponseEntity<ApiResponse<PreDeviceCheckResponse>> runPreDeviceCheck(
             @PathVariable String id,
             @RequestParam String deviceId) {
-        PreflightCheckResponse response = missionService.runPreflightCheck(id, deviceId);
+        PreDeviceCheckResponse response = missionService.runPreDeviceCheck(id, deviceId);
         boolean passed = Boolean.TRUE.equals(response.getOverallPassed());
         return ResponseEntity
                 .status(passed ? HttpStatus.OK.value() : 422)
                 .body(ApiResponse.ok(
-                        passed ? "Digital preflight check PASSED – Flight Access Token issued"
-                                : "Digital preflight check FAILED – fault classified: " + response.getFaultType(),
+                        passed ? "Digital pre-device check PASSED – Flight Access Token issued"
+                                : "Digital pre-device check FAILED – fault classified: " + response.getFaultType(),
                         response));
     }
 

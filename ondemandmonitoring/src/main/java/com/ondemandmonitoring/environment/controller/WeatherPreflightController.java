@@ -112,7 +112,7 @@ public class WeatherPreflightController {
     }
 
     @Operation(summary = "Get latest mission weather preflight check")
-    @GetMapping("/preflight-checks/latest")
+    @GetMapping("/pre-device-checks/latest")
     public ResponseEntity<ApiResponse<WeatherPreflightCheckResponse>> latest(
             @RequestParam String missionId) {
         return ResponseEntity.ok(ApiResponse.ok(

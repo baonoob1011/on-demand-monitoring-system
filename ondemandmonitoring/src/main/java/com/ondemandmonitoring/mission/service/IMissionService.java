@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.mission.service;
 
-import com.ondemandmonitoring.device.dto.response.PreflightCheckResponse;
+import com.ondemandmonitoring.devicecheck.dto.response.PreDeviceCheckResponse;
 import com.ondemandmonitoring.mission.dto.request.AssignDeviceRequest;
 import com.ondemandmonitoring.mission.dto.request.AssignStaffRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionUpdateRequest;
@@ -146,17 +146,17 @@ public interface IMissionService {
     MissionResponse handleGcsSessionLost(String missionId, String reason);
 
     /**
-     * Executes digital preflight safety check before takeoff.
+     * Executes digital pre-device safety check before takeoff.
      * Passed -> Issues 60-minute FlightToken and sets status to READY_TO_FLY.
      * Failed -> Logs battery/hardware diagnostics, creates maintenance ticket, and
      * auto-swaps device if available.
      *
      * @param missionId Mission ID
      * @param deviceId Device ID/code
-     * @return {@link PreflightCheckResponse} Preflight diagnostics and issued
+     * @return {@link PreDeviceCheckResponse} Preflight diagnostics and issued
      *         flight token (if passed)
      */
-    PreflightCheckResponse runPreflightCheck(String missionId, String deviceId);
+    PreDeviceCheckResponse runPreDeviceCheck(String missionId, String deviceId);
 
     MissionTelemetryReadinessResponse getTelemetryReadiness(String missionId);
 

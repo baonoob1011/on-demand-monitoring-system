@@ -1,7 +1,7 @@
-package com.ondemandmonitoring.device.service;
+package com.ondemandmonitoring.devicecheck.service;
 
-import com.ondemandmonitoring.device.dto.request.DeviceCheckItemUpdateRequest;
-import com.ondemandmonitoring.device.dto.response.PersistedPostDeviceCheckResponse;
+import com.ondemandmonitoring.devicecheck.dto.request.DeviceCheckItemUpdateRequest;
+import com.ondemandmonitoring.devicecheck.dto.response.PersistedPostDeviceCheckResponse;
 import java.util.List;
 
 public interface IPersistedPostDeviceCheckService {

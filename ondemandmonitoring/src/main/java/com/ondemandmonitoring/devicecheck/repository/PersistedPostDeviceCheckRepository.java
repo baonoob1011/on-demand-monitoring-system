@@ -1,6 +1,6 @@
-package com.ondemandmonitoring.device.repository;
+package com.ondemandmonitoring.devicecheck.repository;
 
-import com.ondemandmonitoring.device.domain.PersistedPostDeviceCheck;
+import com.ondemandmonitoring.devicecheck.domain.PersistedPostDeviceCheck;
 import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;

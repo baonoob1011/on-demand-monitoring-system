@@ -1,10 +1,10 @@
-package com.ondemandmonitoring.device.dto.response;
+package com.ondemandmonitoring.devicecheck.dto.response;
 
 import com.ondemandmonitoring.device.domain.Device;
-import com.ondemandmonitoring.device.domain.PersistedPostDeviceCheck;
-import com.ondemandmonitoring.device.enums.DeviceCheckItemStatus;
-import com.ondemandmonitoring.device.enums.DeviceCheckLevel;
-import com.ondemandmonitoring.device.enums.DeviceCheckStatus;
+import com.ondemandmonitoring.devicecheck.domain.PersistedPreDeviceCheck;
+import com.ondemandmonitoring.devicecheck.enums.PreDeviceCheckLevel;
+import com.ondemandmonitoring.devicecheck.enums.PreDeviceCheckStatus;
+import com.ondemandmonitoring.devicecheck.enums.PreDeviceItemStatus;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import java.time.Instant;
 import java.util.List;
@@ -13,7 +13,7 @@ import lombok.Getter;
 
 @Getter
 @Builder
-public class PersistedPostDeviceCheckResponse {
+public class PersistedPreDeviceCheckResponse {
 
     String id;
     String missionId;
@@ -22,7 +22,7 @@ public class PersistedPostDeviceCheckResponse {
     String deviceCode;
     String deviceName;
     String deviceSerialNumber;
-    DeviceCheckStatus status;
+    PreDeviceCheckStatus status;
     Integer totalChecks;
     Integer passedChecks;
     Integer failedChecks;
@@ -37,19 +37,19 @@ public class PersistedPostDeviceCheckResponse {
 
         String checkType;
         String checkName;
-        DeviceCheckItemStatus status;
-        DeviceCheckLevel checkLevel;
+        PreDeviceItemStatus status;
+        PreDeviceCheckLevel checkLevel;
         String message;
         Instant checkedAt;
     }
 
-    public static PersistedPostDeviceCheckResponse from(PersistedPostDeviceCheck run) {
+    public static PersistedPreDeviceCheckResponse from(PersistedPreDeviceCheck run) {
         DeviceConnection connection = run.getDeviceConnection();
         Device device = connection == null ? null : connection.getDevice();
         int total = run.getTotalChecks() == null ? 0 : run.getTotalChecks();
         int done = run.getItems().stream()
-                .filter(i -> i.getStatus() == DeviceCheckItemStatus.PASSED
-                        || i.getStatus() == DeviceCheckItemStatus.FAILED)
+                .filter(i -> i.getStatus() == PreDeviceItemStatus.PASSED
+                        || i.getStatus() == PreDeviceItemStatus.FAILED)
                 .toList()
                 .size();
 
@@ -81,5 +81,3 @@ public class PersistedPostDeviceCheckResponse {
                 .build();
     }
 }
-
-

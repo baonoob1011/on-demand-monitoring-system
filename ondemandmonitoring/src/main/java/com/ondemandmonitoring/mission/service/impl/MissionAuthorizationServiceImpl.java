@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.mission.service.impl;
 
-import com.ondemandmonitoring.device.repository.PersistedPreflightCheckRepository;
+import com.ondemandmonitoring.devicecheck.repository.PersistedPreDeviceCheckRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepository;
@@ -20,7 +20,7 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
 
         MissionStaffAssignmentRepository missionStaffAssignmentRepository;
         MissionRepository missionRepository;
-        PersistedPreflightCheckRepository persistedPreflightCheckRepository;
+        PersistedPreDeviceCheckRepository persistedPreDeviceCheckRepository;
         AuthenticatedUserResolver authenticatedUserResolver;
 
         @Override
@@ -48,8 +48,8 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
 
         @Override
         @Transactional(readOnly = true)
-        public boolean isAssignedStaffForPreflight(String preflightId) {
-                return persistedPreflightCheckRepository.findById(preflightId)
+        public boolean isAssignedStaffForPreDeviceCheck(String preDeviceCheckId) {
+                return persistedPreDeviceCheckRepository.findById(preDeviceCheckId)
                                 .map(run -> isAssignedStaff(run.getMission().getId()))
                                 .orElse(false);
         }

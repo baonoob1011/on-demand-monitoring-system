@@ -6,8 +6,9 @@ import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.device.domain.Device;
 import com.ondemandmonitoring.device.enums.DeviceStatus;
 import com.ondemandmonitoring.device.repository.DeviceRepository;
-import com.ondemandmonitoring.device.dto.response.PreflightCheckResponse;
-import com.ondemandmonitoring.device.repository.PersistedPostDeviceCheckRepository;
+import com.ondemandmonitoring.devicecheck.dto.response.PreDeviceCheckResponse;
+import com.ondemandmonitoring.devicecheck.repository.PersistedPostDeviceCheckRepository;
+import com.ondemandmonitoring.devicecheck.service.IPreDeviceCheckCompletionService;
 import com.ondemandmonitoring.mission.domain.ControlHandover;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.FlightToken;
@@ -97,6 +98,7 @@ public class MissionService implements IMissionService {
     OrderRepository orderRepository;
     IDeviceConnectionService deviceConnectionService;
     IFlightTokenService flightTokenService;
+    IPreDeviceCheckCompletionService preDeviceCheckCompletionService;
     UserRepository userRepository;
     AuthenticatedUserResolver authenticatedUserResolver;
     UserScheduleRepository userScheduleRepository;
@@ -544,54 +546,8 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    public PreflightCheckResponse runPreflightCheck(String missionId, String deviceId) {
-        Mission mission = getOrThrow(missionId);
-        Device assignedDevice = getCurrentDevice(mission.getId());
-        if (assignedDevice == null || assignedDevice.getId() == null) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Mission has no assigned deviceId");
-        }
-        if (deviceId == null || deviceId.isBlank() || !assignedDevice.getId().equals(deviceId)) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Device does not match the mission assignment");
-        }
-
-        String staffId = getCurrentStaffId(mission.getId());
-        if (staffId == null || staffId.isBlank()) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Mission has no assigned staff");
-        }
-
-        FlightToken token = issueFlightToken(mission.getId(), assignedDevice.getId(), staffId);
-        mission.setStatus(MissionStatus.READY_TO_FLY);
-        missionRepository.save(mission);
-
-        return PreflightCheckResponse.builder()
-                .id(UUID.randomUUID().toString())
-                .deviceCode(assignedDevice.getId())
-                .missionId(mission.getId())
-                .overallPassed(true)
-                .failureReason(null)
-                .faultType(null)
-                .batteryPercent(null)
-                .gpsFixType("READY")
-                .gpsSatelliteCount(null)
-                .gyrometerOk(true)
-                .accelerometerOk(true)
-                .magnetometerOk(true)
-                .localPositionOk(true)
-                .globalPositionOk(true)
-                .homePositionOk(true)
-                .armable(true)
-                .connected(true)
-                .inAir(false)
-                .flightMode("PREFLIGHT")
-                .cameraOk(true)
-                .gimbalOk(true)
-                .storageAvailableMb(null)
-                .storageOk(true)
-                .weatherOk(true)
-                .weatherNotes("Weather check handled by weather preflight endpoint.")
-                .flightToken(flightTokenMapper.toResponse(token))
-                .checkedAt(Instant.now())
-                .build();
+    public PreDeviceCheckResponse runPreDeviceCheck(String missionId, String deviceId) {
+        return preDeviceCheckCompletionService.complete(missionId, deviceId);
     }
 
 
@@ -693,7 +649,7 @@ public class MissionService implements IMissionService {
         }
         String message = switch (status) {
             case BATTERY_DATA_UNAVAILABLE ->
-                "Device battery telemetry is unavailable. Connect the device and refresh telemetry before preflight.";
+                "Device battery telemetry is unavailable. Connect the device and refresh telemetry before pre-device.";
             case INSUFFICIENT_BATTERY -> "Device battery is insufficient for this mission and its safety reserve.";
             case INVALID_TARGET -> "Mission target is invalid for route planning.";
             case NO_SAFE_ROUTE -> "No safe route could be generated for this mission.";
@@ -884,7 +840,7 @@ public class MissionService implements IMissionService {
         handover.setDeviceConnection(activeConnection);
         handover.setStaffAssignment(requireCurrentStaffAssignment(resolvedMissionId, staffId));
         handover.setStatus("CONFIRMED");
-        handover.setAcknowledgementText("Staff confirmed control handover and preflight checks before launch");
+        handover.setAcknowledgementText("Staff confirmed control handover and pre-device checks before launch");
         handover.setConfirmedAt(Instant.now());
         controlHandoverRepository.save(handover);
 
@@ -913,7 +869,7 @@ public class MissionService implements IMissionService {
                 flightTokenRepository.save(token);
                 log.warn("Mission {} flight token EXPIRED or ALREADY USED – revoking token", missionId);
                 throw new ApiException(ErrorCode.INVALID_REQUEST,
-                        "Flight token is expired or revoked. Please re-run preflight check.");
+                        "Flight token is expired or revoked. Please re-run pre-device check.");
             }
             token.setUsed(true);
             flightTokenRepository.save(token);
@@ -925,7 +881,7 @@ public class MissionService implements IMissionService {
                     token.setRevoked(true);
                     flightTokenRepository.save(token);
                     throw new ApiException(ErrorCode.INVALID_REQUEST,
-                            "Flight token is expired. Please re-run preflight check.");
+                            "Flight token is expired. Please re-run pre-device check.");
                 }
                 token.setUsed(true);
                 flightTokenRepository.save(token);
@@ -1319,5 +1275,3 @@ public class MissionService implements IMissionService {
     }
 
 }
-
-

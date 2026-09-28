@@ -1,7 +1,7 @@
-package com.ondemandmonitoring.device.domain;
+package com.ondemandmonitoring.devicecheck.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.device.enums.PreflightCheckStatus;
+import com.ondemandmonitoring.devicecheck.enums.PreDeviceCheckStatus;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
 import jakarta.persistence.CascadeType;
@@ -38,7 +38,7 @@ public class PersistedPreDeviceCheck extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    PreflightCheckStatus status = PreflightCheckStatus.CHECKING;
+    PreDeviceCheckStatus status = PreDeviceCheckStatus.CHECKING;
 
     @Column(name = "total_checks", nullable = false)
     Integer totalChecks;
@@ -55,7 +55,7 @@ public class PersistedPreDeviceCheck extends BaseEntity {
     @Column(name = "completed_at")
     Instant completedAt;
 
-    @OneToMany(mappedBy = "preflightCheck", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "preDeviceCheck", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id asc")
     List<PersistedPreDeviceCheckItem> items = new ArrayList<>();
 }

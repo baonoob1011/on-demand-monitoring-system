@@ -1,6 +1,6 @@
-package com.ondemandmonitoring.device.dto.request;
+package com.ondemandmonitoring.devicecheck.dto.request;
 
-import com.ondemandmonitoring.device.enums.DeviceCheckItemStatus;
+import com.ondemandmonitoring.devicecheck.enums.DeviceCheckItemStatus;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;

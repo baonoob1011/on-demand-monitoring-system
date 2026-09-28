@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.device.enums;
+package com.ondemandmonitoring.devicecheck.enums;
 
 public enum DeviceCheckItemStatus {
     PENDING,

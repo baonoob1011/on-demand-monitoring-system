@@ -1,9 +1,9 @@
-package com.ondemandmonitoring.device.controller;
+package com.ondemandmonitoring.devicecheck.controller;
 
 import com.ondemandmonitoring.common.api.ApiResponse;
-import com.ondemandmonitoring.device.dto.request.PreflightItemUpdateRequest;
-import com.ondemandmonitoring.device.dto.response.PersistedPreDeviceCheckResponse;
-import com.ondemandmonitoring.device.service.IPersistedPreflightCheckService;
+import com.ondemandmonitoring.devicecheck.dto.request.DeviceCheckItemUpdateRequest;
+import com.ondemandmonitoring.devicecheck.dto.response.PersistedPostDeviceCheckResponse;
+import com.ondemandmonitoring.devicecheck.service.IPersistedPostDeviceCheckService;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -19,47 +19,48 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-public class PersistedPreflightCheckController {
+public class PersistedPostDeviceCheckController {
 
-    private final IPersistedPreflightCheckService service;
+    private final IPersistedPostDeviceCheckService service;
 
-    @PostMapping("/api/missions/{missionId}/preflight-checks")
+    @PostMapping("/api/missions/{missionId}/post-device-checks")
     @PreAuthorize("hasRole('DRONE_OPERATOR') and @missionAuthorizationService.isAssignedOperator(#missionId)")
-    public ResponseEntity<ApiResponse<PersistedPreDeviceCheckResponse>> start(
+    public ResponseEntity<ApiResponse<PersistedPostDeviceCheckResponse>> start(
             @PathVariable String missionId) {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.created(service.start(missionId)));
     }
 
-    @GetMapping("/api/missions/{missionId}/preflight-checks")
+    @GetMapping("/api/missions/{missionId}/post-device-checks")
     @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedOperator(#missionId)")
-    public ApiResponse<List<PersistedPreDeviceCheckResponse>> history(
+    public ApiResponse<List<PersistedPostDeviceCheckResponse>> history(
             @PathVariable String missionId) {
         return ApiResponse.ok(service.history(missionId));
     }
 
-    @GetMapping("/api/missions/{missionId}/preflight-checks/current")
+    @GetMapping("/api/missions/{missionId}/post-device-checks/current")
     @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedOperator(#missionId)")
-    public ApiResponse<PersistedPreDeviceCheckResponse> current(
+    public ApiResponse<PersistedPostDeviceCheckResponse> current(
             @PathVariable String missionId) {
         return ApiResponse.ok(service.current(missionId));
     }
 
-    @GetMapping("/api/preflight-checks/{id}")
-    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedOperatorForPreflight(#id)")
-    public ApiResponse<PersistedPreDeviceCheckResponse> get(
+    @GetMapping("/api/post-device-checks/{id}")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
+    public ApiResponse<PersistedPostDeviceCheckResponse> get(
             @PathVariable String id) {
         return ApiResponse.ok(service.get(id));
     }
 
-    @PatchMapping("/api/preflight-checks/{id}/items/{checkType}")
-    @PreAuthorize("hasRole('DRONE_OPERATOR') and @missionAuthorizationService.isAssignedOperatorForPreflight(#id)")
-    public ApiResponse<PersistedPreDeviceCheckResponse> update(
+    @PatchMapping("/api/post-device-checks/{id}/items/{checkType}")
+    @PreAuthorize("hasRole('DRONE_OPERATOR')")
+    public ApiResponse<PersistedPostDeviceCheckResponse> update(
             @PathVariable String id,
             @PathVariable String checkType,
-            @Valid @RequestBody PreflightItemUpdateRequest request) {
+            @Valid @RequestBody DeviceCheckItemUpdateRequest request) {
         return ApiResponse.ok(service.update(id, checkType, request));
     }
 }
+
 

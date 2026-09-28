@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.device.dto.response;
+package com.ondemandmonitoring.devicecheck.dto.response;
 
 import com.ondemandmonitoring.mission.dto.response.FlightTokenResponse;
 import java.time.Instant;
@@ -10,7 +10,7 @@ import lombok.experimental.FieldDefaults;
 @Getter
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class PreflightCheckResponse {
+public class PreDeviceCheckResponse {
 
     String id;
     String deviceCode;
@@ -40,7 +40,7 @@ public class PreflightCheckResponse {
     Boolean weatherOk;
     String weatherNotes;
 
-    // Flight Access Token issued when preflight passes
+    // Flight Access Token issued when pre-device passes
     FlightTokenResponse flightToken;
 
     Instant checkedAt;
