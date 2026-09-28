@@ -2,12 +2,12 @@ package com.ondemandmonitoring.mission.service;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.device.domain.Device;
-import com.ondemandmonitoring.device.domain.PersistedPostDeviceCheck;
-import com.ondemandmonitoring.device.dto.response.PreflightCheckResponse;
+import com.ondemandmonitoring.devicecheck.domain.PersistedPostDeviceCheck;
 import com.ondemandmonitoring.device.enums.DeviceStatus;
 import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.device.repository.MaintenanceTicketRepository;
-import com.ondemandmonitoring.device.repository.PersistedPostDeviceCheckRepository;
+import com.ondemandmonitoring.devicecheck.repository.PersistedPostDeviceCheckRepository;
+import com.ondemandmonitoring.devicecheck.service.IPreDeviceCheckCompletionService;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.FlightToken;
 import com.ondemandmonitoring.mission.domain.Mission;
@@ -81,6 +81,7 @@ class MissionServiceTest {
     OrderRepository orderRepository;
     IDeviceConnectionService deviceConnectionService;
     IFlightTokenService flightTokenService;
+    IPreDeviceCheckCompletionService preDeviceCheckCompletionService;
     UserRepository userRepository;
     AuthenticatedUserResolver authenticatedUserResolver;
     UserScheduleRepository userScheduleRepository;
@@ -111,6 +112,7 @@ class MissionServiceTest {
         missionDeviceAssignmentRepository = mock(MissionDeviceAssignmentRepository.class);
         missionStaffAssignmentRepository = mock(MissionStaffAssignmentRepository.class);
         resourceTimeLockRepository = mock(ResourceTimeLockRepository.class);
+        preDeviceCheckCompletionService = mock(IPreDeviceCheckCompletionService.class);
 
         deviceConnectionService = new DeviceConnectionService(
                 missionRepository,
@@ -141,6 +143,7 @@ class MissionServiceTest {
                 orderRepository,
                 deviceConnectionService,
                 flightTokenService,
+                preDeviceCheckCompletionService,
                 userRepository,
                 authenticatedUserResolver,
                 userScheduleRepository,
@@ -421,60 +424,6 @@ class MissionServiceTest {
             assertThat(session.getDisconnectReason()).isEqualTo("SIGNAL_LOSS");
             assertThat(mission.getStatus()).isEqualTo(MissionStatus.RETURNING);
             assertThat(device.getStatus()).isEqualTo(DeviceStatus.RETURNING);
-        }
-
-        @Test
-        @DisplayName("4. runPreflightCheck passed issues FlightToken and updates status to READY_TO_FLY")
-        void runPreflightCheck_passed_issuesFlightToken_missionBecomesReadyToFly() {
-            Mission mission = buildMission("m-3", MissionStatus.CONNECTED);
-            Device device = buildDevice("DEV-01", DeviceStatus.AVAILABLE);
-            device.setId("DEV-01");
-            MissionDeviceAssignment mda = new MissionDeviceAssignment();
-            mda.setDevice(device);
-
-            User staff = new User();
-            staff.setId("staff-01");
-            MissionStaffAssignment msa = new MissionStaffAssignment();
-            msa.setStaff(staff);
-
-            when(missionRepository.findById("m-3")).thenReturn(Optional.of(mission));
-            when(missionDeviceAssignmentRepository.findFirstByMissionIdOrderByCreatedAtDesc("m-3"))
-                    .thenReturn(Optional.of(mda));
-            when(missionStaffAssignmentRepository.findFirstByMissionIdOrderByAssignedAtDesc("m-3"))
-                    .thenReturn(Optional.of(msa));
-
-            FlightToken token = new FlightToken();
-            token.setId("ft-1");
-            token.setTokenValue("valid-token");
-            when(flightTokenRepository.save(any(FlightToken.class))).thenReturn(token);
-            when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-3"))
-                    .thenReturn(Optional.of(mda));
-            when(missionStaffAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-3"))
-                    .thenReturn(Optional.of(msa));
-            when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
-            PreflightCheckResponse result = missionService.runPreflightCheck("m-3", "DEV-01");
-
-            assertThat(result.getOverallPassed()).isTrue();
-            assertThat(result.getFlightToken()).isNotNull();
-            assertThat(mission.getStatus()).isEqualTo(MissionStatus.READY_TO_FLY);
-        }
-
-        @Test
-        void preflightRejectsDeviceDifferentFromCurrentAssignment() {
-            Mission mission = buildMission("m-other", MissionStatus.CONNECTED);
-            Device assigned = buildDevice("DEV-ASSIGNED", DeviceStatus.PREFLIGHT);
-            assigned.setId("DEV-ASSIGNED");
-            MissionDeviceAssignment mda = new MissionDeviceAssignment();
-            mda.setDevice(assigned);
-
-            when(missionRepository.findById("m-other")).thenReturn(Optional.of(mission));
-            when(missionDeviceAssignmentRepository.findFirstByMissionIdOrderByCreatedAtDesc("m-other"))
-                    .thenReturn(Optional.of(mda));
-
-            assertThatThrownBy(() -> missionService.runPreflightCheck("m-other", "DEV-OTHER"))
-                    .isInstanceOf(ApiException.class)
-                    .hasMessageContaining("does not match");
         }
 
         @Test

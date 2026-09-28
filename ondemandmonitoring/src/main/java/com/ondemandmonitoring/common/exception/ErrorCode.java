@@ -51,6 +51,8 @@ public enum ErrorCode {
     MEDIA_UPLOAD_NOT_ALLOWED("Media upload is not allowed", HttpStatus.CONFLICT),
     MEDIA_UPLOAD_ATTEMPT_INVALID("Media upload attempt is invalid", HttpStatus.CONFLICT),
     MEDIA_IDEMPOTENCY_CONFLICT("Local media ID conflicts with existing metadata", HttpStatus.CONFLICT),
+    MEDIA_PROBE_INVALID("Media probe payload is invalid", HttpStatus.BAD_REQUEST),
+    MEDIA_PROBE_FAILED("Media storage round-trip probe failed", HttpStatus.BAD_GATEWAY),
     /**
      * Service & DeliverableType Error Codes
      */
