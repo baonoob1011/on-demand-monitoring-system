@@ -2525,10 +2525,10 @@ async def main() -> None:
     backend_urls = BackendUrlResolver(BACKEND_BASE_URL)
     active_mission_id = None
     active_mission_code = None
-    active_drone_id = None
+    active_device_id = None
     media_root = Path(os.getenv("LOCAL_MEDIA_DIR", "/tmp/forest3d_drone_media"))
     media_library = LocalMediaLibrary(
-        media_root, active_mission_id, active_drone_id)
+        media_root, active_mission_id, active_device_id)
 
     video_recorder = VideoRecorder(
         VIDEO_RECORDING_DIR,
@@ -2805,7 +2805,7 @@ async def main() -> None:
             "runtimeSessionId": RUNTIME_SESSION_ID,
             "missionId": active_mission_id,
             "missionCode": active_mission_code,
-            "deviceId": active_drone_id,
+            "deviceId": active_device_id,
             "positionReady": local_position_ready,
             "positionNed": {
                 "northM": current_local_north_m,
@@ -2892,7 +2892,7 @@ async def main() -> None:
         return status
 
     def bind_control_session(payload: dict) -> dict:
-        nonlocal active_mission_id, active_mission_code, active_drone_id, media_library
+        nonlocal active_mission_id, active_mission_code, active_device_id, media_library
         mission_id = str(payload.get("missionId", "")).strip()
         device_id = str(payload.get("deviceId", "")).strip()
         access_token = str(payload.get("accessToken", "")).strip()
@@ -2903,7 +2903,7 @@ async def main() -> None:
         if not access_token or len(access_token) > 4096 or any(char.isspace() for char in access_token):
             raise ValueError("A valid operator access token is required")
         if video_recorder.is_recording() or current_in_air:
-            if mission_id != active_mission_id or device_id != active_drone_id:
+            if mission_id != active_mission_id or device_id != active_device_id:
                 raise ValueError("Cannot switch control session while recording or in flight")
 
         assigned_mission = None
@@ -2946,7 +2946,7 @@ async def main() -> None:
 
         active_mission_id = mission_id
         active_mission_code = str(assigned_mission.get("missionCode") or "").strip() or None
-        active_drone_id = assigned_device
+        active_device_id = assigned_device
         media_library = LocalMediaLibrary(media_root, mission_id, assigned_device, active_mission_code)
         camera.media_library = media_library
         control_api.media_library = media_library
@@ -2962,7 +2962,7 @@ async def main() -> None:
         }
 
     def release_control_session(payload: dict) -> dict:
-        nonlocal active_mission_id, active_mission_code, active_drone_id, media_library, current_in_air
+        nonlocal active_mission_id, active_mission_code, active_device_id, media_library, current_in_air
         requested_mission_id = str(payload.get("missionId", "")).strip()
         if requested_mission_id and active_mission_id and requested_mission_id != active_mission_id:
             return {
@@ -2977,7 +2977,7 @@ async def main() -> None:
         stop_auto_plan("session release")
         active_mission_id = None
         active_mission_code = None
-        active_drone_id = None
+        active_device_id = None
         current_in_air = False
         media_library = LocalMediaLibrary(media_root, None, None)
         camera.media_library = media_library
