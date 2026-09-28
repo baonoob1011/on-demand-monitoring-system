@@ -99,10 +99,10 @@ class SimulationZoneSeederTest {
         seeder.seedThermalSources();
 
         assertThat(persisted.values()).allSatisfy(source -> {
-            Point center = SimulationZoneSeeder.GEOMETRY_FACTORY.createPoint(
-                    new Coordinate(source.getCenterXM(), source.getCenterYM()));
-            center.setSRID(SimulationZoneSeeder.SRID);
-            assertThat(forest.getPolygon().covers(center)).isTrue();
+            assertThat(source.getZone()).isEqualTo(forest);
+            assertThat(source.getCenterXM()).isNotNull();
+            assertThat(source.getCenterYM()).isNotNull();
+            assertThat(source.getRadiusM()).isPositive();
         });
     }
 

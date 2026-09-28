@@ -17,6 +17,8 @@ import com.ondemandmonitoring.planning.config.PlanningEnergyProperties;
 import com.ondemandmonitoring.planning.dto.SimulationPoint;
 import com.ondemandmonitoring.planning.dto.response.EnvironmentSample;
 import jakarta.persistence.EntityManager;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -58,6 +60,8 @@ class AStarEnergyAwarePlanningE2ETest {
         mission.setMissionCode("E2E_ASTAR_ENERGY_AWARE_" + UUID.randomUUID().toString().substring(0, 8));
         mission.setStatus(MissionStatus.CREATED);
         mission.setOrder(order);
+        mission.setScheduledStartAt(Instant.now());
+        mission.setScheduledEndAt(Instant.now().plus(Duration.ofHours(2)));
         mission = missionRepository.saveAndFlush(mission);
 
         PlanMetrics direct = metrics(missionPlanningService.generateDirectPlan(mission.getId()));
