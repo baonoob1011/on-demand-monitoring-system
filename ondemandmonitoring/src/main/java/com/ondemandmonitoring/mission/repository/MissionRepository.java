@@ -18,6 +18,7 @@ public interface MissionRepository extends JpaRepository<Mission, String>, JpaSp
     @Override
     Optional<Mission> findById(String id);
 
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT m FROM Mission m WHERE m.id = :id")
     Optional<Mission> findByIdForUpdate(@Param("id") String id);
@@ -28,12 +29,16 @@ public interface MissionRepository extends JpaRepository<Mission, String>, JpaSp
 
     Optional<Mission> findByMissionCode(String missionCode);
 
+    boolean existsByMissionCode(String missionCode);
+
+    boolean existsByOrderId(String orderId);
+
     List<Mission> findByOrder_Customer_Id(String customerId);
 
     @Query("""
             SELECT DISTINCT m FROM Mission m
             JOIN MissionOperatorAssignment moa ON moa.mission = m
-            WHERE moa.operatorId = :operatorId
+            WHERE moa.staff.id = :operatorId
               AND (moa.isCurrent = true OR m.status IN ('COMPLETED', 'FAILED', 'CANCELLED'))
               AND m.status IN :statuses
             """)
@@ -48,7 +53,7 @@ public interface MissionRepository extends JpaRepository<Mission, String>, JpaSp
     @Query("""
             SELECT m FROM Mission m
             JOIN MissionDroneAssignment mda ON mda.mission = m
-            WHERE mda.drone.id = :droneId
+            WHERE mda.device.id = :droneId
               AND mda.isCurrent = true
               AND m.status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED')
               AND m.completedAt IS NULL

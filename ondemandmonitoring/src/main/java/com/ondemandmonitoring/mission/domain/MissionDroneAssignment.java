@@ -2,15 +2,17 @@ package com.ondemandmonitoring.mission.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.device.domain.Device;
-import com.ondemandmonitoring.missionv2.enums.DeviceRole;
-
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.FieldDefaults;
-
-import java.time.Instant;
 
 @Getter
 @Setter
@@ -27,22 +29,18 @@ public class MissionDroneAssignment extends BaseEntity {
     @JoinColumn(name = "device_id", nullable = false)
     Device device;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "device_role", nullable = false, length = 50)
-    DeviceRole deviceRole = DeviceRole.MAIN;
-
-    @Column(name = "status", nullable = false, length = 50)
-    String status; // ACTIVE / RELEASED
+    @Column(name = "status", length = 50)
+    String status;
 
     @Column(name = "is_current", nullable = false)
     Boolean isCurrent = true;
 
-    @Column(name = "release_reason", length = 200)
-    String releaseReason; // BATTERY_FAIL / HARDWARE_FAIL / MISSION_COMPLETE / REPLACED
-
-    @Column(name = "assigned_at", nullable = false)
-    Instant assignedAt = Instant.now();
+    @Column(name = "assigned_at")
+    Instant assignedAt;
 
     @Column(name = "released_at")
     Instant releasedAt;
+
+    @Column(name = "release_reason", length = 500)
+    String releaseReason;
 }

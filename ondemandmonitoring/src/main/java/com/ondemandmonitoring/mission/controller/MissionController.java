@@ -20,6 +20,7 @@ import com.ondemandmonitoring.mission.dto.response.PostflightCheckResponse;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.service.IMissionMediaUploadService;
 import com.ondemandmonitoring.mission.service.IMissionService;
+import com.ondemandmonitoring.mission.dto.request.MissionCreateRequest;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -61,6 +62,15 @@ public class MissionController {
     // ------------------------------------------------------------------
     // Query
     // ------------------------------------------------------------------
+
+    @PostMapping
+    @PreAuthorize("hasAnyRole('STAFF', 'SYSTEM_OPERATOR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<MissionResponse>> createMission(
+            @Valid @RequestBody MissionCreateRequest request) {
+        MissionResponse response = missionService.createMission(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok("Mission created successfully", response));
+    }
 
     /**
      * GET /api/missions?operatorId={id}
@@ -142,37 +152,13 @@ public class MissionController {
      * POST /api/missions/{id}/assign-drone
      * Manager assigns Drone to the mission.
      */
-    @PostMapping("/{id}/assign-drone")
-    @PreAuthorize("hasAnyRole('STAFF', 'SYSTEM_OPERATOR', 'ADMIN')")
-    public ResponseEntity<ApiResponse<MissionResponse>> assignDrone(
-            @PathVariable String id,
-            @RequestParam String droneId) {
-        MissionResponse response = missionService.assignDrone(id, droneId);
-        return ResponseEntity.ok(ApiResponse.ok("Đã gán Drone thành công", response));
-    }
 
     /**
      * POST /api/missions/{id}/assign-operator
      * Manager assigns Operator to the mission.
      */
-    @PostMapping("/{id}/assign-operator")
-    @PreAuthorize("hasAnyRole('STAFF', 'SYSTEM_OPERATOR', 'ADMIN')")
-    public ResponseEntity<ApiResponse<MissionResponse>> assignOperator(
-            @PathVariable String id,
-            @RequestParam String operatorId) {
-        MissionResponse response = missionService.assignOperator(id, operatorId);
-        return ResponseEntity.ok(ApiResponse.ok("Đã gán Operator thành công", response));
-    }
 
-    @PreAuthorize("hasAnyRole('STAFF', 'SYSTEM_OPERATOR', 'ADMIN')")
-    @PostMapping("/{id}/assign-resources")
-    public ResponseEntity<ApiResponse<MissionResponse>> assignResources(
-            @PathVariable String id,
-            @Valid @RequestBody MissionResourceAssignmentRequest request) {
-        MissionResponse response = missionService.assignResources(
-                id, request.getDroneId(), request.getOperatorId());
-        return ResponseEntity.ok(ApiResponse.ok("Mission resources assigned successfully", response));
-    }
+
 
     // ------------------------------------------------------------------
     // F3.1 – Operator acceptance
@@ -291,14 +277,14 @@ public class MissionController {
      * PATCH /api/missions/{id}/replace-drone
      * Operator selects a replacement drone when pre-flight fails.
      */
-    @PatchMapping("/{id}/replace-drone")
-    @PreAuthorize("hasRole('DRONE_OPERATOR') and @missionAuthorizationService.isAssignedOperator(#id)")
-    public ResponseEntity<ApiResponse<MissionResponse>> replaceDrone(
-            @PathVariable String id,
-            @Valid @RequestBody DroneReplacementRequest request) {
-        MissionResponse response = missionService.replaceDrone(id, request.getNewDroneCode());
-        return ResponseEntity.ok(ApiResponse.ok("Drone successfully replaced", response));
-    }
+//    @PatchMapping("/{id}/replace-drone")
+//    @PreAuthorize("hasRole('DRONE_OPERATOR') and @missionAuthorizationService.isAssignedOperator(#id)")
+//    public ResponseEntity<ApiResponse<MissionResponse>> replaceDrone(
+//            @PathVariable String id,
+//            @Valid @RequestBody DroneReplacementRequest request) {
+//        MissionResponse response = missionService.replaceDrone(id, request.getNewDroneCode());
+//        return ResponseEntity.ok(ApiResponse.ok("Drone successfully replaced", response));
+//    }
 
     // ------------------------------------------------------------------
     // F3.2b – Bàn giao quyền điều khiển (Handover of control)

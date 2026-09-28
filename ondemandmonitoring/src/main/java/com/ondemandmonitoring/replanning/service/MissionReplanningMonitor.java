@@ -2,10 +2,8 @@ package com.ondemandmonitoring.replanning.service;
 
 import com.ondemandmonitoring.drone.domain.DeviceTelemetry;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
-import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
-import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionPlanRepository;
 import com.ondemandmonitoring.replanning.config.ReplanningProperties;
 import com.ondemandmonitoring.replanning.dto.ReplanningDecision;
@@ -118,7 +116,7 @@ public class MissionReplanningMonitor {
             log.info(
                     "Dynamic replan evaluated missionId={} droneCode={} reason={} detail={} planVersion={} status={} battery={} simX={} simY={} durationMs={}",
                     missionId,
-                    telemetry.getDeviceCode(),
+                    resolveDeviceCode(telemetry),
                     decision.reason(),
                     decision.detail(),
                     plan.getPlanVersion(),
@@ -132,7 +130,7 @@ public class MissionReplanningMonitor {
             log.warn(
                     "Dynamic replan failed missionId={} droneCode={} reason={} detail={}: {}",
                     missionId,
-                    telemetry.getDeviceCode(),
+                    resolveDeviceCode(telemetry),
                     decision.reason(),
                     decision.detail(),
                     exception.getMessage(),
@@ -143,5 +141,14 @@ public class MissionReplanningMonitor {
                 running.set(false);
             }
         }
+    }
+
+    private String resolveDeviceCode(DeviceTelemetry telemetry) {
+        if (telemetry == null
+                || telemetry.getDeviceConnection() == null
+                || telemetry.getDeviceConnection().getDevice() == null) {
+            return null;
+        }
+        return telemetry.getDeviceConnection().getDevice().getDeviceCode();
     }
 }

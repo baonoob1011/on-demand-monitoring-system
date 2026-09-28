@@ -3,38 +3,28 @@ package com.ondemandmonitoring.mission.service.impl;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.common.exception.ErrorCode;
+import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.device.enums.DeviceStatus;
 import com.ondemandmonitoring.device.repository.DeviceRepository;
-import com.ondemandmonitoring.drone.domain.Drone;
-import com.ondemandmonitoring.drone.domain.DeviceTelemetry;
-import com.ondemandmonitoring.drone.domain.PreflightCheck;
 import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
-import com.ondemandmonitoring.drone.enums.DroneStatus;
-import com.ondemandmonitoring.drone.enums.PreflightCheckStatus;
-import com.ondemandmonitoring.drone.repository.DroneRepository;
-import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
-import com.ondemandmonitoring.drone.repository.PersistedPreflightCheckRepository;
-import com.ondemandmonitoring.drone.service.PreflightCheckService;
-import com.ondemandmonitoring.drone.service.DroneTelemetryFreshness;
 import com.ondemandmonitoring.mission.domain.ControlHandover;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.FlightToken;
 import com.ondemandmonitoring.mission.domain.Mission;
-import com.ondemandmonitoring.mission.domain.MissionOperatorAssignment;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
+import com.ondemandmonitoring.mission.dto.request.*;
 import com.ondemandmonitoring.mission.dto.response.FlightTokenResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionTelemetryReadinessResponse;
 import com.ondemandmonitoring.mission.dto.response.PostflightCheckResponse;
-import com.ondemandmonitoring.mission.dto.request.PostFlightStatusRequest;
-import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
-import com.ondemandmonitoring.mission.enums.MissionStatus;
-import com.ondemandmonitoring.mission.enums.InspectionResult;
+import com.ondemandmonitoring.mission.enums.*;
+import com.ondemandmonitoring.order.domain.Order;
+import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.mission.repository.ControlHandoverRepository;
 import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
 import com.ondemandmonitoring.mission.repository.FlightTokenRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
-import com.ondemandmonitoring.drone.mapper.PreflightCheckMapper;
 import com.ondemandmonitoring.mission.mapper.FlightTokenMapper;
 import com.ondemandmonitoring.mission.mapper.MissionMapper;
 import com.ondemandmonitoring.mission.mapper.PostflightCheckMapper;
@@ -47,6 +37,10 @@ import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.repository.UserRepository;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
+import com.ondemandmonitoring.userschedule.domain.UserSchedule;
+import com.ondemandmonitoring.userschedule.enums.UserScheduleStatus;
+import com.ondemandmonitoring.userschedule.enums.UserScheduleType;
+import com.ondemandmonitoring.userschedule.repository.UserScheduleRepository;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -60,12 +54,14 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
-import java.time.Duration;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 import com.ondemandmonitoring.drone.domain.MaintenanceTicket;
 import com.ondemandmonitoring.drone.repository.MaintenanceTicketRepository;
@@ -85,20 +81,15 @@ public class MissionService implements IMissionService {
 
     static final long TOKEN_TTL_SECONDS = 900L; // 15 minutes
 
+    MissionRescheduleHistoryRepository missionRescheduleHistoryRepository;
     MissionRepository missionRepository;
     DeviceRepository deviceRepository;
-    DroneTelemetryRepository deviceTelemetryRepository;
-    PersistedPreflightCheckRepository persistedPreflightCheckRepository;
     FlightTokenRepository flightTokenRepository;
-    PreflightCheckService preflightCheckService;
     MissionMapper missionMapper;
     FlightTokenMapper flightTokenMapper;
-    PreflightCheckMapper preflightCheckMapper;
     PostflightCheckMapper postflightCheckMapper;
 
     // Supporting audit & work order repositories
-    MissionDroneAssignmentRepository missionDroneAssignmentRepository;
-    MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
     MissionPlanRepository missionPlanRepository;
     MissionPlanningService missionPlanningService;
     DeviceConnectionRepository deviceConnectionRepository;
@@ -110,7 +101,10 @@ public class MissionService implements IMissionService {
     IFlightTokenService flightTokenService;
     UserRepository userRepository;
     AuthenticatedUserResolver authenticatedUserResolver;
-
+    UserScheduleRepository userScheduleRepository;
+    MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
+    MissionStaffAssignmentRepository missionStaffAssignmentRepository;
+    ResourceTimeLockRepository resourceTimeLockRepository;
     // =========================================================================
     // Query Methods
     // =========================================================================
@@ -139,7 +133,13 @@ public class MissionService implements IMissionService {
         ensureAcceptedMissionPlan(mission);
         return missionMapper.toResponse(mission);
     }
-
+        @Override
+    @Transactional(readOnly = true)
+    public List<MissionResponse> getAllMissions() {
+        return missionRepository.findAll().stream()
+                .map(missionMapper::toResponse)
+                .toList();
+    }
     @Override
     @Transactional(readOnly = true)
     public MissionResponse getByCodeResponse(String missionCode) {
@@ -147,6 +147,36 @@ public class MissionService implements IMissionService {
                 .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND,
                         "Mission not found: " + missionCode));
         return missionMapper.toResponse(mission);
+    }
+
+    @Override
+    @Transactional
+    public MissionResponse createMission(MissionCreateRequest request) {
+        if (missionRepository.existsByOrderId(request.getOrderId())) {
+            throw new ApiException(ErrorCode.RESOURCE_ALREADY_EXISTS,
+                    "Mission already exists for order id: " + request.getOrderId());
+        }
+
+        Order order = orderRepository.findById(request.getOrderId())
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
+                        "Order not found with id: " + request.getOrderId()));
+        if (order.getOrderStatus() != OrderStatus.APPROVED) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Order status must be APPROVED to create a mission");
+        }
+
+        validateScheduledDates(request.getScheduledStartAt(), request.getScheduledEndAt(), order);
+
+        Mission mission = new Mission();
+        mission.setMissionCode(generateMissionCode());
+        mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
+        mission.setOrder(order);
+        mission.setScheduledStartAt(request.getScheduledStartAt());
+        mission.setScheduledEndAt(request.getScheduledEndAt());
+
+        Mission saved = missionRepository.save(mission);
+        missionPlanningService.generateAStarEnergyAwarePlan(saved.getId());
+        return missionMapper.toResponse(saved);
     }
 
     @Override
@@ -162,11 +192,7 @@ public class MissionService implements IMissionService {
                 .toList();
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public List<MissionResponse> getCurrentOperatorMissions() {
-        return getByOperatorId(currentOperatorId());
-    }
+
 
     @Override
     @Transactional(readOnly = true)
@@ -221,38 +247,230 @@ public class MissionService implements IMissionService {
         return handoverControl(missionId, currentOperatorId());
     }
 
-    // =========================================================================
-    // F3.1 – Operator Acceptance / Rejection
-    // =========================================================================
+
 
     @Override
     @Transactional
-    public MissionResponse acceptMission(String missionId, String operatorId) {
-        Mission mission = missionRepository.findByIdForUpdate(missionId)
-                .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND,
-                        "Mission not found: " + missionId));
-        MissionOperatorAssignment assignment = findCurrentOperatorAssignment(missionId, operatorId);
-
-        if (mission.getStatus() == MissionStatus.SCHEDULED && "ACCEPTED".equals(assignment.getStatus())) {
-            ensureScheduledStart(mission);
-            ensureAcceptedMissionPlan(mission);
-            return missionMapper.toResponse(mission);
+    public MissionResponse assignDevice(String missionId, AssignDeviceRequest request) {
+        String deviceId = request.getDeviceId();
+        DeviceRole deviceRole = request.getDeviceRole();
+        Mission mission = missionRepository.findById(missionId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
+                        "Mission not found with id: " + missionId));
+        if (mission.getStatus() != MissionStatus.RESOURCE_ASSIGNING) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Mission status must be RESOURCE_ASSIGNING to assign a device.");
         }
-        requireStatus(mission, MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
-        requirePendingAssignment(assignment);
 
-        // Update MissionOperatorAssignment audit
-        assignment.setStatus("ACCEPTED");
-        assignment.setRespondedAt(Instant.now());
-        missionOperatorAssignmentRepository.save(assignment);
+        Device device = deviceRepository.findById(deviceId)
+                .orElseThrow(
+                        () -> new ApiException(ErrorCode.DEVICE_NOT_FOUND, "Device not found with id: " + deviceId));
 
-        mission.setStatus(MissionStatus.SCHEDULED);
-        ensureScheduledStart(mission);
-        ensureAcceptedMissionPlan(mission);
+        if (device.getStatus() == DeviceStatus.MAINTENANCE) {
+            throw new ApiException(ErrorCode.DEVICE_NOT_AVAILABLE,
+                    "Device is under MAINTENANCE and cannot be assigned to a mission.");
+        }
 
-        log.info("Mission {} accepted by operator {}", missionId, operatorId);
+        Instant missionStart = mission.getScheduledStartAt();
+        Instant missionEnd = mission.getScheduledEndAt();
+
+        if (missionStart == null || missionEnd == null) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Mission schedule start and end times must be set before assigning devices.");
+        }
+
+        Instant paddedStart = missionStart.minus(1, ChronoUnit.HOURS);
+        Instant paddedEnd = missionEnd.plus(1, ChronoUnit.HOURS);
+
+        List<ResourceTimeLock> existingLocks = resourceTimeLockRepository.findByResourceId(deviceId);
+        for (ResourceTimeLock lock : existingLocks) {
+            if (lock.getMission() != null && lock.getMission().getId().equals(missionId)) {
+                throw new ApiException(ErrorCode.RESOURCE_ALREADY_EXISTS,
+                        "Device is already assigned to this mission.");
+            }
+            if (lock.getStartTime() != null && lock.getEndTime() != null) {
+                if (lock.getStartTime().isBefore(paddedEnd) && lock.getEndTime().isAfter(paddedStart)) {
+                    throw new ApiException(ErrorCode.SCHEDULE_CONFLICT,
+                            "Device schedule conflicts with an existing resource lock (1-hour buffer required)");
+                }
+            }
+        }
+
+        if (resourceTimeLockRepository.findByResourceIdAndMissionId(deviceId, missionId).isPresent()) {
+            throw new ApiException(ErrorCode.RESOURCE_ALREADY_EXISTS,
+                    "Device is already assigned to this mission.");
+        }
+
+        ResourceTimeLock lock = ResourceTimeLock.builder()
+                .resourceId(deviceId)
+                .mission(mission)
+                .startTime(missionStart)
+                .endTime(missionEnd)
+                .lockStatus(LockStatus.HARD_LOCK)
+                .expiresAt(null)
+                .build();
+        resourceTimeLockRepository.save(lock);
+
+        DeviceRole role = (deviceRole != null) ? deviceRole : DeviceRole.MAIN;
+        MissionDeviceAssignment newAssignment = MissionDeviceAssignment.builder()
+                .mission(mission)
+                .device(device)
+                .deviceRole(role)
+                .checkupStatus(CheckupStatus.PENDING)
+                .postcheckStatus(null)
+                .verifiedBy(null)
+                .verifiedAt(null)
+                .failureNotes(null)
+                .build();
+
+        missionDeviceAssignmentRepository.save(newAssignment);
+        if (missionStaffAssignmentRepository.findByMissionId(missionId).stream()
+                .anyMatch(staffAssignment -> staffAssignment.getResponseStatus() == StaffResponseStatus.PENDING)) {
+            mission.setStatus(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+        }
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
+    }
+
+
+    @Override
+    @Transactional
+    public MissionResponse assignStaff(String missionId, AssignStaffRequest request) {
+        String staffId = request.getStaffId();
+        MissionStaffRole assignedRole = resolveStaffRole(request.getAssignedRole());
+
+        Mission mission = missionRepository.findById(missionId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
+                        "Mission not found with id: " + missionId));
+        if (mission.getStatus() != MissionStatus.RESOURCE_ASSIGNING) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Mission status must be RESOURCE_ASSIGNING to assign staff.");
+        }
+
+        User staff = userRepository.findById(staffId)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, "Staff not found with id: " + staffId));
+        if (!Boolean.TRUE.equals(staff.getIsActive())) {
+            throw new ApiException(ErrorCode.ACCOUNT_DISABLED, "Selected staff account is inactive");
+        }
+
+        Instant missionStart = mission.getScheduledStartAt();
+        Instant missionEnd = mission.getScheduledEndAt();
+
+        if (missionStart == null || missionEnd == null) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Mission schedule start and end times must be set before assigning staff.");
+        }
+
+        Instant paddedStart = missionStart.minus(1, ChronoUnit.HOURS);
+        Instant paddedEnd = missionEnd.plus(1, ChronoUnit.HOURS);
+
+        if (missionStaffAssignmentRepository.findByMissionIdAndStaffId(missionId, staffId).isPresent()) {
+            throw new ApiException(ErrorCode.RESOURCE_ALREADY_EXISTS,
+                    "Staff is already assigned to this mission.");
+        }
+
+        validateStaffSchedule(staffId, missionStart, missionEnd, paddedStart, paddedEnd);
+
+        List<ResourceTimeLock> existingLocks = resourceTimeLockRepository.findByResourceId(staffId);
+        for (ResourceTimeLock lock : existingLocks) {
+            if (lock.getMission() != null && lock.getMission().getId().equals(missionId)) {
+                throw new ApiException(ErrorCode.RESOURCE_ALREADY_EXISTS,
+                        "Staff is already assigned to this mission.");
+            }
+            if (lock.getStartTime() != null && lock.getEndTime() != null) {
+                if (lock.getStartTime().isBefore(paddedEnd) && lock.getEndTime().isAfter(paddedStart)) {
+                    throw new ApiException(ErrorCode.SCHEDULE_CONFLICT,
+                            "Staff schedule conflicts with an existing resource lock (1-hour buffer required)");
+                }
+            }
+        }
+
+        if (resourceTimeLockRepository.findByResourceIdAndMissionId(staffId, missionId).isPresent()) {
+            throw new ApiException(ErrorCode.RESOURCE_ALREADY_EXISTS,
+                    "Staff is already assigned to this mission.");
+        }
+
+        ResourceTimeLock lock = ResourceTimeLock.builder()
+                .resourceId(staffId)
+                .mission(mission)
+                .startTime(missionStart)
+                .endTime(missionEnd)
+                .lockStatus(LockStatus.HARD_LOCK)
+                .expiresAt(missionStart.minus(1, ChronoUnit.HOURS))
+                .build();
+        resourceTimeLockRepository.save(lock);
+
+        MissionStaffAssignment assignment = MissionStaffAssignment.builder()
+                .mission(mission)
+                .staff(staff)
+                .assignedRole(assignedRole)
+                .responseStatus(StaffResponseStatus.PENDING)
+                .assignedAt(Instant.now())
+                .build();
+        missionStaffAssignmentRepository.save(assignment);
+
+        UserSchedule staffSchedule = UserSchedule.builder()
+                .staff(staff)
+                .startTime(missionStart)
+                .endTime(missionEnd)
+                .scheduleType(UserScheduleType.MISSION)
+                .referenceId(mission.getId())
+                .status(UserScheduleStatus.SCHEDULED)
+                .notes("Assigned to mission " + mission.getMissionCode())
+                .build();
+        userScheduleRepository.save(staffSchedule);
+
+        if (missionDeviceAssignmentRepository.existsByMissionId(missionId)) {
+            mission.setStatus(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+        }
+        Mission saved = missionRepository.save(mission);
+        return missionMapper.toResponse(saved);
+    }
+    @Override
+    @Transactional
+    public MissionResponse updateMission(String missionId, MissionUpdateRequest request) {
+        Mission mission = missionRepository.findById(missionId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
+                        "Mission not found with id: " + missionId));
+
+        Instant previousStart = mission.getScheduledStartAt();
+        Instant previousEnd = mission.getScheduledEndAt();
+
+        Instant newStart = request.getScheduledStartAt() != null ? request.getScheduledStartAt() : previousStart;
+        Instant newEnd = request.getScheduledEndAt() != null ? request.getScheduledEndAt() : previousEnd;
+
+        validateScheduledDates(newStart, newEnd, mission.getOrder());
+
+        mission.setScheduledStartAt(newStart);
+        mission.setScheduledEndAt(newEnd);
+
+        Mission saved = missionRepository.save(mission);
+
+        String rescheduledBy = authenticatedUserResolver.getCurrentUser().getId();
+
+        MissionRescheduleHistory history = new MissionRescheduleHistory();
+        history.setMission(saved);
+        history.setPreviousStartTime(previousStart);
+        history.setPreviousEndTime(previousEnd);
+        history.setNewStartTime(saved.getScheduledStartAt());
+        history.setNewEndTime(saved.getScheduledEndAt());
+        history.setRescheduleReason(request.getRescheduleReason());
+        history.setRescheduledBy(rescheduledBy);
+        history.setRescheduledAt(Instant.now());
+        missionRescheduleHistoryRepository.save(history);
+
+        return missionMapper.toResponse(saved);
+    }
+
+    private MissionStaffRole resolveStaffRole(String role) {
+        if (role == null || role.isBlank()) {
+            return MissionStaffRole.PILOT;
+        }
+        try {
+            return MissionStaffRole.valueOf(role.trim().toUpperCase());
+        } catch (IllegalArgumentException exception) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Invalid staff role: " + role);
+        }
     }
 
     @Override
@@ -260,36 +478,33 @@ public class MissionService implements IMissionService {
     public MissionResponse rejectMission(String missionId, String operatorId, String reason) {
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
-        requireCurrentOperatorAssignment(missionId, operatorId);
+        MissionStaffAssignment assignment = requireCurrentOperatorAssignment(missionId, operatorId);
 
-        mission.setRejectionReason(reason);
+        assignment.setResponseStatus(StaffResponseStatus.REJECTED);
+        assignment.setDeclineReason(reason);
+        assignment.setRespondedAt(Instant.now());
+        missionStaffAssignmentRepository.save(assignment);
+
         mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
-
-        // Update MissionOperatorAssignment rejection audit
-        missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                .ifPresentOrElse(assignment -> {
-                    assignment.setStatus("REJECTED");
-                    assignment.setRejectionReason(reason);
-                    assignment.setIsCurrent(false);
-                    assignment.setRespondedAt(Instant.now());
-                    assignment.setReleasedAt(Instant.now());
-                    missionOperatorAssignmentRepository.save(assignment);
-                }, () -> {
-                    MissionOperatorAssignment assignment = new MissionOperatorAssignment();
-                    assignment.setMission(mission);
-                    assignment.setOperatorId(operatorId);
-                    assignment.setStatus("REJECTED");
-                    assignment.setRejectionReason(reason);
-                    assignment.setIsCurrent(false);
-                    assignment.setRespondedAt(Instant.now());
-                    assignment.setReleasedAt(Instant.now());
-                    missionOperatorAssignmentRepository.save(assignment);
-                });
-
-        log.warn("Mission {} rejected by operator {} – reason: {}", missionId, operatorId, reason);
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
     }
+
+    @Override
+    @Transactional
+    public MissionResponse acceptMission(String missionId, String operatorId) {
+        Mission mission = getOrThrow(missionId);
+        requireStatus(mission, MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+        MissionStaffAssignment assignment = requireCurrentOperatorAssignment(missionId, operatorId);
+        assignment.setResponseStatus(StaffResponseStatus.ACCEPTED);
+        assignment.setRespondedAt(Instant.now());
+        missionStaffAssignmentRepository.save(assignment);
+        mission.setStatus(MissionStatus.SCHEDULED);
+        ensureAcceptedMissionPlan(mission);
+        return missionMapper.toResponse(missionRepository.save(mission));
+    }
+
+
 
     // =========================================================================
     // F3.2 – GCS Pairing & Pre-flight Gate
@@ -305,18 +520,12 @@ public class MissionService implements IMissionService {
     @Transactional(readOnly = true)
     public MissionTelemetryReadinessResponse getTelemetryReadiness(String missionId) {
         getOrThrow(missionId);
-        Drone assignedDrone = getCurrentDevice(missionId);
-        if (assignedDrone == null) {
-            throw new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission has no assigned drone");
+        Device assignedDevice = getCurrentDevice(missionId);
+        if (assignedDevice == null) {
+            throw new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission has no assigned device");
         }
 
-        String droneCode = assignedDrone.getDroneCode();
-        DeviceTelemetry telemetry = droneTelemetryRepository.readByDroneCode(droneCode).orElse(null);
-        Instant updatedAt = telemetry != null ? telemetry.getUpdatedAt() : null;
-        boolean ready = telemetry != null
-                && Boolean.TRUE.equals(telemetry.getConnected())
-                && DroneTelemetryFreshness.isFresh(updatedAt);
-        return new MissionTelemetryReadinessResponse(droneCode, ready, updatedAt);
+        return new MissionTelemetryReadinessResponse(assignedDevice.getDeviceCode(), false, null);
     }
 
     @Override
@@ -332,293 +541,90 @@ public class MissionService implements IMissionService {
     }
 
     @Override
-    @Transactional
     public PreflightCheckResponse runPreflightCheck(String missionId, String droneCode) {
-        Mission mission = getOrThrow(missionId);
-        Drone device = droneRepository.findByDroneCode(droneCode)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Device not found: " + droneCode));
-
-        if (mission.getStatus() != MissionStatus.CONNECTED) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Connect GCS and bind the mission before preflight.");
-        }
-        Drone assignedDrone = getCurrentDevice(missionId);
-        if (assignedDrone == null || !droneCode.equals(assignedDrone.getDroneCode())) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Preflight drone does not match the mission assignment.");
-        }
-        // Lock the telemetry row before planning. Planning and the checklist read this
-        // same
-        // entity again; a concurrent telemetry update between an unlocked read and a
-        // locked
-        // read would put conflicting versions of it in this persistence context.
-        DeviceTelemetry telemetry = droneTelemetryRepository.findByDroneCode(droneCode).orElse(null);
-        boolean freshTelemetry = telemetry != null
-                && Boolean.TRUE.equals(telemetry.getConnected())
-                && DroneTelemetryFreshness.isFresh(telemetry.getUpdatedAt());
-        boolean persistedPreflightPassed = hasRecentPersistedPreflightPass(missionId);
-        boolean livePreflightAvailable = freshTelemetry && hasValidBatteryTelemetry(telemetry);
-        if (!livePreflightAvailable && !persistedPreflightPassed) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST,
-                    "Fresh drone telemetry or a completed runtime preflight PASS is required before preflight.");
-        }
-
-        MissionPlan plan = missionPlanningService.generateAStarEnergyAwarePlan(missionId);
-        requireFeasiblePlan(plan, persistedPreflightPassed);
-
-        PreflightCheck check = livePreflightAvailable
-                ? preflightCheckService.run(droneCode, missionId)
-                : passedPersistedPreflightCheck(device, telemetry, missionId);
-        FlightTokenResponse tokenResponse = null;
-
-        // Store preflight check diagnostics inline on Mission entity (per DB design)
-        mission.setPreflightPassed(check.getOverallPassed());
-        mission.setPreflightFaultType(check.getFaultType());
-        mission.setPreflightFailureReason(check.getFailureReason());
-        mission.setPreflightCheckedAt(Instant.now());
-        mission.setPreflightRetryCount(
-                (mission.getPreflightRetryCount() == null ? 0 : mission.getPreflightRetryCount()) + 1);
-
-        if (Boolean.TRUE.equals(check.getOverallPassed())) {
-            mission.setStatus(MissionStatus.READY_TO_FLY);
-            device.setStatus(DroneStatus.PREFLIGHT);
-            droneRepository.save(device);
-
-            FlightToken token = issueFlightToken(missionId, droneCode, getCurrentOperatorId(missionId));
-            tokenResponse = flightTokenMapper.toResponse(token);
-            log.info("Mission {} digital preflight PASSED – issued FlightToken {}", missionId, token.getTokenValue());
-        } else {
-            mission.setStatus(MissionStatus.FAILED_PREFLIGHT);
-            handlePreflightFailure(mission, device, check);
-        }
-
-        missionRepository.save(mission);
-        return preflightCheckMapper.toResponse(check, tokenResponse);
+        return null;
     }
 
-    private boolean hasValidBatteryTelemetry(DeviceTelemetry telemetry) {
-        if (telemetry == null)
-            return false;
-        Double batteryPercent = telemetry.getBatteryPercent();
-        return batteryPercent != null
-                && Double.isFinite(batteryPercent)
-                && batteryPercent >= 0
-                && batteryPercent <= 100;
-    }
 
-    private boolean hasRecentPersistedPreflightPass(String missionId) {
-        return persistedPreflightCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId)
-                .filter(run -> run.getStatus() == PreflightCheckStatus.PASSED)
-                .filter(run -> run.getCompletedAt() == null
-                        || Duration.between(run.getCompletedAt(), Instant.now()).abs().toMinutes() <= 10)
-                .isPresent();
-    }
 
-    private PreflightCheck passedPersistedPreflightCheck(Drone drone, DeviceTelemetry telemetry, String missionId) {
-        PreflightCheck check = new PreflightCheck();
-        check.setDrone(drone);
-        check.setMissionId(missionId);
-        check.setOverallPassed(true);
-        check.setConnected(true);
-        check.setInAir(false);
-        check.setBatteryPercent(telemetry != null ? telemetry.getBatteryPercent() : null);
-        check.setGpsFixType(telemetry != null ? telemetry.getGpsFixType() : null);
-        check.setGpsSatelliteCount(telemetry != null ? telemetry.getGpsSatelliteCount() : null);
-        check.setGyrometerOk(true);
-        check.setAccelerometerOk(true);
-        check.setMagnetometerOk(true);
-        check.setLocalPositionOk(true);
-        check.setGlobalPositionOk(true);
-        check.setHomePositionOk(true);
-        check.setArmable(true);
-        check.setCheckedAt(Instant.now());
-        return check;
-    }
+//
+//
+//    /**
+//     * BATTERY fault auto-swap: find the next AVAILABLE device from the pool and
+//     * assign it.
+//     * If none available, fall back to RESOURCE_ASSIGNING for manager intervention.
+//     */
+//    private void attemptAutoSwapDevice(Mission mission, Device faultyDevice) {
+//        String missionId = mission.getId();
+//
+//        // Release current assignment first
+//        releaseFaultyDeviceAssignment(mission, faultyDevice, "BATTERY_FAIL");
+//
+//        // Try to find a replacement from the available pool
+//        deviceRepository.findAll().stream()
+//                .filter(candidate -> candidate.getStatus() == DeviceStatus.AVAILABLE)
+//                .filter(candidate -> !candidate.getId().equals(faultyDevice.getId()))
+//                .findFirst()
+//                .ifPresentOrElse(replacementDevice -> {
+//                    // Check for scheduling conflict
+//                    boolean hasConflict = missionRepository.findActiveByDroneId(replacementDevice.getId())
+//                            .stream().anyMatch(m -> !m.getId().equals(missionId));
+//
+//                    if (hasConflict) {
+//                        log.warn(
+//                                "[AUTO-SWAP] Candidate device {} has a schedule conflict – falling back to RESOURCE_ASSIGNING.",
+//                                replacementDevice.getDeviceCode());
+//                        mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
+//                        return;
+//                    }
+//
+//                    // Assign replacement device
+//                    replacementDevice.setStatus(DeviceStatus.RESERVED);
+//                    deviceRepository.save(replacementDevice);
+//
+//                    MissionDroneAssignment newMda = new MissionDroneAssignment();
+//                    newMda.setMission(mission);
+//                    newMda.setDevice(replacementDevice);
+//                    newMda.setStatus("ACTIVE");
+//                    newMda.setIsCurrent(true);
+//                    newMda.setAssignedAt(Instant.now());
+//                    missionDroneAssignmentRepository.save(newMda);
+//
+//                    // Mission returns to RESOURCE_ASSIGNING so manager can confirm before
+//                    // re-dispatch
+//                    mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
+//                    log.info(
+//                            "[AUTO-SWAP] Mission {} – swapped faulty device {} → replacement device {} (AUTO_SYSTEM). Mission → RESOURCE_ASSIGNING.",
+//                            missionId, faultyDevice.getDeviceCode(), replacementDevice.getDeviceCode());
+//
+//                }, () -> {
+//                    // No available replacement in the pool
+//                    mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
+//                    log.warn(
+//                            "[AUTO-SWAP] Mission {} – no AVAILABLE devices in pool. Mission → RESOURCE_ASSIGNING for manager intervention.",
+//                            missionId);
+//                });
+//    }
 
-    private void handlePreflightFailure(Mission mission, Drone faultyDevice, PreflightCheck check) {
-        String faultType = check.getFaultType();
-
-        if ("HARDWARE".equalsIgnoreCase(faultType)) {
-            // ── HARDWARE fault: device goes to MAINTENANCE, auto-generate ticket
-            // ──────────
-            faultyDevice.setStatus(DroneStatus.MAINTENANCE);
-            droneRepository.save(faultyDevice);
-            log.error("[PREFLIGHT-GATE] Device {} HARDWARE fault: {}. Status → MAINTENANCE.",
-                    faultyDevice.getDroneCode(), check.getFailureReason());
-
-            // ACCEPTANCE CRITERIA: Auto-create MaintenanceTicket on HARDWARE fault
-            MaintenanceTicket ticket = new MaintenanceTicket();
-            ticket.setTicketCode("TKT-PREFLIGHT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
-            ticket.setDevice(faultyDevice); // device field — device-type agnostic
-            ticket.setReportedBy("AUTOMATED_PREFLIGHT_GATE");
-            ticket.setIssueType("PREFLIGHT_HARDWARE_FAIL");
-            ticket.setSeverity("HIGH");
-            ticket.setDescription(
-                    "Pre-flight hardware failure on device " + faultyDevice.getDroneCode() + ": "
-                            + check.getFailureReason());
-            ticket.setStatus("OPEN");
-            ticket.setOpenedAt(Instant.now());
-            maintenanceTicketRepository.save(ticket);
-            log.error("[MAINTENANCE] Auto-created ticket {} for device {}", ticket.getTicketCode(),
-                    faultyDevice.getDroneCode());
-
-            // Re-queue mission for manager to assign a new device
-            mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
-            releaseFaultyDeviceAssignment(mission, faultyDevice, "HARDWARE_FAIL");
-            log.warn("[MISSION-REQUEUE] Mission {} → RESOURCE_ASSIGNING (hardware fault, needs manager reassignment)",
-                    mission.getId());
-
-        } else if ("BATTERY".equalsIgnoreCase(faultType)) {
-            // ── BATTERY fault: device goes to MAINTENANCE, auto-generate ticket & re-queue
-            // for Manager ─
-            faultyDevice.setStatus(DroneStatus.MAINTENANCE);
-            droneRepository.save(faultyDevice);
-            log.warn("[PREFLIGHT-GATE] Device {} BATTERY low/failed ({}%). Status → MAINTENANCE.",
-                    faultyDevice.getDroneCode(), check.getBatteryPercent());
-
-            // Auto-create MaintenanceTicket for battery fault
-            MaintenanceTicket ticket = new MaintenanceTicket();
-            ticket.setTicketCode("TKT-PREFLIGHT-BAT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
-            ticket.setDevice(faultyDevice);
-            ticket.setReportedBy("AUTOMATED_PREFLIGHT_GATE");
-            ticket.setIssueType("PREFLIGHT_BATTERY_FAIL");
-            ticket.setSeverity("HIGH");
-            ticket.setDescription("Pre-flight battery failure on device " + faultyDevice.getDroneCode()
-                    + ": battery level " + check.getBatteryPercent() + "%");
-            ticket.setStatus("OPEN");
-            ticket.setOpenedAt(Instant.now());
-            maintenanceTicketRepository.save(ticket);
-            log.error("[MAINTENANCE] Auto-created battery ticket {} for device {}", ticket.getTicketCode(),
-                    faultyDevice.getDroneCode());
-
-            // Flow update: Re-queue mission to RESOURCE_ASSIGNING for Manager manual drone
-            // selection & reassignment
-            mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
-            releaseFaultyDeviceAssignment(mission, faultyDevice, "BATTERY_FAIL");
-            log.warn("[MISSION-REQUEUE] Mission {} → RESOURCE_ASSIGNING (battery fault, needs manager reassignment)",
-                    mission.getId());
-
-        } else {
-            // Unknown fault type — treat as HARDWARE for safety
-            faultyDevice.setStatus(DroneStatus.MAINTENANCE);
-            droneRepository.save(faultyDevice);
-            mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
-            releaseFaultyDeviceAssignment(mission, faultyDevice, "UNKNOWN_FAULT");
-            log.error("[PREFLIGHT-GATE] Device {} unknown fault type '{}' – defaulting to MAINTENANCE.",
-                    faultyDevice.getDroneCode(), faultType);
-        }
-    }
-
-    /**
-     * Releases the current MissionDroneAssignment for the faulty device.
-     * Does NOT alter the device's status (already set by caller).
-     */
-    private void releaseFaultyDeviceAssignment(Mission mission, Drone faultyDevice, String releaseReason) {
-        missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
-                .ifPresent(mda -> {
-                    mda.setIsCurrent(false);
-                    mda.setStatus("RELEASED");
-                    mda.setReleaseReason(releaseReason);
-                    mda.setReleasedAt(Instant.now());
-                    missionDroneAssignmentRepository.save(mda);
-                });
-    }
-
-    private void releaseFaultyDroneAssignment(Mission mission, Drone faultyDrone, String releaseReason) {
-        releaseFaultyDeviceAssignment(mission, faultyDrone, releaseReason);
-    }
-
-    /**
-     * BATTERY fault auto-swap: find the next AVAILABLE device from the pool and
-     * assign it.
-     * If none available, fall back to RESOURCE_ASSIGNING for manager intervention.
-     */
-    private void attemptAutoSwapDevice(Mission mission, Drone faultyDevice) {
-        String missionId = mission.getId();
-
-        // Release current assignment first
-        releaseFaultyDeviceAssignment(mission, faultyDevice, "BATTERY_FAIL");
-
-        // Try to find a replacement from the available pool
-        droneRepository.findFirstAvailableExcluding(DroneStatus.AVAILABLE, faultyDevice.getId())
-                .ifPresentOrElse(replacementDevice -> {
-                    // Check for scheduling conflict
-                    boolean hasConflict = missionRepository.findActiveByDroneId(replacementDevice.getId())
-                            .stream().anyMatch(m -> !m.getId().equals(missionId));
-
-                    if (hasConflict) {
-                        log.warn(
-                                "[AUTO-SWAP] Candidate device {} has a schedule conflict – falling back to RESOURCE_ASSIGNING.",
-                                replacementDevice.getDroneCode());
-                        mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
-                        return;
-                    }
-
-                    // Assign replacement device
-                    replacementDevice.setStatus(DroneStatus.RESERVED);
-                    droneRepository.save(replacementDevice);
-
-                    MissionDroneAssignment newMda = new MissionDroneAssignment();
-                    newMda.setMission(mission);
-                    newMda.setDrone(replacementDevice);
-                    newMda.setAssignmentSource("AUTO_SYSTEM");
-                    newMda.setStatus("ACTIVE");
-                    newMda.setIsCurrent(true);
-                    newMda.setAssignedAt(Instant.now());
-                    missionDroneAssignmentRepository.save(newMda);
-
-                    // Mission returns to RESOURCE_ASSIGNING so manager can confirm before
-                    // re-dispatch
-                    mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
-                    log.info(
-                            "[AUTO-SWAP] Mission {} – swapped faulty device {} → replacement device {} (AUTO_SYSTEM). Mission → RESOURCE_ASSIGNING.",
-                            missionId, faultyDevice.getDroneCode(), replacementDevice.getDroneCode());
-
-                }, () -> {
-                    // No available replacement in the pool
-                    mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
-                    log.warn(
-                            "[AUTO-SWAP] Mission {} – no AVAILABLE devices in pool. Mission → RESOURCE_ASSIGNING for manager intervention.",
-                            missionId);
-                });
-    }
-
-    private void attemptAutoSwapDrone(Mission mission, Drone faultyDrone) {
-        attemptAutoSwapDevice(mission, faultyDrone);
-    }
+//    private void attemptAutoSwapDrone(Mission mission, Device faultyDrone) {
+//        attemptAutoSwapDevice(mission, faultyDrone);
+//    }
 
     private FlightToken issueFlightToken(String missionId, String droneCode, String operatorId) {
         return flightTokenService.issueFlightToken(missionId, droneCode, operatorId);
     }
 
-    private MissionOperatorAssignment requireCurrentOperatorAssignment(String missionId, String operatorId) {
-        MissionOperatorAssignment assignment = findCurrentOperatorAssignment(missionId, operatorId);
-        requirePendingAssignment(assignment);
-        return assignment;
-    }
 
-    private MissionOperatorAssignment findCurrentOperatorAssignment(String missionId, String operatorId) {
-        MissionOperatorAssignment assignment = missionOperatorAssignmentRepository
-                .findByMissionIdAndIsCurrentTrue(missionId)
-                .orElseThrow(() -> new ApiException(
-                        ErrorCode.INVALID_REQUEST,
-                        "Mission has no current operator assignment."));
-        if (assignment.getOperatorId() == null || !assignment.getOperatorId().equals(operatorId)) {
-            throw new ApiException(
-                    ErrorCode.INVALID_REQUEST,
-                    "Mission is assigned to another operator.");
-        }
-        return assignment;
-    }
 
-    private void requirePendingAssignment(MissionOperatorAssignment assignment) {
-        if (!"PENDING".equalsIgnoreCase(assignment.getStatus())) {
-            throw new ApiException(
-                    ErrorCode.INVALID_REQUEST,
-                    "Mission operator assignment is not pending acceptance.");
-        }
-    }
 
     private void requireFeasiblePlan(MissionPlan plan) {
         requireFeasiblePlan(plan, false);
+    }
+
+    private MissionStaffAssignment requireCurrentOperatorAssignment(String missionId, String staffId) {
+        return missionStaffAssignmentRepository.findByMissionIdAndStaffId(missionId, staffId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
+                        "Staff is not assigned to mission " + missionId));
     }
 
     private void requireFeasiblePlan(MissionPlan plan, boolean allowRuntimePreflightBatteryFallback) {
@@ -672,69 +678,144 @@ public class MissionService implements IMissionService {
                 || mission.getStatus() == MissionStatus.CANCELLED) {
             return;
         }
-        if (getCurrentDrone(mission.getId()) == null
+        if (getCurrentDevice(mission.getId()) == null
                 || missionPlanRepository.findByMissionId(mission.getId()).isPresent()) {
             return;
         }
 
         missionPlanningService.generateAStarEnergyAwarePlan(mission.getId());
     }
+//
+//    @Override
+//    @Transactional
+//    public MissionResponse replaceDrone(String missionId, String newDroneCode) {
+//        Mission mission = getOrThrow(missionId);
+//        Device newDevice = deviceRepository.findByDeviceCode(newDroneCode)
+//                .orElseThrow(() -> new ApiException(ErrorCode.DRONE_NOT_AVAILABLE,
+//                        "Device " + newDroneCode + " không tồn tại"));
+//
+//        if (newDevice.getStatus() != DeviceStatus.AVAILABLE) {
+//            throw new ApiException(ErrorCode.DRONE_NOT_AVAILABLE,
+//                    "Device " + newDroneCode + " is not AVAILABLE (status: " + newDevice.getStatus() + ")");
+//        }
+//
+//        List<Mission> activeMissions = missionRepository.findActiveByDroneId(newDevice.getId());
+//        boolean hasConflict = activeMissions.stream().anyMatch(m -> !m.getId().equals(missionId));
+//        if (hasConflict) {
+//            throw new ApiException(ErrorCode.SCHEDULE_CONFLICT,
+//                    "Device " + newDroneCode + " đang được lên lịch cho chuyến bay khác");
+//        }
+//
+//        Device oldDevice = getCurrentDevice(missionId);
+//        if (oldDevice != null) {
+//            oldDevice.setStatus(DeviceStatus.MAINTENANCE);
+//            deviceRepository.save(oldDevice);
+//
+//            // Release old MissionDroneAssignment
+//            missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+//                    .ifPresent(mda -> {
+//                        mda.setIsCurrent(false);
+//                        mda.setStatus("RELEASED");
+//                        mda.setReleaseReason("PREFLIGHT_FAIL");
+//                        mda.setReleasedAt(Instant.now());
+//                        missionDroneAssignmentRepository.save(mda);
+//                    });
+//        }
+//
+//        newDevice.setStatus(DeviceStatus.PREFLIGHT);
+//        deviceRepository.save(newDevice);
+//
+//        // Record new MissionDroneAssignment
+//        MissionDroneAssignment newMda = new MissionDroneAssignment();
+//        newMda.setMission(mission);
+//        newMda.setDevice(newDevice);
+//        newMda.setStatus("ACTIVE");
+//        newMda.setIsCurrent(true);
+//        newMda.setAssignedAt(Instant.now());
+//        missionDroneAssignmentRepository.save(newMda);
+//
+//        mission.setStatus(MissionStatus.CONNECTED);
+//        log.info("Mission {} – replaced device with {}, status reset to CONNECTED", missionId, newDroneCode);
+//        Mission saved = missionRepository.save(mission);
+//        return missionMapper.toResponse(saved);
+//    }
 
-    @Override
-    @Transactional
-    public MissionResponse replaceDrone(String missionId, String newDroneCode) {
-        Mission mission = getOrThrow(missionId);
-        Drone newDevice = droneRepository.findByDroneCode(newDroneCode)
-                .orElseThrow(() -> new ApiException(ErrorCode.DRONE_NOT_AVAILABLE,
-                        "Device " + newDroneCode + " không tồn tại"));
+//    @Override
+//    @Transactional
+//    public MissionResponse replaceDrone(String missionId, String newDroneCode) {
+//        Mission mission = getOrThrow(missionId);
+//        Device newDevice = deviceRepository.findByDeviceCode(newDroneCode)
+//                .orElseThrow(() -> new ApiException(ErrorCode.DRONE_NOT_AVAILABLE,
+//                        "Device " + newDroneCode + " không tồn tại"));
+//        if (newDevice.getStatus() != DeviceStatus.AVAILABLE) {
+//            throw new ApiException(ErrorCode.DRONE_NOT_AVAILABLE,
+//                    "Device " + newDroneCode + " is not AVAILABLE (status: " + newDevice.getStatus() + ")");
+//        }
+//        missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+//                .ifPresent(current -> {
+//                    current.setIsCurrent(false);
+//                    current.setStatus("RELEASED");
+//                    current.setReleaseReason("MANUAL_REPLACE");
+//                    current.setReleasedAt(Instant.now());
+//                    missionDroneAssignmentRepository.save(current);
+//                });
+//        newDevice.setStatus(DeviceStatus.PREFLIGHT);
+//        deviceRepository.save(newDevice);
+//        MissionDroneAssignment assignment = new MissionDroneAssignment();
+//        assignment.setMission(mission);
+//        assignment.setDevice(newDevice);
+//        assignment.setStatus("ACTIVE");
+//        assignment.setIsCurrent(true);
+//        assignment.setAssignedAt(Instant.now());
+//        missionDroneAssignmentRepository.save(assignment);
+//        mission.setStatus(MissionStatus.CONNECTED);
+//        return missionMapper.toResponse(missionRepository.save(mission));
+//    }
+    private void validateStaffSchedule(String staffId, Instant missionStart, Instant missionEnd, Instant paddedStart,
+                                       Instant paddedEnd) {
+        List<UserSchedule> schedules = userScheduleRepository.findByStaffId(staffId);
+        for (UserSchedule schedule : schedules) {
+            if (schedule.getStatus() == UserScheduleStatus.CANCELLED) {
+                continue;
+            }
 
-        if (newDevice.getStatus() != DroneStatus.AVAILABLE) {
-            throw new ApiException(ErrorCode.DRONE_NOT_AVAILABLE,
-                    "Device " + newDroneCode + " is not AVAILABLE (status: " + newDevice.getStatus() + ")");
+            if (schedule.getStatus() == UserScheduleStatus.ON_LEAVE
+                    || schedule.getScheduleType() == UserScheduleType.LEAVE) {
+                LocalDate leaveStart = schedule.getStartTime().atZone(ZoneOffset.UTC).toLocalDate();
+                LocalDate leaveEnd = schedule.getEndTime().atZone(ZoneOffset.UTC).toLocalDate();
+                LocalDate missionStartDay = missionStart.atZone(ZoneOffset.UTC).toLocalDate();
+                LocalDate missionEndDay = missionEnd.atZone(ZoneOffset.UTC).toLocalDate();
+
+                if (!leaveStart.isAfter(missionEndDay) && !leaveEnd.isBefore(missionStartDay)) {
+                    throw new ApiException(ErrorCode.SCHEDULE_CONFLICT,
+                            "Staff is on leave during the mission date period.");
+                }
+            } else if (schedule.getScheduleType() == UserScheduleType.MISSION) {
+                if (schedule.getStartTime().isBefore(paddedEnd) && schedule.getEndTime().isAfter(paddedStart)) {
+                    throw new ApiException(ErrorCode.SCHEDULE_CONFLICT,
+                            "Staff schedule conflicts with another assigned mission (1-hour buffer required).");
+                }
+            } else {
+                if (schedule.getScheduleType() == UserScheduleType.MAINTENANCE) {
+                    if (schedule.getStartTime().isBefore(missionEnd) && schedule.getEndTime().isAfter(missionStart)) {
+                        throw new ApiException(ErrorCode.SCHEDULE_CONFLICT,
+                                "Staff schedule conflicts with maintenance schedule.");
+                    }
+                } else if (schedule.getScheduleType() == UserScheduleType.SHIFT
+                        || schedule.getScheduleType() == UserScheduleType.ON_CALL) {
+                    if (schedule.getStartTime().isAfter(missionStart) || schedule.getEndTime().isBefore(missionEnd)) {
+                        throw new ApiException(ErrorCode.SCHEDULE_CONFLICT,
+                                "Mission time is outside the staff scheduled shift duration.");
+                    }
+                } else {
+                    if (schedule.getStartTime().isBefore(missionEnd) && schedule.getEndTime().isAfter(missionStart)) {
+                        throw new ApiException(ErrorCode.SCHEDULE_CONFLICT,
+                                "Staff schedule conflicts with an existing schedule record.");
+                    }
+                }
+            }
         }
-
-        List<Mission> activeMissions = missionRepository.findActiveByDroneId(newDevice.getId());
-        boolean hasConflict = activeMissions.stream().anyMatch(m -> !m.getId().equals(missionId));
-        if (hasConflict) {
-            throw new ApiException(ErrorCode.SCHEDULE_CONFLICT,
-                    "Device " + newDroneCode + " đang được lên lịch cho chuyến bay khác");
-        }
-
-        Drone oldDevice = getCurrentDevice(missionId);
-        if (oldDevice != null) {
-            oldDevice.setStatus(DroneStatus.MAINTENANCE);
-            droneRepository.save(oldDevice);
-
-            // Release old MissionDroneAssignment
-            missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                    .ifPresent(mda -> {
-                        mda.setIsCurrent(false);
-                        mda.setStatus("RELEASED");
-                        mda.setReleaseReason("PREFLIGHT_FAIL");
-                        mda.setReleasedAt(Instant.now());
-                        missionDroneAssignmentRepository.save(mda);
-                    });
-        }
-
-        newDevice.setStatus(DroneStatus.PREFLIGHT);
-        droneRepository.save(newDevice);
-
-        // Record new MissionDroneAssignment
-        MissionDroneAssignment newMda = new MissionDroneAssignment();
-        newMda.setMission(mission);
-        newMda.setDrone(newDevice);
-        newMda.setAssignmentSource("MANUAL_SWAP");
-        newMda.setStatus("ACTIVE");
-        newMda.setIsCurrent(true);
-        newMda.setAssignedAt(Instant.now());
-        missionDroneAssignmentRepository.save(newMda);
-
-        mission.setStatus(MissionStatus.CONNECTED);
-        log.info("Mission {} – replaced device with {}, status reset to CONNECTED", missionId, newDroneCode);
-        Mission saved = missionRepository.save(mission);
-        return missionMapper.toResponse(saved);
     }
-
     @Override
     @Transactional
     public MissionResponse handoverControl(String missionId, String operatorId) {
@@ -748,7 +829,7 @@ public class MissionService implements IMissionService {
 
         ControlHandover handover = new ControlHandover();
         handover.setDeviceConnection(activeConnection);
-        handover.setDrone(getCurrentDevice(missionId));
+        handover.setDevice(getCurrentDevice(missionId));
         handover.setOperatorId(operatorId);
         handover.setStatus("CONFIRMED");
         handover.setAcknowledgementText("Operator confirmed control handover and preflight checks before launch");
@@ -799,8 +880,8 @@ public class MissionService implements IMissionService {
         }
 
         mission.setStatus(MissionStatus.IN_FLIGHT);
-        mission.setStartedAt(Instant.now());
-        updateDeviceStatus(mission, DroneStatus.ACTIVE_MISSION);
+        mission.setActualStartAt(Instant.now());
+        updateDeviceStatus(mission, DeviceStatus.ACTIVE_MISSION);
 
         log.info("Mission {} IN_FLIGHT – WebSocket telemetry and RTSP video stream OPENED", missionId);
         Mission saved = missionRepository.save(mission);
@@ -822,7 +903,7 @@ public class MissionService implements IMissionService {
                     "Mission must be IN_FLIGHT to mark returning, current: " + mission.getStatus());
         }
         mission.setStatus(MissionStatus.RETURNING);
-        updateDeviceStatus(mission, DroneStatus.RETURNING);
+        updateDeviceStatus(mission, DeviceStatus.RETURNING);
         log.info("Mission {} – device returning to base", missionId);
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
@@ -870,15 +951,31 @@ public class MissionService implements IMissionService {
         Mission mission = getOrThrow(missionId);
         if (mission.getStatus() == MissionStatus.IN_FLIGHT
                 || mission.getStatus() == MissionStatus.RETURNING) {
-            updateDroneStatus(mission, DroneStatus.MAINTENANCE);
+            updateDroneStatus(mission, DeviceStatus.MAINTENANCE);
         }
         mission.setStatus(MissionStatus.FAILED);
-        mission.setFailureReason(reason);
+        mission.setActualEndAt(Instant.now());
         releaseMissionResources(mission, "MISSION_FAILED");
         log.error("Mission {} FAILED – reason: {}", missionId, reason);
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
     }
+
+//    @Override
+//    @Transactional
+//    public MissionResponse failMission(String missionId, String reason) {
+//        Mission mission = getOrThrow(missionId);
+//        if (mission.getStatus() == MissionStatus.IN_FLIGHT
+//                || mission.getStatus() == MissionStatus.RETURNING) {
+//            updateDroneStatus(mission, DeviceStatus.MAINTENANCE);
+//        }
+//        mission.setStatus(MissionStatus.FAILED);
+//        mission.setFailureReason(reason);
+//        releaseMissionResources(mission, "MISSION_FAILED");
+//        log.error("Mission {} FAILED – reason: {}", missionId, reason);
+//        Mission saved = missionRepository.save(mission);
+//        return missionMapper.toResponse(saved);
+//    }
 
     // =========================================================================
     // F3.5 – Post-flight device status update
@@ -886,13 +983,13 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    public MissionResponse updatePostFlightStatus(String missionId, DroneStatus newDroneStatus, String notes) {
-        return savePostFlightStatus(missionId, newDroneStatus, notes, Map.of());
+    public MissionResponse updatePostFlightStatus(String missionId, DeviceStatus newDeviceStatus, String notes) {
+        return savePostFlightStatus(missionId, newDeviceStatus, notes, Map.of());
     }
 
     @Override
     @Transactional
-    public MissionResponse recordPostFlightInspection(String missionId, DroneStatus newDroneStatus,
+    public MissionResponse recordPostFlightInspection(String missionId, DeviceStatus newDeviceStatus,
             String notes, Map<String, InspectionResult> results,
             PostFlightStatusRequest.TelemetrySnapshot telemetrySnapshot) {
         Set<String> required = Set.of("a1", "a2", "p1", "p2", "e1", "e2", "e3", "e4", "d1");
@@ -901,10 +998,10 @@ public class MissionService implements IMissionService {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "All nine inspection items must have a result");
         }
         boolean faultDetected = results.containsValue(InspectionResult.FAIL);
-        DroneStatus expected = faultDetected ? DroneStatus.MAINTENANCE : DroneStatus.AVAILABLE;
-        if (newDroneStatus != expected) {
+        DeviceStatus expected = faultDetected ? DeviceStatus.MAINTENANCE : DeviceStatus.AVAILABLE;
+        if (newDeviceStatus != expected) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
-                    "Drone status does not match the submitted inspection results");
+                    "Device status does not match the submitted inspection results");
         }
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.POSTFLIGHT_CHECKING);
@@ -913,30 +1010,30 @@ public class MissionService implements IMissionService {
                 .map(entry -> entry.getKey() + "=" + entry.getValue())
                 .collect(java.util.stream.Collectors.joining(", "));
         String auditNotes = "Inspection: " + summary + ". " + (notes == null ? "" : notes.strip());
-        return savePostFlightStatus(missionId, newDroneStatus, auditNotes, results, telemetrySnapshot);
+        return savePostFlightStatus(missionId, newDeviceStatus, auditNotes, results, telemetrySnapshot);
     }
 
-    private MissionResponse savePostFlightStatus(String missionId, DroneStatus newDroneStatus,
+    private MissionResponse savePostFlightStatus(String missionId, DeviceStatus newDeviceStatus,
             String notes, Map<String, InspectionResult> results) {
-        return savePostFlightStatus(missionId, newDroneStatus, notes, results, null);
+        return savePostFlightStatus(missionId, newDeviceStatus, notes, results, null);
     }
 
-    private MissionResponse savePostFlightStatus(String missionId, DroneStatus newDroneStatus,
+    private MissionResponse savePostFlightStatus(String missionId, DeviceStatus newDeviceStatus,
             String notes, Map<String, InspectionResult> results,
             PostFlightStatusRequest.TelemetrySnapshot telemetrySnapshot) {
         Mission mission = getOrThrow(missionId);
-        Drone device = getCurrentDevice(mission.getId());
+        Device device = getCurrentDevice(mission.getId());
         if (device == null) {
             throw new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission " + missionId + " has no assigned device");
         }
-        device.setStatus(newDroneStatus);
-        droneRepository.save(device);
+        device.setStatus(newDeviceStatus);
+        deviceRepository.save(device);
 
         // Record PostflightCheck physical inspection
-        boolean overallOk = (newDroneStatus != DroneStatus.MAINTENANCE);
+        boolean overallOk = (newDeviceStatus != DeviceStatus.MAINTENANCE);
         PostflightCheck postflightCheck = new PostflightCheck();
         postflightCheck.setMission(mission);
-        postflightCheck.setDrone(device);
+        postflightCheck.setDevice(device);
         postflightCheck.setCheckedBy(getCurrentOperatorId(missionId));
         postflightCheck.setOverallOk(overallOk);
         if (!results.isEmpty()) {
@@ -960,7 +1057,7 @@ public class MissionService implements IMissionService {
         postflightCheckRepository.save(postflightCheck);
 
         // Auto-create MaintenanceTicket if device requires maintenance post-flight
-        if (newDroneStatus == DroneStatus.MAINTENANCE) {
+        if (newDeviceStatus == DeviceStatus.MAINTENANCE) {
             MaintenanceTicket ticket = new MaintenanceTicket();
             ticket.setTicketCode("TKT-POSTFLIGHT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
             ticket.setDevice(device); // device field — device-type agnostic
@@ -968,25 +1065,25 @@ public class MissionService implements IMissionService {
             ticket.setIssueType("POSTFLIGHT_DAMAGE");
             ticket.setSeverity("HIGH");
             ticket.setDescription("Post-flight physical inspection flagged maintenance needed for device "
-                    + device.getDroneCode() + ". Notes: " + notes);
+                    + device.getDeviceCode() + ". Notes: " + notes);
             ticket.setStatus("OPEN");
             ticket.setOpenedAt(Instant.now());
             maintenanceTicketRepository.save(ticket);
             log.error("[MAINTENANCE] Auto-created MaintenanceTicket {} for device {}", ticket.getTicketCode(),
-                    device.getDroneCode());
+                    device.getDeviceCode());
         }
 
         if (mission.getStatus() == MissionStatus.POSTFLIGHT_CHECKING) {
             mission.setStatus(MissionStatus.COMPLETED);
-            mission.setCompletedAt(Instant.now());
+//            mission.setCompletedAt(Instant.now());
             releaseMissionResources(mission, "MISSION_COMPLETE");
         }
 
         if (notes != null && !notes.isBlank()) {
             log.info("Mission {} post-flight notes: {}", missionId, notes);
         }
-        log.info("Mission {} post-flight completed – device {} status set to {}", missionId, device.getDroneCode(),
-                newDroneStatus);
+        log.info("Mission {} post-flight completed – device {} status set to {}", missionId, device.getDeviceCode(),
+                newDeviceStatus);
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
     }
@@ -998,6 +1095,123 @@ public class MissionService implements IMissionService {
             }
         }
         return true;
+    }
+
+    private void requireScheduledWindow(Mission mission) {
+        if (mission.getScheduledStartAt() == null || mission.getScheduledEndAt() == null) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Mission schedule start and end times must be set before assigning resources.");
+        }
+    }
+
+//    private void moveToWaitingOperatorAcceptanceIfReady(Mission mission) {
+//        boolean hasDevice = missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId()).isPresent();
+//        boolean hasStaff = !missionStaffAssignmentRepository.findByMissionId(mission.getId()).isEmpty();
+//        if (hasDevice && hasStaff) {
+//            mission.setStatus(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+//        }
+//    }
+
+
+
+    private void validateDeviceSchedule(String deviceId, Mission mission) {
+        Instant paddedStart = mission.getScheduledStartAt().minus(1, ChronoUnit.HOURS);
+        Instant paddedEnd = mission.getScheduledEndAt().plus(1, ChronoUnit.HOURS);
+
+        List<Mission> activeMissions = missionRepository.findActiveByDroneId(deviceId);
+        for (Mission activeMission : activeMissions) {
+            if (activeMission.getId().equals(mission.getId())) {
+                throw new ApiException(ErrorCode.RESOURCE_ALREADY_EXISTS,
+                        "Device is already assigned to this mission.");
+            }
+            if (activeMission.getScheduledStartAt() != null
+                    && activeMission.getScheduledEndAt() != null
+                    && activeMission.getScheduledStartAt().isBefore(paddedEnd)
+                    && activeMission.getScheduledEndAt().isAfter(paddedStart)) {
+                throw new ApiException(ErrorCode.SCHEDULE_CONFLICT,
+                        "Device schedule conflicts with an existing mission (1-hour buffer required)");
+            }
+        }
+    }
+
+    private void validateStaffSchedule(String staffId, Mission mission) {
+        Instant missionStart = mission.getScheduledStartAt();
+        Instant missionEnd = mission.getScheduledEndAt();
+        Instant paddedStart = missionStart.minus(1, ChronoUnit.HOURS);
+        Instant paddedEnd = missionEnd.plus(1, ChronoUnit.HOURS);
+
+        List<UserSchedule> schedules = userScheduleRepository.findByStaffId(staffId);
+        for (UserSchedule schedule : schedules) {
+            if (schedule.getStatus() == UserScheduleStatus.CANCELLED) {
+                continue;
+            }
+
+            if (schedule.getStatus() == UserScheduleStatus.ON_LEAVE
+                    || schedule.getScheduleType() == UserScheduleType.LEAVE) {
+                LocalDate leaveStart = schedule.getStartTime().atZone(ZoneOffset.UTC).toLocalDate();
+                LocalDate leaveEnd = schedule.getEndTime().atZone(ZoneOffset.UTC).toLocalDate();
+                LocalDate missionStartDay = missionStart.atZone(ZoneOffset.UTC).toLocalDate();
+                LocalDate missionEndDay = missionEnd.atZone(ZoneOffset.UTC).toLocalDate();
+
+                if (!leaveStart.isAfter(missionEndDay) && !leaveEnd.isBefore(missionStartDay)) {
+                    throw new ApiException(ErrorCode.SCHEDULE_CONFLICT,
+                            "Staff is on leave during the mission date period.");
+                }
+            } else if (schedule.getScheduleType() == UserScheduleType.MISSION) {
+                if (schedule.getStartTime().isBefore(paddedEnd) && schedule.getEndTime().isAfter(paddedStart)) {
+                    throw new ApiException(ErrorCode.SCHEDULE_CONFLICT,
+                            "Staff schedule conflicts with another assigned mission (1-hour buffer required).");
+                }
+            } else if (schedule.getScheduleType() == UserScheduleType.MAINTENANCE) {
+                if (schedule.getStartTime().isBefore(missionEnd) && schedule.getEndTime().isAfter(missionStart)) {
+                    throw new ApiException(ErrorCode.SCHEDULE_CONFLICT,
+                            "Staff schedule conflicts with maintenance schedule.");
+                }
+            } else if (schedule.getScheduleType() == UserScheduleType.SHIFT
+                    || schedule.getScheduleType() == UserScheduleType.ON_CALL) {
+                if (schedule.getStartTime().isAfter(missionStart) || schedule.getEndTime().isBefore(missionEnd)) {
+                    throw new ApiException(ErrorCode.SCHEDULE_CONFLICT,
+                            "Mission time is outside the staff scheduled shift duration.");
+                }
+            } else if (schedule.getStartTime().isBefore(missionEnd)
+                    && schedule.getEndTime().isAfter(missionStart)) {
+                throw new ApiException(ErrorCode.SCHEDULE_CONFLICT,
+                        "Staff schedule conflicts with an existing schedule record.");
+            }
+        }
+    }
+
+    private void validateScheduledDates(Instant startAt, Instant endAt, Order order) {
+        if (startAt == null || endAt == null) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Scheduled start time and scheduled end time must be specified");
+        }
+        if (!startAt.isBefore(endAt)) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Scheduled start time must be before scheduled end time");
+        }
+
+        LocalDate startDate = startAt.atZone(ZoneOffset.UTC).toLocalDate();
+        LocalDate endDate = endAt.atZone(ZoneOffset.UTC).toLocalDate();
+        if (!startDate.equals(endDate)) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Scheduled start time and scheduled end time must be on the same day");
+        }
+        if (order != null && order.getPreferredDateFrom() != null
+                && startDate.isBefore(order.getPreferredDateFrom())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Scheduled date must be greater than or equal to preferred start date: "
+                            + order.getPreferredDateFrom());
+        }
+    }
+
+    private String generateMissionCode() {
+        String code;
+        do {
+            int number = ThreadLocalRandom.current().nextInt(100000);
+            code = String.format("MS-%05d", number);
+        } while (missionRepository.existsByMissionCode(code));
+        return code;
     }
 
     @Override
@@ -1045,61 +1259,51 @@ public class MissionService implements IMissionService {
         }
     }
 
-    private void updateDeviceStatus(Mission mission, DroneStatus newStatus) {
-        Drone device = getCurrentDevice(mission.getId());
+    private void updateDeviceStatus(Mission mission, DeviceStatus newStatus) {
+        Device device = getCurrentDevice(mission.getId());
         if (device != null) {
             device.setStatus(newStatus);
-            droneRepository.save(device);
+            deviceRepository.save(device);
         }
     }
 
-    private void updateDroneStatus(Mission mission, DroneStatus newStatus) {
+    private void updateDroneStatus(Mission mission, DeviceStatus newStatus) {
         updateDeviceStatus(mission, newStatus);
     }
 
     private void releaseMissionResources(Mission mission, String reason) {
-        Drone device = getCurrentDevice(mission.getId());
+        Device device = getCurrentDevice(mission.getId());
         if (device != null) {
-            if (device.getStatus() != DroneStatus.MAINTENANCE) {
-                device.setStatus(DroneStatus.AVAILABLE);
+            if (device.getStatus() != DeviceStatus.MAINTENANCE) {
+                device.setStatus(DeviceStatus.AVAILABLE);
             }
-            droneRepository.save(device);
+            deviceRepository.save(device);
         }
 
-        missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
+        missionStaffAssignmentRepository.findFirstByMissionIdOrderByAssignedAtDesc(mission.getId())
                 .ifPresent(assignment -> {
-                    assignment.setIsCurrent(false);
-                    assignment.setStatus("RELEASED");
-                    assignment.setReleaseReason(reason);
-                    assignment.setReleasedAt(Instant.now());
-                    missionDroneAssignmentRepository.save(assignment);
-                });
-
-        missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
-                .ifPresent(assignment -> {
-                    assignment.setIsCurrent(false);
-                    assignment.setStatus("COMPLETED");
-                    assignment.setReleasedAt(Instant.now());
                     if (assignment.getRespondedAt() == null) {
                         assignment.setRespondedAt(Instant.now());
                     }
-                    missionOperatorAssignmentRepository.save(assignment);
+                    missionStaffAssignmentRepository.save(assignment);
                 });
     }
 
-    private Drone getCurrentDevice(String missionId) {
-        return missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                .map(MissionDroneAssignment::getDrone)
+    private Device getCurrentDevice(String missionId) {
+        return missionDeviceAssignmentRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId)
+                .map(MissionDeviceAssignment::getDevice)
                 .orElse(null);
     }
 
-    private Drone getCurrentDrone(String missionId) {
+    private Device getCurrentDrone(String missionId) {
         return getCurrentDevice(missionId);
     }
 
     private String getCurrentOperatorId(String missionId) {
-        return missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                .map(MissionOperatorAssignment::getOperatorId)
+        return missionStaffAssignmentRepository.findFirstByMissionIdOrderByAssignedAtDesc(missionId)
+                .map(assignment -> assignment.getStaff() != null && assignment.getStaff().getId() != null
+                        ? assignment.getStaff().getId().toString()
+                        : null)
                 .orElse(null);
     }
 }

@@ -1,7 +1,6 @@
 package com.ondemandmonitoring.mission.mapper;
 
 import com.ondemandmonitoring.mission.domain.Mission;
-import com.ondemandmonitoring.mission.domain.MissionOperatorAssignment;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.domain.PlanWaypoint;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
@@ -16,67 +15,22 @@ import java.util.Comparator;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
-import com.ondemandmonitoring.mission.repository.MissionOperatorAssignmentRepository;
 
 @Mapper(componentModel = "spring")
 public abstract class MissionMapper {
 
-    @Autowired
-    protected MissionDroneAssignmentRepository missionDroneAssignmentRepository;
-
-    @Autowired
-    protected MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
 
     @Autowired
     protected MissionPlanRepository missionPlanRepository;
 
-    @Mapping(target = "deviceId", expression = "java(getDeviceId(mission))")
-    @Mapping(target = "deviceCode", expression = "java(getDeviceCode(mission))")
-    @Mapping(target = "operatorId", expression = "java(getOperatorId(mission))")
+
     @Mapping(source = "order.id", target = "orderId")
-    @Mapping(source = "order.title", target = "orderTitle")
-    @Mapping(source = "order.customer.fullName", target = "customerName")
-    @Mapping(source = "order.address", target = "address")
-    @Mapping(target = "mediaType", ignore = true)
-    @Mapping(target = "latitude", expression = "java(getLatitude(mission))")
-    @Mapping(target = "longitude", expression = "java(getLongitude(mission))")
-    @Mapping(target = "radiusM", expression = "java(getRadiusM(mission))")
-    @Mapping(target = "plan", expression = "java(getPlan(mission))")
     public abstract MissionResponse toResponse(Mission mission);
 
-    protected String getDeviceId(Mission mission) {
-        if (mission == null || mission.getId() == null)
-            return null;
-        return missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
-                .or(() -> isTerminal(mission)
-                        ? missionDroneAssignmentRepository.findFirstByMissionIdOrderByAssignedAtDesc(mission.getId())
-                        : Optional.empty())
-                .map(mda -> mda.getDevice() != null ? mda.getDevice().getId() : null)
-                .orElse(null);
-    }
 
-    protected String getDeviceCode(Mission mission) {
-        if (mission == null || mission.getId() == null)
-            return null;
-        return missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
-                .or(() -> isTerminal(mission)
-                        ? missionDroneAssignmentRepository.findFirstByMissionIdOrderByAssignedAtDesc(mission.getId())
-                        : Optional.empty())
-                .map(mda -> mda.getDevice() != null ? mda.getDevice().getDeviceCode() : null)
-                .orElse(null);
-    }
 
-    protected String getOperatorId(Mission mission) {
-        if (mission == null || mission.getId() == null)
-            return null;
-        return missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId())
-                .or(() -> isTerminal(mission)
-                        ? missionOperatorAssignmentRepository.findFirstByMissionIdOrderByAssignedAtDesc(mission.getId())
-                        : Optional.empty())
-                .map(moa -> moa.getStaff().getId())
-                .orElse(null);
-    }
+
+
 
     private boolean isTerminal(Mission mission) {
         return mission.getStatus() == MissionStatus.COMPLETED

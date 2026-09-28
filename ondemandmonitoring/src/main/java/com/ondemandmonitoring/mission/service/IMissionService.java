@@ -1,6 +1,9 @@
 package com.ondemandmonitoring.mission.service;
 
 import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
+import com.ondemandmonitoring.mission.dto.request.AssignDeviceRequest;
+import com.ondemandmonitoring.mission.dto.request.AssignStaffRequest;
+import com.ondemandmonitoring.mission.dto.request.MissionUpdateRequest;
 import com.ondemandmonitoring.mission.dto.response.PostflightCheckResponse;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
@@ -9,6 +12,7 @@ import com.ondemandmonitoring.mission.dto.response.MissionTelemetryReadinessResp
 import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.device.enums.DeviceStatus;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
+import com.ondemandmonitoring.mission.dto.request.MissionCreateRequest;
 import org.springframework.data.domain.Pageable;
 import java.time.Instant;
 
@@ -22,6 +26,15 @@ import java.util.List;
  */
 public interface IMissionService {
 
+    MissionResponse createMission(MissionCreateRequest request);
+
+    MissionResponse updateMission(String missionId, MissionUpdateRequest request);
+
+    MissionResponse assignDevice(String missionId, AssignDeviceRequest request);
+
+    MissionResponse assignStaff(String missionId, AssignStaffRequest request);
+
+    List<MissionResponse> getAllMissions();
     /**
      * Retrieves detailed mission information by ID as a DTO.
      *
@@ -38,6 +51,7 @@ public interface IMissionService {
      */
     MissionResponse getByCodeResponse(String missionCode);
 
+
     /**
      * Retrieves all missions assigned to a specific operator.
      *
@@ -49,7 +63,6 @@ public interface IMissionService {
     PageResponse<MissionResponse> searchStaffMissions(MissionStatus status, Instant from, Instant toExclusive,
             Pageable pageable);
 
-    List<MissionResponse> getCurrentOperatorMissions();
 
     /**
      * Retrieves all missions pending resource assignment (drone/operator).
@@ -101,6 +114,9 @@ public interface IMissionService {
      */
     MissionResponse rejectMission(String missionId, String operatorId, String reason);
 
+
+//    MissionResponse assignResources(String missionId, String droneId, String operatorId);
+
     /**
      * Connects GCS app for the mission (Delegated to IGcsConnectionService).
      *
@@ -143,14 +159,14 @@ public interface IMissionService {
 
     MissionTelemetryReadinessResponse getTelemetryReadiness(String missionId);
 
-    /**
-     * Replaces faulty device with a new device for the mission.
-     *
-     * @param missionId    Mission ID
-     * @param newDroneCode Replacement device code
-     * @return {@link MissionResponse} Updated mission DTO
-     */
-    MissionResponse replaceDrone(String missionId, String newDroneCode);
+//    /**
+//     * Replaces faulty device with a new device for the mission.
+//     *
+//     * @param missionId    Mission ID
+//     * @param newDroneCode Replacement device code
+//     * @return {@link MissionResponse} Updated mission DTO
+//     */
+//    MissionResponse replaceDrone(String missionId, String newDroneCode);
 
     /**
      * Hands over mission control to a new operator (Control Handover).

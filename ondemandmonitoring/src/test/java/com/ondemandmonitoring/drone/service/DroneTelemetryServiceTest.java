@@ -9,11 +9,8 @@ import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.drone.dto.request.TelemetryRequest;
 import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.drone.domain.DeviceTelemetry;
 import com.ondemandmonitoring.drone.domain.Drone;
 import com.ondemandmonitoring.drone.repository.DroneRepository;
-import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
-import com.ondemandmonitoring.drone.service.impl.DroneTelemetryService;
 import com.ondemandmonitoring.environment.service.EnvironmentalMeasurementService;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;

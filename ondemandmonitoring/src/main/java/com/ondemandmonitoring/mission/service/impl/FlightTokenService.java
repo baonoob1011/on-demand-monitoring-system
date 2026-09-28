@@ -4,7 +4,6 @@ import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.mission.domain.FlightToken;
 import com.ondemandmonitoring.mission.repository.FlightTokenRepository;
-import com.ondemandmonitoring.mission.repository.MissionOperatorAssignmentRepository;
 import com.ondemandmonitoring.mission.service.IFlightTokenService;
 import com.ondemandmonitoring.mission.util.FlightTokenGenerator;
 import lombok.RequiredArgsConstructor;

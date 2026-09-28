@@ -4,14 +4,14 @@ import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.drone.domain.DeviceTelemetry;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
+import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
-import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.domain.PlanWaypoint;
 import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
 import com.ondemandmonitoring.mission.enums.WaypointReason;
-import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
+import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
 import com.ondemandmonitoring.mission.repository.MissionPlanRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.order.domain.Order;
@@ -42,6 +42,7 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
     private final MissionRepository missionRepository;
     private final MissionPlanRepository missionPlanRepository;
     private final MissionDroneAssignmentRepository missionDroneAssignmentRepository;
+    private final DeviceConnectionRepository deviceConnectionRepository;
     private final DroneTelemetryRepository droneTelemetryRepository;
     private final RoutePlanner directRoutePlanner;
     private final RoutePlanner aStarShortestRoutePlanner;
@@ -54,6 +55,7 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
             MissionRepository missionRepository,
             MissionPlanRepository missionPlanRepository,
             MissionDroneAssignmentRepository missionDroneAssignmentRepository,
+            DeviceConnectionRepository deviceConnectionRepository,
             DroneTelemetryRepository droneTelemetryRepository,
             @Qualifier("directRoutePlanner") RoutePlanner directRoutePlanner,
             @Qualifier("aStarShortestRoutePlanner") RoutePlanner aStarShortestRoutePlanner,
@@ -64,6 +66,7 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         this.missionRepository = missionRepository;
         this.missionPlanRepository = missionPlanRepository;
         this.missionDroneAssignmentRepository = missionDroneAssignmentRepository;
+        this.deviceConnectionRepository = deviceConnectionRepository;
         this.droneTelemetryRepository = droneTelemetryRepository;
         this.directRoutePlanner = directRoutePlanner;
         this.aStarShortestRoutePlanner = aStarShortestRoutePlanner;
@@ -295,10 +298,25 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
             return new BatterySnapshot(false, Optional.empty());
         }
 
-        Optional<Double> batteryPercent = assignment
+        String assignedDeviceId = assignment
                 .map(MissionDroneAssignment::getDevice)
-                .filter(device -> device.getDeviceCode() != null && !device.getDeviceCode().isBlank())
-                .flatMap(device -> droneTelemetryRepository.findByDeviceCode(device.getDeviceCode()))
+                .map(device -> device.getId())
+                .orElse(null);
+        if (assignedDeviceId == null || assignedDeviceId.isBlank()) {
+            return new BatterySnapshot(false, Optional.empty());
+        }
+
+        Optional<DeviceConnection> connection = deviceConnectionRepository
+                .findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED")
+                .filter(session -> Boolean.TRUE.equals(session.getTelemetryActive()))
+                .filter(session -> session.getDevice() != null)
+                .filter(session -> assignedDeviceId.equals(session.getDevice().getId()));
+        if (connection.isEmpty()) {
+            return new BatterySnapshot(true, Optional.empty());
+        }
+
+        Optional<Double> batteryPercent = droneTelemetryRepository
+                .findTopByDeviceConnectionIdOrderByRecordedAtDesc(connection.get().getId())
                 .map(DeviceTelemetry::getBatteryPercent)
                 .filter(this::isValidBatteryPercent);
         return new BatterySnapshot(true, batteryPercent);

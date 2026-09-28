@@ -1,7 +1,6 @@
 package com.ondemandmonitoring.mission.service.impl;
 
 import com.ondemandmonitoring.drone.repository.PersistedPreflightCheckRepository;
-import com.ondemandmonitoring.mission.repository.MissionOperatorAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.service.IMissionAuthorizationService;
@@ -37,7 +36,7 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
                                 .filter(mission -> mission.getStatus() == MissionStatus.COMPLETED
                                                 || mission.getStatus() == MissionStatus.FAILED
                                                 || mission.getStatus() == MissionStatus.CANCELLED)
-                                .map(mission -> missionOperatorAssignmentRepository.existsByMissionIdAndOperatorId(
+                                .map(mission -> missionOperatorAssignmentRepository.existsByMissionIdAndStaffId(
                                                 missionId, currentUser.getId().toString()))
                                 .orElse(false);
         }
