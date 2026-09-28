@@ -2,7 +2,7 @@ package com.ondemandmonitoring.replanning.service;
 
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.domain.PlanWaypoint;
-import com.ondemandmonitoring.drone.domain.DeviceTelemetry;
+import com.ondemandmonitoring.device.domain.DeviceTelemetry;
 import com.ondemandmonitoring.replanning.config.ReplanningProperties;
 import com.ondemandmonitoring.replanning.domain.ReplanningReason;
 import com.ondemandmonitoring.replanning.dto.ReplanningDecision;
@@ -71,11 +71,11 @@ public class RuleBasedReplanningPolicy implements ReplanningPolicy {
             return ReplanningDecision.required(
                     ReplanningReason.ROUTE_DEVIATION,
                     String.format(
-                            "Drone is %.1f m away from active route threshold %.1f m.",
+                            "Device is %.1f m away from active route threshold %.1f m.",
                             distanceM,
                             properties.getRouteDeviationThresholdMeters()));
         }
-        return ReplanningDecision.none("Drone remains close to active route.");
+        return ReplanningDecision.none("Device remains close to active route.");
     }
 
     private double distanceToRouteMeters(double x, double y, List<PlanWaypoint> waypoints) {
@@ -123,3 +123,4 @@ public class RuleBasedReplanningPolicy implements ReplanningPolicy {
         return value != null && Double.isFinite(value);
     }
 }
+

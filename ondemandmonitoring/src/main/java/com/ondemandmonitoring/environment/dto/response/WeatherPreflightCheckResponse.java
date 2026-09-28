@@ -6,7 +6,7 @@ import java.util.List;
 public record WeatherPreflightCheckResponse(
         String id,
         String missionId,
-        String droneCode,
+        String deviceId,
         String status,
         boolean safeToFly,
         String summary,

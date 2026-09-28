@@ -70,7 +70,7 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
                 ),
                 new ServiceSeed(
                         "Đo nhiệt độ / Áp suất",
-                        "Theo dõi nhiệt độ và áp suất khí quyển theo khu vực bay, hỗ trợ đánh giá điều kiện môi trường và rủi ro vận hành drone."
+                        "Theo dõi nhiệt độ và áp suất khí quyển theo khu vực bay, hỗ trợ đánh giá điều kiện môi trường và rủi ro vận hành device."
                 ),
                 new ServiceSeed(
                         "Kiểm tra Công trình thủy lợi",

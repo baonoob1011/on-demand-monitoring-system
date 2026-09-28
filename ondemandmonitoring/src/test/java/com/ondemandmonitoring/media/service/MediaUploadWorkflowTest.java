@@ -6,8 +6,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.drone.domain.Drone;
-import com.ondemandmonitoring.drone.repository.DroneRepository;
+import com.ondemandmonitoring.device.domain.Drone;
+import com.ondemandmonitoring.device.repository.DroneRepository;
 import com.ondemandmonitoring.media.domain.*;
 import com.ondemandmonitoring.media.dto.request.PrepareMediaUploadRequest;
 import com.ondemandmonitoring.media.repository.*;

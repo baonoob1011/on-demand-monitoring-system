@@ -1,12 +1,12 @@
 package com.ondemandmonitoring.mission.service;
 
 import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.drone.domain.Drone;
-import com.ondemandmonitoring.drone.domain.PersistedPreflightCheck;
-import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
-import com.ondemandmonitoring.drone.enums.DroneStatus;
-import com.ondemandmonitoring.drone.enums.PreflightCheckStatus;
-import com.ondemandmonitoring.drone.repository.DroneRepository;
+import com.ondemandmonitoring.device.domain.Drone;
+import com.ondemandmonitoring.device.domain.PersistedPreDeviceCheck;
+import com.ondemandmonitoring.device.dto.response.PreflightCheckResponse;
+import com.ondemandmonitoring.device.enums.DroneStatus;
+import com.ondemandmonitoring.device.enums.PreflightCheckStatus;
+import com.ondemandmonitoring.device.repository.DroneRepository;
 import com.ondemandmonitoring.mission.domain.FlightToken;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
@@ -43,15 +43,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-import com.ondemandmonitoring.drone.repository.MaintenanceTicketRepository;
-import com.ondemandmonitoring.drone.repository.PersistedPreflightCheckRepository;
+import com.ondemandmonitoring.device.repository.MaintenanceTicketRepository;
+import com.ondemandmonitoring.device.repository.PersistedPreflightCheckRepository;
 import com.ondemandmonitoring.mission.repository.*;
 
 class MissionServiceTest {
 
     MissionRepository missionRepository;
     DroneRepository droneRepository;
-    DroneTelemetryRepository droneTelemetryRepository;
+    DeviceTelemetryRepository DeviceTelemetryRepository;
     PersistedPreflightCheckRepository persistedPreflightCheckRepository;
     FlightTokenRepository flightTokenRepository;
     PreflightCheckService preflightCheckService;
@@ -99,7 +99,7 @@ class MissionServiceTest {
     void setUp() {
         missionRepository = mock(MissionRepository.class);
         droneRepository = mock(DroneRepository.class);
-        droneTelemetryRepository = mock(DroneTelemetryRepository.class);
+        DeviceTelemetryRepository = mock(DeviceTelemetryRepository.class);
         persistedPreflightCheckRepository = mock(PersistedPreflightCheckRepository.class);
         flightTokenRepository = mock(FlightTokenRepository.class);
         preflightCheckService = mock(PreflightCheckService.class);
@@ -134,7 +134,7 @@ class MissionServiceTest {
         missionService = new MissionService(
                 missionRepository,
                 droneRepository,
-                droneTelemetryRepository,
+                DeviceTelemetryRepository,
                 persistedPreflightCheckRepository,
                 flightTokenRepository,
                 preflightCheckService,
@@ -221,7 +221,7 @@ class MissionServiceTest {
 
             assertThat(missionService.assignOperator("m-assign", "op-01").getStatus())
                     .isEqualTo(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
-            verifyNoInteractions(droneTelemetryRepository, missionPlanningService);
+            verifyNoInteractions(DeviceTelemetryRepository, missionPlanningService);
         }
 
         @Test
@@ -417,7 +417,7 @@ class MissionServiceTest {
             stale.setConnected(true);
             stale.setBatteryPercent(100.0);
             stale.setUpdatedAt(Instant.now().minusSeconds(60));
-            when(droneTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(stale));
+            when(DeviceTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(stale));
 
             assertThatThrownBy(() -> missionService.runPreflightCheck("m-stale-preflight", "DRONE-01"))
                     .isInstanceOf(ApiException.class)
@@ -437,8 +437,8 @@ class MissionServiceTest {
             stale.setConnected(true);
             stale.setBatteryPercent(100.0);
             stale.setUpdatedAt(Instant.now().minusSeconds(120));
-            when(droneTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(stale));
-            PersistedPreflightCheck runtimePass = new PersistedPreflightCheck();
+            when(DeviceTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(stale));
+            PersistedPreDeviceCheck runtimePass = new PersistedPreDeviceCheck();
             runtimePass.setStatus(PreflightCheckStatus.PASSED);
             runtimePass.setCompletedAt(Instant.now());
             when(persistedPreflightCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc("m-runtime-pass"))
@@ -471,8 +471,8 @@ class MissionServiceTest {
             telemetry.setConnected(true);
             telemetry.setUpdatedAt(Instant.now());
             telemetry.setBatteryPercent(null);
-            when(droneTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(telemetry));
-            PersistedPreflightCheck runtimePass = new PersistedPreflightCheck();
+            when(DeviceTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(telemetry));
+            PersistedPreDeviceCheck runtimePass = new PersistedPreDeviceCheck();
             runtimePass.setStatus(PreflightCheckStatus.PASSED);
             runtimePass.setCompletedAt(Instant.now());
             when(persistedPreflightCheckRepository
@@ -541,13 +541,13 @@ class MissionServiceTest {
             when(missionRepository.findById("m-ready")).thenReturn(Optional.of(mission));
             when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-ready"))
                     .thenReturn(Optional.of(assignment));
-            when(droneTelemetryRepository.readByDroneCode("DRN-0048")).thenReturn(Optional.of(telemetry));
+            when(DeviceTelemetryRepository.readByDroneCode("DRN-0048")).thenReturn(Optional.of(telemetry));
 
             var readiness = missionService.getTelemetryReadiness("m-ready");
 
             assertThat(readiness.droneCode()).isEqualTo("DRN-0048");
             assertThat(readiness.ready()).isTrue();
-            verify(droneTelemetryRepository).readByDroneCode("DRN-0048");
+            verify(DeviceTelemetryRepository).readByDroneCode("DRN-0048");
         }
 
         @Test
@@ -562,7 +562,7 @@ class MissionServiceTest {
             when(missionRepository.findById("m-stale")).thenReturn(Optional.of(mission));
             when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-stale"))
                     .thenReturn(Optional.of(assignment));
-            when(droneTelemetryRepository.readByDroneCode("DRN-0048")).thenReturn(Optional.of(telemetry));
+            when(DeviceTelemetryRepository.readByDroneCode("DRN-0048")).thenReturn(Optional.of(telemetry));
 
             assertThat(missionService.getTelemetryReadiness("m-stale").ready()).isFalse();
             verifyNoInteractions(preflightCheckService);
@@ -1201,7 +1201,7 @@ class MissionServiceTest {
             when(droneRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(preflightCheckMapper.toResponse(any(), any())).thenReturn(
-                    com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse.builder()
+                    com.ondemandmonitoring.device.dto.response.PreflightCheckResponse.builder()
                             .overallPassed(false).build());
 
             missionService.runPreflightCheck("m-bat-swap", "DRONE-LOW");
@@ -1238,7 +1238,7 @@ class MissionServiceTest {
             when(droneRepository.findFirstAvailableExcluding(eq(DroneStatus.AVAILABLE), eq(faultyDrone.getId())))
                     .thenReturn(Optional.empty());
             when(preflightCheckMapper.toResponse(any(), any())).thenReturn(
-                    com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse.builder()
+                    com.ondemandmonitoring.device.dto.response.PreflightCheckResponse.builder()
                             .overallPassed(false).build());
 
             missionService.runPreflightCheck("m-bat-empty", "DRONE-DEAD");
@@ -1264,7 +1264,7 @@ class MissionServiceTest {
         telemetry.setConnected(true);
         telemetry.setUpdatedAt(Instant.now());
         telemetry.setBatteryPercent(batteryPercent);
-        when(droneTelemetryRepository.findByDroneCode(drone.getDroneCode())).thenReturn(Optional.of(telemetry));
+        when(DeviceTelemetryRepository.findByDroneCode(drone.getDroneCode())).thenReturn(Optional.of(telemetry));
     }
 
     private Mission buildMission(String id, MissionStatus status) {

@@ -35,7 +35,7 @@ class PlanningComparisonServiceTest {
 
     private final MissionRepository missionRepository = Mockito.mock(MissionRepository.class);
     private final MissionDroneAssignmentRepository assignmentRepository = Mockito.mock(MissionDroneAssignmentRepository.class);
-    private final DroneTelemetryRepository telemetryRepository = Mockito.mock(DroneTelemetryRepository.class);
+    private final DeviceTelemetryRepository telemetryRepository = Mockito.mock(DeviceTelemetryRepository.class);
     private final RoutePlanner direct = Mockito.mock(RoutePlanner.class);
     private final RoutePlanner shortest = Mockito.mock(RoutePlanner.class);
     private final RoutePlanner aware = Mockito.mock(RoutePlanner.class);

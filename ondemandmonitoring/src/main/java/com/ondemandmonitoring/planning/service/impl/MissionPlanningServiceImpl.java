@@ -2,8 +2,8 @@ package com.ondemandmonitoring.planning.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.drone.domain.DeviceTelemetry;
-import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
+import com.ondemandmonitoring.device.domain.DeviceTelemetry;
+import com.ondemandmonitoring.device.repository.DeviceTelemetryRepository;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
@@ -45,7 +45,7 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
     private final MissionPlanRepository missionPlanRepository;
     private final MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
     private final DeviceConnectionRepository deviceConnectionRepository;
-    private final DroneTelemetryRepository droneTelemetryRepository;
+    private final DeviceTelemetryRepository deviceTelemetryRepository;
     private final RoutePlanner directRoutePlanner;
     private final RoutePlanner aStarShortestRoutePlanner;
     private final RoutePlanner aStarEnergyAwareRoutePlanner;
@@ -58,7 +58,7 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
             MissionPlanRepository missionPlanRepository,
             MissionDeviceAssignmentRepository missionDeviceAssignmentRepository,
             DeviceConnectionRepository deviceConnectionRepository,
-            DroneTelemetryRepository droneTelemetryRepository,
+            DeviceTelemetryRepository deviceTelemetryRepository,
             @Qualifier("directRoutePlanner") RoutePlanner directRoutePlanner,
             @Qualifier("aStarShortestRoutePlanner") RoutePlanner aStarShortestRoutePlanner,
             @Qualifier("aStarEnergyAwareRoutePlanner") RoutePlanner aStarEnergyAwareRoutePlanner,
@@ -69,7 +69,7 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         this.missionPlanRepository = missionPlanRepository;
         this.missionDeviceAssignmentRepository = missionDeviceAssignmentRepository;
         this.deviceConnectionRepository = deviceConnectionRepository;
-        this.droneTelemetryRepository = droneTelemetryRepository;
+        this.deviceTelemetryRepository = deviceTelemetryRepository;
         this.directRoutePlanner = directRoutePlanner;
         this.aStarShortestRoutePlanner = aStarShortestRoutePlanner;
         this.aStarEnergyAwareRoutePlanner = aStarEnergyAwareRoutePlanner;
@@ -317,7 +317,7 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
             return new BatterySnapshot(true, Optional.empty());
         }
 
-        Optional<Double> batteryPercent = droneTelemetryRepository
+        Optional<Double> batteryPercent = deviceTelemetryRepository
                 .findTopByDeviceConnectionIdOrderByRecordedAtDesc(connection.get().getId())
                 .map(DeviceTelemetry::getBatteryPercent)
                 .filter(this::isValidBatteryPercent);
@@ -421,3 +421,4 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
             Optional<Double> batteryPercent) {
     }
 }
+

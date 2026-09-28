@@ -9,6 +9,7 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface MediaAssetMapper {
 
+    @Mapping(source = "deviceId", target = "deviceId")
     MediaAssetResponse toResponse(MediaAsset mediaAsset);
 
     @Mapping(source = "mediaAsset.id", target = "id")

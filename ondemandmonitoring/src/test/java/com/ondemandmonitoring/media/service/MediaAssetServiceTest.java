@@ -8,12 +8,12 @@ import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.s3.AwsS3Properties;
 import com.ondemandmonitoring.s3.S3ObjectStorageService;
-import com.ondemandmonitoring.drone.repository.DroneRepository;
+import com.ondemandmonitoring.device.repository.DroneRepository;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.impl.MediaAssetService;
 import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.drone.domain.Drone;
+import com.ondemandmonitoring.device.domain.Drone;
 
 import java.io.InputStream;
 import java.util.Optional;

@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.drone.config;
+package com.ondemandmonitoring.device.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -9,13 +9,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.ondemandmonitoring.drone.domain.Drone;
-import com.ondemandmonitoring.drone.domain.DroneModel;
-import com.ondemandmonitoring.drone.domain.DronePayload;
-import com.ondemandmonitoring.drone.enums.DroneStatus;
-import com.ondemandmonitoring.drone.repository.DroneModelRepository;
-import com.ondemandmonitoring.drone.repository.DronePayloadRepository;
-import com.ondemandmonitoring.drone.repository.DroneRepository;
+import com.ondemandmonitoring.device.domain.Drone;
+import com.ondemandmonitoring.device.domain.DroneModel;
+import com.ondemandmonitoring.device.domain.DronePayload;
+import com.ondemandmonitoring.device.enums.DroneStatus;
+import com.ondemandmonitoring.device.repository.DroneModelRepository;
+import com.ondemandmonitoring.device.repository.DronePayloadRepository;
+import com.ondemandmonitoring.device.repository.DroneRepository;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;

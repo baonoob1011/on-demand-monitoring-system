@@ -6,8 +6,8 @@ import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.device.domain.Device;
 import com.ondemandmonitoring.device.enums.DeviceStatus;
 import com.ondemandmonitoring.device.repository.DeviceRepository;
-import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
-import com.ondemandmonitoring.drone.repository.PersistedPostDeviceCheckRepository;
+import com.ondemandmonitoring.device.dto.response.PreflightCheckResponse;
+import com.ondemandmonitoring.device.repository.PersistedPostDeviceCheckRepository;
 import com.ondemandmonitoring.mission.domain.ControlHandover;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.FlightToken;
@@ -62,8 +62,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
-import com.ondemandmonitoring.drone.domain.MaintenanceTicket;
-import com.ondemandmonitoring.drone.repository.MaintenanceTicketRepository;
+import com.ondemandmonitoring.device.domain.MaintenanceTicket;
+import com.ondemandmonitoring.device.repository.MaintenanceTicketRepository;
 import com.ondemandmonitoring.mission.domain.*;
 import com.ondemandmonitoring.mission.repository.*;
 
@@ -571,7 +571,7 @@ public class MissionService implements IMissionService {
 //                .findFirst()
 //                .ifPresentOrElse(replacementDevice -> {
 //                    // Check for scheduling conflict
-//                    boolean hasConflict = missionRepository.findActiveByDroneId(replacementDevice.getId())
+//                    boolean hasConflict = missionRepository.findActiveBydeviceId(replacementDevice.getId())
 //                            .stream().anyMatch(m -> !m.getId().equals(missionId));
 //
 //                    if (hasConflict) {
@@ -586,13 +586,13 @@ public class MissionService implements IMissionService {
 //                    replacementDevice.setStatus(DeviceStatus.RESERVED);
 //                    deviceRepository.save(replacementDevice);
 //
-//                    MissionDroneAssignment newMda = new MissionDroneAssignment();
+//                    MissiondeviceAssignment newMda = new MissiondeviceAssignment();
 //                    newMda.setMission(mission);
 //                    newMda.setDevice(replacementDevice);
 //                    newMda.setStatus("ACTIVE");
 //                    newMda.setIsCurrent(true);
 //                    newMda.setAssignedAt(Instant.now());
-//                    missionDroneAssignmentRepository.save(newMda);
+//                    missiondeviceAssignmentRepository.save(newMda);
 //
 //                    // Mission returns to RESOURCE_ASSIGNING so manager can confirm before
 //                    // re-dispatch
@@ -610,8 +610,8 @@ public class MissionService implements IMissionService {
 //                });
 //    }
 
-//    private void attemptAutoSwapDrone(Mission mission, Device faultyDrone) {
-//        attemptAutoSwapDevice(mission, faultyDrone);
+//    private void attemptAutoSwapdevice(Mission mission, Device faultydevice) {
+//        attemptAutoSwapDevice(mission, faultydevice);
 //    }
 
     private FlightToken issueFlightToken(String missionId, String deviceId, String staffId) {
@@ -648,8 +648,8 @@ public class MissionService implements IMissionService {
         }
         String message = switch (status) {
             case BATTERY_DATA_UNAVAILABLE ->
-                "Drone battery telemetry is unavailable. Connect the drone and refresh telemetry before preflight.";
-            case INSUFFICIENT_BATTERY -> "Drone battery is insufficient for this mission and its safety reserve.";
+                "Device battery telemetry is unavailable. Connect the device and refresh telemetry before preflight.";
+            case INSUFFICIENT_BATTERY -> "Device battery is insufficient for this mission and its safety reserve.";
             case INVALID_TARGET -> "Mission target is invalid for route planning.";
             case NO_SAFE_ROUTE -> "No safe route could be generated for this mission.";
             default -> "Mission plan feasibility could not be determined.";
@@ -695,22 +695,22 @@ public class MissionService implements IMissionService {
 //
 //    @Override
 //    @Transactional
-//    public MissionResponse replaceDrone(String missionId, String newDroneCode) {
+//    public MissionResponse replacedevice(String missionId, String newDeviceCode) {
 //        Mission mission = getOrThrow(missionId);
-//        Device newDevice = deviceRepository.findByDeviceCode(newDroneCode)
-//                .orElseThrow(() -> new ApiException(ErrorCode.DRONE_NOT_AVAILABLE,
-//                        "Device " + newDroneCode + " không tồn tại"));
+//        Device newDevice = deviceRepository.findByDeviceCode(newDeviceCode)
+//                .orElseThrow(() -> new ApiException(ErrorCode.DEVICE_NOT_AVAILABLE,
+//                        "Device " + newDeviceCode + " không tồn tại"));
 //
 //        if (newDevice.getStatus() != DeviceStatus.AVAILABLE) {
-//            throw new ApiException(ErrorCode.DRONE_NOT_AVAILABLE,
-//                    "Device " + newDroneCode + " is not AVAILABLE (status: " + newDevice.getStatus() + ")");
+//            throw new ApiException(ErrorCode.DEVICE_NOT_AVAILABLE,
+//                    "Device " + newDeviceCode + " is not AVAILABLE (status: " + newDevice.getStatus() + ")");
 //        }
 //
-//        List<Mission> activeMissions = missionRepository.findActiveByDroneId(newDevice.getId());
+//        List<Mission> activeMissions = missionRepository.findActiveBydeviceId(newDevice.getId());
 //        boolean hasConflict = activeMissions.stream().anyMatch(m -> !m.getId().equals(missionId));
 //        if (hasConflict) {
 //            throw new ApiException(ErrorCode.SCHEDULE_CONFLICT,
-//                    "Device " + newDroneCode + " đang được lên lịch cho chuyến bay khác");
+//                    "Device " + newDeviceCode + " đang được lên lịch cho chuyến bay khác");
 //        }
 //
 //        Device oldDevice = getCurrentDevice(missionId);
@@ -718,63 +718,63 @@ public class MissionService implements IMissionService {
 //            oldDevice.setStatus(DeviceStatus.MAINTENANCE);
 //            deviceRepository.save(oldDevice);
 //
-//            // Release old MissionDroneAssignment
-//            missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+//            // Release old MissiondeviceAssignment
+//            missiondeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
 //                    .ifPresent(mda -> {
 //                        mda.setIsCurrent(false);
 //                        mda.setStatus("RELEASED");
 //                        mda.setReleaseReason("PREFLIGHT_FAIL");
 //                        mda.setReleasedAt(Instant.now());
-//                        missionDroneAssignmentRepository.save(mda);
+//                        missiondeviceAssignmentRepository.save(mda);
 //                    });
 //        }
 //
 //        newDevice.setStatus(DeviceStatus.PREFLIGHT);
 //        deviceRepository.save(newDevice);
 //
-//        // Record new MissionDroneAssignment
-//        MissionDroneAssignment newMda = new MissionDroneAssignment();
+//        // Record new MissiondeviceAssignment
+//        MissiondeviceAssignment newMda = new MissiondeviceAssignment();
 //        newMda.setMission(mission);
 //        newMda.setDevice(newDevice);
 //        newMda.setStatus("ACTIVE");
 //        newMda.setIsCurrent(true);
 //        newMda.setAssignedAt(Instant.now());
-//        missionDroneAssignmentRepository.save(newMda);
+//        missiondeviceAssignmentRepository.save(newMda);
 //
 //        mission.setStatus(MissionStatus.CONNECTED);
-//        log.info("Mission {} – replaced device with {}, status reset to CONNECTED", missionId, newDroneCode);
+//        log.info("Mission {} – replaced device with {}, status reset to CONNECTED", missionId, newDeviceCode);
 //        Mission saved = missionRepository.save(mission);
 //        return missionMapper.toResponse(saved);
 //    }
 
 //    @Override
 //    @Transactional
-//    public MissionResponse replaceDrone(String missionId, String newDroneCode) {
+//    public MissionResponse replacedevice(String missionId, String newDeviceCode) {
 //        Mission mission = getOrThrow(missionId);
-//        Device newDevice = deviceRepository.findByDeviceCode(newDroneCode)
-//                .orElseThrow(() -> new ApiException(ErrorCode.DRONE_NOT_AVAILABLE,
-//                        "Device " + newDroneCode + " không tồn tại"));
+//        Device newDevice = deviceRepository.findByDeviceCode(newDeviceCode)
+//                .orElseThrow(() -> new ApiException(ErrorCode.DEVICE_NOT_AVAILABLE,
+//                        "Device " + newDeviceCode + " không tồn tại"));
 //        if (newDevice.getStatus() != DeviceStatus.AVAILABLE) {
-//            throw new ApiException(ErrorCode.DRONE_NOT_AVAILABLE,
-//                    "Device " + newDroneCode + " is not AVAILABLE (status: " + newDevice.getStatus() + ")");
+//            throw new ApiException(ErrorCode.DEVICE_NOT_AVAILABLE,
+//                    "Device " + newDeviceCode + " is not AVAILABLE (status: " + newDevice.getStatus() + ")");
 //        }
-//        missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+//        missiondeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
 //                .ifPresent(current -> {
 //                    current.setIsCurrent(false);
 //                    current.setStatus("RELEASED");
 //                    current.setReleaseReason("MANUAL_REPLACE");
 //                    current.setReleasedAt(Instant.now());
-//                    missionDroneAssignmentRepository.save(current);
+//                    missiondeviceAssignmentRepository.save(current);
 //                });
 //        newDevice.setStatus(DeviceStatus.PREFLIGHT);
 //        deviceRepository.save(newDevice);
-//        MissionDroneAssignment assignment = new MissionDroneAssignment();
+//        MissiondeviceAssignment assignment = new MissiondeviceAssignment();
 //        assignment.setMission(mission);
 //        assignment.setDevice(newDevice);
 //        assignment.setStatus("ACTIVE");
 //        assignment.setIsCurrent(true);
 //        assignment.setAssignedAt(Instant.now());
-//        missionDroneAssignmentRepository.save(assignment);
+//        missiondeviceAssignmentRepository.save(assignment);
 //        mission.setStatus(MissionStatus.CONNECTED);
 //        return missionMapper.toResponse(missionRepository.save(mission));
 //    }
@@ -973,7 +973,7 @@ public class MissionService implements IMissionService {
 //        Mission mission = getOrThrow(missionId);
 //        if (mission.getStatus() == MissionStatus.IN_FLIGHT
 //                || mission.getStatus() == MissionStatus.RETURNING) {
-//            updateDroneStatus(mission, DeviceStatus.MAINTENANCE);
+//            updatedeviceStatus(mission, DeviceStatus.MAINTENANCE);
 //        }
 //        mission.setStatus(MissionStatus.FAILED);
 //        mission.setFailureReason(reason);
@@ -1084,7 +1084,7 @@ public class MissionService implements IMissionService {
     }
 
 //    private void moveToWaitingStaffAcceptanceIfReady(Mission mission) {
-//        boolean hasDevice = missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId()).isPresent();
+//        boolean hasDevice = missiondeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId()).isPresent();
 //        boolean hasStaff = !missionStaffAssignmentRepository.findByMissionId(mission.getId()).isEmpty();
 //        if (hasDevice && hasStaff) {
 //            mission.setStatus(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
@@ -1270,4 +1270,5 @@ public class MissionService implements IMissionService {
     }
 
 }
+
 

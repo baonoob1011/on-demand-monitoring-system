@@ -67,8 +67,8 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
         }
         Device device = requireAssignedDevice(mission, request.getDeviceCode());
         validateMetadata(request);
-        Optional<MediaAsset> existing = media.findByMissionIdAndDeviceCodeAndLocalMediaId(
-                mission.getId(), device.getDeviceCode(), request.getLocalMediaId());
+        Optional<MediaAsset> existing = media.findByMissionIdAndDeviceIdAndLocalMediaId(
+                mission.getId(), device.getId(), request.getLocalMediaId());
         if (existing.isPresent()) {
             MediaAsset captured = existing.get();
             if (!captured.getType().equals(request.getMediaType())
@@ -85,7 +85,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
         MediaAsset captured = new MediaAsset();
         captured.setMissionId(mission.getId());
         captured.setDevice(device);
-        captured.setDeviceId(device.getDeviceCode());
+        captured.setDeviceId(device.getId());
         captured.setLocalMediaId(request.getLocalMediaId());
         captured.setOperatorId(actor());
         captured.setType(request.getMediaType());

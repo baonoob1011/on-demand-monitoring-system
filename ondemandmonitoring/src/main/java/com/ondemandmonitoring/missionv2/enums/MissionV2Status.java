@@ -11,7 +11,7 @@
 //    /** Operator on-site, mission assigned and acknowledged. */
 //    SCHEDULED,
 //
-//    /** Drone powered on, telemetry link with GCS app confirmed. */
+//    /** Device powered on, telemetry link with GCS app confirmed. */
 //    CONNECTED,
 //
 //    /** Operator opened checklist; digital preflight validation in progress. */
@@ -25,17 +25,17 @@
 //
 //    /**
 //     * Preflight failed; operator notified.
-//     * Drone will be routed to maintenance or charge station and order re-queued.
+//     * Device will be routed to maintenance or charge station and order re-queued.
 //     */
 //    FAILED_PREFLIGHT,
 //
 //    /**
 //     * Order re-queued to Manager after preflight failure.
-//     * Mission will be cancelled and Manager re-assigns drone + operator.
+//     * Mission will be cancelled and Manager re-assigns device + operator.
 //     */
 //    PENDING_APPROVAL,
 //
-//    /** Drone airborne, transmitting realtime GPS + video stream. */
+//    /** Device airborne, transmitting realtime GPS + video stream. */
 //    IN_FLIGHT,
 //
 //    /** Legacy alias kept for compatibility – maps to IN_FLIGHT in most contexts. */

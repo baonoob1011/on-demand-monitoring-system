@@ -604,8 +604,8 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                                 new Coordinate(264.4389564234234, 5.995502435555963),
                                 new Coordinate(287.1689564234234, 28.72550243555594))),
                 new SimulationZone(
-                        "DRONE_BASE",
-                        "Bãi đáp / Trạm drone",
+                        "DEVICE_BASE",
+                        "Bãi đáp / Trạm device",
                         "HOME",
                         false,
                         -14.307585446249302,
@@ -685,8 +685,8 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                                 new Coordinate(176.0, -235.0),
                                 new Coordinate(280.0, -202.0))),
                 new MapFeature(
-                        "DRONE_LAUNCH_PAD",
-                        "Bãi cất cánh drone",
+                        "DEVICE_LAUNCH_PAD",
+                        "Bãi cất cánh device",
                         "LANDING_PAD",
                         6,
                         rectangle(-40.0, -320.0, 40.0, -240.0)),

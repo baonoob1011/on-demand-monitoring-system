@@ -45,7 +45,7 @@ public class MissionPlan extends BaseEntity {
      * MissionPlan
      *
      * Mission chứa yêu cầu cần thực hiện.
-     * MissionPlan chứa kết quả tính toán trước khi drone bay.
+     * MissionPlan chứa kết quả tính toán trước khi device bay.
      */
     @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(
@@ -98,7 +98,7 @@ public class MissionPlan extends BaseEntity {
     Double plannedDurationSec;
 
     /*
-     * Tốc độ cruise dự kiến của drone, đơn vị m/s.
+     * Tốc độ cruise dự kiến của device, đơn vị m/s.
      *
      * Planner/energy estimator dùng giá trị này để
      * ước lượng thời gian và năng lượng khi bay ngang.
@@ -167,7 +167,7 @@ public class MissionPlan extends BaseEntity {
      * để thực hiện hay không.
      *
      * Ví dụ:
-     * drone đang có 72% pin
+     * device đang có 72% pin
      * => availableBatteryPercentAtPlanning = 72
      */
     @Column(name = "available_battery_percent_at_planning")

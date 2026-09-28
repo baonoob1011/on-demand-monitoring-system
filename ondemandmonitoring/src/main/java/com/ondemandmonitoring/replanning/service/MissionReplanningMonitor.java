@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.replanning.service;
 
-import com.ondemandmonitoring.drone.domain.DeviceTelemetry;
-import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
+import com.ondemandmonitoring.device.domain.DeviceTelemetry;
+import com.ondemandmonitoring.device.repository.DeviceTelemetryRepository;
 import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
@@ -9,7 +9,7 @@ import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentReposito
 import com.ondemandmonitoring.mission.repository.MissionPlanRepository;
 import com.ondemandmonitoring.replanning.config.ReplanningProperties;
 import com.ondemandmonitoring.replanning.dto.ReplanningDecision;
-import com.ondemandmonitoring.replanning.event.DroneTelemetrySavedEvent;
+import com.ondemandmonitoring.replanning.event.DeviceTelemetrySavedEvent;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -32,7 +32,7 @@ public class MissionReplanningMonitor {
             MissionStatus.IN_FLIGHT,
             MissionStatus.IN_PROGRESS);
 
-    private final DroneTelemetryRepository droneTelemetryRepository;
+    private final DeviceTelemetryRepository deviceTelemetryRepository;
     private final MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
     private final MissionPlanRepository missionPlanRepository;
     private final ReplanningPolicy replanningPolicy;
@@ -42,7 +42,7 @@ public class MissionReplanningMonitor {
     private final Map<String, AtomicBoolean> runningByMission = new ConcurrentHashMap<>();
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void onTelemetrySaved(DroneTelemetrySavedEvent event) {
+    public void onTelemetrySaved(DeviceTelemetrySavedEvent event) {
         if (!properties.isEnabled()) {
             return;
         }
@@ -58,8 +58,8 @@ public class MissionReplanningMonitor {
         }
     }
 
-    private void evaluate(DroneTelemetrySavedEvent event) {
-        DeviceTelemetry telemetry = droneTelemetryRepository.findById(event.telemetryId()).orElse(null);
+    private void evaluate(DeviceTelemetrySavedEvent event) {
+        DeviceTelemetry telemetry = deviceTelemetryRepository.findById(event.telemetryId()).orElse(null);
         if (telemetry == null) {
             return;
         }
@@ -154,3 +154,4 @@ public class MissionReplanningMonitor {
         return telemetry.getDeviceConnection().getDevice().getDeviceCode();
     }
 }
+

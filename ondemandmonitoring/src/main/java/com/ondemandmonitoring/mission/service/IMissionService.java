@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.mission.service;
 
-import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
+import com.ondemandmonitoring.device.dto.response.PreflightCheckResponse;
 import com.ondemandmonitoring.mission.dto.request.AssignDeviceRequest;
 import com.ondemandmonitoring.mission.dto.request.AssignStaffRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionUpdateRequest;
@@ -66,7 +66,7 @@ public interface IMissionService {
 
 
     /**
-     * Retrieves all missions pending resource assignment (drone/Staff).
+     * Retrieves all missions pending resource assignment (device/Staff).
      *
      * @return List of {@link MissionResponse}
      */
@@ -116,7 +116,7 @@ public interface IMissionService {
     MissionResponse rejectMission(String missionId, String staffId, String reason);
 
 
-//    MissionResponse assignResources(String missionId, String droneId, String staffId);
+//    MissionResponse assignResources(String missionId, String deviceId, String staffId);
 
     /**
      * Connects GCS app for the mission (Delegated to IGcsConnectionService).
@@ -164,10 +164,10 @@ public interface IMissionService {
 //     * Replaces faulty device with a new device for the mission.
 //     *
 //     * @param missionId    Mission ID
-//     * @param newDroneCode Replacement device code
+//     * @param newDeviceCode Replacement device code
 //     * @return {@link MissionResponse} Updated mission DTO
 //     */
-//    MissionResponse replaceDrone(String missionId, String newDroneCode);
+//    MissionResponse replacedevice(String missionId, String newDeviceCode);
 
     /**
      * Hands over mission control to a new Staff (Control Handover).
@@ -246,3 +246,4 @@ public interface IMissionService {
             com.ondemandmonitoring.mission.dto.request.PostFlightStatusRequest.TelemetrySnapshot telemetrySnapshot);
 
 }
+

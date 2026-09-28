@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.mission.service.impl;
 
-import com.ondemandmonitoring.drone.repository.PersistedPreflightCheckRepository;
+import com.ondemandmonitoring.device.repository.PersistedPreflightCheckRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepository;
@@ -50,3 +50,4 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
                                 .orElse(false);
         }
 }
+

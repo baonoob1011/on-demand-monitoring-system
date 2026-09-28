@@ -11,13 +11,13 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.FieldDefaults;
 
-/** Post-flight status update submitted by Drone Operator after the mission. */
+/** Post-flight status update submitted by Device Operator after the mission. */
 @Getter
 @Setter
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class PostFlightStatusRequest {
 
-    @NotNull(message = "Drone status after flight cannot be null")
+    @NotNull(message = "Device status after flight cannot be null")
     DeviceStatus newDeviceStatus;
 
     @NotEmpty(message = "Inspection results are required")

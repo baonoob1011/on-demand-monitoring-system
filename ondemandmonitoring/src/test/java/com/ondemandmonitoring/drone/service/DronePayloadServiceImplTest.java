@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.drone.service;
+package com.ondemandmonitoring.device.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -8,13 +8,13 @@ import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.drone.domain.DronePayload;
-import com.ondemandmonitoring.drone.dto.request.DronePayloadCreateRequest;
-import com.ondemandmonitoring.drone.dto.request.DronePayloadUpdateRequest;
-import com.ondemandmonitoring.drone.dto.response.DronePayloadResponse;
-import com.ondemandmonitoring.drone.mapper.DronePayloadMapper;
-import com.ondemandmonitoring.drone.repository.DronePayloadRepository;
-import com.ondemandmonitoring.drone.service.impl.DronePayloadServiceImpl;
+import com.ondemandmonitoring.device.domain.DronePayload;
+import com.ondemandmonitoring.device.dto.request.DevicePayloadCreateRequest;
+import com.ondemandmonitoring.device.dto.request.DevicePayloadUpdateRequest;
+import com.ondemandmonitoring.device.dto.response.DronePayloadResponse;
+import com.ondemandmonitoring.device.mapper.DronePayloadMapper;
+import com.ondemandmonitoring.device.repository.DronePayloadRepository;
+import com.ondemandmonitoring.device.service.impl.DronePayloadServiceImpl;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -41,7 +41,7 @@ class DronePayloadServiceImplTest {
 
     @Test
     void create_success() {
-        DronePayloadCreateRequest request = DronePayloadCreateRequest.builder()
+        DevicePayloadCreateRequest request = DevicePayloadCreateRequest.builder()
                 .modelName("Zenmuse H20T")
                 .sensorType("THERMAL")
                 .weightKg(0.82)
@@ -124,7 +124,7 @@ class DronePayloadServiceImplTest {
 
     @Test
     void update_success() {
-        DronePayloadUpdateRequest request = DronePayloadUpdateRequest.builder()
+        DevicePayloadUpdateRequest request = DevicePayloadUpdateRequest.builder()
                 .modelName("Zenmuse H20T V2")
                 .sensorType("THERMAL")
                 .weightKg(0.85)

@@ -8,7 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.drone.domain.Drone;
+import com.ondemandmonitoring.device.domain.Drone;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.domain.PlanWaypoint;
@@ -43,8 +43,8 @@ class MissionPlanningServiceTest {
     private final MissionPlanRepository missionPlanRepository = org.mockito.Mockito.mock(MissionPlanRepository.class);
     private final MissionDroneAssignmentRepository missionDroneAssignmentRepository = org.mockito.Mockito
             .mock(MissionDroneAssignmentRepository.class);
-    private final DroneTelemetryRepository droneTelemetryRepository = org.mockito.Mockito
-            .mock(DroneTelemetryRepository.class);
+    private final DeviceTelemetryRepository DeviceTelemetryRepository = org.mockito.Mockito
+            .mock(DeviceTelemetryRepository.class);
     private final RoutePlanner directRoutePlanner = org.mockito.Mockito.mock(RoutePlanner.class);
     private final RoutePlanner aStarShortestRoutePlanner = org.mockito.Mockito.mock(RoutePlanner.class);
     private final RoutePlanner aStarEnergyAwareRoutePlanner = org.mockito.Mockito.mock(RoutePlanner.class);
@@ -57,7 +57,7 @@ class MissionPlanningServiceTest {
             missionRepository,
             missionPlanRepository,
             missionDroneAssignmentRepository,
-            droneTelemetryRepository,
+            DeviceTelemetryRepository,
             directRoutePlanner,
             aStarShortestRoutePlanner,
             aStarEnergyAwareRoutePlanner,
@@ -321,7 +321,7 @@ class MissionPlanningServiceTest {
         when(missionEnergyEstimator.estimate(Mockito.any())).thenReturn(energyEstimate());
         when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1"))
                 .thenReturn(Optional.of(assignment));
-        when(droneTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(telemetry));
+        when(DeviceTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(telemetry));
         when(missionPlanRepository.save(Mockito.any(MissionPlan.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -370,7 +370,7 @@ class MissionPlanningServiceTest {
         arrangeFeasiblePlanning(mission, energyEstimateWithBatteryUse(18.0));
         when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1"))
                 .thenReturn(Optional.of(assignment));
-        when(droneTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.empty());
+        when(DeviceTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.empty());
 
         MissionPlan missionPlan = service.generateDirectPlan("mission-1");
 
@@ -712,7 +712,7 @@ class MissionPlanningServiceTest {
         arrangeFeasiblePlanning(mission, estimate);
         when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1"))
                 .thenReturn(Optional.of(assignment));
-        when(droneTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(telemetry));
+        when(DeviceTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(telemetry));
 
         return service.generateDirectPlan("mission-1");
     }

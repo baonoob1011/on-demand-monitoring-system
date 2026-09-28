@@ -3,9 +3,9 @@ package com.ondemandmonitoring.mission.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.ondemandmonitoring.drone.domain.Drone;
-import com.ondemandmonitoring.drone.enums.DroneStatus;
-import com.ondemandmonitoring.drone.repository.DroneRepository;
+import com.ondemandmonitoring.device.domain.Drone;
+import com.ondemandmonitoring.device.enums.DroneStatus;
+import com.ondemandmonitoring.device.repository.DroneRepository;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.MissionPlanRepository;

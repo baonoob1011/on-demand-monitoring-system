@@ -8,21 +8,21 @@ import org.springframework.web.multipart.MultipartFile;
 
 public interface IMediaAssetService {
 
-    MediaAsset upload(String droneCode, MultipartFile file);
+    MediaAsset upload(String deviceId, MultipartFile file);
 
-    MediaAsset upload(String missionId, String droneId, Instant capturedAt, MultipartFile file);
+    MediaAsset upload(String missionId, String deviceId, Instant capturedAt, MultipartFile file);
 
-    MediaAsset upload(String missionId, String droneId, Instant capturedAt, MultipartFile file, String requestedMediaType);
+    MediaAsset upload(String missionId, String deviceId, Instant capturedAt, MultipartFile file, String requestedMediaType);
 
     MediaAsset getById(String mediaId);
 
     List<MediaAsset> listByMission(String missionId, String requestedMediaType);
 
-    MediaAsset getByDroneAndId(String droneCode, String mediaId);
+    MediaAsset getByDeviceAndId(String deviceId, String mediaId);
 
-    List<MediaAsset> listByDrone(String droneCode, String requestedMediaType);
+    List<MediaAsset> listByDevice(String deviceId, String requestedMediaType);
 
-    void deleteByDroneAndId(String droneCode, String mediaId);
+    void deleteByDeviceAndId(String deviceId, String mediaId);
 
     MediaContent openMedia(MediaAsset mediaAsset);
 

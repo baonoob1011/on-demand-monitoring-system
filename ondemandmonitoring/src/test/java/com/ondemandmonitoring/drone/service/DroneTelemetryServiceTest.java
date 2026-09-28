@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.drone.service;
+package com.ondemandmonitoring.device.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -7,10 +7,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.ondemandmonitoring.drone.dto.request.TelemetryRequest;
 import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.drone.domain.Drone;
-import com.ondemandmonitoring.drone.repository.DroneRepository;
+import com.ondemandmonitoring.device.domain.Drone;
+import com.ondemandmonitoring.device.repository.DroneRepository;
 import com.ondemandmonitoring.environment.service.EnvironmentalMeasurementService;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -25,7 +24,7 @@ import org.springframework.context.ApplicationEventPublisher;
 class DroneTelemetryServiceTest {
 
     @Mock
-    private DroneTelemetryRepository repository;
+    private DeviceTelemetryRepository repository;
 
     @Mock
     private DroneRepository droneRepository;

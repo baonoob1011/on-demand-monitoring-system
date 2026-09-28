@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "Media Upload Workflow", description = "APIs for managing drone media upload workflow and S3 presigned URLs")
+@Tag(name = "Media Upload Workflow", description = "APIs for managing device media upload workflow and S3 presigned URLs")
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor

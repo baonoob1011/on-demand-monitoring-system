@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.drone.service;
+package com.ondemandmonitoring.device.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -8,13 +8,13 @@ import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.drone.domain.DroneModel;
-import com.ondemandmonitoring.drone.dto.request.DroneModelCreateRequest;
-import com.ondemandmonitoring.drone.dto.request.DroneModelUpdateRequest;
-import com.ondemandmonitoring.drone.dto.response.DroneModelResponse;
-import com.ondemandmonitoring.drone.mapper.DroneModelMapper;
-import com.ondemandmonitoring.drone.repository.DroneModelRepository;
-import com.ondemandmonitoring.drone.service.impl.DroneModelServiceImpl;
+import com.ondemandmonitoring.device.domain.DroneModel;
+import com.ondemandmonitoring.device.dto.request.DeviceModelCreateRequest;
+import com.ondemandmonitoring.device.dto.request.DeviceModelUpdateRequest;
+import com.ondemandmonitoring.device.dto.response.DroneModelResponse;
+import com.ondemandmonitoring.device.mapper.DroneModelMapper;
+import com.ondemandmonitoring.device.repository.DroneModelRepository;
+import com.ondemandmonitoring.device.service.impl.DroneModelServiceImpl;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -41,7 +41,7 @@ class DroneModelServiceImplTest {
 
     @Test
     void create_success() {
-        DroneModelCreateRequest request = DroneModelCreateRequest.builder()
+        DeviceModelCreateRequest request = DeviceModelCreateRequest.builder()
                 .modelCode("M300-RTK")
                 .manufacturer("DJI")
                 .category("Quadcopter")
@@ -133,7 +133,7 @@ class DroneModelServiceImplTest {
 
     @Test
     void update_success() {
-        DroneModelUpdateRequest request = DroneModelUpdateRequest.builder()
+        DeviceModelUpdateRequest request = DeviceModelUpdateRequest.builder()
                 .modelCode("M300-RTK")
                 .manufacturer("DJI")
                 .category("Quadcopter")

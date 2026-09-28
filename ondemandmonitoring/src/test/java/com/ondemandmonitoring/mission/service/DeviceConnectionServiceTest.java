@@ -1,8 +1,8 @@
 package com.ondemandmonitoring.mission.service;
 
-import com.ondemandmonitoring.drone.domain.Drone;
-import com.ondemandmonitoring.drone.enums.DroneStatus;
-import com.ondemandmonitoring.drone.repository.DroneRepository;
+import com.ondemandmonitoring.device.domain.Drone;
+import com.ondemandmonitoring.device.enums.DroneStatus;
+import com.ondemandmonitoring.device.repository.DroneRepository;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
