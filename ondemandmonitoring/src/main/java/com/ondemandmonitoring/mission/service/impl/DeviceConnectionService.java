@@ -7,11 +7,15 @@ import com.ondemandmonitoring.device.enums.DeviceStatus;
 import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
+import com.ondemandmonitoring.mission.domain.MissionStaffAssignment;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.mapper.MissionMapper;
 import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
+import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepository;
 import com.ondemandmonitoring.mission.service.IDeviceConnectionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,8 +36,8 @@ public class DeviceConnectionService implements IDeviceConnectionService {
 
     private final MissionRepository missionRepository;
     private final DeviceConnectionRepository deviceConnectionRepository;
-    private final MissionDroneAssignmentRepository missionDroneAssignmentRepository;
-    private final MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
+    private final MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
+    private final MissionStaffAssignmentRepository missionStaffAssignmentRepository;
     private final DeviceRepository deviceRepository;
     private final MissionMapper missionMapper;
 
@@ -50,30 +54,21 @@ public class DeviceConnectionService implements IDeviceConnectionService {
 
         mission.setStatus(MissionStatus.CONNECTED);
 
-        Device device = getAssignedDevice(missionId);
-        if (device != null) {
+        MissionDeviceAssignment deviceAssignment = getAssignedDeviceAssignment(missionId).orElse(null);
+        Device device = deviceAssignment == null ? null : deviceAssignment.getDevice();
+        MissionStaffAssignment staffAssignment = getCurrentStaffAssignment(missionId);
+        if (device != null && staffAssignment != null) {
             device.setStatus(DeviceStatus.PREFLIGHT);
             deviceRepository.save(device);
 
             DeviceConnection connection = new DeviceConnection();
             connection.setMission(mission);
-            connection.setDevice(device);
-            connection.setOperatorId(getCurrentOperatorId(missionId));
+            connection.setDeviceAssignment(deviceAssignment);
+            connection.setStaffAssignment(staffAssignment);
             connection.setConnectionStatus("CONNECTED");
             connection.setTelemetryActive(true);
             connection.setConnectedAt(Instant.now());
             deviceConnectionRepository.save(connection);
-
-            missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                    .orElseGet(() -> {
-                        MissionDroneAssignment mda = new MissionDroneAssignment();
-                        mda.setMission(mission);
-                        mda.setDevice(device);
-                        mda.setStatus("ACTIVE");
-                        mda.setIsCurrent(true);
-                        mda.setAssignedAt(Instant.now());
-                        return missionDroneAssignmentRepository.save(mda);
-                    });
         }
 
         log.info("Mission {} device connected", missionId);
@@ -134,14 +129,17 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     }
 
     private Device getAssignedDevice(String missionId) {
-        return missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                .map(MissionDroneAssignment::getDevice)
+        return getAssignedDeviceAssignment(missionId)
+                .map(MissionDeviceAssignment::getDevice)
                 .orElse(null);
     }
 
-    private String getCurrentOperatorId(String missionId) {
-        return missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                .map(mda -> mda.getStaff().getId())
+    private java.util.Optional<MissionDeviceAssignment> getAssignedDeviceAssignment(String missionId) {
+        return missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId);
+    }
+
+    private MissionStaffAssignment getCurrentStaffAssignment(String missionId) {
+        return missionStaffAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
                 .orElse(null);
     }
 }

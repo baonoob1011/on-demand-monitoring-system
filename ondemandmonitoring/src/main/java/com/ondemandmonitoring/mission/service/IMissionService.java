@@ -4,7 +4,6 @@ import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
 import com.ondemandmonitoring.mission.dto.request.AssignDeviceRequest;
 import com.ondemandmonitoring.mission.dto.request.AssignStaffRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionUpdateRequest;
-import com.ondemandmonitoring.mission.dto.response.PostflightCheckResponse;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
@@ -53,19 +52,21 @@ public interface IMissionService {
 
 
     /**
-     * Retrieves all missions assigned to a specific operator.
+     * Retrieves all missions assigned to a specific Staff.
      *
-     * @param operatorId Assigned operator ID
+     * @param staffId Assigned Staff ID
      * @return List of {@link MissionResponse}
      */
-    List<MissionResponse> getByOperatorId(String operatorId);
+    List<MissionResponse> getByStaffId(String staffId);
+
+    List<MissionResponse> getCurrentStaffMissions();
 
     PageResponse<MissionResponse> searchStaffMissions(MissionStatus status, Instant from, Instant toExclusive,
             Pageable pageable);
 
 
     /**
-     * Retrieves all missions pending resource assignment (drone/operator).
+     * Retrieves all missions pending resource assignment (drone/Staff).
      *
      * @return List of {@link MissionResponse}
      */
@@ -79,11 +80,11 @@ public interface IMissionService {
      */
     MissionPlanResponse getMissionPlan(String missionId);
 
-    MissionResponse acceptCurrentOperatorMission(String missionId);
+    MissionResponse acceptCurrentStaffMission(String missionId);
 
-    MissionResponse rejectCurrentOperatorMission(String missionId, String reason);
+    MissionResponse rejectCurrentStaffMission(String missionId, String reason);
 
-    MissionResponse handoverCurrentOperatorControl(String missionId);
+    MissionResponse handoverCurrentStaffControl(String missionId);
 
     /**
      * Finds and returns the raw Mission domain entity by ID.
@@ -94,28 +95,28 @@ public interface IMissionService {
     Mission findById(String missionId);
 
     /**
-     * Accepts a mission assignment by the operator (transitions status to SCHEDULED
+     * Accepts a mission assignment by the Staff (transitions status to SCHEDULED
      * if flight plan is feasible).
      *
      * @param missionId  Mission ID
-     * @param operatorId Operator ID
+     * @param staffId Staff ID
      * @return {@link MissionResponse} Updated mission DTO
      */
-    MissionResponse acceptMission(String missionId, String operatorId);
+    MissionResponse acceptMission(String missionId, String staffId);
 
     /**
-     * Rejects a mission assignment by the operator (resets mission to
+     * Rejects a mission assignment by the Staff (resets mission to
      * RESOURCE_ASSIGNING for re-assignment).
      *
      * @param missionId  Mission ID
-     * @param operatorId Operator ID
+     * @param staffId Staff ID
      * @param reason     Rejection reason
      * @return {@link MissionResponse} Updated mission DTO
      */
-    MissionResponse rejectMission(String missionId, String operatorId, String reason);
+    MissionResponse rejectMission(String missionId, String staffId, String reason);
 
 
-//    MissionResponse assignResources(String missionId, String droneId, String operatorId);
+//    MissionResponse assignResources(String missionId, String droneId, String staffId);
 
     /**
      * Connects GCS app for the mission (Delegated to IGcsConnectionService).
@@ -151,11 +152,11 @@ public interface IMissionService {
      * auto-swaps device if available.
      *
      * @param missionId Mission ID
-     * @param droneCode Device code
+     * @param deviceId Device ID/code
      * @return {@link PreflightCheckResponse} Preflight diagnostics and issued
      *         flight token (if passed)
      */
-    PreflightCheckResponse runPreflightCheck(String missionId, String droneCode);
+    PreflightCheckResponse runPreflightCheck(String missionId, String deviceId);
 
     MissionTelemetryReadinessResponse getTelemetryReadiness(String missionId);
 
@@ -169,13 +170,13 @@ public interface IMissionService {
 //    MissionResponse replaceDrone(String missionId, String newDroneCode);
 
     /**
-     * Hands over mission control to a new operator (Control Handover).
+     * Hands over mission control to a new Staff (Control Handover).
      *
      * @param missionId  Mission ID
-     * @param operatorId Target operator ID
+     * @param staffId Target Staff ID
      * @return {@link MissionResponse} Updated mission DTO
      */
-    MissionResponse handoverControl(String missionId, String operatorId);
+    MissionResponse handoverControl(String missionId, String staffId);
 
     /**
      * Initiates mission flight (Takeoff) with token validation.
@@ -208,7 +209,7 @@ public interface IMissionService {
      * @param missionId Mission ID
      * @return {@link MissionResponse} Mission set to POST_FLIGHT
      */
-    MissionResponse startPostflightChecking(String missionId);
+    MissionResponse startPostDeviceChecking(String missionId);
 
     /**
      * Completes the mission successfully.
@@ -244,5 +245,4 @@ public interface IMissionService {
             java.util.Map<String, com.ondemandmonitoring.mission.enums.InspectionResult> results,
             com.ondemandmonitoring.mission.dto.request.PostFlightStatusRequest.TelemetrySnapshot telemetrySnapshot);
 
-    PostflightCheckResponse getLatestPostflightCheck(String missionId);
 }

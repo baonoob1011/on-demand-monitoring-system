@@ -6,12 +6,14 @@ import com.ondemandmonitoring.drone.domain.DeviceTelemetry;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.domain.PlanWaypoint;
 import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
 import com.ondemandmonitoring.mission.enums.WaypointReason;
 import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionPlanRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.order.domain.Order;
@@ -41,7 +43,7 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
 
     private final MissionRepository missionRepository;
     private final MissionPlanRepository missionPlanRepository;
-    private final MissionDroneAssignmentRepository missionDroneAssignmentRepository;
+    private final MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
     private final DeviceConnectionRepository deviceConnectionRepository;
     private final DroneTelemetryRepository droneTelemetryRepository;
     private final RoutePlanner directRoutePlanner;
@@ -54,7 +56,7 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
     public MissionPlanningServiceImpl(
             MissionRepository missionRepository,
             MissionPlanRepository missionPlanRepository,
-            MissionDroneAssignmentRepository missionDroneAssignmentRepository,
+            MissionDeviceAssignmentRepository missionDeviceAssignmentRepository,
             DeviceConnectionRepository deviceConnectionRepository,
             DroneTelemetryRepository droneTelemetryRepository,
             @Qualifier("directRoutePlanner") RoutePlanner directRoutePlanner,
@@ -65,7 +67,7 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
             MissionEnergyEstimator missionEnergyEstimator) {
         this.missionRepository = missionRepository;
         this.missionPlanRepository = missionPlanRepository;
-        this.missionDroneAssignmentRepository = missionDroneAssignmentRepository;
+        this.missionDeviceAssignmentRepository = missionDeviceAssignmentRepository;
         this.deviceConnectionRepository = deviceConnectionRepository;
         this.droneTelemetryRepository = droneTelemetryRepository;
         this.directRoutePlanner = directRoutePlanner;
@@ -262,7 +264,7 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
     private FeasibilityStatus resolveBatteryFeasibility(
             BatterySnapshot batterySnapshot,
             EnergyEstimate energyEstimate) {
-        if (!batterySnapshot.hasAssignedDrone()) {
+        if (!batterySnapshot.hasAssignedDevice()) {
             return FeasibilityStatus.FEASIBLE;
         }
         if (batterySnapshot.batteryPercent().isEmpty()) {
@@ -292,14 +294,14 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         if (missionId == null) {
             return new BatterySnapshot(false, Optional.empty());
         }
-        Optional<MissionDroneAssignment> assignment = missionDroneAssignmentRepository
+        Optional<MissionDeviceAssignment> assignment = missionDeviceAssignmentRepository
                 .findByMissionIdAndIsCurrentTrue(missionId);
         if (assignment.isEmpty()) {
             return new BatterySnapshot(false, Optional.empty());
         }
 
         String assignedDeviceId = assignment
-                .map(MissionDroneAssignment::getDevice)
+                .map(MissionDeviceAssignment::getDevice)
                 .map(device -> device.getId())
                 .orElse(null);
         if (assignedDeviceId == null || assignedDeviceId.isBlank()) {
@@ -415,7 +417,7 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
     }
 
     private record BatterySnapshot(
-            boolean hasAssignedDrone,
+            boolean hasAssignedDevice,
             Optional<Double> batteryPercent) {
     }
 }

@@ -13,8 +13,8 @@ import java.time.Instant;
 public class FlightTokenResponse {
     String id;
     String missionId;
-    String droneCode;
-    String operatorId;
+    String deviceId;
+    String staffId;
     String tokenValue;
     Instant issuedAt;
     Instant expiresAt;

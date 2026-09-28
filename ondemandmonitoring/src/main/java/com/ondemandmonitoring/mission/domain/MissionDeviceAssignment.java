@@ -51,4 +51,20 @@ public class MissionDeviceAssignment extends BaseEntity {
     @Column(name = "failure_notes", columnDefinition = "TEXT")
     String failureNotes;
 
+    @Column(name = "status", length = 50)
+    String status;
+
+    @Builder.Default
+    @Column(name = "is_current", nullable = false)
+    Boolean isCurrent = true;
+
+    @Column(name = "assigned_at")
+    Instant assignedAt;
+
+    @Column(name = "released_at")
+    Instant releasedAt;
+
+    @Column(name = "release_reason", length = 500)
+    String releaseReason;
+
 }

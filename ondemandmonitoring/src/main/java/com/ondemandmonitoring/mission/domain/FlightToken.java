@@ -13,10 +13,10 @@ import java.time.Instant;
  * Flight-Access Token issued by the system after a successful preflight check.
  *
  * Per the activity diagram:
- *   preflight all OK → Issue Flight Access Token → operator clicks "Start Mission"
+ *   preflight all OK → Issue Flight Access Token → staff clicks "Start Mission"
  *   → system validates token → opens WebSocket telemetry + RTSP/WebRTC video stream.
  *
- * Token expires after TTL_SECONDS. If expired the operator must re-run preflight.
+ * Token expires after TTL_SECONDS. If expired the staff member must re-run preflight.
  */
 @Getter
 @Setter
@@ -28,17 +28,13 @@ public class FlightToken extends BaseEntity {
     @Column(name = "mission_id", nullable = false, length = 100)
     String missionId;
 
-    @Column(name = "drone_code", nullable = false, length = 50)
-    String droneCode;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "mission_device_assignment_id", nullable = false)
+    MissionDeviceAssignment deviceAssignment;
 
-    // Retained for databases created before drone_code was introduced.
-    // Both columns identify the same assigned drone and must be written together.
-    @Setter(AccessLevel.NONE)
-    @Column(name = "device_code", nullable = false, length = 50)
-    String deviceCode;
-
-    @Column(name = "operator_id", length = 100)
-    String operatorId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "mission_staff_assignment_id", nullable = false)
+    MissionStaffAssignment staffAssignment;
 
     /** Unique, random token value checked before take-off. */
     @Column(name = "token_value", nullable = false, unique = true, length = 128)
@@ -50,7 +46,7 @@ public class FlightToken extends BaseEntity {
     @Column(name = "expires_at", nullable = false)
     Instant expiresAt;
 
-    /** True after the operator clicks "Start Mission" and the token has been consumed. */
+    /** True after the staff member clicks "Start Mission" and the token has been consumed. */
     @Column(name = "used", nullable = false)
     boolean used = false;
 
@@ -58,10 +54,7 @@ public class FlightToken extends BaseEntity {
     @Column(name = "revoked", nullable = false)
     boolean revoked = false;
 
-    public void setDroneCode(String droneCode) {
-        this.droneCode = droneCode;
-        this.deviceCode = droneCode;
-    }
+
 
     public boolean isValid() {
         return !used && !revoked && Instant.now().isBefore(expiresAt);

@@ -22,7 +22,7 @@ public class MediaAsset extends BaseEntity {
     String deviceId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "device_id", nullable = false)
+    @JoinColumn(name = "device_id", nullable = false, insertable = false, updatable = false)
     Device device;
 
     @Column(name = "mission_id", nullable = false, length = 100)

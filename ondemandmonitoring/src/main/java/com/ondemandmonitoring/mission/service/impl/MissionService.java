@@ -7,6 +7,7 @@ import com.ondemandmonitoring.device.domain.Device;
 import com.ondemandmonitoring.device.enums.DeviceStatus;
 import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.drone.dto.response.PreflightCheckResponse;
+import com.ondemandmonitoring.drone.repository.PersistedPostDeviceCheckRepository;
 import com.ondemandmonitoring.mission.domain.ControlHandover;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.FlightToken;
@@ -17,7 +18,6 @@ import com.ondemandmonitoring.mission.dto.response.FlightTokenResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionTelemetryReadinessResponse;
-import com.ondemandmonitoring.mission.dto.response.PostflightCheckResponse;
 import com.ondemandmonitoring.mission.enums.*;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.enums.OrderStatus;
@@ -27,7 +27,6 @@ import com.ondemandmonitoring.mission.repository.FlightTokenRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.mission.mapper.FlightTokenMapper;
 import com.ondemandmonitoring.mission.mapper.MissionMapper;
-import com.ondemandmonitoring.mission.mapper.PostflightCheckMapper;
 import com.ondemandmonitoring.mission.service.IDeviceConnectionService;
 import com.ondemandmonitoring.mission.service.IFlightTokenService;
 import com.ondemandmonitoring.mission.service.IMissionService;
@@ -87,14 +86,13 @@ public class MissionService implements IMissionService {
     FlightTokenRepository flightTokenRepository;
     MissionMapper missionMapper;
     FlightTokenMapper flightTokenMapper;
-    PostflightCheckMapper postflightCheckMapper;
 
     // Supporting audit & work order repositories
     MissionPlanRepository missionPlanRepository;
     MissionPlanningService missionPlanningService;
     DeviceConnectionRepository deviceConnectionRepository;
     ControlHandoverRepository controlHandoverRepository;
-    PostflightCheckRepository postflightCheckRepository;
+    PersistedPostDeviceCheckRepository postDeviceCheckRepository;
     MaintenanceTicketRepository maintenanceTicketRepository;
     OrderRepository orderRepository;
     IDeviceConnectionService deviceConnectionService;
@@ -181,15 +179,21 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<MissionResponse> getByOperatorId(String operatorId) {
+    public List<MissionResponse> getByStaffId(String staffId) {
         List<MissionStatus> activeStatuses = List.of(MissionStatus.values());
-        return missionRepository.findByOperatorIdAndStatusIn(operatorId, activeStatuses)
+        return missionRepository.findByStaffIdAndStatusIn(staffId, activeStatuses)
                 .stream()
                 .sorted(java.util.Comparator.comparing(
                         Mission::getScheduledStartAt,
                         java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())))
                 .map(missionMapper::toResponse)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MissionResponse> getCurrentStaffMissions() {
+        return getByStaffId(currentStaffId());
     }
 
 
@@ -231,20 +235,20 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    public MissionResponse acceptCurrentOperatorMission(String missionId) {
-        return acceptMission(missionId, currentOperatorId());
+    public MissionResponse acceptCurrentStaffMission(String missionId) {
+        return acceptMission(missionId, currentStaffId());
     }
 
     @Override
     @Transactional
-    public MissionResponse rejectCurrentOperatorMission(String missionId, String reason) {
-        return rejectMission(missionId, currentOperatorId(), reason);
+    public MissionResponse rejectCurrentStaffMission(String missionId, String reason) {
+        return rejectMission(missionId, currentStaffId(), reason);
     }
 
     @Override
     @Transactional
-    public MissionResponse handoverCurrentOperatorControl(String missionId) {
-        return handoverControl(missionId, currentOperatorId());
+    public MissionResponse handoverCurrentStaffControl(String missionId) {
+        return handoverControl(missionId, currentStaffId());
     }
 
 
@@ -475,10 +479,10 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    public MissionResponse rejectMission(String missionId, String operatorId, String reason) {
+    public MissionResponse rejectMission(String missionId, String staffId, String reason) {
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
-        MissionStaffAssignment assignment = requireCurrentOperatorAssignment(missionId, operatorId);
+        MissionStaffAssignment assignment = requireCurrentStaffAssignment(missionId, staffId);
 
         assignment.setResponseStatus(StaffResponseStatus.REJECTED);
         assignment.setDeclineReason(reason);
@@ -492,10 +496,10 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    public MissionResponse acceptMission(String missionId, String operatorId) {
+    public MissionResponse acceptMission(String missionId, String staffId) {
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
-        MissionStaffAssignment assignment = requireCurrentOperatorAssignment(missionId, operatorId);
+        MissionStaffAssignment assignment = requireCurrentStaffAssignment(missionId, staffId);
         assignment.setResponseStatus(StaffResponseStatus.ACCEPTED);
         assignment.setRespondedAt(Instant.now());
         missionStaffAssignmentRepository.save(assignment);
@@ -541,7 +545,7 @@ public class MissionService implements IMissionService {
     }
 
     @Override
-    public PreflightCheckResponse runPreflightCheck(String missionId, String droneCode) {
+    public PreflightCheckResponse runPreflightCheck(String missionId, String deviceId) {
         return null;
     }
 
@@ -610,8 +614,8 @@ public class MissionService implements IMissionService {
 //        attemptAutoSwapDevice(mission, faultyDrone);
 //    }
 
-    private FlightToken issueFlightToken(String missionId, String droneCode, String operatorId) {
-        return flightTokenService.issueFlightToken(missionId, droneCode, operatorId);
+    private FlightToken issueFlightToken(String missionId, String deviceId, String staffId) {
+        return flightTokenService.issueFlightToken(missionId, deviceId, staffId);
     }
 
 
@@ -621,9 +625,12 @@ public class MissionService implements IMissionService {
         requireFeasiblePlan(plan, false);
     }
 
-    private MissionStaffAssignment requireCurrentOperatorAssignment(String missionId, String staffId) {
-        return missionStaffAssignmentRepository.findByMissionIdAndStaffId(missionId, staffId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
+    private MissionStaffAssignment requireCurrentStaffAssignment(String missionId, String staffId) {
+        return missionStaffAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+                .filter(assignment -> assignment.getStaff() != null
+                        && assignment.getStaff().getId() != null
+                        && assignment.getStaff().getId().toString().equals(staffId))
+                .orElseThrow(() -> new ApiException(ErrorCode.ACCESS_DENIED,
                         "Staff is not assigned to mission " + missionId));
     }
 
@@ -818,7 +825,7 @@ public class MissionService implements IMissionService {
     }
     @Override
     @Transactional
-    public MissionResponse handoverControl(String missionId, String operatorId) {
+    public MissionResponse handoverControl(String missionId, String staffId) {
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.READY_TO_FLY);
 
@@ -829,14 +836,13 @@ public class MissionService implements IMissionService {
 
         ControlHandover handover = new ControlHandover();
         handover.setDeviceConnection(activeConnection);
-        handover.setDevice(getCurrentDevice(missionId));
-        handover.setOperatorId(operatorId);
+        handover.setStaffAssignment(requireCurrentStaffAssignment(missionId, staffId));
         handover.setStatus("CONFIRMED");
-        handover.setAcknowledgementText("Operator confirmed control handover and preflight checks before launch");
+        handover.setAcknowledgementText("Staff confirmed control handover and preflight checks before launch");
         handover.setConfirmedAt(Instant.now());
         controlHandoverRepository.save(handover);
 
-        log.info("Mission {} – control handed over to operator {} at {}", missionId, operatorId, Instant.now());
+        log.info("Mission {} – control handed over to Staff {} at {}", missionId, staffId, Instant.now());
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
     }
@@ -911,11 +917,11 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    public MissionResponse startPostflightChecking(String missionId) {
+    public MissionResponse startPostDeviceChecking(String missionId) {
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.RETURNING);
         mission.setStatus(MissionStatus.POSTFLIGHT_CHECKING);
-        log.info("Mission {} – post-flight inspection started", missionId);
+        log.info("Mission {} – post-device inspection started", missionId);
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
     }
@@ -925,7 +931,7 @@ public class MissionService implements IMissionService {
     public MissionResponse completeMission(String missionId) {
         Mission mission = getOrThrow(missionId);
         if (mission.getStatus() == MissionStatus.COMPLETED
-                && postflightCheckRepository.findTopByMissionIdOrderByCheckedAtDesc(missionId).isPresent()) {
+                && postDeviceCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId).isPresent()) {
             return missionMapper.toResponse(mission);
         }
         if (mission.getStatus() != MissionStatus.POSTFLIGHT_CHECKING) {
@@ -933,7 +939,7 @@ public class MissionService implements IMissionService {
                     "Mission must be POSTFLIGHT_CHECKING with a recorded inspection to complete but is "
                             + mission.getStatus());
         }
-        if (postflightCheckRepository.findTopByMissionIdOrderByCheckedAtDesc(missionId).isEmpty()) {
+        if (postDeviceCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId).isEmpty()) {
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID,
                     "A recorded post-flight inspection is required before mission completion");
         }
@@ -951,7 +957,7 @@ public class MissionService implements IMissionService {
         Mission mission = getOrThrow(missionId);
         if (mission.getStatus() == MissionStatus.IN_FLIGHT
                 || mission.getStatus() == MissionStatus.RETURNING) {
-            updateDroneStatus(mission, DeviceStatus.MAINTENANCE);
+            updateDeviceStatus(mission, DeviceStatus.MAINTENANCE);
         }
         mission.setStatus(MissionStatus.FAILED);
         mission.setActualEndAt(Instant.now());
@@ -1029,39 +1035,12 @@ public class MissionService implements IMissionService {
         device.setStatus(newDeviceStatus);
         deviceRepository.save(device);
 
-        // Record PostflightCheck physical inspection
-        boolean overallOk = (newDeviceStatus != DeviceStatus.MAINTENANCE);
-        PostflightCheck postflightCheck = new PostflightCheck();
-        postflightCheck.setMission(mission);
-        postflightCheck.setDevice(device);
-        postflightCheck.setCheckedBy(getCurrentOperatorId(missionId));
-        postflightCheck.setOverallOk(overallOk);
-        if (!results.isEmpty()) {
-            postflightCheck.setPhysicalConditionOk(passed(results, "a1", "a2", "e3"));
-            postflightCheck.setMotorOk(passed(results, "p1", "p2"));
-            postflightCheck.setBatteryOk(passed(results, "e1", "e4"));
-            postflightCheck.setCameraOk(passed(results, "e2"));
-            postflightCheck.setCommunicationOk(passed(results, "d1"));
-        }
-        if (telemetrySnapshot != null) {
-            postflightCheck.setLandingBatteryPercent(telemetrySnapshot.getBatteryPercent());
-            postflightCheck.setLandingBatteryState(telemetrySnapshot.getBatteryState());
-            postflightCheck.setLandingAltitudeM(telemetrySnapshot.getAltitudeM());
-            postflightCheck.setLandingSpeedMps(telemetrySnapshot.getSpeedMps());
-            postflightCheck.setLandingHeadingDeg(telemetrySnapshot.getHeadingDeg());
-            postflightCheck.setLandingTelemetryOnline(telemetrySnapshot.getOnline());
-        }
-        postflightCheck.setFaultType(overallOk ? null : "PHYSICAL_DAMAGE");
-        postflightCheck.setNotes(notes);
-        postflightCheck.setCheckedAt(Instant.now());
-        postflightCheckRepository.save(postflightCheck);
-
         // Auto-create MaintenanceTicket if device requires maintenance post-flight
         if (newDeviceStatus == DeviceStatus.MAINTENANCE) {
             MaintenanceTicket ticket = new MaintenanceTicket();
             ticket.setTicketCode("TKT-POSTFLIGHT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
             ticket.setDevice(device); // device field — device-type agnostic
-            ticket.setReportedBy(getCurrentOperatorId(missionId));
+            ticket.setReportedBy(getCurrentStaffId(missionId));
             ticket.setIssueType("POSTFLIGHT_DAMAGE");
             ticket.setSeverity("HIGH");
             ticket.setDescription("Post-flight physical inspection flagged maintenance needed for device "
@@ -1104,7 +1083,7 @@ public class MissionService implements IMissionService {
         }
     }
 
-//    private void moveToWaitingOperatorAcceptanceIfReady(Mission mission) {
+//    private void moveToWaitingStaffAcceptanceIfReady(Mission mission) {
 //        boolean hasDevice = missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId()).isPresent();
 //        boolean hasStaff = !missionStaffAssignmentRepository.findByMissionId(mission.getId()).isEmpty();
 //        if (hasDevice && hasStaff) {
@@ -1118,7 +1097,7 @@ public class MissionService implements IMissionService {
         Instant paddedStart = mission.getScheduledStartAt().minus(1, ChronoUnit.HOURS);
         Instant paddedEnd = mission.getScheduledEndAt().plus(1, ChronoUnit.HOURS);
 
-        List<Mission> activeMissions = missionRepository.findActiveByDroneId(deviceId);
+        List<Mission> activeMissions = missionRepository.findActiveByDeviceId(deviceId);
         for (Mission activeMission : activeMissions) {
             if (activeMission.getId().equals(mission.getId())) {
                 throw new ApiException(ErrorCode.RESOURCE_ALREADY_EXISTS,
@@ -1214,15 +1193,6 @@ public class MissionService implements IMissionService {
         return code;
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public PostflightCheckResponse getLatestPostflightCheck(String missionId) {
-        return postflightCheckRepository.findTopByMissionIdOrderByCheckedAtDesc(missionId)
-                .map(postflightCheckMapper::toResponse)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
-                        "No postflight check found for mission " + missionId));
-    }
-
     // =========================================================================
     // Helpers
     // =========================================================================
@@ -1233,22 +1203,22 @@ public class MissionService implements IMissionService {
                         "Mission not found: " + missionId));
     }
 
-    private String currentOperatorId() {
-        User operator = authenticatedUserResolver.getCurrentUser();
-        if (operator.getRole() == null || operator.getRole().getCode() != RoleCode.DRONE_OPERATOR) {
-            throw new ApiException(ErrorCode.ACCESS_DENIED, "A drone operator account is required");
+    private String currentStaffId() {
+        User staff = authenticatedUserResolver.getCurrentUser();
+        if (staff.getRole() == null || !staff.getRole().getCode().isEmployeeRole()) {
+            throw new ApiException(ErrorCode.ACCESS_DENIED, "A staff account is required");
         }
-        return operator.getId().toString();
+        return staff.getId().toString();
     }
 
-    private void validateOperator(String operatorId) {
-        User operator = userRepository.findById(operatorId)
-                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, "Operator not found: " + operatorId));
-        if (operator.getRole() == null || operator.getRole().getCode() != RoleCode.DRONE_OPERATOR) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Selected user is not a drone operator");
+    private void validateStaff(String staffId) {
+        User staff = userRepository.findById(staffId)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, "Staff not found: " + staffId));
+        if (staff.getRole() == null || !staff.getRole().getCode().isEmployeeRole()) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Selected user is not a staff account");
         }
-        if (!Boolean.TRUE.equals(operator.getIsActive())) {
-            throw new ApiException(ErrorCode.ACCOUNT_DISABLED, "Selected operator account is inactive");
+        if (!Boolean.TRUE.equals(staff.getIsActive())) {
+            throw new ApiException(ErrorCode.ACCOUNT_DISABLED, "Selected staff account is inactive");
         }
     }
 
@@ -1265,10 +1235,6 @@ public class MissionService implements IMissionService {
             device.setStatus(newStatus);
             deviceRepository.save(device);
         }
-    }
-
-    private void updateDroneStatus(Mission mission, DeviceStatus newStatus) {
-        updateDeviceStatus(mission, newStatus);
     }
 
     private void releaseMissionResources(Mission mission, String reason) {
@@ -1295,15 +1261,13 @@ public class MissionService implements IMissionService {
                 .orElse(null);
     }
 
-    private Device getCurrentDrone(String missionId) {
-        return getCurrentDevice(missionId);
-    }
-
-    private String getCurrentOperatorId(String missionId) {
+    private String getCurrentStaffId(String missionId) {
         return missionStaffAssignmentRepository.findFirstByMissionIdOrderByAssignedAtDesc(missionId)
                 .map(assignment -> assignment.getStaff() != null && assignment.getStaff().getId() != null
                         ? assignment.getStaff().getId().toString()
                         : null)
                 .orElse(null);
     }
+
 }
+

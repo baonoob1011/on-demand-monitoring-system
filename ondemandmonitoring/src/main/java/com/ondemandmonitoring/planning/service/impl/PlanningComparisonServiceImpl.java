@@ -6,9 +6,11 @@ import com.ondemandmonitoring.drone.domain.DeviceTelemetry;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
 import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.planning.dto.AlgorithmPlanningResult;
@@ -38,7 +40,7 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
     private static final int EPSG_4326_SRID = 4326;
 
     private final MissionRepository missionRepository;
-    private final MissionDroneAssignmentRepository missionDroneAssignmentRepository;
+    private final MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
     private final DeviceConnectionRepository deviceConnectionRepository;
     private final DroneTelemetryRepository droneTelemetryRepository;
     private final RoutePlanner directRoutePlanner;
@@ -50,7 +52,7 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
 
     public PlanningComparisonServiceImpl(
             MissionRepository missionRepository,
-            MissionDroneAssignmentRepository missionDroneAssignmentRepository,
+            MissionDeviceAssignmentRepository missionDeviceAssignmentRepository,
             DeviceConnectionRepository deviceConnectionRepository,
             DroneTelemetryRepository droneTelemetryRepository,
             @Qualifier("directRoutePlanner") RoutePlanner directRoutePlanner,
@@ -60,7 +62,7 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
             PlanningEnvironment planningEnvironment,
             MissionEnergyEstimator missionEnergyEstimator) {
         this.missionRepository = missionRepository;
-        this.missionDroneAssignmentRepository = missionDroneAssignmentRepository;
+        this.missionDeviceAssignmentRepository = missionDeviceAssignmentRepository;
         this.deviceConnectionRepository = deviceConnectionRepository;
         this.droneTelemetryRepository = droneTelemetryRepository;
         this.directRoutePlanner = directRoutePlanner;
@@ -228,8 +230,8 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
     }
 
     private Optional<Double> resolveAvailableBatteryPercent(String missionId) {
-        Optional<String> assignedDeviceId = missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                .map(MissionDroneAssignment::getDevice)
+        Optional<String> assignedDeviceId = missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+                .map(MissionDeviceAssignment::getDevice)
                 .map(device -> device.getId())
                 .filter(deviceId -> deviceId != null && !deviceId.isBlank());
         if (assignedDeviceId.isEmpty()) {

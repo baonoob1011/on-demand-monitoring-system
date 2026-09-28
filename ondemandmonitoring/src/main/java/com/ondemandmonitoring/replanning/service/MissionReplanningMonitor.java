@@ -2,8 +2,10 @@ package com.ondemandmonitoring.replanning.service;
 
 import com.ondemandmonitoring.drone.domain.DeviceTelemetry;
 import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionPlanRepository;
 import com.ondemandmonitoring.replanning.config.ReplanningProperties;
 import com.ondemandmonitoring.replanning.dto.ReplanningDecision;
@@ -31,7 +33,7 @@ public class MissionReplanningMonitor {
             MissionStatus.IN_PROGRESS);
 
     private final DroneTelemetryRepository droneTelemetryRepository;
-    private final MissionDroneAssignmentRepository missionDroneAssignmentRepository;
+    private final MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
     private final MissionPlanRepository missionPlanRepository;
     private final ReplanningPolicy replanningPolicy;
     private final MissionReplanningService missionReplanningService;
@@ -48,8 +50,8 @@ public class MissionReplanningMonitor {
             evaluate(event);
         } catch (Exception exception) {
             log.warn(
-                    "Dynamic replanning monitor failed for droneCode={} telemetryId={}: {}",
-                    event.droneCode(),
+                    "Dynamic replanning monitor failed for deviceId={} telemetryId={}: {}",
+                    event.deviceId(),
                     event.telemetryId(),
                     exception.getMessage(),
                     exception);
@@ -62,15 +64,15 @@ public class MissionReplanningMonitor {
             return;
         }
 
-        List<MissionDroneAssignment> assignments = missionDroneAssignmentRepository
-                .findCurrentByDroneCodeAndMissionStatusIn(
-                        event.droneCode(),
+        List<MissionDeviceAssignment> assignments = missionDeviceAssignmentRepository
+                .findCurrentByDeviceCodeAndMissionStatusIn(
+                        event.deviceId(),
                         ACTIVE_STATUSES);
         if (assignments.isEmpty()) {
             return;
         }
 
-        for (MissionDroneAssignment assignment : assignments) {
+        for (MissionDeviceAssignment assignment : assignments) {
             String missionId = assignment.getMission().getId();
             Optional<MissionPlan> currentPlan = missionPlanRepository.findByMissionId(missionId);
             if (currentPlan.isEmpty()) {
@@ -114,7 +116,7 @@ public class MissionReplanningMonitor {
             MissionPlan plan = missionReplanningService.replanFromTelemetry(missionId, telemetry, decision.reason());
             lastReplannedAt.put(missionId, Instant.now());
             log.info(
-                    "Dynamic replan evaluated missionId={} droneCode={} reason={} detail={} planVersion={} status={} battery={} simX={} simY={} durationMs={}",
+                    "Dynamic replan evaluated missionId={} deviceId={} reason={} detail={} planVersion={} status={} battery={} simX={} simY={} durationMs={}",
                     missionId,
                     resolveDeviceCode(telemetry),
                     decision.reason(),
@@ -128,7 +130,7 @@ public class MissionReplanningMonitor {
         } catch (Exception exception) {
             lastReplannedAt.put(missionId, Instant.now());
             log.warn(
-                    "Dynamic replan failed missionId={} droneCode={} reason={} detail={}: {}",
+                    "Dynamic replan failed missionId={} deviceId={} reason={} detail={}: {}",
                     missionId,
                     resolveDeviceCode(telemetry),
                     decision.reason(),

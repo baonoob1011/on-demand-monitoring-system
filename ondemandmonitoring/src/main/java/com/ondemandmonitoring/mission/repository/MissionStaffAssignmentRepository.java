@@ -12,6 +12,10 @@ public interface MissionStaffAssignmentRepository extends JpaRepository<MissionS
 
     Optional<MissionStaffAssignment> findByMissionIdAndStaffId(String missionId, String staffId);
 
+    boolean existsByMissionIdAndStaffId(String missionId, String staffId);
+
+    Optional<MissionStaffAssignment> findByMissionIdAndIsCurrentTrue(String missionId);
+
     Optional<MissionStaffAssignment> findFirstByMissionIdOrderByAssignedAtDesc(String missionId);
 
     List<MissionStaffAssignment> findByMissionId(String missionId);

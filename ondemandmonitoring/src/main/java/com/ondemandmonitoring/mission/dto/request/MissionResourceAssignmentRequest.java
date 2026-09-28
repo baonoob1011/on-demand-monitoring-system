@@ -14,8 +14,8 @@ import lombok.experimental.FieldDefaults;
 public class MissionResourceAssignmentRequest {
 
     @NotBlank
-    String droneId;
+    String deviceId;
 
     @NotBlank
-    String operatorId;
+    String staffId;
 }

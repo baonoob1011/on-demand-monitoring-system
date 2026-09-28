@@ -12,6 +12,8 @@ import com.ondemandmonitoring.media.dto.response.MediaUploadResponse;
 import com.ondemandmonitoring.media.repository.*;
 import com.ondemandmonitoring.media.service.IMediaUploadService;
 import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
+import com.ondemandmonitoring.mission.domain.MissionStaffAssignment;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.*;
 import com.ondemandmonitoring.s3.AwsS3Properties;
@@ -38,8 +40,8 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
             MissionStatus.POSTFLIGHT_CHECKING, MissionStatus.COMPLETED);
 
     private final MissionRepository missions;
-    private final MissionDroneAssignmentRepository deviceAssignments;
-    private final MissionOperatorAssignmentRepository operatorAssignments;
+    private final MissionDeviceAssignmentRepository deviceAssignments;
+    private final MissionStaffAssignmentRepository staffAssignments;
     private final DeviceRepository devicerRepository;
     private final MediaAssetRepository media;
     private final MediaUploadAttemptRepository attempts;
@@ -457,7 +459,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
                 .orElseThrow(() -> new ApiException(ErrorCode.DEVICE_NOT_FOUND));
 
         boolean assigned = deviceAssignments.findByMissionIdAndIsCurrentTrue(mission.getId())
-                .map(MissionDroneAssignment::getDevice).map(Device::getId)
+                .map(MissionDeviceAssignment::getDevice).map(Device::getId)
                 .filter(device.getId()::equals).isPresent();
 
         if (!assigned && mission.getStatus() == MissionStatus.COMPLETED) {
@@ -467,7 +469,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
         }
 
         if (!assigned) {
-            throw new ApiException(ErrorCode.ACCESS_DENIED, "Drone is not assigned to mission");
+            throw new ApiException(ErrorCode.ACCESS_DENIED, "Device is not assigned to mission");
         }
 
         return device;
@@ -487,17 +489,20 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
 
         String userId = currentUser.getCurrentUser().getId().toString();
 
-        boolean assigned = operatorAssignments.findByMissionIdAndIsCurrentTrue(mission.getId())
-                .map(MissionOperatorAssignment::getStaff).filter(userId::equals).isPresent();
+        boolean assigned = staffAssignments.findByMissionIdAndIsCurrentTrue(mission.getId())
+                .map(MissionStaffAssignment::getStaff)
+                .map(staff -> staff.getId().toString())
+                .filter(userId::equals)
+                .isPresent();
 
         if (!assigned && mission.getStatus() == MissionStatus.COMPLETED) {
-            assigned = operatorAssignments.findByMissionId(mission.getId()).stream()
+            assigned = staffAssignments.findByMissionId(mission.getId()).stream()
                     .anyMatch(entry -> userId.equals(entry.getStaff().getId().toString())
-                            && "COMPLETED".equals(entry.getStatus()));
+                            && entry.getResponseStatus() != null);
         }
 
         if (!privileged && !assigned) {
-            throw new ApiException(ErrorCode.ACCESS_DENIED, "Operator is not assigned to mission");
+            throw new ApiException(ErrorCode.ACCESS_DENIED, "Staff is not assigned to mission");
         }
     }
 

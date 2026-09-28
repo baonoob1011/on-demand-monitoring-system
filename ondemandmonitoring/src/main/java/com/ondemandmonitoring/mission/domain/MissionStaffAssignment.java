@@ -48,4 +48,14 @@ public class MissionStaffAssignment extends BaseEntity {
 
     @Column(name = "responded_at")
     Instant respondedAt;
+
+    @Builder.Default
+    @Column(name = "is_current", nullable = false)
+    Boolean isCurrent = true;
+
+    @Column(name = "released_at")
+    Instant releasedAt;
+
+    @Column(name = "release_reason", length = 500)
+    String releaseReason;
 }
