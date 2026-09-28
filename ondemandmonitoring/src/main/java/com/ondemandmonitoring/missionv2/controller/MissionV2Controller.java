@@ -28,7 +28,7 @@
 //@RequestMapping("/api/v2/missions")
 //@RequiredArgsConstructor
 //@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-//@PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'STAFF', 'SYSTEM_OPERATOR', 'ADMIN')")
+//@PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
 //public class MissionV2Controller {
 //
 //    IMissionV2Service missionV2Service;
@@ -62,7 +62,7 @@
 //     * Manager assigns Device to the mission.
 //     */
 //    @PostMapping("/{id}/assign-device")
-//    @PreAuthorize("hasAnyRole('STAFF', 'SYSTEM_OPERATOR', 'ADMIN')")
+//    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
 //    public ResponseEntity<ApiResponse<MissionV2Response>> assignDevice(
 //            @PathVariable String id,
 //            @Valid @RequestBody AssignDeviceRequest request) {
@@ -75,7 +75,7 @@
 //     * Manager assigns Staff to the mission.
 //     */
 //    @PostMapping("/{id}/assign-staff")
-//    @PreAuthorize("hasAnyRole('STAFF', 'SYSTEM_OPERATOR', 'ADMIN')")
+//    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
 //    public ResponseEntity<ApiResponse<MissionV2Response>> assignStaff(
 //            @PathVariable String id,
 //            @Valid @RequestBody AssignStaffRequest request) {

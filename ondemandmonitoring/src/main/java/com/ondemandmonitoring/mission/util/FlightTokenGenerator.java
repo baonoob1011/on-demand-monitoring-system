@@ -40,7 +40,7 @@ public class FlightTokenGenerator {
         String hexTimestamp = Long.toHexString(epochSecond).toUpperCase();
 
         String rawPayload = String.format("%s:%s:%s:%d", cleanMission, cleanDevice,
-                staffId != null ? staffId : "STAFF-SYSTEM", epochSecond);
+                staffId != null ? staffId : "DRONE_OPERATOR-SYSTEM", epochSecond);
         String signature = computeHmacSha256(rawPayload, SECRET_KEY).substring(0, 8).toUpperCase();
 
         return String.format("FTK-%s-%s-%s-%s", cleanMission, cleanDevice, hexTimestamp, signature);

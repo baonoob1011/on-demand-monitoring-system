@@ -33,21 +33,21 @@ public class PersistedPreflightCheckController {
     }
 
     @GetMapping("/api/missions/{missionId}/preflight-checks")
-    @PreAuthorize("hasAnyRole('STAFF', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedOperator(#missionId)")
+    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedOperator(#missionId)")
     public ApiResponse<List<PersistedPreDeviceCheckResponse>> history(
             @PathVariable String missionId) {
         return ApiResponse.ok(service.history(missionId));
     }
 
     @GetMapping("/api/missions/{missionId}/preflight-checks/current")
-    @PreAuthorize("hasAnyRole('STAFF', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedOperator(#missionId)")
+    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedOperator(#missionId)")
     public ApiResponse<PersistedPreDeviceCheckResponse> current(
             @PathVariable String missionId) {
         return ApiResponse.ok(service.current(missionId));
     }
 
     @GetMapping("/api/preflight-checks/{id}")
-    @PreAuthorize("hasAnyRole('STAFF', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedOperatorForPreflight(#id)")
+    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedOperatorForPreflight(#id)")
     public ApiResponse<PersistedPreDeviceCheckResponse> get(
             @PathVariable String id) {
         return ApiResponse.ok(service.get(id));
