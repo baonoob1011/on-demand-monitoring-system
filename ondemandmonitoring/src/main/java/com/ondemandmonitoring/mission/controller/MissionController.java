@@ -54,7 +54,7 @@ import java.time.ZoneId;
 @RequestMapping("/api/missions")
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-@PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
+@PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
 public class MissionController {
 
     IMissionService missionService;
@@ -66,7 +66,7 @@ public class MissionController {
     // ------------------------------------------------------------------
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<MissionResponse>> createMission(
             @Valid @RequestBody MissionCreateRequest request) {
         MissionResponse response = missionService.createMission(request);
@@ -75,13 +75,13 @@ public class MissionController {
     }
 
     @GetMapping("/all")
-    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<List<MissionResponse>>> listAll() {
         return ResponseEntity.ok(ApiResponse.ok(missionService.getAllMissions()));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<MissionResponse>> updateMission(
             @PathVariable String id,
             @Valid @RequestBody MissionUpdateRequest request) {
@@ -95,7 +95,7 @@ public class MissionController {
      * desc.
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<List<MissionResponse>>> listByStaff(
             @RequestParam String staffId) {
         List<MissionResponse> missions = missionService.getByStaffId(staffId);
@@ -107,7 +107,7 @@ public class MissionController {
      * unchanged.
      */
     @GetMapping("/staff")
-    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<PageResponse<MissionResponse>>> searchStaffMissions(
             @RequestParam(required = false) MissionStatus status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -125,7 +125,7 @@ public class MissionController {
                 PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt", "id")))));
     }
 
-    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
     @GetMapping("/mine")
     public ResponseEntity<ApiResponse<List<MissionResponse>>> listCurrentStaffMissions() {
         return ResponseEntity.ok(ApiResponse.ok(missionService.getCurrentStaffMissions()));
@@ -133,7 +133,7 @@ public class MissionController {
 
     /** GET /api/missions/code/{missionCode} – retrieve mission details by code */
     @GetMapping("/code/{missionCode}")
-    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<MissionResponse>> getByCode(@PathVariable String missionCode) {
         MissionResponse response = missionService.getByCodeResponse(missionCode);
         return ResponseEntity.ok(ApiResponse.ok(response));
@@ -141,7 +141,7 @@ public class MissionController {
 
     /** GET /api/missions/{id} – retrieve mission details */
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedStaff(#id)")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedStaff(#id)")
     public ResponseEntity<ApiResponse<MissionResponse>> getById(@PathVariable String id) {
         MissionResponse response = missionService.getByIdResponse(id);
         return ResponseEntity.ok(ApiResponse.ok(response));
@@ -149,7 +149,7 @@ public class MissionController {
 
     /** GET /api/missions/{id}/plan – retrieve generated operational MissionPlan */
     @GetMapping("/{id}/plan")
-    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedStaff(#id)")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedStaff(#id)")
     public ResponseEntity<ApiResponse<MissionPlanResponse>> getPlan(@PathVariable String id) {
         MissionPlanResponse response = missionService.getMissionPlan(id);
         return ResponseEntity.ok(ApiResponse.ok(response));
@@ -157,7 +157,7 @@ public class MissionController {
 
     // ------------------------------------------------------------------
     @GetMapping("/pending-assignment")
-    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<List<MissionResponse>>> getPendingAssignment() {
         return ResponseEntity.ok(ApiResponse.ok(missionService.getPendingAssignmentMissions()));
     }
@@ -166,7 +166,7 @@ public class MissionController {
     // ------------------------------------------------------------------
 
     @PostMapping("/{id}/assign-device")
-    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<MissionResponse>> assignDevice(
             @PathVariable String id,
             @Valid @RequestBody AssignDeviceRequest request) {
@@ -175,7 +175,7 @@ public class MissionController {
     }
 
     @PostMapping("/{id}/assign-staff")
-    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<MissionResponse>> assignStaff(
             @PathVariable String id,
             @Valid @RequestBody AssignStaffRequest request) {
@@ -213,7 +213,7 @@ public class MissionController {
     }
 
     @PatchMapping("/{id}/accept-staff")
-    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<MissionResponse>> acceptByStaffId(
             @PathVariable String id,
             @RequestParam String staffId) {
@@ -232,7 +232,7 @@ public class MissionController {
     }
 
     @PatchMapping("/{id}/reject-staff")
-    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<MissionResponse>> rejectByStaffId(
             @PathVariable String id,
             @RequestParam String staffId,
@@ -356,7 +356,7 @@ public class MissionController {
     }
 
     @PostMapping("/{id}/handover-staff")
-    @PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<MissionResponse>> handoverByStaffId(
             @PathVariable String id,
             @RequestParam String staffId) {
