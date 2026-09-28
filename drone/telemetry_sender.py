@@ -191,15 +191,15 @@ backend_telemetry_enabled = False
 _backend_telemetry_task: asyncio.Task[None] | None = None
 
 
-def bound_drone_code(control_status: Any) -> str | None:
-    """Use only a drone identity bound to a backend-verified mission."""
+def bound_device_id(control_status: Any) -> str | None:
+    """Use only a device identity bound to a backend-verified mission."""
     if not isinstance(control_status, dict) or not control_status.get("missionId"):
         return None
-    code = control_status.get("deviceCode")
-    if not isinstance(code, str):
+    device_id = control_status.get("deviceId")
+    if not isinstance(device_id, str):
         return None
-    code = code.strip()
-    return code if 0 < len(code) <= 50 else None
+    device_id = device_id.strip()
+    return device_id if 0 < len(device_id) <= 50 else None
 
 
 class MavsdkAckNoiseFilter(logging.Filter):
@@ -514,26 +514,26 @@ async def send_telemetry() -> None:
 
     LOGGER.info("Waiting for a backend-verified mission binding before publishing telemetry")
     async with httpx.AsyncClient(timeout=timeout) as client:
-        last_drone_code = None
+        last_device_id = None
         while backend_telemetry_enabled:
             try:
                 status_response = await client.get(FLIGHT_CONTROL_STATUS_URL)
                 status_response.raise_for_status()
                 control_status = status_response.json()
-                drone_code = bound_drone_code(control_status)
-                mission_id = str(control_status.get("missionId") or "") if drone_code else ""
+                device_id = bound_device_id(control_status)
+                mission_id = str(control_status.get("missionId") or "") if device_id else ""
             except (httpx.HTTPError, ValueError, TypeError, AttributeError):
-                drone_code = None
+                device_id = None
 
-            if not drone_code:
-                if last_drone_code is not None:
+            if not device_id:
+                if last_device_id is not None:
                     LOGGER.warning("Mission binding unavailable; pausing backend telemetry")
-                    last_drone_code = None
+                    last_device_id = None
                 await asyncio.sleep(TELEMETRY_INTERVAL_SECONDS)
                 continue
-            if drone_code != last_drone_code:
-                LOGGER.info("Publishing telemetry for mission %s, drone %s", mission_id, drone_code)
-                last_drone_code = drone_code
+            if device_id != last_device_id:
+                LOGGER.info("Publishing telemetry for mission %s, device %s", mission_id, device_id)
+                last_device_id = device_id
             if not await state.has_backend_required_fields():
                 await asyncio.sleep(TELEMETRY_INTERVAL_SECONDS)
                 continue
@@ -543,7 +543,7 @@ async def send_telemetry() -> None:
             for base_url in candidates:
                 try:
                     response = await client.post(
-                        f"{base_url}/api/internal/v1/drone-telemetry/{drone_code}",
+                        f"{base_url}/api/internal/v1/drone-telemetry/{device_id}",
                         json=payload,
                         headers={"X-Drone-Telemetry-Secret": DRONE_TELEMETRY_SECRET},
                     )

@@ -32,41 +32,19 @@ public class Mission extends BaseEntity {
 
     // ===== Schedule =====
 
-    @Column(name = "scheduled_start_at")
+    @Column(name = "scheduled_start_at", nullable = false)
     Instant scheduledStartAt;
 
-    @Column(name = "started_at")
-    Instant startedAt;
+    @Column(name = "scheduled_end_at", nullable = false)
+    Instant scheduledEndAt;
+
+    @Column(name = "actual_start_at")
+    Instant actualStartAt;
+
+    @Column(name = "actual_end_at")
+    Instant actualEndAt;
 
     @Column(name = "completed_at")
     Instant completedAt;
-
-    // ===== Mission information =====
-
-    @Column(name = "description", length = 1000)
-    String description;
-
-    @Column(name = "failure_reason", length = 1000)
-    String failureReason;
-
-    @Column(name = "rejection_reason", length = 1000)
-    String rejectionReason;
-
-    // ===== Inline Preflight Diagnostics (No separate preflight_checks table) =====
-
-    @Column(name = "preflight_retry_count")
-    Integer preflightRetryCount = 0;
-
-    @Column(name = "preflight_passed")
-    Boolean preflightPassed;
-
-    @Column(name = "preflight_fault_type", length = 50)
-    String preflightFaultType;
-
-    @Column(name = "preflight_failure_reason", length = 1000)
-    String preflightFailureReason;
-
-    @Column(name = "preflight_checked_at")
-    Instant preflightCheckedAt;
 
 }

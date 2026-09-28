@@ -1,6 +1,6 @@
-package com.ondemandmonitoring.missionv2.enums;
-
-public enum DeviceRole {
-    MAIN,
-    SUPPORT
-}
+//package com.ondemandmonitoring.missionv2.enums;
+//
+//public enum DeviceRole {
+//    MAIN,
+//    SUPPORT
+//}

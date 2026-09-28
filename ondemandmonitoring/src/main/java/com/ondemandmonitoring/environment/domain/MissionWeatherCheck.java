@@ -27,8 +27,8 @@ public class MissionWeatherCheck extends BaseEntity {
     @JoinColumn(name = "mission_id", nullable = false)
     Mission mission;
 
-    @Column(name = "drone_code", length = 50)
-    String droneCode;
+    @Column(name = "device_id", length = 50)
+    String deviceId;
 
     @Column(nullable = false, length = 20)
     String status;

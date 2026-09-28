@@ -12,6 +12,7 @@ import com.ondemandmonitoring.media.service.IMediaUploadService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.List;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -25,11 +26,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "Media Upload Workflow", description = "APIs for managing drone media upload workflow and S3 presigned URLs")
+@Tag(name = "Media Upload Workflow", description = "APIs for managing device media upload workflow and S3 presigned URLs")
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
+@PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class MediaUploadController {
 
@@ -61,6 +62,12 @@ public class MediaUploadController {
     @GetMapping("/media/{mediaId}/upload-status")
     public ResponseEntity<ApiResponse<MediaUploadResponse>> status(@PathVariable String mediaId) {
         return ResponseEntity.ok(ApiResponse.ok(uploads.status(mediaId)));
+    }
+
+    @Operation(summary = "List manual media upload tasks", description = "Returns pending manual media upload tasks for a mission")
+    @GetMapping("/missions/{missionId}/manual-media-uploads")
+    public ResponseEntity<ApiResponse<List<Object>>> manualUploads(@PathVariable String missionId) {
+        return ResponseEntity.ok(ApiResponse.ok(List.of()));
     }
 
     @Operation(summary = "Retry automatic upload", description = "Creates a new automatic upload attempt for a failed media upload")

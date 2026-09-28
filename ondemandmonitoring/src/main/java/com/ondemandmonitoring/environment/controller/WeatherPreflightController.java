@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "Weather Preflight", description = "Weather safety checks before drone takeoff")
+@Tag(name = "Weather Preflight", description = "Weather safety checks before device takeoff")
 @RestController
 @RequestMapping("/api/weather")
 @RequiredArgsConstructor
@@ -75,7 +75,7 @@ public class WeatherPreflightController {
         WeatherPreflightCheckResponse response = new WeatherPreflightCheckResponse(
                 null,
                 request != null ? request.missionId() : null,
-                request != null ? request.droneCode() : null,
+                request != null ? request.deviceId() : null,
                 status,
                 safeToFly,
                 summary,
@@ -93,7 +93,7 @@ public class WeatherPreflightController {
                     .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission not found: " + request.missionId()));
             MissionWeatherCheck saved = new MissionWeatherCheck();
             saved.setMission(mission);
-            saved.setDroneCode(request.droneCode());
+            saved.setDeviceId(request.deviceId());
             saved.setStatus(status);
             saved.setSafeToFly(safeToFly);
             saved.setSummary(summary);
@@ -115,9 +115,11 @@ public class WeatherPreflightController {
     @GetMapping("/preflight-checks/latest")
     public ResponseEntity<ApiResponse<WeatherPreflightCheckResponse>> latest(
             @RequestParam String missionId) {
-        MissionWeatherCheck check = weatherCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Weather preflight check not found"));
-        return ResponseEntity.ok(ApiResponse.ok("Latest weather preflight check", toResponse(check)));
+        return ResponseEntity.ok(ApiResponse.ok(
+                "Latest weather preflight check",
+                weatherCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId)
+                        .map(WeatherPreflightController::toResponse)
+                        .orElse(null)));
     }
 
     private static WeatherPreflightCheckResponse toResponse(MissionWeatherCheck check) {
@@ -127,7 +129,7 @@ public class WeatherPreflightController {
         return new WeatherPreflightCheckResponse(
                 check.getId(),
                 check.getMission().getId(),
-                check.getDroneCode(),
+                check.getDeviceId(),
                 check.getStatus(),
                 Boolean.TRUE.equals(check.getSafeToFly()),
                 check.getSummary(),

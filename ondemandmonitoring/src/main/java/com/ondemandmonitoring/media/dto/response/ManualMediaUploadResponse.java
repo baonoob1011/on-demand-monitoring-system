@@ -19,7 +19,7 @@ public class ManualMediaUploadResponse {
     String backendMediaId;
     String localMediaId;
     String missionId;
-    String droneCode;
+    String deviceId;
     String mediaType;
     String fileName;
     String contentType;

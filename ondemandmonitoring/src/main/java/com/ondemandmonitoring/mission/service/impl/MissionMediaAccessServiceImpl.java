@@ -6,8 +6,8 @@ import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.response.MissionMediaContext;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
-import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
-import com.ondemandmonitoring.mission.repository.MissionOperatorAssignmentRepository;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
+import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepository;
 import com.ondemandmonitoring.mission.service.IMissionMediaAccessService;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.util.List;
@@ -30,8 +30,8 @@ public class MissionMediaAccessServiceImpl implements IMissionMediaAccessService
             MissionStatus.POSTFLIGHT_CHECKING, MissionStatus.COMPLETED);
 
     MissionRepository missions;
-    MissionDroneAssignmentRepository droneAssignments;
-    MissionOperatorAssignmentRepository operatorAssignments;
+    MissionDeviceAssignmentRepository deviceAssignments;
+    MissionStaffAssignmentRepository staffAssignments;
     AuthenticatedUserResolver currentUser;
 
     @Override
@@ -45,12 +45,11 @@ public class MissionMediaAccessServiceImpl implements IMissionMediaAccessService
                 "ROLE_ADMIN".equals(authority.getAuthority())
                         || "ROLE_SYSTEM_OPERATOR".equals(authority.getAuthority()));
         String userId = currentUser.getCurrentUserId();
-        boolean assigned = operatorAssignments.findByMissionIdAndIsCurrentTrue(mission.getId())
-                .map(entry -> userId.equals(entry.getOperatorId())).orElse(false);
+        boolean assigned = staffAssignments.findByMissionIdAndIsCurrentTrue(mission.getId())
+                .map(entry -> userId.equals(entry.getStaff().getId())).orElse(false);
         if (!assigned && mission.getStatus() == MissionStatus.COMPLETED) {
-            assigned = operatorAssignments.findByMissionId(mission.getId()).stream()
-                    .anyMatch(entry -> userId.equals(entry.getOperatorId())
-                            && "COMPLETED".equals(entry.getStatus()));
+            assigned = staffAssignments.findByMissionId(mission.getId()).stream()
+                    .anyMatch(entry -> userId.equals(entry.getStaff().getId()));
         }
         if (!privileged && !assigned) {
             throw new ApiException(ErrorCode.ACCESS_DENIED, "Operator is not assigned to mission");
@@ -59,19 +58,18 @@ public class MissionMediaAccessServiceImpl implements IMissionMediaAccessService
     }
 
     @Override
-    public void requireAssignedDrone(String missionId, String droneId) {
+    public void requireAssignedDevice(String missionId, String deviceId) {
         // Independently authorize the public boundary, even when called outside media.
         authorizeOperator(missionId);
         Mission mission = requireMission(missionId);
-        boolean assigned = droneAssignments.findByMissionIdAndIsCurrentTrue(mission.getId())
-                .map(entry -> droneId.equals(entry.getDrone().getId())).orElse(false);
+        boolean assigned = deviceAssignments.findByMissionIdAndIsCurrentTrue(mission.getId())
+                .map(entry -> deviceId.equals(entry.getDevice().getId())).orElse(false);
         if (!assigned && mission.getStatus() == MissionStatus.COMPLETED) {
-            assigned = droneAssignments.findByMissionId(mission.getId()).stream()
-                    .anyMatch(entry -> droneId.equals(entry.getDrone().getId())
-                            && "MISSION_COMPLETE".equals(entry.getReleaseReason()));
+            assigned = deviceAssignments.findByMissionId(mission.getId()).stream()
+                    .anyMatch(entry -> deviceId.equals(entry.getDevice().getId()));
         }
         if (!assigned) {
-            throw new ApiException(ErrorCode.ACCESS_DENIED, "Drone is not assigned to mission");
+            throw new ApiException(ErrorCode.ACCESS_DENIED, "Device is not assigned to mission");
         }
     }
 

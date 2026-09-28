@@ -2,16 +2,18 @@ package com.ondemandmonitoring.planning.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.drone.domain.DroneTelemetry;
-import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
+import com.ondemandmonitoring.device.domain.DeviceTelemetry;
+import com.ondemandmonitoring.device.repository.DeviceTelemetryRepository;
+import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
-import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.domain.PlanWaypoint;
 import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
 import com.ondemandmonitoring.mission.enums.WaypointReason;
-import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
+import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionPlanRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.order.domain.Order;
@@ -41,8 +43,9 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
 
     private final MissionRepository missionRepository;
     private final MissionPlanRepository missionPlanRepository;
-    private final MissionDroneAssignmentRepository missionDroneAssignmentRepository;
-    private final DroneTelemetryRepository droneTelemetryRepository;
+    private final MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
+    private final DeviceConnectionRepository deviceConnectionRepository;
+    private final DeviceTelemetryRepository deviceTelemetryRepository;
     private final RoutePlanner directRoutePlanner;
     private final RoutePlanner aStarShortestRoutePlanner;
     private final RoutePlanner aStarEnergyAwareRoutePlanner;
@@ -53,8 +56,9 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
     public MissionPlanningServiceImpl(
             MissionRepository missionRepository,
             MissionPlanRepository missionPlanRepository,
-            MissionDroneAssignmentRepository missionDroneAssignmentRepository,
-            DroneTelemetryRepository droneTelemetryRepository,
+            MissionDeviceAssignmentRepository missionDeviceAssignmentRepository,
+            DeviceConnectionRepository deviceConnectionRepository,
+            DeviceTelemetryRepository deviceTelemetryRepository,
             @Qualifier("directRoutePlanner") RoutePlanner directRoutePlanner,
             @Qualifier("aStarShortestRoutePlanner") RoutePlanner aStarShortestRoutePlanner,
             @Qualifier("aStarEnergyAwareRoutePlanner") RoutePlanner aStarEnergyAwareRoutePlanner,
@@ -63,8 +67,9 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
             MissionEnergyEstimator missionEnergyEstimator) {
         this.missionRepository = missionRepository;
         this.missionPlanRepository = missionPlanRepository;
-        this.missionDroneAssignmentRepository = missionDroneAssignmentRepository;
-        this.droneTelemetryRepository = droneTelemetryRepository;
+        this.missionDeviceAssignmentRepository = missionDeviceAssignmentRepository;
+        this.deviceConnectionRepository = deviceConnectionRepository;
+        this.deviceTelemetryRepository = deviceTelemetryRepository;
         this.directRoutePlanner = directRoutePlanner;
         this.aStarShortestRoutePlanner = aStarShortestRoutePlanner;
         this.aStarEnergyAwareRoutePlanner = aStarEnergyAwareRoutePlanner;
@@ -116,7 +121,8 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         long planningTimeMs = Math.max(0L, (System.nanoTime() - startedAtNanos) / 1_000_000L);
 
         MissionPlan missionPlan = missionPlanRepository.findByMissionId(missionId)
-                .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REQUEST, "Mission has no active plan to replan: " + missionId));
+                .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REQUEST,
+                        "Mission has no active plan to replan: " + missionId));
         int nextVersion = Math.max(1, Optional.ofNullable(missionPlan.getPlanVersion()).orElse(1)) + 1;
 
         if (!route.feasible()) {
@@ -158,7 +164,8 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         applyEnergyEstimate(missionPlan, energyEstimate, context.mission().getId());
 
         for (int sequence = 0; sequence < route.points().size(); sequence++) {
-            missionPlan.getWaypoints().add(toWaypoint(missionPlan, sequence, route.points().get(sequence), route.points().size()));
+            missionPlan.getWaypoints()
+                    .add(toWaypoint(missionPlan, sequence, route.points().get(sequence), route.points().size()));
         }
 
         return missionPlanRepository.save(missionPlan);
@@ -207,7 +214,8 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
             applyEnergyEstimate(missionPlan, energyEstimate, context.mission().getId());
 
             for (int sequence = 0; sequence < route.points().size(); sequence++) {
-                missionPlan.getWaypoints().add(toWaypoint(missionPlan, sequence, route.points().get(sequence), route.points().size()));
+                missionPlan.getWaypoints()
+                        .add(toWaypoint(missionPlan, sequence, route.points().get(sequence), route.points().size()));
             }
         }
 
@@ -256,7 +264,7 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
     private FeasibilityStatus resolveBatteryFeasibility(
             BatterySnapshot batterySnapshot,
             EnergyEstimate energyEstimate) {
-        if (!batterySnapshot.hasAssignedDrone()) {
+        if (!batterySnapshot.hasAssignedDevice()) {
             return FeasibilityStatus.FEASIBLE;
         }
         if (batterySnapshot.batteryPercent().isEmpty()) {
@@ -276,7 +284,8 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         if (homeSample.surfaceElevationM() == null) {
             throw new ApiException(
                     ErrorCode.INVALID_REQUEST,
-                    String.format("Home point has no planning surface elevation near x=%.2f, y=%.2f.", home.x(), home.y()));
+                    String.format("Home point has no planning surface elevation near x=%.2f, y=%.2f.", home.x(),
+                            home.y()));
         }
         return homeSample.surfaceElevationM();
     }
@@ -285,17 +294,32 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         if (missionId == null) {
             return new BatterySnapshot(false, Optional.empty());
         }
-        Optional<MissionDroneAssignment> assignment =
-                missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId);
+        Optional<MissionDeviceAssignment> assignment = missionDeviceAssignmentRepository
+                .findByMissionIdAndIsCurrentTrue(missionId);
         if (assignment.isEmpty()) {
             return new BatterySnapshot(false, Optional.empty());
         }
 
-        Optional<Double> batteryPercent = assignment
-                .map(MissionDroneAssignment::getDrone)
-                .filter(drone -> drone.getDroneCode() != null && !drone.getDroneCode().isBlank())
-                .flatMap(drone -> droneTelemetryRepository.findByDroneCode(drone.getDroneCode()))
-                .map(DroneTelemetry::getBatteryPercent)
+        String assignedDeviceId = assignment
+                .map(MissionDeviceAssignment::getDevice)
+                .map(device -> device.getId())
+                .orElse(null);
+        if (assignedDeviceId == null || assignedDeviceId.isBlank()) {
+            return new BatterySnapshot(false, Optional.empty());
+        }
+
+        Optional<DeviceConnection> connection = deviceConnectionRepository
+                .findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED")
+                .filter(session -> Boolean.TRUE.equals(session.getTelemetryActive()))
+                .filter(session -> session.getDevice() != null)
+                .filter(session -> assignedDeviceId.equals(session.getDevice().getId()));
+        if (connection.isEmpty()) {
+            return new BatterySnapshot(true, Optional.empty());
+        }
+
+        Optional<Double> batteryPercent = deviceTelemetryRepository
+                .findTopByDeviceConnectionIdOrderByRecordedAtDesc(connection.get().getId())
+                .map(DeviceTelemetry::getBatteryPercent)
                 .filter(this::isValidBatteryPercent);
         return new BatterySnapshot(true, batteryPercent);
     }
@@ -368,7 +392,8 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         double targetY = point.getY();
 
         if (!Double.isFinite(targetX) || !Double.isFinite(targetY)) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Mission order target point must contain finite coordinates.");
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Mission order target point must contain finite coordinates.");
         }
 
         if (point.getSRID() == EPSG_4326_SRID && looksLikeLongitudeLatitude(targetX, targetY)) {
@@ -392,7 +417,8 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
     }
 
     private record BatterySnapshot(
-            boolean hasAssignedDrone,
+            boolean hasAssignedDevice,
             Optional<Double> batteryPercent) {
     }
 }
+

@@ -59,8 +59,8 @@ class BackendImageUploader:
             )
             status.raise_for_status()
             session = status.json()
-            drone_code = str(session.get("deviceCode") or "").strip()
-            if not session.get("missionId") or not drone_code or len(drone_code) > 50:
+            device_id = str(session.get("deviceId") or "").strip()
+            if not session.get("missionId") or not device_id or len(device_id) > 50:
                 print("[BACKEND] No verified mission binding; screenshot remains local")
                 return False
             with path.open("rb") as image_file:
@@ -72,7 +72,7 @@ class BackendImageUploader:
                     )
                 }
                 response = httpx.post(
-                    f"{BACKEND_BASE_URL}/api/devices/{drone_code}/images",
+                    f"{BACKEND_BASE_URL}/api/devices/{device_id}/images",
                     files=files,
                     timeout=30.0,
                 )
@@ -127,7 +127,7 @@ def main() -> None:
     print("========================================")
     print(f"Watch dir: {PICTURES_DIR}")
     print(f"Backend: {BACKEND_BASE_URL}")
-    print("Drone identity: verified mission binding in Flight Controller")
+    print("Device identity: verified mission binding in Flight Controller")
     print()
 
     if not PICTURES_DIR.exists():

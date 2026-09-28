@@ -2,19 +2,20 @@ package com.ondemandmonitoring.mission.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.drone.domain.Drone;
-import com.ondemandmonitoring.drone.enums.DroneStatus;
-import com.ondemandmonitoring.drone.repository.DroneRepository;
+import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.device.enums.DeviceStatus;
+import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
-import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
+import com.ondemandmonitoring.mission.domain.MissionStaffAssignment;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.mapper.MissionMapper;
 import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
-import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
-import com.ondemandmonitoring.mission.repository.MissionOperatorAssignmentRepository;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
+import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepository;
 import com.ondemandmonitoring.mission.service.IDeviceConnectionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,7 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 
 /**
- * Service implementation managing device connection sessions (`device_connections`)
+ * Service implementation managing device connection sessions
+ * (`device_connections`)
  * and automated safety triggers (such as Return-To-Launch on signal loss).
  */
 @Slf4j
@@ -34,16 +36,16 @@ public class DeviceConnectionService implements IDeviceConnectionService {
 
     private final MissionRepository missionRepository;
     private final DeviceConnectionRepository deviceConnectionRepository;
-    private final MissionDroneAssignmentRepository missionDroneAssignmentRepository;
-    private final MissionOperatorAssignmentRepository missionOperatorAssignmentRepository;
-    private final DroneRepository droneRepository;
+    private final MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
+    private final MissionStaffAssignmentRepository missionStaffAssignmentRepository;
+    private final DeviceRepository deviceRepository;
     private final MissionMapper missionMapper;
 
     @Override
     @Transactional
     public MissionResponse connectGcs(String missionId) {
-        Mission mission = missionRepository.findById(missionId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission not found: " + missionId));
+        Mission mission = getMission(missionId);
+        String resolvedMissionId = mission.getId();
 
         if (mission.getStatus() != MissionStatus.SCHEDULED && mission.getStatus() != MissionStatus.CONNECTED) {
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID,
@@ -52,31 +54,21 @@ public class DeviceConnectionService implements IDeviceConnectionService {
 
         mission.setStatus(MissionStatus.CONNECTED);
 
-        Drone device = getAssignedDevice(missionId);
-        if (device != null) {
-            device.setStatus(DroneStatus.PREFLIGHT);
-            droneRepository.save(device);
+        MissionDeviceAssignment deviceAssignment = getAssignedDeviceAssignment(resolvedMissionId).orElse(null);
+        Device device = deviceAssignment == null ? null : deviceAssignment.getDevice();
+        MissionStaffAssignment staffAssignment = getCurrentStaffAssignment(resolvedMissionId);
+        if (device != null && staffAssignment != null) {
+            device.setStatus(DeviceStatus.PREFLIGHT);
+            deviceRepository.save(device);
 
             DeviceConnection connection = new DeviceConnection();
             connection.setMission(mission);
-            connection.setDrone(device);
-            connection.setOperatorId(getCurrentOperatorId(missionId));
+            connection.setDeviceAssignment(deviceAssignment);
+            connection.setStaffAssignment(staffAssignment);
             connection.setConnectionStatus("CONNECTED");
             connection.setTelemetryActive(true);
             connection.setConnectedAt(Instant.now());
             deviceConnectionRepository.save(connection);
-
-            missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                    .orElseGet(() -> {
-                        MissionDroneAssignment mda = new MissionDroneAssignment();
-                        mda.setMission(mission);
-                        mda.setDrone(device);
-                        mda.setAssignmentSource("MANUAL_MANAGER");
-                        mda.setStatus("ACTIVE");
-                        mda.setIsCurrent(true);
-                        mda.setAssignedAt(Instant.now());
-                        return missionDroneAssignmentRepository.save(mda);
-                    });
         }
 
         log.info("Mission {} device connected", missionId);
@@ -87,17 +79,19 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     @Override
     @Transactional
     public MissionResponse disconnectGcs(String missionId, String disconnectReason) {
-        Mission mission = missionRepository.findById(missionId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission not found: " + missionId));
+        Mission mission = getMission(missionId);
+        String resolvedMissionId = mission.getId();
 
-        deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED")
+        deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(resolvedMissionId, "CONNECTED")
                 .ifPresent(session -> {
                     session.setConnectionStatus("DISCONNECTED");
                     session.setTelemetryActive(false);
                     session.setDisconnectedAt(Instant.now());
-                    session.setDisconnectReason(disconnectReason != null && !disconnectReason.isBlank() ? disconnectReason : "NORMAL");
+                    session.setDisconnectReason(
+                            disconnectReason != null && !disconnectReason.isBlank() ? disconnectReason : "NORMAL");
                     deviceConnectionRepository.save(session);
-                    log.info("[DEVICE-DISCONNECT] Mission {} device session disconnected cleanly. Reason: {}", missionId, session.getDisconnectReason());
+                    log.info("[DEVICE-DISCONNECT] Mission {} device session disconnected cleanly. Reason: {}",
+                            missionId, session.getDisconnectReason());
                 });
 
         return missionMapper.toResponse(mission);
@@ -106,40 +100,52 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     @Override
     @Transactional
     public MissionResponse handleGcsSessionLost(String missionId, String reason) {
-        Mission mission = missionRepository.findById(missionId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission not found: " + missionId));
+        Mission mission = getMission(missionId);
+        String resolvedMissionId = mission.getId();
 
-        deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED")
+        deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(resolvedMissionId, "CONNECTED")
                 .ifPresent(session -> {
                     session.setConnectionStatus("LOST");
                     session.setTelemetryActive(false);
                     session.setDisconnectedAt(Instant.now());
                     session.setDisconnectReason(reason != null && !reason.isBlank() ? reason : "SIGNAL_LOSS");
                     deviceConnectionRepository.save(session);
-                    log.warn("[DEVICE-LOST] Mission {} device telemetry signal LOST. Reason: {}", missionId, session.getDisconnectReason());
+                    log.warn("[DEVICE-LOST] Mission {} device telemetry signal LOST. Reason: {}", missionId,
+                            session.getDisconnectReason());
                 });
 
         mission.setStatus(MissionStatus.RETURNING);
-        Drone device = getAssignedDevice(missionId);
+        Device device = getAssignedDevice(resolvedMissionId);
         if (device != null) {
-            device.setStatus(DroneStatus.RETURNING);
-            droneRepository.save(device);
+            device.setStatus(DeviceStatus.RETURNING);
+            deviceRepository.save(device);
         }
-        log.warn("[RTL-TRIGGER] Mission {} status set to RETURNING due to device signal loss. Device status updated to RETURNING.", missionId);
+        log.warn(
+                "[RTL-TRIGGER] Mission {} status set to RETURNING due to device signal loss. Device status updated to RETURNING.",
+                missionId);
 
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
     }
 
-    private Drone getAssignedDevice(String missionId) {
-        return missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                .map(MissionDroneAssignment::getDrone)
+    private Device getAssignedDevice(String missionId) {
+        return getAssignedDeviceAssignment(missionId)
+                .map(MissionDeviceAssignment::getDevice)
                 .orElse(null);
     }
 
-    private String getCurrentOperatorId(String missionId) {
-        return missionOperatorAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                .map(mda -> mda.getOperatorId())
+    private java.util.Optional<MissionDeviceAssignment> getAssignedDeviceAssignment(String missionId) {
+        return missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId);
+    }
+
+    private MissionStaffAssignment getCurrentStaffAssignment(String missionId) {
+        return missionStaffAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
                 .orElse(null);
+    }
+
+    private Mission getMission(String missionId) {
+        return missionRepository.findById(missionId)
+                .or(() -> missionRepository.findByOrderId(missionId))
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission not found: " + missionId));
     }
 }

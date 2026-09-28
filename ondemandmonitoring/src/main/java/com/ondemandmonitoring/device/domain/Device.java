@@ -1,5 +1,7 @@
 package com.ondemandmonitoring.device.domain;
 
+import java.time.LocalDateTime;
+
 import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.device.enums.DeviceStatus;
 import jakarta.persistence.Column;
@@ -28,6 +30,8 @@ public class Device extends BaseEntity {
 
     @Column(name = "name", nullable = false, length = 100)
     private String name;
+    @Column(name = "device_code", length = 50)
+    private String deviceCode;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "model_id", nullable = false)
@@ -36,4 +40,7 @@ public class Device extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
     private DeviceStatus status;
+
+    @Column(name = "last_seen_at")
+    private LocalDateTime lastSeenAt;
 }

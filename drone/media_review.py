@@ -15,12 +15,12 @@ import httpx
 
 
 class LocalMediaLibrary:
-    def __init__(self, root: Path, mission_id: str | None, drone_code: str | None,
+    def __init__(self, root: Path, mission_id: str | None, device_id: str | None,
                  mission_code: str | None = None) -> None:
         self.root = root
         self.mission_id = mission_id
         self.mission_code = mission_code
-        self.drone_code = drone_code
+        self.device_id = device_id
         self.lock = RLock()
         self.root.mkdir(parents=True, exist_ok=True)
         self.manifest = self.root / "media-index.json"
@@ -60,7 +60,7 @@ class LocalMediaLibrary:
         )
 
     def _require_capture_session(self) -> None:
-        if not self.mission_id or not self.drone_code:
+        if not self.mission_id or not self.device_id:
             raise ValueError("Bind an assigned mission before capturing media")
 
     def _prepare_pending_videos(self) -> None:
@@ -135,7 +135,7 @@ class LocalMediaLibrary:
                   original_path: Path | None = None) -> dict:
         item = {
             "localMediaId": local_id, "missionId": self.mission_id,
-            "droneCode": self.drone_code, "mediaType": media_type,
+            "deviceId": self.device_id, "mediaType": media_type,
             "fileName": path.name, "localPath": str(path.resolve()),
             "contentType": content_type, "fileSize": path.stat().st_size,
             "checksumSha256": self._sha256(path),

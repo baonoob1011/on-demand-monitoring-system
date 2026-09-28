@@ -8,14 +8,14 @@ import org.springframework.stereotype.Component;
 @Component
 public class ConfiguredSimulationHomeProvider implements SimulationHomeProvider {
 
-    static final double DRONE_BASE_CENTER_X = 0.0;
-    static final double DRONE_BASE_CENTER_Y = -280.0;
+    static final double DEVICE_BASE_CENTER_X = 0.0;
+    static final double DEVICE_BASE_CENTER_Y = -280.0;
 
     private final SimulationPoint home;
 
     public ConfiguredSimulationHomeProvider(
-            @Value("${planning.simulation.home.x:" + DRONE_BASE_CENTER_X + "}") double homeX,
-            @Value("${planning.simulation.home.y:" + DRONE_BASE_CENTER_Y + "}") double homeY) {
+            @Value("${planning.simulation.home.x:" + DEVICE_BASE_CENTER_X + "}") double homeX,
+            @Value("${planning.simulation.home.y:" + DEVICE_BASE_CENTER_Y + "}") double homeY) {
         this.home = new SimulationPoint(homeX, homeY);
     }
 

@@ -8,7 +8,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.request.OrderDeliverableRequest;
@@ -63,7 +62,6 @@ class OrderServiceTest {
         preferredTimeRepository = mock(PreferredTimeRepository.class);
         zoneRepository = mock(ZoneRepository.class);
         authenticatedUserResolver = mock(AuthenticatedUserResolver.class);
-        IMissionService missionService = mock(IMissionService.class);
         orderMapper = Mappers.getMapper(OrderMapper.class);
         geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
 
@@ -75,7 +73,6 @@ class OrderServiceTest {
                 preferredTimeRepository,
                 zoneRepository,
                 authenticatedUserResolver,
-                missionService,
                 orderMapper
         );
 

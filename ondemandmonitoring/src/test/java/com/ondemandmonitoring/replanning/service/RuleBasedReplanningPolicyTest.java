@@ -2,7 +2,6 @@ package com.ondemandmonitoring.replanning.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.ondemandmonitoring.drone.domain.DroneTelemetry;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.domain.PlanWaypoint;
 import com.ondemandmonitoring.replanning.config.ReplanningProperties;
@@ -50,7 +49,7 @@ class RuleBasedReplanningPolicyTest {
 
     @Test
     void telemetryWithoutSimulationPositionDoesNotGenerateFakeRoute() {
-        DroneTelemetry telemetry = telemetry(null, null, 90.0);
+        DeviceTelemetry telemetry = telemetry(null, null, 90.0);
 
         ReplanningDecision decision = policy.evaluate(telemetry, plan(18.0, 20.0));
 
@@ -74,8 +73,8 @@ class RuleBasedReplanningPolicyTest {
         return waypoint;
     }
 
-    private DroneTelemetry telemetry(Double simX, Double simY, Double batteryPercent) {
-        DroneTelemetry telemetry = new DroneTelemetry();
+    private DeviceTelemetry telemetry(Double simX, Double simY, Double batteryPercent) {
+        DeviceTelemetry telemetry = new DeviceTelemetry();
         telemetry.setSimX(simX);
         telemetry.setSimY(simY);
         telemetry.setBatteryPercent(batteryPercent);

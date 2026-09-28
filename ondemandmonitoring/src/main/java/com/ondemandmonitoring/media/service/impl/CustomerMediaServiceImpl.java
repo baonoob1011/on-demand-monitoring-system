@@ -6,6 +6,8 @@ import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.domain.MediaStatus;
 import com.ondemandmonitoring.media.dto.response.CustomerMediaNotificationResponse;
 import com.ondemandmonitoring.media.dto.response.CustomerMediaResponse;
+import com.ondemandmonitoring.media.dto.response.CustomerMissionMediaStatusResponse;
+import com.ondemandmonitoring.media.mapper.MediaWorkflowMapper;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.repository.MediaNotificationOutboxRepository;
 import com.ondemandmonitoring.media.service.ICustomerMediaService;
@@ -13,10 +15,8 @@ import com.ondemandmonitoring.mission.service.IMissionMediaAccessService;
 import com.ondemandmonitoring.s3.S3ObjectStorageService;
 import java.util.List;
 import com.ondemandmonitoring.common.api.PageResponse;
-import com.ondemandmonitoring.media.dto.response.CustomerMissionMediaStatusResponse;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
-import com.ondemandmonitoring.media.mapper.MediaWorkflowMapper;
 
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -50,15 +50,11 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
 
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<CustomerMediaResponse> listAvailablePage(
-            String missionId, int page, int size) {
+    public PageResponse<CustomerMediaResponse> listAvailablePage(String missionId, int page, int size) {
         String canonicalId = missionAccess.authorizeCustomer(missionId);
-        var pageable = PageRequest.of(page, size,
-                Sort.by(Sort.Direction.DESC,
-                        "capturedAt", "id"));
-        return PageResponse.from(
-                media.findByMissionIdAndMediaStatus(canonicalId, MediaStatus.AVAILABLE, pageable)
-                        .map(this::toResponse));
+        var pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "capturedAt", "id"));
+        return PageResponse.from(media.findByMissionIdAndMediaStatus(
+                canonicalId, MediaStatus.AVAILABLE, pageable).map(this::toResponse));
     }
 
     @Override
@@ -75,8 +71,8 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
     @Override
     @Transactional(readOnly = true)
     public List<CustomerMediaResponse> listAvailable(String missionId) {
-        String canonicalMissionId = missionAccess.authorizeCustomer(missionId);
-        return media.findByMissionIdOrderByCapturedAtDesc(canonicalMissionId).stream()
+        String canonicalId = missionAccess.authorizeCustomer(missionId);
+        return media.findByMissionIdOrderByCapturedAtDesc(canonicalId).stream()
                 .filter(asset -> asset.getMediaStatus() == MediaStatus.AVAILABLE)
                 .map(this::toResponse).toList();
     }
@@ -85,9 +81,10 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
     @Transactional(readOnly = true)
     public List<CustomerMediaResponse> listAllAvailable() {
         List<String> missionIds = ownMissionIds();
-        if (missionIds.isEmpty()) return List.of();
+        if (missionIds.isEmpty())
+            return List.of();
         return media.findByMissionIdInAndMediaStatusOrderByCapturedAtDesc(missionIds,
-                        MediaStatus.AVAILABLE)
+                MediaStatus.AVAILABLE)
                 .stream().map(this::toResponse).toList();
     }
 
@@ -106,8 +103,8 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
     @Override
     @Transactional(readOnly = true)
     public List<CustomerMediaNotificationResponse> listNotifications(String missionId) {
-        String canonicalMissionId = missionAccess.authorizeCustomer(missionId);
-        return notifications.findByMedia_MissionIdOrderByCreatedAtDesc(canonicalMissionId).stream()
+        String canonicalId = missionAccess.authorizeCustomer(missionId);
+        return notifications.findByMedia_MissionIdOrderByCreatedAtDesc(canonicalId).stream()
                 .filter(event -> event.getMedia().getMediaStatus() == MediaStatus.AVAILABLE)
                 .map(mapper::toNotificationResponse)
                 .toList();
@@ -117,7 +114,8 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
     @Transactional(readOnly = true)
     public List<CustomerMediaNotificationResponse> listAllNotifications() {
         List<String> missionIds = ownMissionIds();
-        if (missionIds.isEmpty()) return List.of();
+        if (missionIds.isEmpty())
+            return List.of();
         return notifications.findByMedia_MissionIdInOrderByCreatedAtDesc(missionIds).stream()
                 .filter(event -> event.getMedia().getMediaStatus() == MediaStatus.AVAILABLE)
                 .map(mapper::toNotificationResponse)

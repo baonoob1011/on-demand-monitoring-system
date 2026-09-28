@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.drone.service;
+package com.ondemandmonitoring.device.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -7,13 +7,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.ondemandmonitoring.drone.dto.request.TelemetryRequest;
 import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.drone.domain.DroneTelemetry;
-import com.ondemandmonitoring.drone.domain.Drone;
-import com.ondemandmonitoring.drone.repository.DroneRepository;
-import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
-import com.ondemandmonitoring.drone.service.impl.DroneTelemetryService;
+import com.ondemandmonitoring.device.domain.Drone;
+import com.ondemandmonitoring.device.repository.DroneRepository;
 import com.ondemandmonitoring.environment.service.EnvironmentalMeasurementService;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -28,7 +24,7 @@ import org.springframework.context.ApplicationEventPublisher;
 class DroneTelemetryServiceTest {
 
     @Mock
-    private DroneTelemetryRepository repository;
+    private DeviceTelemetryRepository repository;
 
     @Mock
     private DroneRepository droneRepository;
@@ -55,17 +51,17 @@ class DroneTelemetryServiceTest {
 
         Drone drone = new Drone();
         drone.setDroneCode("DRONE-01");
-        DroneTelemetry persisted = new DroneTelemetry();
+        DeviceTelemetry persisted = new DeviceTelemetry();
         when(droneRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(drone));
         when(repository.findByDroneCode("DRONE-01")).thenReturn(Optional.empty());
-        when(repository.save(any(DroneTelemetry.class))).thenReturn(persisted);
+        when(repository.save(any(DeviceTelemetry.class))).thenReturn(persisted);
 
-        DroneTelemetry result = service.save("DRONE-01", request);
+        DeviceTelemetry result = service.save("DRONE-01", request);
 
         assertThat(result).isSameAs(persisted);
-        ArgumentCaptor<DroneTelemetry> captor = ArgumentCaptor.forClass(DroneTelemetry.class);
+        ArgumentCaptor<DeviceTelemetry> captor = ArgumentCaptor.forClass(DeviceTelemetry.class);
         verify(repository).save(captor.capture());
-        DroneTelemetry captured = captor.getValue();
+        DeviceTelemetry captured = captor.getValue();
         assertThat(captured.getDroneCode()).isEqualTo("DRONE-01");
         assertThat(captured.getDrone()).isSameAs(drone);
         assertThat(captured.getLatitude()).isEqualTo(10.1);

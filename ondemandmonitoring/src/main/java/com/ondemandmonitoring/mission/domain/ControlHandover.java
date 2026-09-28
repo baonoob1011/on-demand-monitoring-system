@@ -1,7 +1,6 @@
 package com.ondemandmonitoring.mission.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.drone.domain.Drone;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -17,16 +16,13 @@ import java.time.Instant;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ControlHandover extends BaseEntity {
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "device_connection_id")
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "device_connection_id", nullable = false)
     DeviceConnection deviceConnection;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "drone_id", nullable = false)
-    Drone drone;
-
-    @Column(name = "operator_id", nullable = false, length = 100)
-    String operatorId;
+    @JoinColumn(name = "staff_assignment_id", nullable = false)
+    MissionStaffAssignment staffAssignment;
 
     @Column(name = "status", nullable = false, length = 50)
     String status; // CONFIRMED / CANCELLED

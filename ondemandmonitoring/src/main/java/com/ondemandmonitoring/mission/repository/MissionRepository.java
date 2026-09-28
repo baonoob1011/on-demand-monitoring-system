@@ -4,9 +4,9 @@ import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.repository.query.Param;
@@ -20,6 +20,7 @@ public interface MissionRepository extends JpaRepository<Mission, String>, JpaSp
     @Override
     Optional<Mission> findById(String id);
 
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT m FROM Mission m WHERE m.id = :id")
     Optional<Mission> findByIdForUpdate(@Param("id") String id);
@@ -29,6 +30,12 @@ public interface MissionRepository extends JpaRepository<Mission, String>, JpaSp
     Optional<Mission> findByIdWithOrder(@Param("id") String id);
 
     Optional<Mission> findByMissionCode(String missionCode);
+
+    Optional<Mission> findByOrderId(String orderId);
+
+    boolean existsByMissionCode(String missionCode);
+
+    boolean existsByOrderId(String orderId);
 
     List<Mission> findByOrder_Customer_Id(String customerId);
 
@@ -41,28 +48,27 @@ public interface MissionRepository extends JpaRepository<Mission, String>, JpaSp
 
     @Query("""
             SELECT DISTINCT m FROM Mission m
-            JOIN MissionOperatorAssignment moa ON moa.mission = m
-            WHERE moa.operatorId = :operatorId
-              AND (moa.isCurrent = true OR m.status IN ('COMPLETED', 'FAILED', 'CANCELLED'))
+            JOIN MissionStaffAssignment msa ON msa.mission = m
+            WHERE msa.staff.id = :staffId
               AND m.status IN :statuses
             """)
-    List<Mission> findByOperatorIdAndStatusIn(@Param("operatorId") String operatorId, @Param("statuses") List<MissionStatus> statuses);
+    List<Mission> findByStaffIdAndStatusIn(@Param("staffId") String staffId, @Param("statuses") List<MissionStatus> statuses);
 
     List<Mission> findByStatusIn(List<MissionStatus> statuses);
 
     /**
-     * Find missions assigned to a drone whose scheduled window overlaps [startAt, endAt].
-     * Used to validate drone replacement availability / schedule conflict.
+     * Find missions assigned to a device whose scheduled window overlaps [startAt, endAt].
+     * Used to validate device replacement availability / schedule conflict.
      */
     @Query("""
             SELECT m FROM Mission m
-            JOIN MissionDroneAssignment mda ON mda.mission = m
-            WHERE mda.drone.id = :droneId
+            JOIN MissionDeviceAssignment mda ON mda.mission = m
+            WHERE mda.device.id = :deviceId
               AND mda.isCurrent = true
               AND m.status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED')
               AND m.completedAt IS NULL
             """)
-    List<Mission> findActiveByDroneId(@Param("droneId") String droneId);
+    List<Mission> findActiveByDeviceId(@Param("deviceId") String deviceId);
 }
 
 

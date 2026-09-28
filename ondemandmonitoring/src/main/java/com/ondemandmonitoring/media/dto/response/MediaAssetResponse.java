@@ -16,7 +16,7 @@ import lombok.experimental.FieldDefaults;
 public class MediaAssetResponse {
 
     String id;
-    String droneCode;
+    String deviceId;
     String missionId;
     String type;
     String storageProvider;

@@ -58,8 +58,8 @@ public class MediaUploadPlanServiceImpl implements IMediaUploadPlanService {
         String prefix = s3Properties.getPrefix() == null ? ""
                 : s3Properties.getPrefix().replaceAll("^/+|/+$", "") + "/";
 
-        String key = prefix + "staging/missions/" + captured.getMissionId() + "/drones/"
-                + captured.getDroneCode() + "/" + captured.getId() + "/" + number + extension;
+        String key = prefix + "staging/missions/" + captured.getMissionId() + "/devices/"
+                + captured.getDeviceId() + "/" + captured.getId() + "/" + number + extension;
 
         MediaUploadAttempt attempt = new MediaUploadAttempt();
         attempt.setMedia(captured);

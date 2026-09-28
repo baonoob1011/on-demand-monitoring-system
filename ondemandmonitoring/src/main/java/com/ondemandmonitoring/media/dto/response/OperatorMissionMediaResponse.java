@@ -17,7 +17,7 @@ public class OperatorMissionMediaResponse {
 
     String mediaId;
     String missionId;
-    String droneCode;
+    String deviceId;
     String mediaType;
     String fileName;
     String contentType;

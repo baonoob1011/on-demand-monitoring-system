@@ -9,7 +9,5 @@ import java.util.List;
 @Repository
 public interface ControlHandoverRepository extends JpaRepository<ControlHandover, String> {
 
-    List<ControlHandover> findByDroneId(String droneId);
-
-    List<ControlHandover> findByOperatorId(String operatorId);
+    List<ControlHandover> findByStaffAssignmentStaffId(String staffId);
 }

@@ -18,7 +18,7 @@ public class PrepareMediaUploadRequest {
 
     @NotBlank
     @Size(max = 50)
-    String droneCode;
+    String deviceId;
 
     @NotBlank
     @Size(max = 100)

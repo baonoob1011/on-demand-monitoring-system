@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "Devices", description = "APIs for managing bound devices")
 @RestController
-@RequestMapping("/api/devices")
+@RequestMapping({"/api/devices", "/api/drones"})
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class DeviceController {

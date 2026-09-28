@@ -1,0 +1,27 @@
+package com.ondemandmonitoring.device.dto.request;
+
+import com.ondemandmonitoring.device.enums.DeviceStatus;
+import jakarta.validation.constraints.NotBlank;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class ResolveMaintenanceTicketRequest {
+
+    @NotBlank(message = "Resolution notes must not be blank")
+    private String resolutionNotes;
+
+    /**
+     * Target status for the device after resolution (e.g. AVAILABLE).
+     * Defaults to AVAILABLE if null.
+     */
+    private DeviceStatus newDeviceStatus;
+}
+

@@ -20,7 +20,7 @@ public interface MediaWorkflowMapper {
     @Mapping(target = "backendMediaId", source = "media.id")
     @Mapping(target = "localMediaId", source = "media.localMediaId")
     @Mapping(target = "missionId", source = "media.missionId")
-    @Mapping(target = "droneCode", source = "media.droneCode")
+    @Mapping(target = "deviceId", source = "media.deviceId")
     @Mapping(target = "mediaType", source = "media.type")
     @Mapping(target = "fileName", source = "media.originalFileName")
     @Mapping(target = "contentType", source = "media.contentType")

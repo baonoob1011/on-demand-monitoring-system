@@ -2,7 +2,7 @@ package com.ondemandmonitoring.mission.service;
 
 public interface IMissionAuthorizationService {
 
-    boolean isAssignedOperator(String missionId);
+    boolean isAssignedStaff(String missionId);
 
-    boolean isAssignedOperatorForPreflight(String preflightId);
+    boolean isAssignedStaffForPreflight(String preflightId);
 }

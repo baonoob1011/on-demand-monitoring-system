@@ -8,11 +8,9 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
-import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.planning.dto.AlgorithmPlanningResult;
@@ -37,7 +35,7 @@ class PlanningComparisonServiceTest {
 
     private final MissionRepository missionRepository = Mockito.mock(MissionRepository.class);
     private final MissionDroneAssignmentRepository assignmentRepository = Mockito.mock(MissionDroneAssignmentRepository.class);
-    private final DroneTelemetryRepository telemetryRepository = Mockito.mock(DroneTelemetryRepository.class);
+    private final DeviceTelemetryRepository telemetryRepository = Mockito.mock(DeviceTelemetryRepository.class);
     private final RoutePlanner direct = Mockito.mock(RoutePlanner.class);
     private final RoutePlanner shortest = Mockito.mock(RoutePlanner.class);
     private final RoutePlanner aware = Mockito.mock(RoutePlanner.class);
