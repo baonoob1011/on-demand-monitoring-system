@@ -43,7 +43,7 @@ public class UserSeedDataInitializer implements ApplicationRunner {
                     "00000000-0000-0000-0000-000000000003",
                     "Seed Device Operator",
                     RoleCode.DRONE_OPERATOR,
-                    "seed.device.operator@odms.local",
+                    "seed.drone.operator@odms.local",
                     "20000000-0000-0000-0000-000000000003",
                     "c9cab55c-0081-705a-a1e0-4358cd45d47e"
             ),
