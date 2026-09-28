@@ -78,13 +78,12 @@ public class PreDeviceCheckCompletionServiceImpl implements IPreDeviceCheckCompl
                     ErrorCode.INVALID_REQUEST,
                     "Latest persisted pre-device is not passed: " + run.getStatus());
         }
-        boolean hasUnverifiedItem = run.getItems().stream()
-                .anyMatch(item -> item.getStatus() != PreDeviceItemStatus.PASSED
-                        && item.getStatus() != PreDeviceItemStatus.FAILED);
-        if (hasUnverifiedItem) {
+        boolean hasNonPassingItem = run.getItems().stream()
+                .anyMatch(item -> item.getStatus() != PreDeviceItemStatus.PASSED);
+        if (hasNonPassingItem) {
             throw new ApiException(
                     ErrorCode.INVALID_REQUEST,
-                    "Latest persisted pre-device still has unchecked items.");
+                    "Every pre-device check item must pass before a flight token can be issued.");
         }
         return run;
     }
