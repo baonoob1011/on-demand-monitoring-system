@@ -17,7 +17,7 @@ public class CustomerMediaResponse {
 
     String mediaId;
     String missionId;
-    String deviceCode;
+    String deviceId;
     String mediaType;
     String fileName;
     String contentType;
