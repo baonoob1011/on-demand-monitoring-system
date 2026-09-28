@@ -31,6 +31,7 @@ from video.video_recorder import RecordingResult, VideoRecorder
 from battery_simulator import BatterySimulator, preflight_battery_check
 from media_uploader import BackendUrlResolver
 from media_review import LocalMediaLibrary
+from devicecheck_media_probe import verify_media_storage_probe
 from thermal_camera_gateway import ThermalCameraGateway
 
 def resolve_project_root() -> Path:
@@ -1238,75 +1239,17 @@ class PreflightPersistenceBridge:
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.access_token}"} if self.access_token else {}
 
-    def verify_media_upload_cycle(
-            self,
-            media_library: LocalMediaLibrary | None,
-            jpeg: bytes,
-    ) -> tuple[bool, str]:
+    def verify_media_upload_cycle(self, jpeg: bytes) -> tuple[bool, str]:
         if not self.base_url:
             return False, "Backend run was not created, cannot verify media upload"
-        if media_library is None or not media_library.mission_id or not media_library.device_id:
-            return False, "Media library is not bound to an assigned mission and device"
-
-        mission_id = media_library.mission_id
-        device_id = media_library.device_id
-        media_id: str | None = None
-        headers = self._headers()
-        try:
-            with httpx.Client(timeout=8.0) as client:
-                upload = client.post(
-                    f"{self.base_url}/api/missions/{mission_id}/images",
-                    headers=headers,
-                    params={
-                        "deviceId": device_id,
-                        "capturedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-                    },
-                    files={"image": ("pre-device-media-probe.jpg", jpeg, "image/jpeg")},
-                )
-                upload.raise_for_status()
-                payload = upload.json()
-                data = payload.get("data") if isinstance(payload, dict) else None
-                media_id = (
-                    str(data.get("id") or data.get("mediaId"))
-                    if isinstance(data, dict) and (data.get("id") or data.get("mediaId"))
-                    else None
-                )
-                if not media_id:
-                    return False, "Upload succeeded but backend did not return media id"
-
-                metadata = client.get(
-                    f"{self.base_url}/api/devices/{device_id}/media/{media_id}",
-                    headers=headers,
-                )
-                metadata.raise_for_status()
-
-                media_file = client.get(
-                    f"{self.base_url}/api/devices/{device_id}/media/{media_id}/file",
-                    headers=headers,
-                )
-                media_file.raise_for_status()
-                if not media_file.content:
-                    return False, "Uploaded media file could not be read back"
-
-                deleted = client.delete(
-                    f"{self.base_url}/api/devices/{device_id}/media/{media_id}",
-                    headers=headers,
-                )
-                deleted.raise_for_status()
-                media_id = None
-                return True, "Uploaded, read back, and deleted probe media successfully"
-        except Exception as exc:
-            return False, f"Real media upload/read/delete probe failed: {exc}"
-        finally:
-            if media_id:
-                try:
-                    httpx.delete(
-                        f"{self.base_url}/api/devices/{device_id}/media/{media_id}",
-                        headers=headers,
-                        timeout=3.0,
-                    )
-                except httpx.HTTPError:
-                    pass
+        if not self.run_id:
+            return False, "Pre-device check run is missing, cannot verify media upload"
+        return verify_media_storage_probe(
+            self.base_url,
+            self.run_id,
+            self.access_token,
+            jpeg,
+        )
 
     @staticmethod
     def _to_backend_status(status: str) -> str | None:
@@ -2772,10 +2715,9 @@ async def main() -> None:
         if media_probe_check_id != check_id:
             media_probe_check_id = check_id
             media_probe_status = "CHECKING"
-            media_probe_message = "Running real upload/read/delete media probe"
+            media_probe_message = "Running isolated media storage round-trip probe"
             if module_ok and backend_ok and control_api.preflight_persistence is not None:
                 media_ok, media_message = control_api.preflight_persistence.verify_media_upload_cycle(
-                    media_library,
                     MEDIA_PROBE_JPEG,
                 )
                 media_probe_status = "PASS" if media_ok else "FAIL"
