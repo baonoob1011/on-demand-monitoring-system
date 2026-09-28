@@ -20,14 +20,6 @@ import lombok.Setter;
 @Getter
 @Setter
 @Entity
-@Table(
-        name = "preflight_run_items",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uk_preflight_run_item_type",
-                columnNames = {"preflight_run_id", "check_type"}),
-        indexes = @Index(
-                name = "idx_preflight_run_item_run",
-                columnList = "preflight_run_id"))
 public class PersistedPreDeviceCheckItem extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

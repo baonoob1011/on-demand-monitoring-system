@@ -25,11 +25,6 @@ import lombok.Setter;
 @Getter
 @Setter
 @Entity
-@Table(
-        name = "post_device_check_runs",
-        indexes = @Index(
-                name = "idx_post_device_check_runs_mission_created",
-                columnList = "mission_id,created_at"))
 public class PersistedPostDeviceCheck extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

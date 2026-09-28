@@ -25,11 +25,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @Entity
-@Table(
-        name = "preflight_runs",
-        indexes = @Index(
-                name = "idx_preflight_runs_mission_created",
-                columnList = "mission_id,created_at"))
+
 public class PersistedPreDeviceCheck extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
