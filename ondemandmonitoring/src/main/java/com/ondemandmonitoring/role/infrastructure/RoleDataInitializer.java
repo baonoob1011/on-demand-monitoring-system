@@ -19,6 +19,7 @@ public class RoleDataInitializer implements ApplicationRunner {
 
     private static final Map<RoleCode, RoleDefinition> SYSTEM_ROLES = Map.of(
             RoleCode.CUSTOMER, new RoleDefinition("CUSTOMER", "CUSTOMER ACCOUNT"),
+            RoleCode.STAFF, new RoleDefinition("STAFF", "STAFF ACCOUNT"),
             RoleCode.DRONE_OPERATOR, new RoleDefinition("DRONE_OPERATOR", "DRONE OPERATION ACCOUNT"),
             RoleCode.SYSTEM_OPERATOR, new RoleDefinition("SYSTEM_OPERATOR", "SYSTEM OPERATION ACCOUNT"),
             RoleCode.ADMIN, new RoleDefinition("ADMIN", "SYSTEM ADMINISTRATOR ACCOUNT"));

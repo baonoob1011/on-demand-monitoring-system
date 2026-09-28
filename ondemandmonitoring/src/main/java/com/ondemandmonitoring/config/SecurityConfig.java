@@ -33,6 +33,7 @@ public class SecurityConfig {
 
     private static final Set<String> BUSINESS_ROLE_GROUPS = Set.of(
             RoleCode.CUSTOMER.name(),
+            RoleCode.STAFF.name(),
             RoleCode.DRONE_OPERATOR.name(),
             RoleCode.SYSTEM_OPERATOR.name(),
             RoleCode.ADMIN.name());

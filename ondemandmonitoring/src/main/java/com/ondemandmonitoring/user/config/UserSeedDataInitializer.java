@@ -33,9 +33,9 @@ public class UserSeedDataInitializer implements ApplicationRunner {
             ),
             new SeedUser(
                     "00000000-0000-0000-0000-000000000002",
-                    "Seed Drone Operator",
-                    RoleCode.DRONE_OPERATOR,
-                    "seed.drone.operator.2@odms.local",
+                    "Seed Staff",
+                    RoleCode.STAFF,
+                    "seed.staff@odms.local",
                     "20000000-0000-0000-0000-000000000002",
                     "e9eab58c-00a1-705d-69b7-c74a17074053"
             ),
