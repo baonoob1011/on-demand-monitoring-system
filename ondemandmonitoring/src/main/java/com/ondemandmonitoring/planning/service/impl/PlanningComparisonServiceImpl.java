@@ -37,8 +37,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class PlanningComparisonServiceImpl implements PlanningComparisonService {
 
-    private static final int EPSG_4326_SRID = 4326;
-
     private final MissionRepository missionRepository;
     private final MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
     private final DeviceConnectionRepository deviceConnectionRepository;
@@ -203,11 +201,6 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
             throw new ApiException(ErrorCode.INVALID_REQUEST,
                     "Mission order target point must contain finite coordinates.");
         }
-        if (point.getSRID() == EPSG_4326_SRID && looksLikeLongitudeLatitude(x, y)) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST,
-                    "Mission order target point is tagged as EPSG:4326 longitude/latitude; "
-                            + "a local Gazebo simulation XY target is required for route planning.");
-        }
         return new SimulationPoint(x, y);
     }
 
@@ -247,10 +240,6 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
                 .flatMap(deviceTelemetryRepository::findTopByDeviceConnectionIdOrderByRecordedAtDesc)
                 .map(DeviceTelemetry::getBatteryPercent)
                 .filter(this::isValidBatteryPercent);
-    }
-
-    private boolean looksLikeLongitudeLatitude(double x, double y) {
-        return x >= -180.0 && x <= 180.0 && y >= -90.0 && y <= 90.0;
     }
 
     private boolean finite(double value) {

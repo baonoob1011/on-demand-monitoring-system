@@ -39,7 +39,6 @@ import com.ondemandmonitoring.replanning.domain.ReplanningReason;
 public class MissionPlanningServiceImpl implements MissionPlanningService {
 
     static final int LOCAL_SIMULATION_SRID = 0;
-    static final int EPSG_4326_SRID = 4326;
 
     private final MissionRepository missionRepository;
     private final MissionPlanRepository missionPlanRepository;
@@ -396,18 +395,7 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
                     "Mission order target point must contain finite coordinates.");
         }
 
-        if (point.getSRID() == EPSG_4326_SRID && looksLikeLongitudeLatitude(targetX, targetY)) {
-            throw new ApiException(
-                    ErrorCode.INVALID_REQUEST,
-                    "Mission order target point is tagged as EPSG:4326 longitude/latitude; "
-                            + "a local Gazebo simulation XY target is required for route planning.");
-        }
-
         return new SimulationPoint(targetX, targetY);
-    }
-
-    private boolean looksLikeLongitudeLatitude(double x, double y) {
-        return x >= -180.0 && x <= 180.0 && y >= -90.0 && y <= 90.0;
     }
 
     private record PlanningContext(
