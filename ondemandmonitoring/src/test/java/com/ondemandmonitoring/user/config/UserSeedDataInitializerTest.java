@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.role.domain.Role;
@@ -39,11 +40,6 @@ class UserSeedDataInitializerTest {
 
     @Test
     void run_provisionsOnlyMissingCustomerProfile() throws Exception {
-        User customer = User.builder()
-                .email("seed.customer@odms.local")
-                .fullName("Seed Customer")
-                .build();
-        customer.setId("00000000-0000-0000-0000-000000000001");
         when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class))).thenReturn(0);
         when(roleRepository.findByCode(any())).thenAnswer(invocation -> Optional.of(
                 Role.builder()
@@ -52,16 +48,30 @@ class UserSeedDataInitializerTest {
                         .name(invocation.getArgument(0).toString())
                         .active(true)
                         .build()));
-        when(userRepository.findByEmailIgnoreCase("seed.customer@odms.local"))
-                .thenReturn(Optional.of(customer));
-        when(customerProfileRepository.existsById(customer.getId())).thenReturn(false);
+        when(userRepository.findByEmailIgnoreCase(anyString())).thenAnswer(invocation -> {
+            String email = invocation.getArgument(0);
+            User customer = User.builder()
+                    .email(email)
+                    .fullName("Seed Customer")
+                    .build();
+            customer.setId(email);
+            return Optional.of(customer);
+        });
+        when(customerProfileRepository.existsById(anyString())).thenReturn(false);
 
         new UserSeedDataInitializer(
                 roleRepository, jdbcTemplate, userRepository, customerProfileRepository).run(null);
 
         ArgumentCaptor<CustomerProfile> profileCaptor =
                 ArgumentCaptor.forClass(CustomerProfile.class);
-        verify(customerProfileRepository).save(profileCaptor.capture());
-        assertThat(profileCaptor.getValue().getUser()).isSameAs(customer);
+        verify(customerProfileRepository, times(4)).save(profileCaptor.capture());
+        assertThat(profileCaptor.getAllValues())
+                .extracting(profile -> profile.getUser().getEmail())
+                .containsExactly(
+                        "seed.customer@odms.local",
+                        "seed.customer.2@odms.local",
+                        "seed.customer.3@odms.local",
+                        "seed.customer.4@odms.local"
+                );
     }
 }
