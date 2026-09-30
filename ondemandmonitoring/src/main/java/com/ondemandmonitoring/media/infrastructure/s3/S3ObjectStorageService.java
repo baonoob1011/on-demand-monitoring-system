@@ -1,4 +1,6 @@
-package com.ondemandmonitoring.s3;
+package com.ondemandmonitoring.media.infrastructure.s3;
+
+import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 
 import java.io.InputStream;
 import java.time.Duration;
@@ -34,7 +36,7 @@ import java.util.Map;
 @Slf4j
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-public class S3ObjectStorageService {
+public class S3ObjectStorageService implements IMediaObjectStorage {
 
     private static final long PRESIGNED_URL_EXPIRES_SECONDS = 900;
 
@@ -42,6 +44,7 @@ public class S3ObjectStorageService {
     S3Presigner s3Presigner;
     AwsS3Properties awsS3Properties;
 
+    @Override
     public StoredObject put(
             String key,
             String contentType,
@@ -61,6 +64,7 @@ public class S3ObjectStorageService {
         return new StoredObject(bucket, key, "s3://" + bucket + "/" + key);
     }
 
+    @Override
     public StoredObjectStream open(String bucket, String key) {
         ResponseInputStream<GetObjectResponse> inputStream = s3Client.getObject(GetObjectRequest.builder()
                 .bucket(bucket)
@@ -70,6 +74,7 @@ public class S3ObjectStorageService {
         return new StoredObjectStream(inputStream, response.contentLength(), response.contentType());
     }
 
+    @Override
     public String createPresignedGetUrl(String bucket, String key) {
         GetObjectRequest getObjectRequest = GetObjectRequest.builder()
                 .bucket(bucket)
@@ -83,6 +88,7 @@ public class S3ObjectStorageService {
         return s3Presigner.presignGetObject(presignRequest).url().toString();
     }
 
+    @Override
     public PresignedUpload createPresignedPutUrl(String key, String contentType, long contentLength,
                                                  Map<String, String> metadata) {
         PutObjectRequest put = PutObjectRequest.builder()
@@ -94,11 +100,13 @@ public class S3ObjectStorageService {
         return new PresignedUpload(signed.url().toString(), signed.signedHeaders(), PRESIGNED_URL_EXPIRES_SECONDS);
     }
 
+    @Override
     public String createMultipartUpload(String key, String contentType, Map<String, String> metadata) {
         return s3Client.createMultipartUpload(CreateMultipartUploadRequest.builder()
                 .bucket(bucket()).key(key).contentType(contentType).metadata(metadata).build()).uploadId();
     }
 
+    @Override
     public PresignedUpload createPresignedPartUrl(String key, String uploadId, int partNumber) {
         UploadPartRequest part = UploadPartRequest.builder()
                 .bucket(bucket()).key(key).uploadId(uploadId).partNumber(partNumber).build();
@@ -108,6 +116,7 @@ public class S3ObjectStorageService {
         return new PresignedUpload(signed.url().toString(), signed.signedHeaders(), PRESIGNED_URL_EXPIRES_SECONDS);
     }
 
+    @Override
     public void completeMultipartUpload(String key, String uploadId, List<PartETag> parts) {
         List<CompletedPart> completed = parts.stream()
                 .map(part -> CompletedPart.builder().partNumber(part.partNumber()).eTag(part.eTag()).build())
@@ -117,22 +126,26 @@ public class S3ObjectStorageService {
                 .multipartUpload(CompletedMultipartUpload.builder().parts(completed).build()).build());
     }
 
+    @Override
     public void abortMultipartUpload(String key, String uploadId) {
         s3Client.abortMultipartUpload(AbortMultipartUploadRequest.builder()
                 .bucket(bucket()).key(key).uploadId(uploadId).build());
     }
 
+    @Override
     public StoredObjectInfo inspect(String bucket, String key) {
         var head = s3Client.headObject(HeadObjectRequest.builder().bucket(bucket).key(key).build());
         return new StoredObjectInfo(head.contentLength(), head.contentType(), head.metadata());
     }
 
+    @Override
     public void copy(String bucket, String sourceKey, String targetKey) {
         s3Client.copyObject(CopyObjectRequest.builder()
                 .sourceBucket(bucket).sourceKey(sourceKey)
                 .destinationBucket(bucket).destinationKey(targetKey).build());
     }
 
+    @Override
     public void deleteQuietly(String bucket, String key) {
         try {
             delete(bucket, key);
@@ -141,25 +154,25 @@ public class S3ObjectStorageService {
         }
     }
 
+    @Override
     public void delete(String bucket, String key) {
         s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
     }
 
+    @Override
     public String bucket() {
         return awsS3Properties.getBucket();
     }
 
+    @Override
+    public String prefix() {
+        String prefix = awsS3Properties.getPrefix();
+        return prefix == null ? "" : prefix.replaceAll("^/+|/+$", "");
+    }
+
+    @Override
     public long presignedUrlExpiresSeconds() {
         return PRESIGNED_URL_EXPIRES_SECONDS;
     }
 
-    public record StoredObject(String bucket, String key, String url) {}
-
-    public record PresignedUpload(String url, Map<String, List<String>> headers, long expiresInSeconds) {}
-
-    public record PartETag(int partNumber, String eTag) {}
-
-    public record StoredObjectInfo(Long contentLength, String contentType, Map<String, String> metadata) {}
-
-    public record StoredObjectStream(InputStream inputStream, Long contentLength, String contentType) {}
 }

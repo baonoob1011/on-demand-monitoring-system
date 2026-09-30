@@ -4,7 +4,7 @@ import com.ondemandmonitoring.media.domain.MediaUploadAttempt;
 import com.ondemandmonitoring.media.domain.UploadAttemptStatus;
 import com.ondemandmonitoring.media.repository.MediaUploadAttemptRepository;
 import com.ondemandmonitoring.media.service.impl.MediaUploadReconciliationServiceImpl;
-import com.ondemandmonitoring.s3.S3ObjectStorageService;
+import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Pageable;
 import software.amazon.awssdk.services.s3.model.S3Exception;
@@ -17,7 +17,7 @@ class MediaUploadReconciliationServiceTest {
     void validatesExistingObjectsWithoutSqsAndIsolatesFailures() {
         var attempts = mock(MediaUploadAttemptRepository.class);
         var validation = mock(IMediaValidationService.class);
-        var storage = mock(S3ObjectStorageService.class);
+        var storage = mock(IMediaObjectStorage.class);
         var missing = attempt("missing", "staging/missing");
         var ready = attempt("ready", "staging/ready");
         when(attempts.findByStatusOrderByUpdatedAtAsc(eq(UploadAttemptStatus.UPLOADED), any(Pageable.class)))

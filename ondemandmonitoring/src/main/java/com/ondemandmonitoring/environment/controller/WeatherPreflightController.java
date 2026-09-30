@@ -7,6 +7,11 @@ import com.ondemandmonitoring.environment.domain.MissionWeatherCheck;
 import com.ondemandmonitoring.environment.dto.request.WeatherPreflightCheckRequest;
 import com.ondemandmonitoring.environment.dto.response.WeatherPreflightCheckResponse;
 import com.ondemandmonitoring.environment.repository.MissionWeatherCheckRepository;
+import com.ondemandmonitoring.devicecheck.dto.request.PreDeviceCheckItemUpdateRequest;
+import com.ondemandmonitoring.devicecheck.dto.response.PersistedPreDeviceCheckResponse;
+import com.ondemandmonitoring.devicecheck.enums.PreDeviceCheckType;
+import com.ondemandmonitoring.devicecheck.enums.PreDeviceItemStatus;
+import com.ondemandmonitoring.devicecheck.service.IPersistedPreDeviceCheckService;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import io.swagger.v3.oas.annotations.Operation;
@@ -32,6 +37,7 @@ public class WeatherPreflightController {
 
     private final MissionRepository missionRepository;
     private final MissionWeatherCheckRepository weatherCheckRepository;
+    private final IPersistedPreDeviceCheckService preDeviceChecks;
 
     @Operation(summary = "Check weather before takeoff", description = "Returns a deterministic weather safety verdict for the current mission preflight flow")
     @PostMapping("/preflight-check")
@@ -106,6 +112,7 @@ public class WeatherPreflightController {
             saved.setAdvisories(String.join("\n", advisories));
             saved.setCheckedAt(checkedAt);
             response = toResponse(weatherCheckRepository.save(saved));
+            persistPreDeviceWeatherResult(request.missionId(), safeToFly, summary);
         }
 
         return ResponseEntity.ok(ApiResponse.ok("Weather preflight checked", response));
@@ -141,6 +148,18 @@ public class WeatherPreflightController {
                 check.getHumidityPercent(),
                 advisories,
                 check.getCheckedAt());
+    }
+
+    private void persistPreDeviceWeatherResult(String missionId, boolean safeToFly, String summary) {
+        PersistedPreDeviceCheckResponse current = preDeviceChecks.current(missionId);
+        if (current == null) {
+            return;
+        }
+
+        PreDeviceCheckItemUpdateRequest update = new PreDeviceCheckItemUpdateRequest();
+        update.setStatus(safeToFly ? PreDeviceItemStatus.PASSED : PreDeviceItemStatus.FAILED);
+        update.setMessage(summary);
+        preDeviceChecks.update(current.getId(), PreDeviceCheckType.WEATHER.code(), update);
     }
 
     private static double round1(double value) {

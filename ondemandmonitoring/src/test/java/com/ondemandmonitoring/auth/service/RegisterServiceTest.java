@@ -3,12 +3,13 @@ package com.ondemandmonitoring.auth.service;
 import com.ondemandmonitoring.auth.dto.request.RegisterRequest;
 import com.ondemandmonitoring.auth.dto.request.ResendOtpRequest;
 import com.ondemandmonitoring.auth.dto.request.VerifyOtpRequest;
-import com.ondemandmonitoring.auth.infrastructure.outbox.AuthOutboxService;
+import com.ondemandmonitoring.auth.port.out.AuthCompensationPort;
 import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
+import com.ondemandmonitoring.user.enumeration.IdentityProvider;
 import com.ondemandmonitoring.user.service.IUserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,15 +24,15 @@ import static org.mockito.Mockito.*;
 class RegisterServiceTest {
     private IUserService users;
     private IdentityProviderPort identityProvider;
-    private AuthOutboxService outbox;
+    private AuthCompensationPort compensationPort;
     private RegisterService service;
 
     @BeforeEach
     void setUp() {
         users = mock(IUserService.class);
         identityProvider = mock(IdentityProviderPort.class);
-        outbox = mock(AuthOutboxService.class);
-        service = new RegisterService(users, identityProvider, outbox);
+        compensationPort = mock(AuthCompensationPort.class);
+        service = new RegisterService(users, identityProvider, compensationPort);
     }
 
     @Test
@@ -63,6 +64,21 @@ class RegisterServiceTest {
     }
 
     @Test
+    void registerDirectsGoogleOnlyAccountToAuthenticatedLocalLinkFlow() {
+        RegisterRequest request = registerRequest("customer@example.com");
+        User googleUser = User.builder().build();
+        googleUser.setId("user-id");
+        when(users.findOptionalByEmail(request.getEmail())).thenReturn(Optional.of(googleUser));
+        when(users.hasIdentity("user-id", IdentityProvider.GOOGLE)).thenReturn(true);
+        when(users.hasIdentity("user-id", IdentityProvider.LOCAL)).thenReturn(false);
+
+        ApiException exception = assertThrows(ApiException.class, () -> service.register(request));
+
+        assertEquals(ErrorCode.LOCAL_IDENTITY_LINK_REQUIRED, exception.getErrorCode());
+        verifyNoInteractions(identityProvider);
+    }
+
+    @Test
     void registerSchedulesCleanupWhenDatabasePersistenceFails() {
         RegisterRequest request = registerRequest("customer@example.com");
         when(users.findOptionalByEmail(request.getEmail())).thenReturn(Optional.empty());
@@ -71,7 +87,7 @@ class RegisterServiceTest {
                 .thenThrow(new IllegalStateException("database unavailable"));
 
         assertThrows(IllegalStateException.class, () -> service.register(request));
-        verify(outbox).scheduleCognitoCleanup("cognito-sub", "cognito-sub");
+        verify(compensationPort).scheduleCognitoCleanup("cognito-sub", "cognito-sub");
     }
 
     @Test

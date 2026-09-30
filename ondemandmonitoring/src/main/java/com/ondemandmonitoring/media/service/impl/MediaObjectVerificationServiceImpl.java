@@ -2,7 +2,7 @@ package com.ondemandmonitoring.media.service.impl;
 
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.service.IMediaObjectVerificationService;
-import com.ondemandmonitoring.s3.S3ObjectStorageService;
+import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import java.io.InputStream;
 import java.io.IOException;
 import java.security.MessageDigest;
@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class MediaObjectVerificationServiceImpl implements IMediaObjectVerificationService {
-    S3ObjectStorageService storage;
+    IMediaObjectStorage storage;
 
     @Override
     public String verify(MediaAsset captured, String key) {

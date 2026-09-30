@@ -13,6 +13,7 @@ DRONE_ENV="${DRONE_ENV:-$HOME/drone-env}"
 mkdir -p "$DRONE_WORKDIR"
 cd "$DRONE_WORKDIR" || exit 1
 cp "$REPO_CONTROLLER/flight_controller.py" flight_controller.py
+cp "$REPO_CONTROLLER/devicecheck_media_probe.py" devicecheck_media_probe.py
 cp "$REPO_CONTROLLER/media_uploader.py" media_uploader.py
 cp "$REPO_CONTROLLER/media_review.py" media_review.py
 cp "$REPO_CONTROLLER/battery_simulator.py" battery_simulator.py

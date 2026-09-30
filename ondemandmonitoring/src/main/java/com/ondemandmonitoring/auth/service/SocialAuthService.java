@@ -8,7 +8,7 @@ import com.ondemandmonitoring.auth.port.out.SocialAuthenticationResult;
 import com.ondemandmonitoring.auth.port.out.SocialIdentityProviderPort;
 import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
 import com.ondemandmonitoring.auth.port.out.AuthenticationTokens;
-import com.ondemandmonitoring.auth.infrastructure.outbox.AuthOutboxService;
+import com.ondemandmonitoring.auth.port.out.AuthCompensationPort;
 import com.ondemandmonitoring.auth.mapper.AuthenticatedUserMapper;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
@@ -24,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.CognitoIdentityProviderException;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.InvalidPasswordException;
 
 import java.util.Locale;
 
@@ -35,7 +36,7 @@ public class SocialAuthService {
 
     SocialIdentityProviderPort identityProvider;
     IdentityProviderPort cognitoUserDirectory;
-    AuthOutboxService outboxService;
+    AuthCompensationPort compensationPort;
     IUserService userService;
     RefreshTokenCookieService refreshTokenCookieService;
     AuthenticatedUserMapper authenticatedUserMapper;
@@ -82,7 +83,7 @@ public class SocialAuthService {
             log.error("Unable to synchronize social account. email={}, cognitoUsername={}, subject={}",
                     email, identity.username(), identity.subject(), exception);
             if (accountCreated) {
-                outboxService.scheduleCognitoCleanup(identity.username(), identity.subject());
+                compensationPort.scheduleCognitoCleanup(identity.username(), identity.subject());
             }
             throw new ApiException(ErrorCode.AUTH_PROVIDER_ERROR, "Unable to synchronize account role");
         }
@@ -141,7 +142,6 @@ public class SocialAuthService {
         }
     }
 
-    @Transactional
     public void linkLocalIdentity(String cognitoSub, String cognitoUsername, String password) {
         User user = userService.findByCognitoSub(cognitoSub);
         if (userService.hasIdentity(user.getId(), IdentityProvider.LOCAL)) {
@@ -149,8 +149,34 @@ public class SocialAuthService {
                     "A local login is already linked to this account");
         }
 
-        cognitoUserDirectory.setPermanentPassword(cognitoUsername, password);
         userService.linkLocalIdentity(user, cognitoUsername, cognitoSub);
+        try {
+            cognitoUserDirectory.setPermanentPassword(cognitoUsername, password);
+        } catch (RuntimeException exception) {
+            compensateLocalIdentityLink(user, exception);
+            throw mapLocalIdentityProviderFailure(exception);
+        }
+    }
+
+    private void compensateLocalIdentityLink(User user, RuntimeException originalException) {
+        try {
+            userService.unlinkIdentity(user, IdentityProvider.LOCAL);
+        } catch (RuntimeException compensationException) {
+            originalException.addSuppressed(compensationException);
+            log.error("Unable to compensate LOCAL identity link for user {}",
+                    user.getId(), compensationException);
+        }
+    }
+
+    private ApiException mapLocalIdentityProviderFailure(RuntimeException exception) {
+        if (exception instanceof InvalidPasswordException) {
+            return new ApiException(ErrorCode.PASSWORD_POLICY_VIOLATED);
+        }
+        if (exception instanceof ApiException apiException) {
+            return apiException;
+        }
+        return new ApiException(ErrorCode.AUTH_PROVIDER_ERROR,
+                "Unable to enable local login for this account");
     }
 
     private User syncExistingSocialIdentity(User user, SocialAuthenticationResult identity) {

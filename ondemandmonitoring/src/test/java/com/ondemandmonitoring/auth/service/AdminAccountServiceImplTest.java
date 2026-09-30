@@ -1,13 +1,14 @@
 package com.ondemandmonitoring.auth.service;
 
 import com.ondemandmonitoring.auth.dto.request.CreateManagedAccountRequest;
-import com.ondemandmonitoring.auth.infrastructure.outbox.AuthOutboxService;
+import com.ondemandmonitoring.auth.port.out.AuthCompensationPort;
 import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
 import com.ondemandmonitoring.auth.port.out.ManagedIdentity;
 import com.ondemandmonitoring.auth.service.impl.AdminAccountServiceImpl;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.IUserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,15 +22,15 @@ import static org.mockito.Mockito.*;
 class AdminAccountServiceImplTest {
     private IUserService users;
     private IdentityProviderPort identityProvider;
-    private AuthOutboxService outbox;
+    private AuthCompensationPort compensationPort;
     private AdminAccountServiceImpl service;
 
     @BeforeEach
     void setUp() {
         users = mock(IUserService.class);
         identityProvider = mock(IdentityProviderPort.class);
-        outbox = mock(AuthOutboxService.class);
-        service = new AdminAccountServiceImpl(users, identityProvider, outbox);
+        compensationPort = mock(AuthCompensationPort.class);
+        service = new AdminAccountServiceImpl(users, identityProvider, compensationPort);
     }
 
     @Test
@@ -58,6 +59,18 @@ class AdminAccountServiceImplTest {
     }
 
     @Test
+    void rejectsDuplicateEmailBeforeCreatingCognitoAccount() {
+        CreateManagedAccountRequest request = request(RoleCode.STAFF);
+        when(users.findOptionalByEmail("operator@example.com"))
+                .thenReturn(Optional.of(User.builder().build()));
+
+        ApiException exception = assertThrows(ApiException.class, () -> service.create(request));
+
+        assertEquals(ErrorCode.EMAIL_ALREADY_EXISTS, exception.getErrorCode());
+        verifyNoInteractions(identityProvider);
+    }
+
+    @Test
     void schedulesCleanupWhenManagedUserPersistenceFails() {
         CreateManagedAccountRequest request = request(RoleCode.STAFF);
         when(users.findOptionalByEmail(anyString())).thenReturn(Optional.empty());
@@ -66,7 +79,7 @@ class AdminAccountServiceImplTest {
                 .thenThrow(new IllegalStateException("database unavailable"));
 
         assertThrows(IllegalStateException.class, () -> service.create(request));
-        verify(outbox).scheduleCognitoCleanup("uuid-user", "sub");
+        verify(compensationPort).scheduleCognitoCleanup("uuid-user", "sub");
     }
 
     private CreateManagedAccountRequest request(RoleCode role) {

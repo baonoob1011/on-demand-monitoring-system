@@ -13,4 +13,8 @@ public interface DeviceConnectionRepository extends JpaRepository<DeviceConnecti
     List<DeviceConnection> findByMissionId(String missionId);
 
     Optional<DeviceConnection> findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(String missionId, String connectionStatus);
+
+    Optional<DeviceConnection> findFirstByDeviceAssignmentDeviceIdAndConnectionStatusAndTelemetryActiveTrueOrderByConnectedAtDesc(
+            String deviceId,
+            String connectionStatus);
 }

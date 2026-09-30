@@ -93,6 +93,7 @@ class DeviceConnectionServiceTest {
         when(missionRepository.findById(missionId)).thenReturn(Optional.of(mission));
         when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)).thenReturn(Optional.of(mda));
         when(missionStaffAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)).thenReturn(Optional.of(msa));
+        when(deviceConnectionRepository.save(any(DeviceConnection.class))).thenAnswer(inv -> inv.getArgument(0));
         when(missionRepository.save(any(Mission.class))).thenAnswer(inv -> inv.getArgument(0));
 
         MissionResponse response = deviceConnectionService.connectGcs(missionId);

@@ -18,7 +18,7 @@ import com.ondemandmonitoring.media.repository.MediaNotificationOutboxRepository
 import com.ondemandmonitoring.media.repository.MediaUploadAttemptRepository;
 import com.ondemandmonitoring.media.repository.StorageEventInboxRepository;
 import com.ondemandmonitoring.media.service.impl.MediaValidationServiceImpl;
-import com.ondemandmonitoring.s3.S3ObjectStorageService;
+import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import java.io.ByteArrayInputStream;
 import java.security.MessageDigest;
 import java.util.HexFormat;
@@ -41,7 +41,7 @@ class MediaValidationServiceImplTest {
     @Mock IMediaAuditService auditService;
     @org.mockito.Spy com.ondemandmonitoring.media.policy.MediaUploadPolicy policy;
     @Mock MediaNotificationOutboxRepository outbox;
-    @Mock S3ObjectStorageService storage;
+    @Mock IMediaObjectStorage storage;
     MediaValidationServiceImpl service;
 
     @org.junit.jupiter.api.BeforeEach
@@ -70,7 +70,7 @@ class MediaValidationServiceImplTest {
         when(attempts.findByStorageKeyForUpdate(key)).thenReturn(Optional.of(attempt));
         when(attempts.findFirstByMediaIdOrderByAttemptNumberDesc(asset.getId())).thenReturn(Optional.of(attempt));
         when(storage.inspect("media-bucket", key)).thenReturn(
-                new S3ObjectStorageService.StoredObjectInfo(9L, "image/jpeg", Map.of()));
+                new IMediaObjectStorage.StoredObjectInfo(9L, "image/jpeg", Map.of()));
         service.processObjectCreated("media-bucket", key, "manual-event");
         assertThat(asset.getMediaStatus()).isEqualTo(MediaStatus.MANUAL_UPLOAD_REQUIRED);
         assertThat(attempt.getStatus()).isEqualTo(UploadAttemptStatus.FAILED);
@@ -110,11 +110,11 @@ class MediaValidationServiceImplTest {
         when(attempts.findFirstByMediaIdOrderByAttemptNumberDesc("media-1"))
                 .thenReturn(Optional.of(attempt));
         when(storage.inspect(bucket, stagingKey)).thenReturn(
-                new S3ObjectStorageService.StoredObjectInfo(
+                new IMediaObjectStorage.StoredObjectInfo(
                         (long) image.length, "image/jpeg",
                         Map.of("media-id", "media-1", "sha256", checksum)));
         when(storage.open(bucket, stagingKey)).thenReturn(
-                new S3ObjectStorageService.StoredObjectStream(
+                new IMediaObjectStorage.StoredObjectStream(
                         new ByteArrayInputStream(image), (long) image.length, "image/jpeg"));
 
         service.processObjectCreated(bucket, stagingKey, "event-1");

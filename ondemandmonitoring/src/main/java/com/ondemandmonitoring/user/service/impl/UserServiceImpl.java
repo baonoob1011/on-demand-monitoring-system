@@ -16,6 +16,7 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -74,13 +75,18 @@ public class UserServiceImpl implements IUserService {
         }
 
         Role roleEntity = roleService.getActiveRole(role);
-        User user = userRepository.save(User.builder()
-                .email(normalizedEmail)
-                .fullName(fullName.trim())
-                .role(roleEntity)
-                .emailVerified(emailVerified)
-                .isActive(true)
-                .build());
+        User user;
+        try {
+            user = userRepository.saveAndFlush(User.builder()
+                    .email(normalizedEmail)
+                    .fullName(fullName.trim())
+                    .role(roleEntity)
+                    .emailVerified(emailVerified)
+                    .isActive(true)
+                    .build());
+        } catch (DataIntegrityViolationException exception) {
+            throw new ApiException(ErrorCode.EMAIL_ALREADY_EXISTS);
+        }
         userIdentityService.create(user, provider, cognitoUsername, cognitoSub);
         provisionCustomerProfile(user, role);
         return user;
@@ -158,6 +164,12 @@ public class UserServiceImpl implements IUserService {
     @Transactional
     public void linkLocalIdentity(User user, String cognitoUsername, String cognitoSub) {
         userIdentityService.link(user, IdentityProvider.LOCAL, cognitoUsername, cognitoSub);
+    }
+
+    @Override
+    @Transactional
+    public void unlinkIdentity(User user, IdentityProvider provider) {
+        userIdentityService.unlink(user, provider);
     }
 
     private String normalizeEmail(String email) {

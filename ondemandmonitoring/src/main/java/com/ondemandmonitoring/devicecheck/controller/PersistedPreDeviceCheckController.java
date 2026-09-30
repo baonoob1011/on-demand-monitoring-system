@@ -24,7 +24,7 @@ public class PersistedPreDeviceCheckController {
     private final IPersistedPreDeviceCheckService service;
 
     @PostMapping("/api/missions/{missionId}/pre-device-checks")
-    @PreAuthorize("hasRole('DRONE_OPERATOR') and @missionAuthorizationService.isAssignedOperator(#missionId)")
+    @PreAuthorize("hasRole('DRONE_OPERATOR') and @missionAuthorizationService.isAssignedStaff(#missionId)")
     public ResponseEntity<ApiResponse<PersistedPreDeviceCheckResponse>> start(
             @PathVariable String missionId) {
         return ResponseEntity
@@ -33,14 +33,14 @@ public class PersistedPreDeviceCheckController {
     }
 
     @GetMapping("/api/missions/{missionId}/pre-device-checks")
-    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedOperator(#missionId)")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedStaff(#missionId)")
     public ApiResponse<List<PersistedPreDeviceCheckResponse>> history(
             @PathVariable String missionId) {
         return ApiResponse.ok(service.history(missionId));
     }
 
     @GetMapping("/api/missions/{missionId}/pre-device-checks/current")
-    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedOperator(#missionId)")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedStaff(#missionId)")
     public ApiResponse<PersistedPreDeviceCheckResponse> current(
             @PathVariable String missionId) {
         return ApiResponse.ok(service.current(missionId));

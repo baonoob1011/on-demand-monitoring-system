@@ -2653,6 +2653,7 @@ async def main() -> None:
     media_probe_check_id = None
     media_probe_status = "PENDING"
     media_probe_message = "Media upload probe has not run yet"
+    media_probe_lock = threading.Lock()
     current_armed = False
     current_in_air = False
     current_health = None
@@ -2712,19 +2713,22 @@ async def main() -> None:
         ) if current_health is not None else False
         module_ok = LIDAR_IMPORT_ERROR is None and Node is not None and GzImage is not None
         backend_ok, backend_target = backend_urls.reachable()
-        if media_probe_check_id != check_id:
-            media_probe_check_id = check_id
-            media_probe_status = "CHECKING"
-            media_probe_message = "Running isolated media storage round-trip probe"
-            if module_ok and backend_ok and control_api.preflight_persistence is not None:
-                media_ok, media_message = control_api.preflight_persistence.verify_media_upload_cycle(
-                    MEDIA_PROBE_JPEG,
-                )
-                media_probe_status = "PASS" if media_ok else "FAIL"
-                media_probe_message = media_message
-            else:
-                media_probe_status = "FAIL"
-                media_probe_message = "Media probe needs loaded modules and reachable backend"
+        with media_probe_lock:
+            if media_probe_check_id != check_id:
+                media_probe_check_id = check_id
+                media_probe_status = "CHECKING"
+                media_probe_message = "Running isolated media storage round-trip probe"
+                if module_ok and backend_ok and control_api.preflight_persistence is not None:
+                    media_ok, media_message = control_api.preflight_persistence.verify_media_upload_cycle(
+                        MEDIA_PROBE_JPEG,
+                    )
+                    media_probe_status = "PASS" if media_ok else "FAIL"
+                    media_probe_message = media_message
+                else:
+                    media_probe_status = "FAIL"
+                    media_probe_message = "Media probe needs loaded modules and reachable backend"
+            media_probe_status_snapshot = media_probe_status
+            media_probe_message_snapshot = media_probe_message
 
         if current_px4_battery_percent is not None and fresh(px4_battery_age_s, 10.0):
             battery_ready_status, battery_ready_message = preflight_battery_check(current_px4_battery_percent)
@@ -2807,8 +2811,8 @@ async def main() -> None:
             check_item(
                 "MEDIA",
                 "Media Upload",
-                media_probe_status,
-                media_probe_message,
+                media_probe_status_snapshot,
+                media_probe_message_snapshot,
                 False,
             ),
             check_item(

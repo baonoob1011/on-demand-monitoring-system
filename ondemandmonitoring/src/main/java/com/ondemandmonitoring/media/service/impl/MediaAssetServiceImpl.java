@@ -7,10 +7,9 @@ import com.ondemandmonitoring.device.service.IDeviceService;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.IMediaAssetService;
-import com.ondemandmonitoring.s3.AwsS3Properties;
-import com.ondemandmonitoring.s3.S3ObjectStorageService;
-import com.ondemandmonitoring.s3.S3ObjectStorageService.StoredObject;
-import com.ondemandmonitoring.s3.S3ObjectStorageService.StoredObjectStream;
+import com.ondemandmonitoring.media.service.IMediaObjectStorage;
+import com.ondemandmonitoring.media.service.IMediaObjectStorage.StoredObject;
+import com.ondemandmonitoring.media.service.IMediaObjectStorage.StoredObjectStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -42,8 +41,7 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
     static String STORAGE_PROVIDER_LOCAL = "LOCAL";
     static Path LOCAL_IMAGE_DIR = Path.of("uploads", "device-images");
 
-    S3ObjectStorageService s3ObjectStorageService;
-    AwsS3Properties awsS3Properties;
+    IMediaObjectStorage objectStorage;
     Environment environment;
     IDeviceService deviceService;
     MediaAssetRepository mediaAssetRepository;
@@ -85,7 +83,7 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
                     mediaType);
         }
 
-        String bucket = s3ObjectStorageService.bucket();
+        String bucket = objectStorage.bucket();
         if (bucket == null || bucket.isBlank()) {
             log.warn("AWS S3 bucket is not configured; storing image locally");
             return saveLocal(
@@ -106,7 +104,7 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
         StoredObject storedObject;
 
         try {
-            storedObject = s3ObjectStorageService.put(
+            storedObject = objectStorage.put(
                     key,
                     contentType,
                     file.getSize(),
@@ -212,7 +210,7 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
         }
 
         try {
-            StoredObjectStream stream = s3ObjectStorageService
+            StoredObjectStream stream = objectStorage
                     .open(image.getS3Bucket(), image.getS3Key());
             return new MediaContent(
                     stream.inputStream(),
@@ -235,12 +233,12 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
             return image.getS3Url();
         }
 
-        return s3ObjectStorageService.createPresignedGetUrl(image.getS3Bucket(), image.getS3Key());
+        return objectStorage.createPresignedGetUrl(image.getS3Bucket(), image.getS3Key());
     }
 
     @Override
     public long presignedUrlExpiresSeconds() {
-        return s3ObjectStorageService.presignedUrlExpiresSeconds();
+        return objectStorage.presignedUrlExpiresSeconds();
     }
 
     private String validate(MultipartFile file, String requestedMediaType) {
@@ -266,7 +264,7 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
     }
 
     private String buildS3Key(String missionId, String deviceId, String mediaType) {
-        String prefix = awsS3Properties.getPrefix();
+        String prefix = objectStorage.prefix();
         String normalizedPrefix = prefix == null ? "" : prefix.strip().replaceAll("^/+|/+$", "");
         String timestamp = Instant.now().toString().replaceAll("[^0-9A-Za-z]", "");
         boolean video = MEDIA_TYPE_VIDEO.equals(mediaType);
@@ -302,7 +300,7 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
     }
 
     private void cleanupUploadedObject(String bucket, String key) {
-        s3ObjectStorageService.deleteQuietly(bucket, key);
+        objectStorage.deleteQuietly(bucket, key);
     }
 
     private void deleteStoredObject(MediaAsset mediaAsset) {
@@ -316,7 +314,7 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
         }
 
         try {
-            s3ObjectStorageService.delete(mediaAsset.getS3Bucket(), mediaAsset.getS3Key());
+            objectStorage.delete(mediaAsset.getS3Bucket(), mediaAsset.getS3Key());
         } catch (RuntimeException exception) {
             log.error("Cannot delete media from S3. bucket={}, key={}",
                     mediaAsset.getS3Bucket(),

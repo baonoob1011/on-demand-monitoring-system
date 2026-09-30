@@ -65,7 +65,7 @@ public class MissionReplanningMonitor {
         }
 
         List<MissionDeviceAssignment> assignments = missionDeviceAssignmentRepository
-                .findCurrentByDeviceCodeAndMissionStatusIn(
+                .findCurrentByDeviceIdAndMissionStatusIn(
                         event.deviceId(),
                         ACTIVE_STATUSES);
         if (assignments.isEmpty()) {

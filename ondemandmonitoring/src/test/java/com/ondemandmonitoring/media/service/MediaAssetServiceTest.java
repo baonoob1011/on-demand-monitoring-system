@@ -13,8 +13,6 @@ import com.ondemandmonitoring.device.service.IDeviceService;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.impl.MediaAssetServiceImpl;
-import com.ondemandmonitoring.s3.AwsS3Properties;
-import com.ondemandmonitoring.s3.S3ObjectStorageService;
 import java.io.InputStream;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.env.Environment;
@@ -25,8 +23,7 @@ class MediaAssetServiceTest {
     @Test
     void upload_rejectsMissingFile() {
         MediaAssetServiceImpl service = new MediaAssetServiceImpl(
-                mock(S3ObjectStorageService.class),
-                new AwsS3Properties(),
+                mock(IMediaObjectStorage.class),
                 mock(Environment.class),
                 mock(IDeviceService.class),
                 mock(MediaAssetRepository.class));
@@ -39,8 +36,7 @@ class MediaAssetServiceTest {
     @Test
     void upload_rejectsUnsupportedContentType() {
         MediaAssetServiceImpl service = new MediaAssetServiceImpl(
-                mock(S3ObjectStorageService.class),
-                new AwsS3Properties(),
+                mock(IMediaObjectStorage.class),
                 mock(Environment.class),
                 mock(IDeviceService.class),
                 mock(MediaAssetRepository.class));
@@ -55,8 +51,7 @@ class MediaAssetServiceTest {
     @Test
     void upload_rejectsMismatchedVideoMediaType() {
         MediaAssetServiceImpl service = new MediaAssetServiceImpl(
-                mock(S3ObjectStorageService.class),
-                new AwsS3Properties(),
+                mock(IMediaObjectStorage.class),
                 mock(Environment.class),
                 mock(IDeviceService.class),
                 mock(MediaAssetRepository.class));
@@ -80,8 +75,7 @@ class MediaAssetServiceTest {
         when(mediaAssetRepository.save(any(MediaAsset.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         MediaAssetServiceImpl service = new MediaAssetServiceImpl(
-                mock(S3ObjectStorageService.class),
-                new AwsS3Properties(),
+                mock(IMediaObjectStorage.class),
                 environment,
                 deviceService,
                 mediaAssetRepository);
@@ -100,24 +94,21 @@ class MediaAssetServiceTest {
         Environment environment = mock(Environment.class);
         IDeviceService deviceService = mock(IDeviceService.class);
         MediaAssetRepository mediaAssetRepository = mock(MediaAssetRepository.class);
-        S3ObjectStorageService s3ObjectStorageService = mock(S3ObjectStorageService.class);
-        AwsS3Properties properties = new AwsS3Properties();
-        properties.setBucket("bucket");
+        IMediaObjectStorage objectStorage = mock(IMediaObjectStorage.class);
         Device device = new Device();
         device.setDeviceCode("DEVICE-01");
         when(environment.getProperty("device_IMAGE_STORAGE", "local")).thenReturn("s3");
         when(deviceService.getEntityById("DEVICE-01")).thenReturn(device);
-        when(s3ObjectStorageService.bucket()).thenReturn("bucket");
-        when(s3ObjectStorageService.put(any(), any(), eq(8L), any(InputStream.class), any()))
-                .thenAnswer(invocation -> new S3ObjectStorageService.StoredObject(
+        when(objectStorage.bucket()).thenReturn("bucket");
+        when(objectStorage.put(any(), any(), eq(8L), any(InputStream.class), any()))
+                .thenAnswer(invocation -> new IMediaObjectStorage.StoredObject(
                         "bucket",
                         invocation.getArgument(0),
                         "s3://bucket/" + invocation.getArgument(0)));
         when(mediaAssetRepository.save(any(MediaAsset.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         MediaAssetServiceImpl service = new MediaAssetServiceImpl(
-                s3ObjectStorageService,
-                properties,
+                objectStorage,
                 environment,
                 deviceService,
                 mediaAssetRepository);

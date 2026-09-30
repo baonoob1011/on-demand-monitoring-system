@@ -15,8 +15,7 @@ import com.ondemandmonitoring.media.repository.*;
 import com.ondemandmonitoring.media.service.IMediaUploadService;
 import com.ondemandmonitoring.mission.dto.response.MissionMediaContext;
 import com.ondemandmonitoring.mission.service.IMissionMediaAccessService;
-import com.ondemandmonitoring.s3.AwsS3Properties;
-import com.ondemandmonitoring.s3.S3ObjectStorageService;
+import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.time.Instant;
 import java.util.*;
@@ -38,8 +37,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     private final MediaUploadAttemptRepository attempts;
     private final ManualUploadTaskRepository manualTasks;
     private final MediaAuditLogRepository auditLogs;
-    private final S3ObjectStorageService storage;
-    private final AwsS3Properties s3Properties;
+    private final IMediaObjectStorage storage;
     private final AuthenticatedUserResolver currentUser;
 
     @Value("${app.media.max-image-bytes:26214400}")
@@ -278,7 +276,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
         var completed = parts
                 .stream()
                 .sorted(Comparator.comparingInt(CompleteMultipartRequest.Part::getPartNumber))
-                .map(part -> new S3ObjectStorageService.PartETag(part.getPartNumber(),
+                .map(part -> new IMediaObjectStorage.PartETag(part.getPartNumber(),
                         part.getETag()))
                 .toList();
         storage.completeMultipartUpload(
@@ -320,8 +318,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
             default -> ".jpg";
         };
 
-        String prefix = s3Properties.getPrefix() == null ? ""
-                : s3Properties.getPrefix().replaceAll("^/+|/+$", "") + "/";
+        String prefix = storage.prefix().isBlank() ? "" : storage.prefix() + "/";
 
         String key = prefix + "staging/missions/" + captured.getMissionId() + "/devices/"
                 + captured.getDeviceId() + "/" + captured.getId() + "/" + number + extension;

@@ -12,7 +12,7 @@ import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.repository.MediaNotificationOutboxRepository;
 import com.ondemandmonitoring.media.service.ICustomerMediaService;
 import com.ondemandmonitoring.mission.service.IMissionMediaAccessService;
-import com.ondemandmonitoring.s3.S3ObjectStorageService;
+import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import java.util.List;
 import com.ondemandmonitoring.common.api.PageResponse;
 import org.springframework.data.domain.PageRequest;
@@ -32,7 +32,7 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
     IMissionMediaAccessService missionAccess;
     MediaAssetRepository media;
     MediaNotificationOutboxRepository notifications;
-    S3ObjectStorageService storage;
+    IMediaObjectStorage storage;
     MediaWorkflowMapper mapper;
 
     @Override

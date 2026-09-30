@@ -16,7 +16,6 @@ import com.ondemandmonitoring.mission.domain.*;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.*;
 import com.ondemandmonitoring.mission.service.impl.MissionMediaAccessServiceImpl;
-import com.ondemandmonitoring.s3.*;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.time.Instant;
@@ -40,13 +39,12 @@ class MediaUploadWorkflowTest {
     private final MediaUploadAttemptRepository attempts = mock(MediaUploadAttemptRepository.class);
     private final ManualUploadTaskRepository manualTasks = mock(ManualUploadTaskRepository.class);
     private final MediaAuditLogRepository audit = mock(MediaAuditLogRepository.class);
-    private final S3ObjectStorageService storage = mock(S3ObjectStorageService.class);
+    private final IMediaObjectStorage storage = mock(IMediaObjectStorage.class);
     private final AuthenticatedUserResolver userResolver = mock(AuthenticatedUserResolver.class);
-    private final AwsS3Properties s3 = new AwsS3Properties();
     private final MissionMediaAccessServiceImpl missionAccess = new MissionMediaAccessServiceImpl(
             missions, deviceAssignments, staffAssignments, userResolver);
     private final MediaUploadServiceImpl service = new MediaUploadServiceImpl(missionAccess, devices,
-            media, attempts, manualTasks, audit, storage, s3, userResolver);
+            media, attempts, manualTasks, audit, storage, userResolver);
 
     @BeforeEach
     void setUp() {
@@ -76,6 +74,7 @@ class MediaUploadWorkflowTest {
         when(deviceAssignments.findByMissionIdAndIsCurrentTrue("mission-id"))
                 .thenReturn(Optional.of(assignment));
         when(storage.bucket()).thenReturn("test-bucket");
+        when(storage.prefix()).thenReturn("");
     }
 
     @AfterEach
@@ -111,7 +110,7 @@ class MediaUploadWorkflowTest {
         when(attempts.findFirstByMediaIdOrderByAttemptNumberDesc("media-id"))
                 .thenReturn(Optional.of(attempt));
         when(storage.createPresignedPutUrl(any(), any(), anyLong(), any()))
-                .thenReturn(new S3ObjectStorageService.PresignedUpload("https://s3.example/upload", Map.of(), 900));
+                .thenReturn(new IMediaObjectStorage.PresignedUpload("https://s3.example/upload", Map.of(), 900));
 
         var result = service.prepare("mission-id", request);
 

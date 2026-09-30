@@ -21,6 +21,9 @@ public enum ErrorCode {
     RESOURCE_ALREADY_EXISTS("Dữ liệu đã tồn tại", HttpStatus.CONFLICT),
     METHOD_NOT_ALLOWED("Phương thức HTTP không được hỗ trợ", HttpStatus.METHOD_NOT_ALLOWED),
     EMAIL_ALREADY_EXISTS("Email đã được đăng ký", HttpStatus.CONFLICT),
+    LOCAL_IDENTITY_LINK_REQUIRED(
+            "Email đã đăng ký bằng Google. Hãy đăng nhập bằng Google để thiết lập mật khẩu đăng nhập local",
+            HttpStatus.CONFLICT),
     USER_NOT_FOUND("Không tìm thấy người dùng", HttpStatus.NOT_FOUND),
     INVALID_CREDENTIALS("Email hoặc mật khẩu không đúng", HttpStatus.UNAUTHORIZED),
     USER_NOT_CONFIRMED("Tài khoản chưa được xác thực email", HttpStatus.FORBIDDEN),

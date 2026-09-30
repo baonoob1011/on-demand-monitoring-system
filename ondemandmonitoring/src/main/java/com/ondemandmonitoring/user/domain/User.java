@@ -4,6 +4,7 @@ import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.role.domain.Role;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.ColumnTransformer;
 import java.time.OffsetDateTime;
 
 @Entity
@@ -23,7 +24,8 @@ public class User extends BaseEntity {
     @JoinColumn(name = "role_id", nullable = false)
     private Role role;
 
-    @Column(name = "email", length = 150)
+    @Column(name = "email", nullable = false, length = 150)
+    @ColumnTransformer(write = "lower(trim(?))")
     private String email;
 
     @Column(name = "email_verified", nullable = false)

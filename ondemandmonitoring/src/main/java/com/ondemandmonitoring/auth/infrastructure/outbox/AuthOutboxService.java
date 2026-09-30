@@ -1,5 +1,6 @@
 package com.ondemandmonitoring.auth.infrastructure.outbox;
 
+import com.ondemandmonitoring.auth.port.out.AuthCompensationPort;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -15,15 +16,17 @@ import java.util.Optional;
 @Service
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-public class AuthOutboxService {
+public class AuthOutboxService implements AuthCompensationPort {
 
     AuthOutboxRepository repository;
 
+    @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void scheduleCognitoCleanup(String username, String cognitoSub) {
         repository.save(AuthOutboxEvent.cognitoCleanup(username, cognitoSub));
     }
 
+    @Override
     @Transactional
     public void scheduleAccountStatusSync(String username, boolean active) {
         repository.save(AuthOutboxEvent.cognitoAccountStatus(username, active));

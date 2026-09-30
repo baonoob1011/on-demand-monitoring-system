@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckService {
 
+    private static final long START_IDEMPOTENCY_WINDOW_SECONDS = 30;
     private static final List<PreDeviceCheckType> CHECKS = Arrays.asList(PreDeviceCheckType.values());
 
     private final PersistedPreDeviceCheckRepository runRepository;
@@ -37,6 +38,17 @@ public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckS
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.MISSION_NOT_FOUND,
                         "Mission not found: " + missionId));
+
+        PersistedPreDeviceCheck activeRun = runRepository
+                .findFirstByMissionIdOrderByCreatedAtDesc(missionId)
+                .filter(run -> run.getStatus() == PreDeviceCheckStatus.CHECKING
+                        && run.getStartedAt() != null
+                        && run.getStartedAt().isAfter(
+                                Instant.now().minusSeconds(START_IDEMPOTENCY_WINDOW_SECONDS)))
+                .orElse(null);
+        if (activeRun != null) {
+            return PersistedPreDeviceCheckResponse.from(activeRun);
+        }
 
         PersistedPreDeviceCheck run = new PersistedPreDeviceCheck();
         run.setMission(mission);
@@ -103,6 +115,10 @@ public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckS
                         ErrorCode.RESOURCE_NOT_FOUND,
                         "Unknown check type: " + type));
 
+        if (isTerminal(item.getStatus()) && !isTerminal(request.getStatus())) {
+            return PersistedPreDeviceCheckResponse.from(run);
+        }
+
         item.setStatus(request.getStatus());
         item.setMessage(request.getMessage());
         item.setCheckedAt(Instant.now());
@@ -134,7 +150,11 @@ public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckS
             run.setCompletedAt(Instant.now());
         }
 
-        return PersistedPreDeviceCheckResponse.from(runRepository.save(run));
+        return PersistedPreDeviceCheckResponse.from(run);
+    }
+
+    private boolean isTerminal(PreDeviceItemStatus status) {
+        return status == PreDeviceItemStatus.PASSED || status == PreDeviceItemStatus.FAILED;
     }
 
     private void ensureMission(String id) {
