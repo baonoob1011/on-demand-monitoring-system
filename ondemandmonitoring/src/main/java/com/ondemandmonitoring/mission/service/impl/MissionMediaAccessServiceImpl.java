@@ -45,8 +45,8 @@ public class MissionMediaAccessServiceImpl implements IMissionMediaAccessService
                 "ROLE_ADMIN".equals(authority.getAuthority())
                         || "ROLE_SYSTEM_OPERATOR".equals(authority.getAuthority()));
         String userId = currentUser.getCurrentUserId();
-        boolean assigned = staffAssignments.findByMissionIdAndIsCurrentTrue(mission.getId())
-                .map(entry -> userId.equals(entry.getStaff().getId())).orElse(false);
+        boolean assigned = staffAssignments.findByMissionIdAndStaffIdAndIsCurrentTrue(mission.getId(), userId)
+                .isPresent();
         if (!assigned && mission.getStatus() == MissionStatus.COMPLETED) {
             assigned = staffAssignments.findByMissionId(mission.getId()).stream()
                     .anyMatch(entry -> userId.equals(entry.getStaff().getId()));

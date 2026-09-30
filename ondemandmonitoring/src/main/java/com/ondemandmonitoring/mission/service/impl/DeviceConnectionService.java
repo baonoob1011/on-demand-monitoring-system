@@ -9,6 +9,7 @@ import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.domain.MissionStaffAssignment;
+import com.ondemandmonitoring.mission.enums.MissionStaffRole;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.mapper.MissionMapper;
@@ -163,7 +164,11 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     }
 
     private MissionStaffAssignment getCurrentStaffAssignment(String missionId) {
-        return missionStaffAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+        return missionStaffAssignmentRepository.findAllByMissionIdAndAssignedRoleAndIsCurrentTrue(
+                        missionId,
+                        MissionStaffRole.OPERATOR)
+                .stream()
+                .findFirst()
                 .orElse(null);
     }
 

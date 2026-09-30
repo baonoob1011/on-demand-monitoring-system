@@ -7,6 +7,8 @@ import com.ondemandmonitoring.device.service.IDeviceService;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.IMediaAssetService;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import com.ondemandmonitoring.media.service.IMediaObjectStorage.StoredObject;
 import com.ondemandmonitoring.media.service.IMediaObjectStorage.StoredObjectStream;
@@ -45,6 +47,7 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
     Environment environment;
     IDeviceService deviceService;
     MediaAssetRepository mediaAssetRepository;
+    MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
 
     @Transactional
     @Override
@@ -66,16 +69,18 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
         String mediaType = validate(file, requestedMediaType);
         validateRequired("missionId", missionId);
         validateRequired("deviceId", deviceId);
-        Device device = requireDevice(deviceId);
+        MissionDeviceAssignment deviceAssignment = requireDeviceAssignment(missionId, deviceId);
+        String resolvedMissionId = deviceAssignment.getMission().getId();
+        String resolvedDeviceId = deviceAssignment.getDevice().getId();
 
         String originalFileName = safeFileName(file.getOriginalFilename());
         String contentType = file.getContentType();
 
         if (!useS3Storage()) {
             return saveLocal(
-                    device,
-                    missionId,
-                    deviceId,
+                    deviceAssignment,
+                    resolvedMissionId,
+                    resolvedDeviceId,
                     capturedAt,
                     file,
                     originalFileName,
@@ -87,9 +92,9 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
         if (bucket == null || bucket.isBlank()) {
             log.warn("AWS S3 bucket is not configured; storing image locally");
             return saveLocal(
-                    device,
-                    missionId,
-                    deviceId,
+                    deviceAssignment,
+                    resolvedMissionId,
+                    resolvedDeviceId,
                     capturedAt,
                     file,
                     originalFileName,
@@ -97,7 +102,7 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
                     mediaType);
         }
 
-        String key = buildS3Key(missionId, deviceId, mediaType);
+        String key = buildS3Key(resolvedMissionId, resolvedDeviceId, mediaType);
         String diagnosticPrefix = MEDIA_TYPE_VIDEO.equals(mediaType)
                 ? "[S3-VIDEO]"
                 : "[S3-IMAGE]";
@@ -120,9 +125,8 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
 
         try {
             MediaAsset image = new MediaAsset();
-            image.setDeviceId(deviceId);
-            image.setDevice(device);
-            image.setMissionId(missionId);
+            image.setDeviceAssignment(deviceAssignment);
+            image.setMission(deviceAssignment.getMission());
             image.setType(mediaType);
             image.setStorageProvider(STORAGE_PROVIDER_S3);
             image.setOriginalFileName(originalFileName);
@@ -326,7 +330,7 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
     }
 
     private MediaAsset saveLocal(
-            Device device,
+            MissionDeviceAssignment deviceAssignment,
             String missionId,
             String deviceId,
             Instant capturedAt,
@@ -356,9 +360,8 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
         }
 
         MediaAsset image = new MediaAsset();
-        image.setDeviceId(deviceId);
-        image.setDevice(device);
-        image.setMissionId(missionId);
+        image.setDeviceAssignment(deviceAssignment);
+        image.setMission(deviceAssignment.getMission());
         image.setType(mediaType);
         image.setStorageProvider(STORAGE_PROVIDER_LOCAL);
         image.setOriginalFileName(originalFileName);
@@ -394,8 +397,12 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
         return message;
     }
 
-    private Device requireDevice(String deviceId) {
-        return deviceService.getEntityById(deviceId);
+    private MissionDeviceAssignment requireDeviceAssignment(String missionId, String deviceId) {
+        Device device = deviceService.getEntityById(deviceId);
+        return missionDeviceAssignmentRepository
+                .findByMissionIdAndDeviceIdAndIsCurrentTrue(missionId, device.getId())
+                .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REQUEST,
+                        "Device is not assigned to this mission"));
     }
 
     private String normalizeMediaType(String requestedMediaType) {

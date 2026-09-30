@@ -6,6 +6,8 @@ public enum MissionStatus {
 
     RESOURCE_ASSIGNING,
 
+    WAITING_CREW_CONFIRMATION,
+
     WAITING_OPERATOR_ACCEPTANCE,
 
     /** Operator on-site, mission assigned and acknowledged. */

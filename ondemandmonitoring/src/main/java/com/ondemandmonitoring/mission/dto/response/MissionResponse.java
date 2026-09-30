@@ -9,6 +9,8 @@ import lombok.Getter;
 import lombok.experimental.FieldDefaults;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
 
 @Getter
 @Builder
@@ -27,7 +29,15 @@ public class MissionResponse {
     @Schema(description = "ID of the associated order", example = "123e4567-e89b-12d3-a456-426614174000")
     String orderId;
 
+    String orderCode;
+
     String orderTitle;
+
+    LocalDate orderPreferredDateFrom;
+
+    LocalDate orderPreferredDateTo;
+
+    String orderPreferredTimeName;
 
     String serviceName;
 
@@ -47,6 +57,8 @@ public class MissionResponse {
     String staffId;
 
     String operatorId;
+
+    List<MissionStaffAssignmentResponse> staffAssignments;
 
     MissionPlanResponse plan;
 

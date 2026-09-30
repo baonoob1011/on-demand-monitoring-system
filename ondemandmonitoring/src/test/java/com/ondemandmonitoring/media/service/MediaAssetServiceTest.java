@@ -13,7 +13,11 @@ import com.ondemandmonitoring.device.service.IDeviceService;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.impl.MediaAssetServiceImpl;
+import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import java.io.InputStream;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.env.Environment;
 import org.springframework.web.multipart.MultipartFile;
@@ -26,7 +30,8 @@ class MediaAssetServiceTest {
                 mock(IMediaObjectStorage.class),
                 mock(Environment.class),
                 mock(IDeviceService.class),
-                mock(MediaAssetRepository.class));
+                mock(MediaAssetRepository.class),
+                mock(MissionDeviceAssignmentRepository.class));
 
         assertThatThrownBy(() -> service.upload("DEVICE-01", null))
                 .isInstanceOf(ApiException.class)
@@ -39,7 +44,8 @@ class MediaAssetServiceTest {
                 mock(IMediaObjectStorage.class),
                 mock(Environment.class),
                 mock(IDeviceService.class),
-                mock(MediaAssetRepository.class));
+                mock(MediaAssetRepository.class),
+                mock(MissionDeviceAssignmentRepository.class));
         MultipartFile file = new org.springframework.mock.web.MockMultipartFile(
                 "file", "capture.txt", "text/plain", "not-an-image".getBytes());
 
@@ -54,7 +60,8 @@ class MediaAssetServiceTest {
                 mock(IMediaObjectStorage.class),
                 mock(Environment.class),
                 mock(IDeviceService.class),
-                mock(MediaAssetRepository.class));
+                mock(MediaAssetRepository.class),
+                mock(MissionDeviceAssignmentRepository.class));
         MultipartFile file = new org.springframework.mock.web.MockMultipartFile(
                 "file", "clip.mp4", "video/mp4", "fake-mp4".getBytes());
 
@@ -68,17 +75,23 @@ class MediaAssetServiceTest {
         Environment environment = mock(Environment.class);
         IDeviceService deviceService = mock(IDeviceService.class);
         MediaAssetRepository mediaAssetRepository = mock(MediaAssetRepository.class);
+        MissionDeviceAssignmentRepository assignmentRepository = mock(MissionDeviceAssignmentRepository.class);
         Device device = new Device();
+        device.setId("DEVICE-01");
         device.setDeviceCode("DEVICE-01");
+        MissionDeviceAssignment assignment = assignment("MISSION_001", device);
         when(environment.getProperty("device_IMAGE_STORAGE", "local")).thenReturn("local");
         when(deviceService.getEntityById("DEVICE-01")).thenReturn(device);
+        when(assignmentRepository.findByMissionIdAndDeviceIdAndIsCurrentTrue("MISSION_001", "DEVICE-01"))
+                .thenReturn(Optional.of(assignment));
         when(mediaAssetRepository.save(any(MediaAsset.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         MediaAssetServiceImpl service = new MediaAssetServiceImpl(
                 mock(IMediaObjectStorage.class),
                 environment,
                 deviceService,
-                mediaAssetRepository);
+                mediaAssetRepository,
+                assignmentRepository);
         MultipartFile file = new org.springframework.mock.web.MockMultipartFile(
                 "file", "clip.mp4", "video/mp4", "fake-mp4".getBytes());
 
@@ -95,10 +108,15 @@ class MediaAssetServiceTest {
         IDeviceService deviceService = mock(IDeviceService.class);
         MediaAssetRepository mediaAssetRepository = mock(MediaAssetRepository.class);
         IMediaObjectStorage objectStorage = mock(IMediaObjectStorage.class);
+        MissionDeviceAssignmentRepository assignmentRepository = mock(MissionDeviceAssignmentRepository.class);
         Device device = new Device();
+        device.setId("DEVICE-01");
         device.setDeviceCode("DEVICE-01");
+        MissionDeviceAssignment assignment = assignment("MISSION_001", device);
         when(environment.getProperty("device_IMAGE_STORAGE", "local")).thenReturn("s3");
         when(deviceService.getEntityById("DEVICE-01")).thenReturn(device);
+        when(assignmentRepository.findByMissionIdAndDeviceIdAndIsCurrentTrue("MISSION_001", "DEVICE-01"))
+                .thenReturn(Optional.of(assignment));
         when(objectStorage.bucket()).thenReturn("bucket");
         when(objectStorage.put(any(), any(), eq(8L), any(InputStream.class), any()))
                 .thenAnswer(invocation -> new IMediaObjectStorage.StoredObject(
@@ -111,7 +129,8 @@ class MediaAssetServiceTest {
                 objectStorage,
                 environment,
                 deviceService,
-                mediaAssetRepository);
+                mediaAssetRepository,
+                assignmentRepository);
         MultipartFile imageFile = new org.springframework.mock.web.MockMultipartFile(
                 "file", "capture.jpg", "image/jpeg", "fake-jpg".getBytes());
         MultipartFile videoFile = new org.springframework.mock.web.MockMultipartFile(
@@ -126,5 +145,14 @@ class MediaAssetServiceTest {
         assertThat(savedVideo.getS3Key())
                 .contains("/videos/")
                 .doesNotContain("/images/");
+    }
+
+    private MissionDeviceAssignment assignment(String missionId, Device device) {
+        Mission mission = new Mission();
+        mission.setId(missionId);
+        MissionDeviceAssignment assignment = new MissionDeviceAssignment();
+        assignment.setMission(mission);
+        assignment.setDevice(device);
+        return assignment;
     }
 }

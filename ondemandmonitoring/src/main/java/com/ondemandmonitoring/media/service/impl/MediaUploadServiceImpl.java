@@ -14,6 +14,8 @@ import com.ondemandmonitoring.media.dto.response.MediaUploadResponse;
 import com.ondemandmonitoring.media.repository.*;
 import com.ondemandmonitoring.media.service.IMediaUploadService;
 import com.ondemandmonitoring.mission.dto.response.MissionMediaContext;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.service.IMissionMediaAccessService;
 import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
@@ -33,6 +35,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     private static final int MAX_AUTOMATIC_ATTEMPTS = 3;
     private final IMissionMediaAccessService missionAccess;
     private final IDeviceService devices;
+    private final MissionDeviceAssignmentRepository deviceAssignments;
     private final MediaAssetRepository media;
     private final MediaUploadAttemptRepository attempts;
     private final ManualUploadTaskRepository manualTasks;
@@ -82,7 +85,8 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
             throw new ApiException(ErrorCode.MEDIA_UPLOAD_NOT_ALLOWED,
                     "Mission is not in a capture state");
         }
-        Device device = requireAssignedDevice(mission, request.getDeviceId());
+        MissionDeviceAssignment deviceAssignment = requireAssignedDeviceAssignment(mission, request.getDeviceId());
+        Device device = deviceAssignment.getDevice();
         validateMetadata(request);
         Optional<MediaAsset> existing = media.findByMissionIdAndDeviceIdAndLocalMediaId(
                 mission.getId(), device.getId(), request.getLocalMediaId());
@@ -100,9 +104,8 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
             throw new ApiException(ErrorCode.INTERNAL_SERVER_ERROR, "S3 bucket is required");
         }
         MediaAsset captured = new MediaAsset();
-        captured.setMissionId(mission.getId());
-        captured.setDevice(device);
-        captured.setDeviceId(device.getId());
+        captured.setDeviceAssignment(deviceAssignment);
+        captured.setMission(deviceAssignment.getMission());
         captured.setLocalMediaId(request.getLocalMediaId());
         captured.setOperatorId(actor());
         captured.setType(request.getMediaType());
@@ -464,10 +467,13 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
         }
     }
 
-    private Device requireAssignedDevice(MissionMediaContext mission, String deviceId) {
+    private MissionDeviceAssignment requireAssignedDeviceAssignment(MissionMediaContext mission, String deviceId) {
         Device device = devices.getEntityById(deviceId);
         missionAccess.requireAssignedDevice(mission.getId(), device.getId());
-        return device;
+        return deviceAssignments
+                .findByMissionIdAndDeviceIdAndIsCurrentTrue(mission.getId(), device.getId())
+                .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REQUEST,
+                        "Device is not assigned to this mission"));
     }
 
     private MediaAsset requireMedia(String mediaId) {

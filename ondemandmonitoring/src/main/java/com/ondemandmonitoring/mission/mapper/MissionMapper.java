@@ -7,7 +7,9 @@ import com.ondemandmonitoring.mission.domain.MissionStaffAssignment;
 import com.ondemandmonitoring.mission.domain.PlanWaypoint;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
+import com.ondemandmonitoring.mission.dto.response.MissionStaffAssignmentResponse;
 import com.ondemandmonitoring.mission.dto.response.PlanWaypointResponse;
+import com.ondemandmonitoring.mission.enums.MissionStaffRole;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionPlanRepository;
@@ -16,6 +18,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
 import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,7 +37,11 @@ public abstract class MissionMapper {
     protected MissionStaffAssignmentRepository missionStaffAssignmentRepository;
 
     @Mapping(source = "order.id", target = "orderId")
+    @Mapping(source = "order.orderCode", target = "orderCode")
     @Mapping(source = "order.title", target = "orderTitle")
+    @Mapping(source = "order.preferredDateFrom", target = "orderPreferredDateFrom")
+    @Mapping(source = "order.preferredDateTo", target = "orderPreferredDateTo")
+    @Mapping(source = "order.preferredTime.name", target = "orderPreferredTimeName")
     @Mapping(source = "order.service.name", target = "serviceName")
     @Mapping(source = "order.customer.fullName", target = "customerName")
     @Mapping(source = "order.address", target = "address")
@@ -44,6 +51,7 @@ public abstract class MissionMapper {
     @Mapping(target = "deviceId", expression = "java(getDeviceId(mission))")
     @Mapping(target = "staffId", expression = "java(getStaffId(mission))")
     @Mapping(target = "operatorId", expression = "java(getStaffId(mission))")
+    @Mapping(target = "staffAssignments", expression = "java(getStaffAssignments(mission))")
     @Mapping(target = "plan", expression = "java(getPlan(mission))")
     public abstract MissionResponse toResponse(Mission mission);
 
@@ -97,7 +105,9 @@ public abstract class MissionMapper {
     }
 
     protected String getStaffId(Mission mission) {
-        MissionStaffAssignment assignment = getCurrentStaffAssignment(mission).orElse(null);
+        MissionStaffAssignment assignment = getCurrentStaffAssignment(mission, MissionStaffRole.OPERATOR)
+                .or(() -> getCurrentStaffAssignment(mission, MissionStaffRole.PILOT))
+                .orElse(null);
         if (assignment == null || assignment.getStaff() == null) {
             return null;
         }
@@ -115,15 +125,38 @@ public abstract class MissionMapper {
                 : missionDeviceAssignmentRepository.findFirstByMissionIdOrderByCreatedAtDesc(mission.getId());
     }
 
-    private Optional<MissionStaffAssignment> getCurrentStaffAssignment(Mission mission) {
+    protected List<MissionStaffAssignmentResponse> getStaffAssignments(Mission mission) {
+        if (mission == null || mission.getId() == null) {
+            return List.of();
+        }
+        return missionStaffAssignmentRepository.findAllByMissionIdAndIsCurrentTrue(mission.getId()).stream()
+                .sorted(Comparator.comparing(MissionStaffAssignment::getAssignedRole,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(this::toStaffAssignmentResponse)
+                .toList();
+    }
+
+    private Optional<MissionStaffAssignment> getCurrentStaffAssignment(Mission mission, MissionStaffRole role) {
         if (mission == null || mission.getId() == null) {
             return Optional.empty();
         }
-        Optional<MissionStaffAssignment> current =
-                missionStaffAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId());
-        return current.isPresent()
-                ? current
-                : missionStaffAssignmentRepository.findFirstByMissionIdOrderByAssignedAtDesc(mission.getId());
+        return missionStaffAssignmentRepository.findAllByMissionIdAndAssignedRoleAndIsCurrentTrue(mission.getId(), role)
+                .stream()
+                .findFirst();
+    }
+
+    private MissionStaffAssignmentResponse toStaffAssignmentResponse(MissionStaffAssignment assignment) {
+        return MissionStaffAssignmentResponse.builder()
+                .id(assignment.getId())
+                .staffId(assignment.getStaff() != null ? assignment.getStaff().getId() : null)
+                .staffName(assignment.getStaff() != null ? assignment.getStaff().getFullName() : null)
+                .staffEmail(assignment.getStaff() != null ? assignment.getStaff().getEmail() : null)
+                .assignedRole(assignment.getAssignedRole())
+                .responseStatus(assignment.getResponseStatus())
+                .assignedAt(assignment.getAssignedAt())
+                .respondedAt(assignment.getRespondedAt())
+                .declineReason(assignment.getDeclineReason())
+                .build();
     }
 
     protected Double toDouble(Object value) {

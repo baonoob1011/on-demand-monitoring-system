@@ -26,6 +26,9 @@ import com.ondemandmonitoring.zone.repository.ZoneRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -38,6 +41,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class OrderService implements IOrderService {
+
+    private static final DateTimeFormatter ORDER_CODE_DATE_FORMATTER = DateTimeFormatter.BASIC_ISO_DATE;
 
     OrderRepository orderRepository;
     ServiceRepository serviceRepository;
@@ -136,6 +141,7 @@ public class OrderService implements IOrderService {
         order.setPoint(location);
         order.setTargetArea(targetArea);
         order.setOrderStatus(OrderStatus.PENDING);
+        order.setOrderCode(generateUniqueOrderCode());
         order.setReviewBy(null);
         order.setReviewAt(null);
 
@@ -213,5 +219,24 @@ public class OrderService implements IOrderService {
         return orders.stream()
                 .map(orderMapper::toResponse)
                 .toList();
+    }
+
+    private String generateUniqueOrderCode() {
+        for (int attempt = 0; attempt < 10; attempt++) {
+            String orderCode = generateOrderCode();
+            if (!orderRepository.existsByOrderCode(orderCode)) {
+                return orderCode;
+            }
+        }
+        throw new ApiException(ErrorCode.INVALID_REQUEST, "Unable to generate a unique order code");
+    }
+
+    private String generateOrderCode() {
+        String datePart = LocalDate.now().format(ORDER_CODE_DATE_FORMATTER);
+        String suffix = UUID.randomUUID().toString()
+                .replace("-", "")
+                .substring(0, 6)
+                .toUpperCase();
+        return "ORD-" + datePart + "-" + suffix;
     }
 }

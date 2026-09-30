@@ -6,7 +6,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -25,7 +24,8 @@ import lombok.experimental.FieldDefaults;
 public class OrderCreateResponse {
 
     String id;
-    UUID customerId;
+    String orderCode;
+    String customerId;
     String customerName;
 
     // General Info
@@ -50,7 +50,7 @@ public class OrderCreateResponse {
     // Status & Review Info
     OrderStatus orderStatus;
     String rejectReason;
-    UUID reviewById;
+    String reviewById;
     String reviewByName;
     Instant reviewAt;
 
