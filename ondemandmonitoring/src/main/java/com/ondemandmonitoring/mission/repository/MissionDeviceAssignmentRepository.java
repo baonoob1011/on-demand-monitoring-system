@@ -19,6 +19,14 @@ public interface MissionDeviceAssignmentRepository extends JpaRepository<Mission
 
     Optional<MissionDeviceAssignment> findByMissionIdAndIsCurrentTrue(String missionId);
 
+    @Query("""
+            SELECT mda FROM MissionDeviceAssignment mda
+            WHERE mda.mission.id = :missionId
+              AND mda.device.id = :deviceId
+              AND mda.isCurrent = true
+            """)
+    Optional<MissionDeviceAssignment> findByMissionIdAndDeviceIdAndIsCurrentTrue(String missionId, String deviceId);
+
     List<MissionDeviceAssignment> findByMissionId(String missionId);
 
     @Query("""

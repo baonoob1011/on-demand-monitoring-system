@@ -46,7 +46,7 @@ class MediaUploadWorkflowTest {
     private final MissionMediaAccessServiceImpl missionAccess = new MissionMediaAccessServiceImpl(
             missions, deviceAssignments, staffAssignments, userResolver);
     private final MediaUploadServiceImpl service = new MediaUploadServiceImpl(missionAccess, devices,
-            media, attempts, manualTasks, audit, storage, s3, userResolver);
+            deviceAssignments, media, attempts, manualTasks, audit, storage, s3, userResolver);
 
     @BeforeEach
     void setUp() {
@@ -72,8 +72,11 @@ class MediaUploadWorkflowTest {
         when(devices.getEntityById("device-id")).thenReturn(device);
         when(devices.getEntityById("DEVICE-01")).thenReturn(device);
         MissionDeviceAssignment assignment = new MissionDeviceAssignment();
+        assignment.setMission(mission);
         assignment.setDevice(device);
         when(deviceAssignments.findByMissionIdAndIsCurrentTrue("mission-id"))
+                .thenReturn(Optional.of(assignment));
+        when(deviceAssignments.findByMissionIdAndDeviceIdAndIsCurrentTrue("mission-id", "device-id"))
                 .thenReturn(Optional.of(assignment));
         when(storage.bucket()).thenReturn("test-bucket");
     }
@@ -133,6 +136,7 @@ class MediaUploadWorkflowTest {
         staff.setReleaseReason("MISSION_COMPLETE");
         when(staffAssignments.findByMissionId("mission-id")).thenReturn(List.of(staff));
         MissionDeviceAssignment assignment = new MissionDeviceAssignment();
+        assignment.setMission(mission);
         assignment.setDevice(devices.getEntityById("device-id"));
         assignment.setReleaseReason("MISSION_COMPLETE");
         when(deviceAssignments.findByMissionId("mission-id")).thenReturn(List.of(assignment));

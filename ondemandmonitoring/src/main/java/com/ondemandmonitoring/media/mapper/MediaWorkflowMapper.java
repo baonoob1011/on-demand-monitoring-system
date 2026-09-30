@@ -19,8 +19,8 @@ public interface MediaWorkflowMapper {
     @Mapping(target = "manualTaskId", source = "id")
     @Mapping(target = "backendMediaId", source = "media.id")
     @Mapping(target = "localMediaId", source = "media.localMediaId")
-    @Mapping(target = "missionId", source = "media.missionId")
-    @Mapping(target = "deviceId", source = "media.deviceId")
+    @Mapping(target = "missionId", expression = "java(task.getMedia().getMissionId())")
+    @Mapping(target = "deviceId", expression = "java(task.getMedia().getDeviceId())")
     @Mapping(target = "mediaType", source = "media.type")
     @Mapping(target = "fileName", source = "media.originalFileName")
     @Mapping(target = "contentType", source = "media.contentType")
@@ -37,7 +37,7 @@ public interface MediaWorkflowMapper {
 
     @Mapping(target = "notificationId", source = "id")
     @Mapping(target = "mediaId", source = "media.id")
-    @Mapping(target = "missionId", source = "media.missionId")
+    @Mapping(target = "missionId", expression = "java(event.getMedia().getMissionId())")
     CustomerMediaNotificationResponse toNotificationResponse(MediaNotificationOutbox event);
 
     @Mapping(target = "mediaId", source = "asset.id")
