@@ -10,7 +10,7 @@ import com.ondemandmonitoring.media.mapper.MediaWorkflowMapper;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.IOperatorMissionMediaService;
 import com.ondemandmonitoring.mission.service.IMissionMediaAccessService;
-import com.ondemandmonitoring.s3.S3ObjectStorageService;
+import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +28,7 @@ public class OperatorMissionMediaServiceImpl implements IOperatorMissionMediaSer
 
     IMissionMediaAccessService missionAccess;
     MediaAssetRepository media;
-    S3ObjectStorageService storage;
+    IMediaObjectStorage storage;
     MediaWorkflowMapper mapper;
 
     @Override

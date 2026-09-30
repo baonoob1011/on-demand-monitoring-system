@@ -54,6 +54,13 @@ public class UserIdentityServiceImpl implements IUserIdentityService {
     }
 
     @Override
+    @Transactional
+    public void unlink(User user, IdentityProvider provider) {
+        identityRepository.findByUserIdAndProvider(user.getId(), provider)
+                .ifPresent(identityRepository::delete);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public String getUsername(String userId, IdentityProvider provider) {
         return identityRepository.findByUserIdAndProvider(userId, provider)

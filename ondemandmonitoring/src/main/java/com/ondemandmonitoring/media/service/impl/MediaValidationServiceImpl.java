@@ -3,7 +3,7 @@ package com.ondemandmonitoring.media.service.impl;
 import com.ondemandmonitoring.media.domain.*;
 import com.ondemandmonitoring.media.repository.*;
 import com.ondemandmonitoring.media.service.IMediaValidationService;
-import com.ondemandmonitoring.s3.S3ObjectStorageService;
+import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import com.ondemandmonitoring.media.service.IMediaAuditService;
 import com.ondemandmonitoring.media.service.IMediaObjectVerificationService;
 import com.ondemandmonitoring.media.policy.MediaUploadPolicy;
@@ -37,7 +37,7 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
     IMediaAuditService auditService;
     MediaUploadPolicy policy;
     MediaNotificationOutboxRepository outbox;
-    S3ObjectStorageService storage;
+    IMediaObjectStorage storage;
     IMediaObjectVerificationService verification;
 
     @Override

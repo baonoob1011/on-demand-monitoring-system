@@ -16,9 +16,7 @@ public interface PersistedPostDeviceCheckRepository extends JpaRepository<Persis
     Optional<PersistedPostDeviceCheck> findFirstByMissionIdOrderByCreatedAtDesc(String missionId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select distinct run from PersistedPostDeviceCheck run "
-            + "left join fetch run.items "
-            + "where run.id = :id")
+    @Query("select run from PersistedPostDeviceCheck run where run.id = :id")
     Optional<PersistedPostDeviceCheck> findByIdForUpdate(@Param("id") String id);
 }
 

@@ -8,7 +8,7 @@ import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.impl.OperatorMissionMediaServiceImpl;
 import com.ondemandmonitoring.mission.dto.response.MissionMediaContext;
 import com.ondemandmonitoring.mission.service.IMissionMediaAccessService;
-import com.ondemandmonitoring.s3.S3ObjectStorageService;
+import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -20,7 +20,7 @@ import static org.mockito.Mockito.*;
 class OperatorMissionMediaServiceTest {
     final IMissionMediaAccessService access = mock(IMissionMediaAccessService.class);
     final MediaAssetRepository media = mock(MediaAssetRepository.class);
-    final S3ObjectStorageService storage = mock(S3ObjectStorageService.class);
+    final IMediaObjectStorage storage = mock(IMediaObjectStorage.class);
     final MediaWorkflowMapper mapper = org.mapstruct.factory.Mappers.getMapper(MediaWorkflowMapper.class);
     final IOperatorMissionMediaService service = new OperatorMissionMediaServiceImpl(access, media, storage, mapper);
 

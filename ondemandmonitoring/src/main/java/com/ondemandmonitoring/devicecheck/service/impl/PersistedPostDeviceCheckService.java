@@ -145,7 +145,7 @@ public class PersistedPostDeviceCheckService implements IPersistedPostDeviceChec
             run.setCompletedAt(Instant.now());
         }
 
-        return PersistedPostDeviceCheckResponse.from(runRepository.save(run));
+        return PersistedPostDeviceCheckResponse.from(run);
     }
 
     private void ensureMission(String id) {

@@ -23,6 +23,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 @ExtendWith(MockitoExtension.class)
 class UserServiceImplTest {
@@ -46,7 +47,7 @@ class UserServiceImplTest {
     void createLocalUser_customer_provisionsProfile() {
         Role customerRole = role(RoleCode.CUSTOMER);
         when(roleService.getActiveRole(RoleCode.CUSTOMER)).thenReturn(customerRole);
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> {
             User user = invocation.getArgument(0);
             user.setId(UUID.randomUUID().toString());
             return user;
@@ -68,7 +69,7 @@ class UserServiceImplTest {
     void createSocialUser_customer_provisionsProfile() {
         Role customerRole = role(RoleCode.CUSTOMER);
         when(roleService.getActiveRole(RoleCode.CUSTOMER)).thenReturn(customerRole);
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> {
             User user = invocation.getArgument(0);
             user.setId(UUID.randomUUID().toString());
             return user;
@@ -87,7 +88,7 @@ class UserServiceImplTest {
     void createManagedUser_employee_doesNotProvisionCustomerProfile() {
         Role staffRole = role(RoleCode.STAFF);
         when(roleService.getActiveRole(RoleCode.STAFF)).thenReturn(staffRole);
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         userService.createManagedUser(
                 "staff@example.com", "Staff Name", RoleCode.STAFF,
@@ -99,7 +100,7 @@ class UserServiceImplTest {
     @Test
     void createLocalUser_whenProfileProvisioningFails_propagatesFailure() {
         when(roleService.getActiveRole(RoleCode.CUSTOMER)).thenReturn(role(RoleCode.CUSTOMER));
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(customerProfileRepository.save(any(CustomerProfile.class)))
                 .thenThrow(new IllegalStateException("profile provisioning failed"));
 
@@ -108,6 +109,22 @@ class UserServiceImplTest {
                 "cognito-user", "cognito-sub"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("profile provisioning failed");
+    }
+
+    @Test
+    void createLocalUser_whenConcurrentEmailInsertWins_returnsEmailConflict() {
+        when(roleService.getActiveRole(RoleCode.CUSTOMER)).thenReturn(role(RoleCode.CUSTOMER));
+        when(userRepository.saveAndFlush(any(User.class)))
+                .thenThrow(new DataIntegrityViolationException("uk_users_email"));
+
+        assertThatThrownBy(() -> userService.createLocalUser(
+                "customer@example.com", "Customer Name", RoleCode.CUSTOMER,
+                "cognito-user", "cognito-sub"))
+                .isInstanceOf(com.ondemandmonitoring.common.exception.ApiException.class)
+                .extracting("errorCode")
+                .isEqualTo(com.ondemandmonitoring.common.exception.ErrorCode.EMAIL_ALREADY_EXISTS);
+
+        verify(userIdentityService, never()).create(any(), any(), any(), any());
     }
 
     @Test
@@ -120,6 +137,16 @@ class UserServiceImplTest {
         User actual = userService.findByCognitoUsername("cognito-user");
 
         assertThat(actual).isSameAs(expected);
+    }
+
+    @Test
+    void unlinkIdentity_delegatesToIdentityService() {
+        User user = User.builder().build();
+        user.setId(UUID.randomUUID().toString());
+
+        userService.unlinkIdentity(user, IdentityProvider.LOCAL);
+
+        verify(userIdentityService).unlink(user, IdentityProvider.LOCAL);
     }
 
     private Role role(RoleCode code) {

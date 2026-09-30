@@ -1,5 +1,6 @@
 package com.ondemandmonitoring.mission.service;
 
+import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 
 /**
@@ -37,4 +38,10 @@ public interface IDeviceConnectionService {
      * @return {@link MissionResponse} DTO containing updated mission state after triggering RTL
      */
     MissionResponse handleGcsSessionLost(String missionId, String reason);
+
+    /**
+     * Resolves the active telemetry session for an already bound device.
+     * The caller never creates an implicit connection from telemetry input.
+     */
+    DeviceConnection requireActiveTelemetryConnection(String deviceId);
 }

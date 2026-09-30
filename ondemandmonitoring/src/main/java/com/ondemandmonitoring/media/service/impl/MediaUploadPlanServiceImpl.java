@@ -15,9 +15,8 @@ import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.repository.MediaUploadAttemptRepository;
 import com.ondemandmonitoring.media.repository.ManualUploadTaskRepository;
 import com.ondemandmonitoring.media.service.IMediaAuditService;
+import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import com.ondemandmonitoring.media.service.IMediaUploadPlanService;
-import com.ondemandmonitoring.s3.S3ObjectStorageService;
-import com.ondemandmonitoring.s3.AwsS3Properties;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.time.Instant;
 import java.util.List;
@@ -39,8 +38,7 @@ public class MediaUploadPlanServiceImpl implements IMediaUploadPlanService {
     IMediaAuditService auditService;
     MediaWorkflowMapper mapper;
     MediaUploadPolicy policy;
-    S3ObjectStorageService storage;
-    AwsS3Properties s3Properties;
+    IMediaObjectStorage storage;
     AuthenticatedUserResolver currentUser;
 
     @Override
@@ -55,8 +53,7 @@ public class MediaUploadPlanServiceImpl implements IMediaUploadPlanService {
             default -> ".jpg";
         };
 
-        String prefix = s3Properties.getPrefix() == null ? ""
-                : s3Properties.getPrefix().replaceAll("^/+|/+$", "") + "/";
+        String prefix = storage.prefix().isBlank() ? "" : storage.prefix() + "/";
 
         String key = prefix + "staging/missions/" + captured.getMissionId() + "/devices/"
                 + captured.getDeviceId() + "/" + captured.getId() + "/" + number + extension;

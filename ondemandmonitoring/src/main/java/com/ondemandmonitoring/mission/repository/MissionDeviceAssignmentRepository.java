@@ -38,4 +38,14 @@ public interface MissionDeviceAssignmentRepository extends JpaRepository<Mission
     List<MissionDeviceAssignment> findCurrentByDeviceCodeAndMissionStatusIn(
             String deviceCode,
             List<MissionStatus> statuses);
+
+    @Query("""
+            SELECT mda FROM MissionDeviceAssignment mda
+            WHERE mda.device.id = :deviceId
+              AND mda.isCurrent = true
+              AND mda.mission.status IN :statuses
+            """)
+    List<MissionDeviceAssignment> findCurrentByDeviceIdAndMissionStatusIn(
+            String deviceId,
+            List<MissionStatus> statuses);
 }

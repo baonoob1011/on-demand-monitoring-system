@@ -55,24 +55,36 @@ public class DeviceConnectionService implements IDeviceConnectionService {
 
         mission.setStatus(MissionStatus.CONNECTED);
 
-        MissionDeviceAssignment deviceAssignment = getAssignedDeviceAssignment(resolvedMissionId).orElse(null);
-        Device device = deviceAssignment == null ? null : deviceAssignment.getDevice();
+        MissionDeviceAssignment deviceAssignment = getAssignedDeviceAssignment(resolvedMissionId)
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.RESOURCE_NOT_FOUND,
+                        "Mission has no current device assignment: " + resolvedMissionId));
+        Device device = deviceAssignment.getDevice();
         MissionStaffAssignment staffAssignment = getCurrentStaffAssignment(resolvedMissionId);
-        if (device != null && staffAssignment != null) {
-            device.setStatus(DeviceStatus.PREFLIGHT);
-            deviceRepository.save(device);
-
-            DeviceConnection connection = new DeviceConnection();
-            connection.setMission(mission);
-            connection.setDeviceAssignment(deviceAssignment);
-            connection.setStaffAssignment(staffAssignment);
-            connection.setConnectionStatus("CONNECTED");
-            connection.setTelemetryActive(true);
-            connection.setConnectedAt(Instant.now());
-            deviceConnectionRepository.save(connection);
+        if (staffAssignment == null) {
+            throw new ApiException(
+                    ErrorCode.RESOURCE_NOT_FOUND,
+                    "Mission has no current staff assignment: " + resolvedMissionId);
         }
 
-        log.info("Mission {} device connected", missionId);
+        device.setStatus(DeviceStatus.PREFLIGHT);
+        deviceRepository.save(device);
+
+        DeviceConnection connection = deviceConnectionRepository
+                .findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(resolvedMissionId, "CONNECTED")
+                .orElseGet(DeviceConnection::new);
+        connection.setMission(mission);
+        connection.setDeviceAssignment(deviceAssignment);
+        connection.setStaffAssignment(staffAssignment);
+        connection.setConnectionStatus("CONNECTED");
+        connection.setTelemetryActive(true);
+        connection.setConnectedAt(Instant.now());
+        connection.setDisconnectedAt(null);
+        connection.setDisconnectReason(null);
+        DeviceConnection savedConnection = deviceConnectionRepository.save(connection);
+
+        log.info("Mission {} device connected. connectionId={} deviceId={}",
+                resolvedMissionId, savedConnection.getId(), device.getId());
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
     }
@@ -127,6 +139,18 @@ public class DeviceConnectionService implements IDeviceConnectionService {
 
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DeviceConnection requireActiveTelemetryConnection(String deviceId) {
+        return deviceConnectionRepository
+                .findFirstByDeviceAssignmentDeviceIdAndConnectionStatusAndTelemetryActiveTrueOrderByConnectedAtDesc(
+                        deviceId,
+                        "CONNECTED")
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.RESOURCE_NOT_FOUND,
+                        "No active device connection found for telemetry device: " + deviceId));
     }
 
     private Device getAssignedDevice(String missionId) {

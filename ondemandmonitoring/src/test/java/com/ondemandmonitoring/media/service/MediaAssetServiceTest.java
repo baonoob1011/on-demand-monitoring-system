@@ -16,8 +16,6 @@ import com.ondemandmonitoring.media.service.impl.MediaAssetServiceImpl;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
-import com.ondemandmonitoring.s3.AwsS3Properties;
-import com.ondemandmonitoring.s3.S3ObjectStorageService;
 import java.io.InputStream;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -29,8 +27,7 @@ class MediaAssetServiceTest {
     @Test
     void upload_rejectsMissingFile() {
         MediaAssetServiceImpl service = new MediaAssetServiceImpl(
-                mock(S3ObjectStorageService.class),
-                new AwsS3Properties(),
+                mock(IMediaObjectStorage.class),
                 mock(Environment.class),
                 mock(IDeviceService.class),
                 mock(MediaAssetRepository.class),
@@ -44,8 +41,7 @@ class MediaAssetServiceTest {
     @Test
     void upload_rejectsUnsupportedContentType() {
         MediaAssetServiceImpl service = new MediaAssetServiceImpl(
-                mock(S3ObjectStorageService.class),
-                new AwsS3Properties(),
+                mock(IMediaObjectStorage.class),
                 mock(Environment.class),
                 mock(IDeviceService.class),
                 mock(MediaAssetRepository.class),
@@ -61,8 +57,7 @@ class MediaAssetServiceTest {
     @Test
     void upload_rejectsMismatchedVideoMediaType() {
         MediaAssetServiceImpl service = new MediaAssetServiceImpl(
-                mock(S3ObjectStorageService.class),
-                new AwsS3Properties(),
+                mock(IMediaObjectStorage.class),
                 mock(Environment.class),
                 mock(IDeviceService.class),
                 mock(MediaAssetRepository.class),
@@ -92,8 +87,7 @@ class MediaAssetServiceTest {
         when(mediaAssetRepository.save(any(MediaAsset.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         MediaAssetServiceImpl service = new MediaAssetServiceImpl(
-                mock(S3ObjectStorageService.class),
-                new AwsS3Properties(),
+                mock(IMediaObjectStorage.class),
                 environment,
                 deviceService,
                 mediaAssetRepository,
@@ -113,10 +107,8 @@ class MediaAssetServiceTest {
         Environment environment = mock(Environment.class);
         IDeviceService deviceService = mock(IDeviceService.class);
         MediaAssetRepository mediaAssetRepository = mock(MediaAssetRepository.class);
+        IMediaObjectStorage objectStorage = mock(IMediaObjectStorage.class);
         MissionDeviceAssignmentRepository assignmentRepository = mock(MissionDeviceAssignmentRepository.class);
-        S3ObjectStorageService s3ObjectStorageService = mock(S3ObjectStorageService.class);
-        AwsS3Properties properties = new AwsS3Properties();
-        properties.setBucket("bucket");
         Device device = new Device();
         device.setId("DEVICE-01");
         device.setDeviceCode("DEVICE-01");
@@ -125,17 +117,16 @@ class MediaAssetServiceTest {
         when(deviceService.getEntityById("DEVICE-01")).thenReturn(device);
         when(assignmentRepository.findByMissionIdAndDeviceIdAndIsCurrentTrue("MISSION_001", "DEVICE-01"))
                 .thenReturn(Optional.of(assignment));
-        when(s3ObjectStorageService.bucket()).thenReturn("bucket");
-        when(s3ObjectStorageService.put(any(), any(), eq(8L), any(InputStream.class), any()))
-                .thenAnswer(invocation -> new S3ObjectStorageService.StoredObject(
+        when(objectStorage.bucket()).thenReturn("bucket");
+        when(objectStorage.put(any(), any(), eq(8L), any(InputStream.class), any()))
+                .thenAnswer(invocation -> new IMediaObjectStorage.StoredObject(
                         "bucket",
                         invocation.getArgument(0),
                         "s3://bucket/" + invocation.getArgument(0)));
         when(mediaAssetRepository.save(any(MediaAsset.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         MediaAssetServiceImpl service = new MediaAssetServiceImpl(
-                s3ObjectStorageService,
-                properties,
+                objectStorage,
                 environment,
                 deviceService,
                 mediaAssetRepository,

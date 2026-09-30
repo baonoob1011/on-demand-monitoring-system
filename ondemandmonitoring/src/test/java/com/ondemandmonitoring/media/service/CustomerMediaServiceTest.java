@@ -16,7 +16,7 @@ import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentReposito
 import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepository;
 import com.ondemandmonitoring.mission.service.impl.MissionMediaAccessServiceImpl;
 import com.ondemandmonitoring.order.domain.Order;
-import com.ondemandmonitoring.s3.S3ObjectStorageService;
+import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.util.List;
@@ -28,7 +28,7 @@ class CustomerMediaServiceTest {
     private final MissionRepository missions = mock(MissionRepository.class);
     private final MediaAssetRepository media = mock(MediaAssetRepository.class);
     private final MediaNotificationOutboxRepository notifications = mock(MediaNotificationOutboxRepository.class);
-    private final S3ObjectStorageService storage = mock(S3ObjectStorageService.class);
+    private final IMediaObjectStorage storage = mock(IMediaObjectStorage.class);
     private final AuthenticatedUserResolver currentUser = mock(AuthenticatedUserResolver.class);
     private final CustomerMediaServiceImpl service = new CustomerMediaServiceImpl(
             new MissionMediaAccessServiceImpl(missions, mock(MissionDeviceAssignmentRepository.class),

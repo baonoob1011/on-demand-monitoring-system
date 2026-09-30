@@ -13,7 +13,7 @@ import com.ondemandmonitoring.devicecheck.service.IMediaProbeService;
 import com.ondemandmonitoring.devicecheck.service.IPersistedPreDeviceCheckService;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.service.IMissionService;
-import com.ondemandmonitoring.s3.S3ObjectStorageService;
+import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -23,12 +23,14 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class MediaProbeServiceImpl implements IMediaProbeService {
 
     private static final String JPEG_CONTENT_TYPE = "image/jpeg";
@@ -36,7 +38,7 @@ public class MediaProbeServiceImpl implements IMediaProbeService {
     private final PersistedPreDeviceCheckRepository runRepository;
     private final IPersistedPreDeviceCheckService preDeviceChecks;
     private final IMissionService missions;
-    private final S3ObjectStorageService storage;
+    private final IMediaObjectStorage storage;
 
     @Value("${app.device-check.media-probe.max-bytes:262144}")
     private long maxBytes;
@@ -74,7 +76,7 @@ public class MediaProbeServiceImpl implements IMediaProbeService {
             return fail(runId, "S3 bucket is not configured");
         }
 
-        String key = normalizedPrefix() + "/" + runId + "/" + UUID.randomUUID() + ".jpg";
+        String key = probeObjectPrefix() + "/" + runId + "/" + UUID.randomUUID() + ".jpg";
         RuntimeException failure = null;
         boolean stored = false;
         boolean cleanupVerified = false;
@@ -82,7 +84,7 @@ public class MediaProbeServiceImpl implements IMediaProbeService {
             storage.put(key, JPEG_CONTENT_TYPE, uploaded.length,
                     new ByteArrayInputStream(uploaded), "[MEDIA-PROBE]");
             stored = true;
-            S3ObjectStorageService.StoredObjectStream downloaded = storage.open(bucket, key);
+            IMediaObjectStorage.StoredObjectStream downloaded = storage.open(bucket, key);
             try (InputStream input = downloaded.inputStream()) {
                 byte[] actual = input.readAllBytes();
                 if (!JPEG_CONTENT_TYPE.equalsIgnoreCase(downloaded.contentType())) {
@@ -95,6 +97,8 @@ public class MediaProbeServiceImpl implements IMediaProbeService {
         } catch (IOException exception) {
             failure = probeFailure("Cannot read the stored media probe", exception);
         } catch (RuntimeException exception) {
+            log.warn("Media probe storage operation failed. runId={}, bucket={}, key={}",
+                    runId, bucket, key, exception);
             failure = exception instanceof ApiException
                     ? exception
                     : probeFailure("Media probe storage operation failed", exception);
@@ -169,9 +173,22 @@ public class MediaProbeServiceImpl implements IMediaProbeService {
         preDeviceChecks.update(runId, PreDeviceCheckType.MEDIA.code(), update);
     }
 
-    private String normalizedPrefix() {
-        String normalized = probePrefix == null ? "" : probePrefix.strip().replaceAll("^/+|/+$", "");
-        return normalized.isBlank() ? "diagnostics/media-probes" : normalized;
+    private String probeObjectPrefix() {
+        String storagePrefix = normalizePrefix(storage.prefix());
+        String diagnosticPrefix = normalizePrefix(probePrefix);
+        if (diagnosticPrefix.isBlank()) {
+            diagnosticPrefix = "diagnostics/media-probes";
+        }
+        if (storagePrefix.isBlank()
+                || diagnosticPrefix.equals(storagePrefix)
+                || diagnosticPrefix.startsWith(storagePrefix + "/")) {
+            return diagnosticPrefix;
+        }
+        return storagePrefix + "/" + diagnosticPrefix;
+    }
+
+    private String normalizePrefix(String value) {
+        return value == null ? "" : value.strip().replaceAll("^/+|/+$", "");
     }
 
     private String sha256(byte[] bytes) {

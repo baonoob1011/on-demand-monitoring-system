@@ -4,7 +4,7 @@ import com.ondemandmonitoring.media.domain.UploadAttemptStatus;
 import com.ondemandmonitoring.media.repository.MediaUploadAttemptRepository;
 import com.ondemandmonitoring.media.service.IMediaUploadReconciliationService;
 import com.ondemandmonitoring.media.service.IMediaValidationService;
-import com.ondemandmonitoring.s3.S3ObjectStorageService;
+import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -20,7 +20,7 @@ import software.amazon.awssdk.services.s3.model.S3Exception;
 public class MediaUploadReconciliationServiceImpl implements IMediaUploadReconciliationService {
     MediaUploadAttemptRepository attempts;
     IMediaValidationService validation;
-    S3ObjectStorageService storage;
+    IMediaObjectStorage storage;
 
     @Override
     public void reconcileUploadedObjects() {

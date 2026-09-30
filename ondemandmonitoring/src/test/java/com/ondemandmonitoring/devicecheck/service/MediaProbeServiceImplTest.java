@@ -17,7 +17,7 @@ import com.ondemandmonitoring.devicecheck.service.impl.MediaProbeServiceImpl;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.service.IMissionService;
-import com.ondemandmonitoring.s3.S3ObjectStorageService;
+import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import java.io.ByteArrayInputStream;
 import java.security.MessageDigest;
 import java.util.HexFormat;
@@ -37,7 +37,7 @@ class MediaProbeServiceImplTest {
     @Mock PersistedPreDeviceCheckRepository runs;
     @Mock IPersistedPreDeviceCheckService preDeviceChecks;
     @Mock IMissionService missions;
-    @Mock S3ObjectStorageService storage;
+    @Mock IMediaObjectStorage storage;
 
     MediaProbeServiceImpl service;
 
@@ -53,8 +53,9 @@ class MediaProbeServiceImplTest {
         byte[] jpeg = jpeg();
         stubContext();
         when(storage.bucket()).thenReturn("probe-bucket");
+        when(storage.prefix()).thenReturn("drone-media");
         when(storage.open(eq("probe-bucket"), any())).thenReturn(
-                new S3ObjectStorageService.StoredObjectStream(
+                new IMediaObjectStorage.StoredObjectStream(
                         new ByteArrayInputStream(jpeg), (long) jpeg.length, "image/jpeg"));
 
         var response = service.verify("run-1", request(jpeg, sha256(jpeg)));
@@ -63,7 +64,9 @@ class MediaProbeServiceImplTest {
         assertThat(response.getDeviceId()).isEqualTo("device-1");
         assertThat(response.isChecksumVerified()).isTrue();
         assertThat(response.isCleanupVerified()).isTrue();
-        verify(storage).put(any(), eq("image/jpeg"), eq((long) jpeg.length), any(), eq("[MEDIA-PROBE]"));
+        ArgumentCaptor<String> key = ArgumentCaptor.forClass(String.class);
+        verify(storage).put(key.capture(), eq("image/jpeg"), eq((long) jpeg.length), any(), eq("[MEDIA-PROBE]"));
+        assertThat(key.getValue()).startsWith("drone-media/diagnostics/media-probes/run-1/");
         verify(storage).delete(eq("probe-bucket"), any());
 
         ArgumentCaptor<PreDeviceCheckItemUpdateRequest> update =
