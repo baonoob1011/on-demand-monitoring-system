@@ -19,6 +19,7 @@ import org.mapstruct.NullValuePropertyMappingStrategy;
 public interface OrderMapper {
 
     @Mapping(target = "id", ignore = true)
+    @Mapping(target = "orderCode", ignore = true)
     @Mapping(target = "customer", ignore = true)
     @Mapping(target = "service", ignore = true)
     @Mapping(target = "preferredTime", ignore = true)

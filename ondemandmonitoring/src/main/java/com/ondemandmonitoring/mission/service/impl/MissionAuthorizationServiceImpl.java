@@ -1,6 +1,7 @@
 package com.ondemandmonitoring.mission.service.impl;
 
 import com.ondemandmonitoring.devicecheck.repository.PersistedPreDeviceCheckRepository;
+import com.ondemandmonitoring.mission.enums.MissionStaffRole;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepository;
@@ -32,9 +33,10 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
                                 .map(mission -> mission.getId())
                                 .orElse(missionIdOrOrderId);
                 boolean currentAssignment = missionStaffAssignmentRepository
-                                .findByMissionIdAndIsCurrentTrue(missionId)
-                                .map(assignment -> currentUser.getId().toString().equals(assignment.getStaff().getId()))
-                                .orElse(false);
+                                .findByMissionIdAndStaffIdAndIsCurrentTrue(
+                                                missionId,
+                                                currentUser.getId().toString())
+                                .isPresent();
                 if (currentAssignment)
                         return true;
                 return missionRepository.findById(missionId)
@@ -44,6 +46,24 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
                                 .map(mission -> missionStaffAssignmentRepository.existsByMissionIdAndStaffId(
                                                 missionId, currentUser.getId().toString()))
                                 .orElse(false);
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public boolean isAssignedOperator(String missionIdOrOrderId) {
+                User currentUser = authenticatedUserResolver.getCurrentUser();
+                String missionId = missionRepository.findById(missionIdOrOrderId)
+                                .or(() -> missionRepository.findByOrderId(missionIdOrOrderId))
+                                .map(mission -> mission.getId())
+                                .orElse(missionIdOrOrderId);
+                return missionStaffAssignmentRepository
+                                .findAllByMissionIdAndAssignedRoleAndIsCurrentTrue(
+                                                missionId,
+                                                MissionStaffRole.OPERATOR)
+                                .stream()
+                                .anyMatch(assignment -> assignment.getStaff() != null
+                                                && currentUser.getId().toString()
+                                                                .equals(assignment.getStaff().getId()));
         }
 
         @Override

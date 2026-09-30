@@ -1,6 +1,7 @@
 package com.ondemandmonitoring.mission.repository;
 
 import com.ondemandmonitoring.mission.domain.MissionStaffAssignment;
+import com.ondemandmonitoring.mission.enums.MissionStaffRole;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -15,6 +16,23 @@ public interface MissionStaffAssignmentRepository extends JpaRepository<MissionS
     boolean existsByMissionIdAndStaffId(String missionId, String staffId);
 
     Optional<MissionStaffAssignment> findByMissionIdAndIsCurrentTrue(String missionId);
+
+    List<MissionStaffAssignment> findAllByMissionIdAndIsCurrentTrue(String missionId);
+
+    Optional<MissionStaffAssignment> findByMissionIdAndStaffIdAndIsCurrentTrue(String missionId, String staffId);
+
+    Optional<MissionStaffAssignment> findByMissionIdAndAssignedRoleAndIsCurrentTrue(
+            String missionId,
+            MissionStaffRole assignedRole);
+
+    List<MissionStaffAssignment> findAllByMissionIdAndAssignedRoleAndIsCurrentTrue(
+            String missionId,
+            MissionStaffRole assignedRole);
+
+    Optional<MissionStaffAssignment> findByMissionIdAndStaffIdAndAssignedRoleAndIsCurrentTrue(
+            String missionId,
+            String staffId,
+            MissionStaffRole assignedRole);
 
     Optional<MissionStaffAssignment> findFirstByMissionIdOrderByAssignedAtDesc(String missionId);
 

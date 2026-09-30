@@ -80,6 +80,11 @@ import com.ondemandmonitoring.mission.repository.*;
 public class MissionService implements IMissionService {
 
     static final long TOKEN_TTL_SECONDS = 900L; // 15 minutes
+    static final Set<MissionStaffRole> REQUIRED_CREW_ROLES = Set.of(
+            MissionStaffRole.PILOT,
+            MissionStaffRole.OPERATOR,
+            MissionStaffRole.MAINTAINER,
+            MissionStaffRole.INSPECTOR);
 
     MissionRescheduleHistoryRepository missionRescheduleHistoryRepository;
     MissionRepository missionRepository;
@@ -329,9 +334,8 @@ public class MissionService implements IMissionService {
                 .build();
 
         missionDeviceAssignmentRepository.save(newAssignment);
-        if (missionStaffAssignmentRepository.findByMissionId(resolvedMissionId).stream()
-                .anyMatch(staffAssignment -> staffAssignment.getResponseStatus() == StaffResponseStatus.PENDING)) {
-            mission.setStatus(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+        if (hasRequiredCrewAssigned(resolvedMissionId)) {
+            mission.setStatus(MissionStatus.WAITING_CREW_CONFIRMATION);
         }
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
@@ -368,41 +372,45 @@ public class MissionService implements IMissionService {
         Instant paddedStart = missionStart.minus(1, ChronoUnit.HOURS);
         Instant paddedEnd = missionEnd.plus(1, ChronoUnit.HOURS);
 
-        if (missionStaffAssignmentRepository.findByMissionIdAndStaffId(resolvedMissionId, staffId).isPresent()) {
+        if (missionStaffAssignmentRepository
+                .findByMissionIdAndStaffIdAndAssignedRoleAndIsCurrentTrue(resolvedMissionId, staffId, assignedRole)
+                .isPresent()) {
             throw new ApiException(ErrorCode.RESOURCE_ALREADY_EXISTS,
-                    "Staff is already assigned to this mission.");
+                    "Staff is already assigned to this role in this mission.");
         }
 
-        validateStaffSchedule(staffId, missionStart, missionEnd, paddedStart, paddedEnd);
+        boolean staffAlreadyInMission = missionStaffAssignmentRepository
+                .findByMissionIdAndStaffIdAndIsCurrentTrue(resolvedMissionId, staffId)
+                .isPresent();
 
         List<ResourceTimeLock> existingLocks = resourceTimeLockRepository.findByResourceId(staffId);
-        for (ResourceTimeLock lock : existingLocks) {
-            if (lock.getMission() != null && lock.getMission().getId().equals(resolvedMissionId)) {
-                throw new ApiException(ErrorCode.RESOURCE_ALREADY_EXISTS,
-                        "Staff is already assigned to this mission.");
-            }
-            if (lock.getStartTime() != null && lock.getEndTime() != null) {
-                if (lock.getStartTime().isBefore(paddedEnd) && lock.getEndTime().isAfter(paddedStart)) {
-                    throw new ApiException(ErrorCode.SCHEDULE_CONFLICT,
-                            "Staff schedule conflicts with an existing resource lock (1-hour buffer required)");
+        if (!staffAlreadyInMission) {
+            validateStaffSchedule(staffId, missionStart, missionEnd, paddedStart, paddedEnd);
+
+            for (ResourceTimeLock lock : existingLocks) {
+                if (lock.getMission() != null && lock.getMission().getId().equals(resolvedMissionId)) {
+                    continue;
+                }
+                if (lock.getStartTime() != null && lock.getEndTime() != null) {
+                    if (lock.getStartTime().isBefore(paddedEnd) && lock.getEndTime().isAfter(paddedStart)) {
+                        throw new ApiException(ErrorCode.SCHEDULE_CONFLICT,
+                                "Staff schedule conflicts with an existing resource lock (1-hour buffer required)");
+                    }
                 }
             }
-        }
 
-        if (resourceTimeLockRepository.findByResourceIdAndMissionId(staffId, resolvedMissionId).isPresent()) {
-            throw new ApiException(ErrorCode.RESOURCE_ALREADY_EXISTS,
-                    "Staff is already assigned to this mission.");
+            if (resourceTimeLockRepository.findByResourceIdAndMissionId(staffId, resolvedMissionId).isEmpty()) {
+                ResourceTimeLock lock = ResourceTimeLock.builder()
+                        .resourceId(staffId)
+                        .mission(mission)
+                        .startTime(missionStart)
+                        .endTime(missionEnd)
+                        .lockStatus(LockStatus.HARD_LOCK)
+                        .expiresAt(missionStart.minus(1, ChronoUnit.HOURS))
+                        .build();
+                resourceTimeLockRepository.save(lock);
+            }
         }
-
-        ResourceTimeLock lock = ResourceTimeLock.builder()
-                .resourceId(staffId)
-                .mission(mission)
-                .startTime(missionStart)
-                .endTime(missionEnd)
-                .lockStatus(LockStatus.HARD_LOCK)
-                .expiresAt(missionStart.minus(1, ChronoUnit.HOURS))
-                .build();
-        resourceTimeLockRepository.save(lock);
 
         MissionStaffAssignment assignment = MissionStaffAssignment.builder()
                 .mission(mission)
@@ -420,12 +428,13 @@ public class MissionService implements IMissionService {
                 .scheduleType(UserScheduleType.MISSION)
                 .referenceId(mission.getId())
                 .status(UserScheduleStatus.SCHEDULED)
-                .notes("Assigned to mission " + mission.getMissionCode())
+                .notes("Assigned to mission " + mission.getMissionCode() + " as " + assignedRole)
                 .build();
         userScheduleRepository.save(staffSchedule);
 
-        if (missionDeviceAssignmentRepository.existsByMissionId(resolvedMissionId)) {
-            mission.setStatus(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+        if (missionDeviceAssignmentRepository.existsByMissionId(resolvedMissionId)
+                && hasRequiredCrewAssigned(resolvedMissionId)) {
+            mission.setStatus(MissionStatus.WAITING_CREW_CONFIRMATION);
         }
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
@@ -480,7 +489,7 @@ public class MissionService implements IMissionService {
     public MissionResponse rejectMission(String missionId, String staffId, String reason) {
         Mission mission = getOrThrow(missionId);
         String resolvedMissionId = mission.getId();
-        requireStatus(mission, MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+        requireCrewConfirmationStatus(mission);
         MissionStaffAssignment assignment = requireCurrentStaffAssignment(resolvedMissionId, staffId);
 
         assignment.setResponseStatus(StaffResponseStatus.REJECTED);
@@ -498,13 +507,16 @@ public class MissionService implements IMissionService {
     public MissionResponse acceptMission(String missionId, String staffId) {
         Mission mission = getOrThrow(missionId);
         String resolvedMissionId = mission.getId();
-        requireStatus(mission, MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+        requireCrewConfirmationStatus(mission);
         MissionStaffAssignment assignment = requireCurrentStaffAssignment(resolvedMissionId, staffId);
         assignment.setResponseStatus(StaffResponseStatus.ACCEPTED);
         assignment.setRespondedAt(Instant.now());
         missionStaffAssignmentRepository.save(assignment);
-        mission.setStatus(MissionStatus.SCHEDULED);
-        ensureAcceptedMissionPlan(mission);
+
+        if (isRequiredCrewAccepted(resolvedMissionId)) {
+            mission.setStatus(MissionStatus.SCHEDULED);
+            ensureAcceptedMissionPlan(mission);
+        }
         return missionMapper.toResponse(missionRepository.save(mission));
     }
 
@@ -627,12 +639,35 @@ public class MissionService implements IMissionService {
     }
 
     private MissionStaffAssignment requireCurrentStaffAssignment(String missionId, String staffId) {
-        return missionStaffAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                .filter(assignment -> assignment.getStaff() != null
-                        && assignment.getStaff().getId() != null
-                        && assignment.getStaff().getId().toString().equals(staffId))
+        return missionStaffAssignmentRepository.findByMissionIdAndStaffIdAndIsCurrentTrue(missionId, staffId)
                 .orElseThrow(() -> new ApiException(ErrorCode.ACCESS_DENIED,
                         "Staff is not assigned to mission " + missionId));
+    }
+
+    private void requireCrewConfirmationStatus(Mission mission) {
+        if (mission.getStatus() != MissionStatus.WAITING_CREW_CONFIRMATION
+                && mission.getStatus() != MissionStatus.WAITING_OPERATOR_ACCEPTANCE) {
+            throw new ApiException(ErrorCode.MISSION_STATUS_INVALID,
+                    "Mission must be waiting for crew confirmation, current: " + mission.getStatus());
+        }
+    }
+
+    private boolean hasRequiredCrewAssigned(String missionId) {
+        Set<MissionStaffRole> roles = missionStaffAssignmentRepository.findAllByMissionIdAndIsCurrentTrue(missionId)
+                .stream()
+                .map(MissionStaffAssignment::getAssignedRole)
+                .collect(java.util.stream.Collectors.toSet());
+        return roles.containsAll(REQUIRED_CREW_ROLES);
+    }
+
+    private boolean isRequiredCrewAccepted(String missionId) {
+        List<MissionStaffAssignment> assignments =
+                missionStaffAssignmentRepository.findAllByMissionIdAndIsCurrentTrue(missionId);
+        Set<MissionStaffRole> acceptedRoles = assignments.stream()
+                .filter(assignment -> assignment.getResponseStatus() == StaffResponseStatus.ACCEPTED)
+                .map(MissionStaffAssignment::getAssignedRole)
+                .collect(java.util.stream.Collectors.toSet());
+        return acceptedRoles.containsAll(REQUIRED_CREW_ROLES);
     }
 
     private void requireFeasiblePlan(MissionPlan plan, boolean allowRuntimePreflightBatteryFallback) {
@@ -682,6 +717,7 @@ public class MissionService implements IMissionService {
         }
         if (mission.getStatus() == MissionStatus.CREATED
                 || mission.getStatus() == MissionStatus.RESOURCE_ASSIGNING
+                || mission.getStatus() == MissionStatus.WAITING_CREW_CONFIRMATION
                 || mission.getStatus() == MissionStatus.WAITING_OPERATOR_ACCEPTANCE
                 || mission.getStatus() == MissionStatus.CANCELLED) {
             return;
