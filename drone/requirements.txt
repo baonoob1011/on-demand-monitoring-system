@@ -1,4 +1,4 @@
-mavsdk
+mavsdk<4
 httpx
 python-dotenv
 watchdog

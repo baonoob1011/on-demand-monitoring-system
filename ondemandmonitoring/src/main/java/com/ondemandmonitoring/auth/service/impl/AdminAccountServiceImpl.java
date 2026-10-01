@@ -2,7 +2,7 @@ package com.ondemandmonitoring.auth.service.impl;
 
 import com.ondemandmonitoring.auth.dto.request.CreateManagedAccountRequest;
 import com.ondemandmonitoring.auth.dto.response.ManagedAccountResponse;
-import com.ondemandmonitoring.auth.infrastructure.outbox.AuthOutboxService;
+import com.ondemandmonitoring.auth.port.out.AuthCompensationPort;
 import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
 import com.ondemandmonitoring.auth.port.out.ManagedIdentity;
 import com.ondemandmonitoring.auth.service.IAdminAccountService;
@@ -26,7 +26,7 @@ public class AdminAccountServiceImpl implements IAdminAccountService {
 
     IUserService userService;
     IdentityProviderPort identityProvider;
-    AuthOutboxService outboxService;
+    AuthCompensationPort compensationPort;
 
     @Override
     @Transactional
@@ -48,7 +48,7 @@ public class AdminAccountServiceImpl implements IAdminAccountService {
                         identity.username(), identity.subject());
                 identityProvider.addUserToGroup(identity.username(), request.getRole().name());
             } catch (RuntimeException exception) {
-                outboxService.scheduleCognitoCleanup(identity.username(), identity.subject());
+                compensationPort.scheduleCognitoCleanup(identity.username(), identity.subject());
                 throw exception;
             }
         } catch (UsernameExistsException exception) {

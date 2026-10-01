@@ -2,7 +2,6 @@ package com.ondemandmonitoring.order.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.domain.OrderDeliverable;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
@@ -26,6 +25,10 @@ import com.ondemandmonitoring.zone.domain.Zone;
 import com.ondemandmonitoring.zone.repository.ZoneRepository;
 import java.util.ArrayList;
 import java.util.List;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -39,6 +42,8 @@ import org.springframework.transaction.annotation.Transactional;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class OrderService implements IOrderService {
 
+    private static final DateTimeFormatter ORDER_CODE_DATE_FORMATTER = DateTimeFormatter.BASIC_ISO_DATE;
+
     OrderRepository orderRepository;
     ServiceRepository serviceRepository;
     DeliverableTypeRepository deliverableTypeRepository;
@@ -46,24 +51,28 @@ public class OrderService implements IOrderService {
     PreferredTimeRepository preferredTimeRepository;
     ZoneRepository zoneRepository;
     AuthenticatedUserResolver authenticatedUserResolver;
-    IMissionService missionService;
     OrderMapper orderMapper;
 
     @Override
     @Transactional
-    public void approveOrder(String orderId) {
+    public OrderCreateResponse approveOrder(String orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+
+        if (order.getOrderStatus() == OrderStatus.APPROVED) {
+            return orderMapper.toResponse(order);
+        }
 
         if (order.getOrderStatus() != OrderStatus.PENDING) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Only PENDING orders can be approved");
         }
 
         order.setOrderStatus(OrderStatus.APPROVED);
+        order.setReviewBy(authenticatedUserResolver.getCurrentUser());
+        order.setReviewAt(Instant.now());
         orderRepository.save(order);
 
-        // Flow 2: Create mission for the approved order
-        missionService.createMissionForOrder(orderId);
+        return orderMapper.toResponse(order);
     }
 
     @Override
@@ -85,7 +94,8 @@ public class OrderService implements IOrderService {
 
         // 4. Validate Date Range
         if (request.getPreferredDateFrom().isAfter(request.getPreferredDateTo())) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "preferredDateFrom must be before or equal to preferredDateTo");
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "preferredDateFrom must be before or equal to preferredDateTo");
         }
 
         // 5. Convert & validate GeoJSON geometries
@@ -135,6 +145,7 @@ public class OrderService implements IOrderService {
         order.setPoint(location);
         order.setTargetArea(targetArea);
         order.setOrderStatus(OrderStatus.PENDING);
+        order.setOrderCode(generateUniqueOrderCode());
         order.setReviewBy(null);
         order.setReviewAt(null);
 
@@ -170,10 +181,75 @@ public class OrderService implements IOrderService {
 
     @Override
     @Transactional(readOnly = true)
+    public OrderCreateResponse getOrderById(String orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+        return orderMapper.toResponse(order);
+    }
+
+    @Override
+    @Transactional
+    public void rejectOrder(String orderId, String reason) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+
+        if (order.getOrderStatus() != OrderStatus.PENDING) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Only PENDING orders can be rejected");
+        }
+
+        order.setOrderStatus(OrderStatus.REJECTED);
+        order.setRejectReason(reason);
+        order.setReviewAt(java.time.Instant.now());
+        orderRepository.save(order);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<OrderCreateResponse> getPendingOrders() {
         return orderRepository.findByOrderStatusOrderByCreatedAtAsc(OrderStatus.PENDING)
                 .stream()
                 .map(orderMapper::toResponse)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderCreateResponse> getApprovedOrders() {
+        return orderRepository.findByOrderStatusOrderByCreatedAtAsc(OrderStatus.APPROVED)
+                .stream()
+                .map(orderMapper::toResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderCreateResponse> getMyOrders(OrderStatus status) {
+        User customer = authenticatedUserResolver.getCurrentUser();
+        List<Order> orders = status == null
+                ? orderRepository.findByCustomer_IdOrderByCreatedAtDesc(customer.getId())
+                : orderRepository.findByCustomer_IdAndOrderStatusOrderByCreatedAtDesc(customer.getId(), status);
+
+        return orders.stream()
+                .map(orderMapper::toResponse)
+                .toList();
+    }
+
+    private String generateUniqueOrderCode() {
+        for (int attempt = 0; attempt < 10; attempt++) {
+            String orderCode = generateOrderCode();
+            if (!orderRepository.existsByOrderCode(orderCode)) {
+                return orderCode;
+            }
+        }
+        throw new ApiException(ErrorCode.INVALID_REQUEST, "Unable to generate a unique order code");
+    }
+
+    private String generateOrderCode() {
+        String datePart = LocalDate.now().format(ORDER_CODE_DATE_FORMATTER);
+        String suffix = UUID.randomUUID().toString()
+                .replace("-", "")
+                .substring(0, 6)
+                .toUpperCase();
+        return "ORD-" + datePart + "-" + suffix;
     }
 }

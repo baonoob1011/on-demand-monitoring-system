@@ -12,6 +12,8 @@ public interface IUserIdentityService {
 
     UserIdentity link(User user, IdentityProvider provider, String cognitoUsername, String cognitoSub);
 
+    void unlink(User user, IdentityProvider provider);
+
     String getUsername(String userId, IdentityProvider provider);
 
     boolean hasIdentity(String userId, IdentityProvider provider);

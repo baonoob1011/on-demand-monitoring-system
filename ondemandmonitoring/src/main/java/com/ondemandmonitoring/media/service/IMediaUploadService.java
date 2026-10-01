@@ -4,8 +4,16 @@ import com.ondemandmonitoring.media.dto.request.CompleteMultipartRequest;
 import com.ondemandmonitoring.media.dto.request.PrepareMediaUploadRequest;
 import com.ondemandmonitoring.media.dto.request.ReportUploadFailureRequest;
 import com.ondemandmonitoring.media.dto.response.MediaUploadResponse;
+import com.ondemandmonitoring.media.dto.request.ManualMediaFileRequest;
+import com.ondemandmonitoring.media.dto.response.ManualMediaUploadResponse;
+import java.util.List;
 
 public interface IMediaUploadService {
+
+    List<ManualMediaUploadResponse> manualTasks(String missionId);
+
+    MediaUploadResponse prepareManualFile(String mediaId,
+            ManualMediaFileRequest request);
 
     MediaUploadResponse prepare(String missionId, PrepareMediaUploadRequest request);
 

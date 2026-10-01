@@ -90,7 +90,7 @@ public class AStarEnergyAwareRoutePlanner implements RoutePlanner {
             expanded++;
             if (current.cellIndex() == targetIndex) {
                 return success(current, startX, startY, targetX, targetY, homeWorldZ,
-                        expanded, generated, peakOpen, grid);
+                        expanded, generated, peakOpen, environment, grid);
             }
             int row = current.cellIndex() / width;
             int column = current.cellIndex() % width;
@@ -159,20 +159,24 @@ public class AStarEnergyAwareRoutePlanner implements RoutePlanner {
     }
 
     private SearchResult success(Label goal, double startX, double startY, double targetX, double targetY,
-            double homeWorldZ, int expanded, int generated, int peakOpen, PlanningGrid grid) {
+            double homeWorldZ, int expanded, int generated, int peakOpen,
+            PlanningEnvironment environment, PlanningGrid grid) {
         List<Label> chain = new ArrayList<>();
         for (Label label = goal; label != null; label = label.previous()) chain.add(label);
         Collections.reverse(chain);
-        List<Label> simplified = simplify(chain, grid.width());
-        double requiredZ = goal.maxSurfaceM() + RoutePlanningPolicy.SAFETY_CLEARANCE_M;
-        List<PlannedRoute.RoutePoint> raw = points(chain, requiredZ, grid);
-        List<PlannedRoute.RoutePoint> points = new ArrayList<>(points(simplified, requiredZ, grid));
-        points.set(0, new PlannedRoute.RoutePoint(startX, startY, requiredZ));
-        points.set(points.size() - 1, new PlannedRoute.RoutePoint(targetX, targetY, requiredZ));
-        double objective = energy.cruiseEnergyMah(goal.distanceM())
+        List<Label> simplified = simplify(chain, environment, grid);
+        List<PlannedRoute.RoutePoint> raw = points(chain, 0.0, grid);
+        List<PlannedRoute.RoutePoint> points = new ArrayList<>(points(simplified, 0.0, grid));
+        points.set(0, new PlannedRoute.RoutePoint(startX, startY, 0.0));
+        points.set(points.size() - 1, new PlannedRoute.RoutePoint(targetX, targetY, 0.0));
+        double requiredZ = maxSurfaceAlongRoute(points, environment, grid) + RoutePlanningPolicy.SAFETY_CLEARANCE_M;
+        List<PlannedRoute.RoutePoint> flightPoints = withWorldZ(points, requiredZ);
+        List<PlannedRoute.RoutePoint> rawPoints = withWorldZ(raw, requiredZ);
+        double distance = routeDistance(flightPoints);
+        double objective = energy.cruiseEnergyMah(distance)
                 + energy.ascendEnergyMah(Math.max(0.0, requiredZ - homeWorldZ));
-        return new SearchResult(new PlannedRoute(true, goal.distanceM(), requiredZ, points, null),
-                objective, raw, chain.size(), points.size(), expanded, generated, peakOpen);
+        return new SearchResult(new PlannedRoute(true, distance, requiredZ, flightPoints, null),
+                objective, rawPoints, chain.size(), flightPoints.size(), expanded, generated, peakOpen);
     }
 
     private List<PlannedRoute.RoutePoint> points(List<Label> labels, double z, PlanningGrid grid) {
@@ -181,8 +185,11 @@ public class AStarEnergyAwareRoutePlanner implements RoutePlanner {
                 grid.simYForRow(label.cellIndex() / grid.width()), z)).toList();
     }
 
-    private List<Label> simplify(List<Label> raw, int width) {
+    private List<Label> simplify(List<Label> raw, PlanningEnvironment environment, PlanningGrid grid) {
         if (raw.size() <= 2) return List.copyOf(raw);
+        List<Label> lineOfSight = simplifyByLineOfSight(raw, environment, grid);
+        if (lineOfSight.size() < raw.size()) return lineOfSight;
+        int width = grid.width();
         List<Label> result = new ArrayList<>();
         result.add(raw.getFirst());
         int oldDr = direction(raw.get(1).cellIndex() / width - raw.get(0).cellIndex() / width);
@@ -198,6 +205,107 @@ public class AStarEnergyAwareRoutePlanner implements RoutePlanner {
         }
         result.add(raw.getLast());
         return List.copyOf(result);
+    }
+
+    private List<Label> simplifyByLineOfSight(List<Label> raw, PlanningEnvironment environment, PlanningGrid grid) {
+        List<Label> simplified = new ArrayList<>();
+        int anchor = 0;
+        simplified.add(raw.get(anchor));
+        while (anchor < raw.size() - 1) {
+            int farthest = raw.size() - 1;
+            while (farthest > anchor + 1
+                    && !segmentTraversable(raw.get(anchor).cellIndex(), raw.get(farthest).cellIndex(),
+                    maxSurfaceOnRawPath(raw, anchor, farthest, environment, grid), environment, grid)) {
+                farthest--;
+            }
+            simplified.add(raw.get(farthest));
+            anchor = farthest;
+        }
+        return List.copyOf(simplified);
+    }
+
+    private double maxSurfaceOnRawPath(
+            List<Label> raw,
+            int fromIndex,
+            int toIndex,
+            PlanningEnvironment environment,
+            PlanningGrid grid) {
+        double maxSurface = Double.NEGATIVE_INFINITY;
+        for (int i = fromIndex; i <= toIndex; i++) {
+            int cell = raw.get(i).cellIndex();
+            EnvironmentSample sample = environment.sample(
+                    grid.simXForColumn(cell % grid.width()),
+                    grid.simYForRow(cell / grid.width()));
+            if (sample.surfaceElevationM() != null) {
+                maxSurface = Math.max(maxSurface, sample.surfaceElevationM());
+            }
+        }
+        return maxSurface;
+    }
+
+    private boolean segmentTraversable(
+            int fromCell,
+            int toCell,
+            double maxAllowedSurfaceM,
+            PlanningEnvironment environment,
+            PlanningGrid grid) {
+        double fromX = grid.simXForColumn(fromCell % grid.width());
+        double fromY = grid.simYForRow(fromCell / grid.width());
+        double toX = grid.simXForColumn(toCell % grid.width());
+        double toY = grid.simYForRow(toCell / grid.width());
+        double distance = Math.hypot(toX - fromX, toY - fromY);
+        int segments = Math.max(1, (int) Math.ceil(distance / (grid.resolutionM() * 0.5)));
+        for (int segment = 0; segment <= segments; segment++) {
+            double t = (double) segment / segments;
+            EnvironmentSample sample = environment.sample(
+                    fromX + (toX - fromX) * t,
+                    fromY + (toY - fromY) * t);
+            if (!sample.insideWorldBounds() || sample.restricted() || sample.surfaceElevationM() == null
+                    || sample.surfaceElevationM() > maxAllowedSurfaceM + 1.0e-9) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private double maxSurfaceAlongRoute(
+            List<PlannedRoute.RoutePoint> points,
+            PlanningEnvironment environment,
+            PlanningGrid grid) {
+        double maxSurface = Double.NEGATIVE_INFINITY;
+        for (int i = 1; i < points.size(); i++) {
+            PlannedRoute.RoutePoint from = points.get(i - 1);
+            PlannedRoute.RoutePoint to = points.get(i);
+            double distance = Math.hypot(to.simX() - from.simX(), to.simY() - from.simY());
+            int segments = Math.max(1, (int) Math.ceil(distance / (grid.resolutionM() * 0.5)));
+            for (int segment = 0; segment <= segments; segment++) {
+                double t = (double) segment / segments;
+                EnvironmentSample sample = environment.sample(
+                        from.simX() + (to.simX() - from.simX()) * t,
+                        from.simY() + (to.simY() - from.simY()) * t);
+                if (!sample.insideWorldBounds() || sample.restricted() || sample.surfaceElevationM() == null) {
+                    throw new IllegalStateException("Simplified route segment became non-traversable.");
+                }
+                maxSurface = Math.max(maxSurface, sample.surfaceElevationM());
+            }
+        }
+        return maxSurface;
+    }
+
+    private List<PlannedRoute.RoutePoint> withWorldZ(List<PlannedRoute.RoutePoint> points, double worldZ) {
+        return points.stream()
+                .map(point -> new PlannedRoute.RoutePoint(point.simX(), point.simY(), worldZ))
+                .toList();
+    }
+
+    private double routeDistance(List<PlannedRoute.RoutePoint> points) {
+        double distance = 0.0;
+        for (int i = 1; i < points.size(); i++) {
+            PlannedRoute.RoutePoint from = points.get(i - 1);
+            PlannedRoute.RoutePoint to = points.get(i);
+            distance += Math.hypot(to.simX() - from.simX(), to.simY() - from.simY());
+        }
+        return distance;
     }
 
     private boolean traversable(int cell, PlanningEnvironment environment, PlanningGrid grid,

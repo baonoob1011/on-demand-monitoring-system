@@ -1,15 +1,15 @@
 package com.ondemandmonitoring.replanning.service;
 
-import com.ondemandmonitoring.drone.domain.DroneTelemetry;
-import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
-import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
+import com.ondemandmonitoring.device.domain.DeviceTelemetry;
+import com.ondemandmonitoring.device.repository.DeviceTelemetryRepository;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
-import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionPlanRepository;
 import com.ondemandmonitoring.replanning.config.ReplanningProperties;
 import com.ondemandmonitoring.replanning.dto.ReplanningDecision;
-import com.ondemandmonitoring.replanning.event.DroneTelemetrySavedEvent;
+import com.ondemandmonitoring.replanning.event.DeviceTelemetrySavedEvent;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -32,8 +32,8 @@ public class MissionReplanningMonitor {
             MissionStatus.IN_FLIGHT,
             MissionStatus.IN_PROGRESS);
 
-    private final DroneTelemetryRepository droneTelemetryRepository;
-    private final MissionDroneAssignmentRepository missionDroneAssignmentRepository;
+    private final DeviceTelemetryRepository deviceTelemetryRepository;
+    private final MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
     private final MissionPlanRepository missionPlanRepository;
     private final ReplanningPolicy replanningPolicy;
     private final MissionReplanningService missionReplanningService;
@@ -42,7 +42,7 @@ public class MissionReplanningMonitor {
     private final Map<String, AtomicBoolean> runningByMission = new ConcurrentHashMap<>();
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void onTelemetrySaved(DroneTelemetrySavedEvent event) {
+    public void onTelemetrySaved(DeviceTelemetrySavedEvent event) {
         if (!properties.isEnabled()) {
             return;
         }
@@ -50,29 +50,29 @@ public class MissionReplanningMonitor {
             evaluate(event);
         } catch (Exception exception) {
             log.warn(
-                    "Dynamic replanning monitor failed for droneCode={} telemetryId={}: {}",
-                    event.droneCode(),
+                    "Dynamic replanning monitor failed for deviceId={} telemetryId={}: {}",
+                    event.deviceId(),
                     event.telemetryId(),
                     exception.getMessage(),
                     exception);
         }
     }
 
-    private void evaluate(DroneTelemetrySavedEvent event) {
-        DroneTelemetry telemetry = droneTelemetryRepository.findById(event.telemetryId()).orElse(null);
+    private void evaluate(DeviceTelemetrySavedEvent event) {
+        DeviceTelemetry telemetry = deviceTelemetryRepository.findById(event.telemetryId()).orElse(null);
         if (telemetry == null) {
             return;
         }
 
-        List<MissionDroneAssignment> assignments =
-                missionDroneAssignmentRepository.findCurrentByDroneCodeAndMissionStatusIn(
-                        event.droneCode(),
+        List<MissionDeviceAssignment> assignments = missionDeviceAssignmentRepository
+                .findCurrentByDeviceIdAndMissionStatusIn(
+                        event.deviceId(),
                         ACTIVE_STATUSES);
         if (assignments.isEmpty()) {
             return;
         }
 
-        for (MissionDroneAssignment assignment : assignments) {
+        for (MissionDeviceAssignment assignment : assignments) {
             String missionId = assignment.getMission().getId();
             Optional<MissionPlan> currentPlan = missionPlanRepository.findByMissionId(missionId);
             if (currentPlan.isEmpty()) {
@@ -110,15 +110,15 @@ public class MissionReplanningMonitor {
         return running.compareAndSet(false, true);
     }
 
-    private void runReplan(String missionId, DroneTelemetry telemetry, ReplanningDecision decision) {
+    private void runReplan(String missionId, DeviceTelemetry telemetry, ReplanningDecision decision) {
         try {
             Instant startedAt = Instant.now();
             MissionPlan plan = missionReplanningService.replanFromTelemetry(missionId, telemetry, decision.reason());
             lastReplannedAt.put(missionId, Instant.now());
             log.info(
-                    "Dynamic replan evaluated missionId={} droneCode={} reason={} detail={} planVersion={} status={} battery={} simX={} simY={} durationMs={}",
+                    "Dynamic replan evaluated missionId={} deviceId={} reason={} detail={} planVersion={} status={} battery={} simX={} simY={} durationMs={}",
                     missionId,
-                    telemetry.getDroneCode(),
+                    resolveDeviceCode(telemetry),
                     decision.reason(),
                     decision.detail(),
                     plan.getPlanVersion(),
@@ -130,9 +130,9 @@ public class MissionReplanningMonitor {
         } catch (Exception exception) {
             lastReplannedAt.put(missionId, Instant.now());
             log.warn(
-                    "Dynamic replan failed missionId={} droneCode={} reason={} detail={}: {}",
+                    "Dynamic replan failed missionId={} deviceId={} reason={} detail={}: {}",
                     missionId,
-                    telemetry.getDroneCode(),
+                    resolveDeviceCode(telemetry),
                     decision.reason(),
                     decision.detail(),
                     exception.getMessage(),
@@ -144,4 +144,14 @@ public class MissionReplanningMonitor {
             }
         }
     }
+
+    private String resolveDeviceCode(DeviceTelemetry telemetry) {
+        if (telemetry == null
+                || telemetry.getDeviceConnection() == null
+                || telemetry.getDeviceConnection().getDevice() == null) {
+            return null;
+        }
+        return telemetry.getDeviceConnection().getDevice().getDeviceCode();
+    }
 }
+

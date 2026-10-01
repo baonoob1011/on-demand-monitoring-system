@@ -6,7 +6,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.FieldDefaults;
 
-/** Request body sent by Drone Operator to reject a mission assignment. */
+/** Request body sent by Device Operator to reject a mission assignment. */
 @Getter
 @Setter
 @FieldDefaults(level = AccessLevel.PRIVATE)

@@ -1,0 +1,115 @@
+package com.ondemandmonitoring.devicecheck.service.impl;
+
+import com.ondemandmonitoring.common.exception.ApiException;
+import com.ondemandmonitoring.common.exception.ErrorCode;
+import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.devicecheck.domain.PersistedPreDeviceCheck;
+import com.ondemandmonitoring.devicecheck.dto.response.PreDeviceCheckResponse;
+import com.ondemandmonitoring.devicecheck.enums.PreDeviceCheckStatus;
+import com.ondemandmonitoring.devicecheck.enums.PreDeviceItemStatus;
+import com.ondemandmonitoring.devicecheck.mapper.PreDeviceCheckCompletionMapper;
+import com.ondemandmonitoring.devicecheck.repository.PersistedPreDeviceCheckRepository;
+import com.ondemandmonitoring.devicecheck.service.IPreDeviceCheckCompletionService;
+import com.ondemandmonitoring.environment.domain.MissionWeatherCheck;
+import com.ondemandmonitoring.environment.repository.MissionWeatherCheckRepository;
+import com.ondemandmonitoring.mission.domain.FlightToken;
+import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
+import com.ondemandmonitoring.mission.enums.MissionStatus;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
+import com.ondemandmonitoring.mission.repository.MissionRepository;
+import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepository;
+import com.ondemandmonitoring.mission.service.IFlightTokenService;
+import com.ondemandmonitoring.user.domain.User;
+import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@RequiredArgsConstructor
+public class PreDeviceCheckCompletionServiceImpl implements IPreDeviceCheckCompletionService {
+
+    private final MissionRepository missionRepository;
+    private final MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
+    private final MissionStaffAssignmentRepository missionStaffAssignmentRepository;
+    private final PersistedPreDeviceCheckRepository preDeviceCheckRepository;
+    private final MissionWeatherCheckRepository missionWeatherCheckRepository;
+    private final IFlightTokenService flightTokenService;
+    private final PreDeviceCheckCompletionMapper preDeviceCheckCompletionMapper;
+    private final AuthenticatedUserResolver authenticatedUserResolver;
+
+    @Override
+    @Transactional
+    public PreDeviceCheckResponse complete(String missionId, String deviceId) {
+        Mission mission = missionRepository.findById(missionId)
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.MISSION_NOT_FOUND,
+                        "Mission not found: " + missionId));
+        Device assignedDevice = getCurrentDevice(mission.getId());
+        if (assignedDevice == null || assignedDevice.getId() == null) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Mission has no assigned deviceId");
+        }
+        if (deviceId == null || deviceId.isBlank() || !assignedDevice.getId().equals(deviceId)) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Device does not match the mission assignment");
+        }
+
+        String staffId = getCurrentStaffId(mission.getId());
+        if (staffId == null || staffId.isBlank()) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Mission has no assigned staff");
+        }
+
+        PersistedPreDeviceCheck persistedPreDeviceCheck = requirePassedPersistedPreDevice(mission.getId());
+        FlightToken token = flightTokenService.issueFlightToken(mission.getId(), assignedDevice.getId(), staffId);
+        mission.setStatus(MissionStatus.READY_TO_FLY);
+        missionRepository.save(mission);
+        MissionWeatherCheck weatherCheck = missionWeatherCheckRepository
+                .findFirstByMissionIdOrderByCreatedAtDesc(mission.getId())
+                .orElse(null);
+
+        return preDeviceCheckCompletionMapper.toResponse(mission, assignedDevice, persistedPreDeviceCheck, token, weatherCheck);
+    }
+
+    private PersistedPreDeviceCheck requirePassedPersistedPreDevice(String missionId) {
+        PersistedPreDeviceCheck run = preDeviceCheckRepository
+                .findFirstByMissionIdOrderByCreatedAtDesc(missionId)
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.INVALID_REQUEST,
+                        "No persisted pre-device run found. Run the real pre-device checklist first."));
+        if (run.getStatus() != PreDeviceCheckStatus.PASSED) {
+            throw new ApiException(
+                    ErrorCode.INVALID_REQUEST,
+                    "Latest persisted pre-device is not passed: " + run.getStatus());
+        }
+        boolean hasNonPassingItem = run.getItems().stream()
+                .anyMatch(item -> item.getStatus() != PreDeviceItemStatus.PASSED);
+        if (hasNonPassingItem) {
+            throw new ApiException(
+                    ErrorCode.INVALID_REQUEST,
+                    "Every pre-device check item must pass before a flight token can be issued.");
+        }
+        return run;
+    }
+
+    private Device getCurrentDevice(String missionId) {
+        return missionDeviceAssignmentRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId)
+                .map(MissionDeviceAssignment::getDevice)
+                .orElse(null);
+    }
+
+    private String getCurrentStaffId(String missionId) {
+        User currentUser = authenticatedUserResolver.getCurrentUser();
+        if (currentUser.getId() == null) {
+            return null;
+        }
+        String currentStaffId = currentUser.getId().toString();
+        return missionStaffAssignmentRepository
+                .findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc(missionId, currentStaffId)
+                .stream()
+                .findFirst()
+                .map(assignment -> assignment.getStaff() != null && assignment.getStaff().getId() != null
+                        ? assignment.getStaff().getId().toString()
+                        : null)
+                .orElse(null);
+    }
+}

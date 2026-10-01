@@ -65,12 +65,15 @@ public class SecurityConfig {
             "/api/v1/auth/csrf",
             "/api/v1/auth/logout",
             "/v3/api-docs/**",
+            "/ws",
+            "/ws/**",
             // Simulation Viewer – static assets and the APIs called by viewer.js
             "/simulation-viewer",
             "/simulation-viewer/**",
             "/api/zones",
             "/api/zones/**",
             "/api/thermal-sources",
+            "/api/dev/ai/knowledge/index",
             "/api/thermal-sources/**",
             "/api/simulation-map",
             "/api/simulation-map/**",
@@ -78,6 +81,9 @@ public class SecurityConfig {
             "/api/planning/environment/**",
             "/api/internal/v1/drone-telemetry/*",
             "/swagger-ui/**",
+            "/error",
+            "//mcp",
+            "/.well-known/**",
             "/swagger-ui.html"
     };
 
@@ -95,6 +101,12 @@ public class SecurityConfig {
                                 "/api/auth/verify-otp",
                                 "/api/auth/resend-otp",
                                 "/api/auth/login",
+                                "/ws",
+                                "/ws/**",
+                                "/error",
+                                "/api/dev/ai/knowledge/index",
+                                "/.well-known/**",
+                                "/mcp/**",
                                 "/api/auth/first-login/change-password",
                                 "/api/auth/social/sync",
                                 "/api/auth/forgot-password",
@@ -115,7 +127,9 @@ public class SecurityConfig {
                                 "/api/internal/v1/drone-telemetry/*",
                                 "/api/missions/**",
                                 "/api/missions/*/images",
-                                "/api/missions/*/media"))
+                                "/api/missions/*/media",
+                                "/api/orders/**"))
+
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .headers(headers -> headers.frameOptions(frameOptions -> frameOptions.disable()))
                 .authorizeHttpRequests(auth -> auth

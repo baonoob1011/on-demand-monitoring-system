@@ -51,7 +51,7 @@ ALTER TABLE IF EXISTS public.drone_telemetries
 CREATE TABLE IF NOT EXISTS public.preflight_runs (
     id VARCHAR(255) PRIMARY KEY,
     mission_id VARCHAR(255) NOT NULL REFERENCES public.missions(id),
-    flight_connection_id VARCHAR(255) REFERENCES public.gcs_sessions(id),
+    device_connection_id VARCHAR(255) REFERENCES public.device_connections(id),
     status VARCHAR(20) NOT NULL,
     total_checks INTEGER NOT NULL,
     passed_checks INTEGER NOT NULL DEFAULT 0,
@@ -65,6 +65,12 @@ CREATE TABLE IF NOT EXISTS public.preflight_runs (
 
 CREATE INDEX IF NOT EXISTS idx_preflight_runs_mission_created
     ON public.preflight_runs (mission_id, created_at);
+
+ALTER TABLE IF EXISTS public.preflight_runs
+    ADD COLUMN IF NOT EXISTS device_connection_id VARCHAR(255);
+
+ALTER TABLE IF EXISTS public.preflight_runs
+    DROP COLUMN IF EXISTS flight_connection_id;
 
 CREATE TABLE IF NOT EXISTS public.preflight_run_items (
     id VARCHAR(255) PRIMARY KEY,

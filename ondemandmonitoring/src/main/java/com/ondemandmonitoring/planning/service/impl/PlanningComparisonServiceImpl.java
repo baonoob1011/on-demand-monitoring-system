@@ -2,13 +2,15 @@ package com.ondemandmonitoring.planning.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.drone.domain.DroneTelemetry;
-import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
+import com.ondemandmonitoring.device.domain.DeviceTelemetry;
+import com.ondemandmonitoring.device.repository.DeviceTelemetryRepository;
+import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
-import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
-import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
+import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.planning.dto.AlgorithmPlanningResult;
@@ -35,11 +37,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class PlanningComparisonServiceImpl implements PlanningComparisonService {
 
-    private static final int EPSG_4326_SRID = 4326;
-
     private final MissionRepository missionRepository;
-    private final MissionDroneAssignmentRepository missionDroneAssignmentRepository;
-    private final DroneTelemetryRepository droneTelemetryRepository;
+    private final MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
+    private final DeviceConnectionRepository deviceConnectionRepository;
+    private final DeviceTelemetryRepository deviceTelemetryRepository;
     private final RoutePlanner directRoutePlanner;
     private final RoutePlanner aStarShortestRoutePlanner;
     private final RoutePlanner aStarEnergyAwareRoutePlanner;
@@ -49,8 +50,9 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
 
     public PlanningComparisonServiceImpl(
             MissionRepository missionRepository,
-            MissionDroneAssignmentRepository missionDroneAssignmentRepository,
-            DroneTelemetryRepository droneTelemetryRepository,
+            MissionDeviceAssignmentRepository missionDeviceAssignmentRepository,
+            DeviceConnectionRepository deviceConnectionRepository,
+            DeviceTelemetryRepository deviceTelemetryRepository,
             @Qualifier("directRoutePlanner") RoutePlanner directRoutePlanner,
             @Qualifier("aStarShortestRoutePlanner") RoutePlanner aStarShortestRoutePlanner,
             @Qualifier("aStarEnergyAwareRoutePlanner") RoutePlanner aStarEnergyAwareRoutePlanner,
@@ -58,8 +60,9 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
             PlanningEnvironment planningEnvironment,
             MissionEnergyEstimator missionEnergyEstimator) {
         this.missionRepository = missionRepository;
-        this.missionDroneAssignmentRepository = missionDroneAssignmentRepository;
-        this.droneTelemetryRepository = droneTelemetryRepository;
+        this.missionDeviceAssignmentRepository = missionDeviceAssignmentRepository;
+        this.deviceConnectionRepository = deviceConnectionRepository;
+        this.deviceTelemetryRepository = deviceTelemetryRepository;
         this.directRoutePlanner = directRoutePlanner;
         this.aStarShortestRoutePlanner = aStarShortestRoutePlanner;
         this.aStarEnergyAwareRoutePlanner = aStarEnergyAwareRoutePlanner;
@@ -83,7 +86,8 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
     @Override
     @Transactional(readOnly = true)
     public PlanningComparisonResult compare(PlanningComparisonInput input) {
-        if (input == null) throw new IllegalArgumentException("Planning comparison input is required.");
+        if (input == null)
+            throw new IllegalArgumentException("Planning comparison input is required.");
         if (input.contextId() == null || input.contextId().isBlank()) {
             throw new IllegalArgumentException("Planning comparison context ID is required.");
         }
@@ -114,7 +118,8 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
         AlgorithmPlanningResult direct = run(
                 PlanningAlgorithm.DIRECT, directRoutePlanner, home, target, homeWorldZ, availableBattery);
         AlgorithmPlanningResult shortest = run(
-                PlanningAlgorithm.ASTAR_SHORTEST, aStarShortestRoutePlanner, home, target, homeWorldZ, availableBattery);
+                PlanningAlgorithm.ASTAR_SHORTEST, aStarShortestRoutePlanner, home, target, homeWorldZ,
+                availableBattery);
         AlgorithmPlanningResult energyAware = run(
                 PlanningAlgorithm.ASTAR_ENERGY_AWARE, aStarEnergyAwareRoutePlanner,
                 home, target, homeWorldZ, availableBattery);
@@ -193,12 +198,8 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
         double x = point.getX();
         double y = point.getY();
         if (!Double.isFinite(x) || !Double.isFinite(y)) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Mission order target point must contain finite coordinates.");
-        }
-        if (point.getSRID() == EPSG_4326_SRID && looksLikeLongitudeLatitude(x, y)) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
-                    "Mission order target point is tagged as EPSG:4326 longitude/latitude; "
-                            + "a local Gazebo simulation XY target is required for route planning.");
+                    "Mission order target point must contain finite coordinates.");
         }
         return new SimulationPoint(x, y);
     }
@@ -222,16 +223,23 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
     }
 
     private Optional<Double> resolveAvailableBatteryPercent(String missionId) {
-        return missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
-                .map(MissionDroneAssignment::getDrone)
-                .filter(drone -> drone.getDroneCode() != null && !drone.getDroneCode().isBlank())
-                .flatMap(drone -> droneTelemetryRepository.findByDroneCode(drone.getDroneCode()))
-                .map(DroneTelemetry::getBatteryPercent)
-                .filter(this::isValidBatteryPercent);
-    }
+        Optional<String> assignedDeviceId = missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+                .map(MissionDeviceAssignment::getDevice)
+                .map(device -> device.getId())
+                .filter(deviceId -> deviceId != null && !deviceId.isBlank());
+        if (assignedDeviceId.isEmpty()) {
+            return Optional.empty();
+        }
 
-    private boolean looksLikeLongitudeLatitude(double x, double y) {
-        return x >= -180.0 && x <= 180.0 && y >= -90.0 && y <= 90.0;
+        return deviceConnectionRepository
+                .findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED")
+                .filter(session -> Boolean.TRUE.equals(session.getTelemetryActive()))
+                .filter(session -> session.getDevice() != null)
+                .filter(session -> assignedDeviceId.get().equals(session.getDevice().getId()))
+                .map(DeviceConnection::getId)
+                .flatMap(deviceTelemetryRepository::findTopByDeviceConnectionIdOrderByRecordedAtDesc)
+                .map(DeviceTelemetry::getBatteryPercent)
+                .filter(this::isValidBatteryPercent);
     }
 
     private boolean finite(double value) {
@@ -251,7 +259,8 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
     }
 
     private Double percentage(Double numerator, Double denominator) {
-        if (numerator == null || denominator == null || denominator == 0.0) return null;
+        if (numerator == null || denominator == null || denominator == 0.0)
+            return null;
         double value = numerator / denominator * 100.0;
         return Double.isFinite(value) ? value : null;
     }
@@ -260,3 +269,4 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
         return Math.max(0L, (System.nanoTime() - started) / 1_000_000L);
     }
 }
+

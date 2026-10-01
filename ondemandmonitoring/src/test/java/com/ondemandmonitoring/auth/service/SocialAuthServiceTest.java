@@ -3,7 +3,7 @@ package com.ondemandmonitoring.auth.service;
 import com.ondemandmonitoring.auth.dto.request.SocialSyncRequest;
 import com.ondemandmonitoring.auth.enumeration.AuthProvider;
 import com.ondemandmonitoring.auth.enumeration.SocialAuthIntent;
-import com.ondemandmonitoring.auth.infrastructure.outbox.AuthOutboxService;
+import com.ondemandmonitoring.auth.port.out.AuthCompensationPort;
 import com.ondemandmonitoring.auth.mapper.AuthenticatedUserMapper;
 import com.ondemandmonitoring.auth.port.out.AuthenticationTokens;
 import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
@@ -20,6 +20,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.InvalidPasswordException;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -31,7 +32,7 @@ import static org.mockito.Mockito.*;
 class SocialAuthServiceTest {
     private SocialIdentityProviderPort socialProvider;
     private IdentityProviderPort cognito;
-    private AuthOutboxService outbox;
+    private AuthCompensationPort compensationPort;
     private IUserService users;
     private RefreshTokenCookieService cookies;
     private SocialAuthService service;
@@ -40,11 +41,11 @@ class SocialAuthServiceTest {
     void setUp() {
         socialProvider = mock(SocialIdentityProviderPort.class);
         cognito = mock(IdentityProviderPort.class);
-        outbox = mock(AuthOutboxService.class);
+        compensationPort = mock(AuthCompensationPort.class);
         users = mock(IUserService.class);
         cookies = mock(RefreshTokenCookieService.class);
         service = new SocialAuthService(
-                socialProvider, cognito, outbox, users, cookies,
+                socialProvider, cognito, compensationPort, users, cookies,
                 Mappers.getMapper(AuthenticatedUserMapper.class));
     }
 
@@ -128,7 +129,7 @@ class SocialAuthServiceTest {
                 () -> service.sync(request, mock(HttpServletResponse.class)));
 
         assertEquals(ErrorCode.AUTH_PROVIDER_ERROR, exception.getErrorCode());
-        verify(outbox).scheduleCognitoCleanup("google_123", "cognito-sub");
+        verify(compensationPort).scheduleCognitoCleanup("google_123", "cognito-sub");
     }
 
     @Test
@@ -142,6 +143,35 @@ class SocialAuthServiceTest {
 
         assertEquals(ErrorCode.RESOURCE_ALREADY_EXISTS, exception.getErrorCode());
         verify(cognito, never()).setPermanentPassword(anyString(), anyString());
+    }
+
+    @Test
+    void linkLocalIdentityPersistsIdentityBeforeEnablingCognitoPassword() {
+        User user = customer();
+        when(users.findByCognitoSub("sub")).thenReturn(user);
+        when(users.hasIdentity(user.getId(), IdentityProvider.LOCAL)).thenReturn(false);
+
+        service.linkLocalIdentity("sub", "google_123", "Password1!");
+
+        var ordered = inOrder(users, cognito);
+        ordered.verify(users).linkLocalIdentity(user, "google_123", "sub");
+        ordered.verify(cognito).setPermanentPassword("google_123", "Password1!");
+        verify(users, never()).unlinkIdentity(any(), any());
+    }
+
+    @Test
+    void linkLocalIdentityCompensatesDatabaseWhenCognitoRejectsPassword() {
+        User user = customer();
+        when(users.findByCognitoSub("sub")).thenReturn(user);
+        when(users.hasIdentity(user.getId(), IdentityProvider.LOCAL)).thenReturn(false);
+        doThrow(InvalidPasswordException.builder().message("weak password").build())
+                .when(cognito).setPermanentPassword("google_123", "weak-pass");
+
+        ApiException exception = assertThrows(ApiException.class,
+                () -> service.linkLocalIdentity("sub", "google_123", "weak-pass"));
+
+        assertEquals(ErrorCode.PASSWORD_POLICY_VIOLATED, exception.getErrorCode());
+        verify(users).unlinkIdentity(user, IdentityProvider.LOCAL);
     }
 
     private SocialSyncRequest request(SocialAuthIntent intent) {

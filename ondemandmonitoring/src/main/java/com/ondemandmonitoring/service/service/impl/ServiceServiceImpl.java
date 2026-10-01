@@ -1,5 +1,6 @@
 package com.ondemandmonitoring.service.service.impl;
 
+import com.ondemandmonitoring.Consultation.services.RagKnowledgeIndexService;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.service.domain.Service;
@@ -21,6 +22,7 @@ public class ServiceServiceImpl implements IServiceService {
 
     ServiceRepository serviceRepository;
     ServiceMapper serviceMapper;
+    RagKnowledgeIndexService ragKnowledgeIndexService;
 
     @Override
     @Transactional
@@ -34,6 +36,7 @@ public class ServiceServiceImpl implements IServiceService {
             entity.setIsActive(true);
         }
         Service saved = serviceRepository.save(entity);
+        ragKnowledgeIndexService.indexServices();
         return serviceMapper.toResponse(saved);
     }
 

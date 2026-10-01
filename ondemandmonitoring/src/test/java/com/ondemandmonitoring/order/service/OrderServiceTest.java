@@ -5,10 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.request.OrderDeliverableRequest;
@@ -63,7 +64,6 @@ class OrderServiceTest {
         preferredTimeRepository = mock(PreferredTimeRepository.class);
         zoneRepository = mock(ZoneRepository.class);
         authenticatedUserResolver = mock(AuthenticatedUserResolver.class);
-        IMissionService missionService = mock(IMissionService.class);
         orderMapper = Mappers.getMapper(OrderMapper.class);
         geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
 
@@ -75,7 +75,6 @@ class OrderServiceTest {
                 preferredTimeRepository,
                 zoneRepository,
                 authenticatedUserResolver,
-                missionService,
                 orderMapper
         );
 
@@ -137,7 +136,7 @@ class OrderServiceTest {
 
         OrderDeliverableRequest delReq = OrderDeliverableRequest.builder()
                 .deliverableTypeId("dt-1")
-                .requirement(Map.of("resolution", "4K"))
+                .requirement(Map.of("resolution", "4K", "radiusM", 300))
                 .build();
 
         OrderCreateRequest request = OrderCreateRequest.builder()
@@ -162,9 +161,28 @@ class OrderServiceTest {
         assertEquals(OrderStatus.PENDING, response.getOrderStatus());
         assertEquals(5.0, response.getLongitude());
         assertEquals(5.0, response.getLatitude());
+        assertEquals(300.0, response.getRadiusM());
         assertNotNull(response.getDeliverables());
         assertEquals(1, response.getDeliverables().size());
         assertEquals("dt-1", response.getDeliverables().get(0).getDeliverableTypeId());
+    }
+
+    @Test
+    void approveOrder_ReturnsApprovedOrderWhenAlreadyApproved() {
+        Order order = Order.builder()
+                .title("Already approved")
+                .orderStatus(OrderStatus.APPROVED)
+                .build();
+        order.setId("ord-approved");
+
+        when(orderRepository.findById("ord-approved")).thenReturn(Optional.of(order));
+
+        OrderCreateResponse response = orderService.approveOrder("ord-approved");
+
+        assertNotNull(response);
+        assertEquals("ord-approved", response.getId());
+        assertEquals(OrderStatus.APPROVED, response.getOrderStatus());
+        verify(orderRepository, never()).save(any(Order.class));
     }
 
     @Test

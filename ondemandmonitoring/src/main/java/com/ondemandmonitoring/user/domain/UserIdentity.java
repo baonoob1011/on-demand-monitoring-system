@@ -19,7 +19,8 @@ import lombok.Setter;
 
 @Entity
 @Table(name = "user_identities", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_user_identity_provider_sub", columnNames = {"provider", "cognito_sub"})
+        @UniqueConstraint(name = "uk_user_identity_provider_sub", columnNames = {"provider", "cognito_sub"}),
+        @UniqueConstraint(name = "uk_user_identity_user_provider", columnNames = {"user_id", "provider"})
 })
 @Getter
 @Setter

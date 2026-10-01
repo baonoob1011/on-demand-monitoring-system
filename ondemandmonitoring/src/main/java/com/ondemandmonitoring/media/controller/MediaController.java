@@ -32,7 +32,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 @Tag(name = "Media & Assets",
-        description = "APIs for uploading and retrieving images/media captured by drones")
+        description = "APIs for uploading and retrieving images/media captured by devices")
 @RestController
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
@@ -47,10 +47,10 @@ public class MediaController {
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<MediaAssetResponse>> uploadMissionImage(
             @PathVariable String missionId,
-            @RequestParam("droneId") String droneId,
+            @RequestParam("deviceId") String deviceId,
             @RequestParam("capturedAt") Instant capturedAt,
             @RequestPart("image") MultipartFile image) {
-        MediaAsset uploaded = mediaAssetService.upload(missionId, droneId, capturedAt, image);
+        MediaAsset uploaded = mediaAssetService.upload(missionId, deviceId, capturedAt, image);
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)

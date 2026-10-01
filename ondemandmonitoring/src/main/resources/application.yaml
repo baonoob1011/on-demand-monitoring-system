@@ -2,7 +2,7 @@ spring:
   application:
     name: ${SPRING_APPLICATION_NAME:ondemandmonitoring}
   config:
-    import: optional:file:.env[.properties],optional:file:ondemandmonitoring/.env[.properties]
+    import: optional:file:../.env[.properties],optional:file:.env[.properties]
   datasource:
     url: ${SPRING_DATASOURCE_URL}
     username: ${SPRING_DATASOURCE_USERNAME}
@@ -61,8 +61,8 @@ server:
 aws:
   region: ${AWS_REGION}
   s3:
-    access-key-bao: ${AWS_ACCESS_KEY_ID_BAO}
-    secret-key-bao: ${AWS_SECRET_ACCESS_KEY_BAO}
+    access-key-bao: ${AWS_ACCESS_KEY_ID}
+    secret-key-bao: ${AWS_SECRET_ACCESS_KEY}
     bucket: ${AWS_S3_BUCKET}
     prefix: ${AWS_S3_PREFIX}
   cognito:
@@ -85,6 +85,8 @@ auth:
     same-site: ${AUTH_REFRESH_COOKIE_SAME_SITE:Lax}
 
 app:
+  seed:
+    demo-drones: ${APP_SEED_DEMO_DRONES:false}
   media:
     max-image-bytes: ${MEDIA_MAX_IMAGE_BYTES:26214400}
     max-video-bytes: ${MEDIA_MAX_VIDEO_BYTES:1073741824}

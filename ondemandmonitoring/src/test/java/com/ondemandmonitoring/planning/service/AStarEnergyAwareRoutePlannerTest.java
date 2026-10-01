@@ -152,6 +152,23 @@ class AStarEnergyAwareRoutePlannerTest {
         assertThat(result.rawPoints()).allMatch(point -> point.simY() != 0.0 || point.simX() != 2.0);
     }
 
+    @Test
+    void stairStepRouteIsCompressedWhenStraightSegmentIsSafe() {
+        GridEnvironment environment = environment(8, 4, 0.0);
+
+        AStarEnergyAwareRoutePlanner.SearchResult result = planner(environment)
+                .planWithMetrics(0.0, 0.0, 7.0, 3.0);
+
+        assertThat(result.route().feasible()).isTrue();
+        assertThat(result.rawNodeCount()).isGreaterThan(2);
+        assertThat(result.simplifiedPointCount()).isEqualTo(2);
+        assertThat(result.route().points())
+                .extracting(PlannedRoute.RoutePoint::simX, PlannedRoute.RoutePoint::simY)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(0.0, 0.0),
+                        org.assertj.core.groups.Tuple.tuple(7.0, 3.0));
+    }
+
     private EnergyEstimate estimate(PlannedRoute route, double homeWorldZ) {
         return estimator.estimate(new EnergyEstimateRequest(
                 route.distanceM(), homeWorldZ, route.requiredWorldZM(), true, false));

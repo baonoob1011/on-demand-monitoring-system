@@ -5,7 +5,7 @@ import com.ondemandmonitoring.auth.dto.request.ResendOtpRequest;
 import com.ondemandmonitoring.auth.dto.request.VerifyOtpRequest;
 import com.ondemandmonitoring.auth.dto.response.RegisterResponse;
 import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
-import com.ondemandmonitoring.auth.infrastructure.outbox.AuthOutboxService;
+import com.ondemandmonitoring.auth.port.out.AuthCompensationPort;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.user.service.IUserService;
@@ -33,16 +33,14 @@ public class RegisterService {
 
     IUserService userService;
     IdentityProviderPort identityProvider;
-    AuthOutboxService outboxService;
+    AuthCompensationPort compensationPort;
 
     @Transactional
     public RegisterResponse register(RegisterRequest request) {
         String email = normalizeEmail(request.getEmail());
         request.setEmail(email);
 
-        if (userService.findOptionalByEmail(email).isPresent()) {
-            throw new ApiException(ErrorCode.EMAIL_ALREADY_EXISTS);
-        }
+        ensureEmailCanBeRegistered(email);
 
         try {
             String cognitoSub = identityProvider.signUp(request);
@@ -55,7 +53,7 @@ public class RegisterService {
                         cognitoSub);
                 identityProvider.addUserToGroup(cognitoSub, RoleCode.CUSTOMER.name());
             } catch (RuntimeException exception) {
-                outboxService.scheduleCognitoCleanup(cognitoSub, cognitoSub);
+                compensationPort.scheduleCognitoCleanup(cognitoSub, cognitoSub);
                 throw exception;
             }
             return RegisterResponse.builder().otpRequired(true).build();
@@ -66,6 +64,20 @@ public class RegisterService {
         } catch (CognitoIdentityProviderException exception) {
             throw providerError(exception);
         }
+    }
+
+    private void ensureEmailCanBeRegistered(String email) {
+        userService.findOptionalByEmail(email).ifPresent(existingUser -> {
+            boolean hasGoogleIdentity = userService.hasIdentity(
+                    existingUser.getId(), IdentityProvider.GOOGLE);
+            boolean hasLocalIdentity = userService.hasIdentity(
+                    existingUser.getId(), IdentityProvider.LOCAL);
+
+            if (hasGoogleIdentity && !hasLocalIdentity) {
+                throw new ApiException(ErrorCode.LOCAL_IDENTITY_LINK_REQUIRED);
+            }
+            throw new ApiException(ErrorCode.EMAIL_ALREADY_EXISTS);
+        });
     }
 
     public void verifyOtp(VerifyOtpRequest request) {

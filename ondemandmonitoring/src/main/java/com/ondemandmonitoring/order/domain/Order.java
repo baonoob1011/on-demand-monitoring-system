@@ -37,6 +37,9 @@ import org.locationtech.jts.geom.Polygon;
 @AllArgsConstructor
 public class Order extends BaseEntity {
 
+    @Column(name = "order_code", unique = true, length = 40)
+    private String orderCode;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User customer;

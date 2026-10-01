@@ -3,7 +3,7 @@ package com.ondemandmonitoring.user.service.impl;
 import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.auth.infrastructure.outbox.AuthOutboxService;
+import com.ondemandmonitoring.auth.service.IAuthAccountSynchronizationService;
 import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.domain.CustomerProfile;
@@ -52,7 +52,7 @@ public class UserManagementServiceImpl implements IUserManagementService {
     CustomerProfileRepository customerProfileRepository;
     UserManagementMapper userManagementMapper;
     AuthenticatedUserResolver authenticatedUserResolver;
-    AuthOutboxService authOutboxService;
+    IAuthAccountSynchronizationService authAccountSynchronizationService;
 
     @Override
     @Transactional(readOnly = true)
@@ -105,7 +105,8 @@ public class UserManagementServiceImpl implements IUserManagementService {
                 .map(UserIdentity::getCognitoUsername)
                 .filter(username -> username != null && !username.isBlank())
                 .distinct()
-                .forEach(username -> authOutboxService.scheduleAccountStatusSync(username, active));
+                .forEach(username -> authAccountSynchronizationService
+                        .scheduleAccountStatusSync(username, active));
         return toDetail(target, identities);
     }
 

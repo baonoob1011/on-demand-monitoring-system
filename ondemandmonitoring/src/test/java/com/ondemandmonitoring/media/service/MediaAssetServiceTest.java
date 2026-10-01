@@ -1,20 +1,21 @@
 package com.ondemandmonitoring.media.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.ondemandmonitoring.s3.AwsS3Properties;
-import com.ondemandmonitoring.s3.S3ObjectStorageService;
-import com.ondemandmonitoring.drone.repository.DroneRepository;
+import com.ondemandmonitoring.common.exception.ApiException;
+import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.device.service.IDeviceService;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
-import com.ondemandmonitoring.media.service.impl.MediaAssetService;
-import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.drone.domain.Drone;
-
+import com.ondemandmonitoring.media.service.impl.MediaAssetServiceImpl;
+import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import java.io.InputStream;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -25,46 +26,46 @@ class MediaAssetServiceTest {
 
     @Test
     void upload_rejectsMissingFile() {
-        MediaAssetService service = new MediaAssetService(
-                mock(S3ObjectStorageService.class),
-                new AwsS3Properties(),
+        MediaAssetServiceImpl service = new MediaAssetServiceImpl(
+                mock(IMediaObjectStorage.class),
                 mock(Environment.class),
-                mock(DroneRepository.class),
-                mock(MediaAssetRepository.class));
+                mock(IDeviceService.class),
+                mock(MediaAssetRepository.class),
+                mock(MissionDeviceAssignmentRepository.class));
 
-        assertThatThrownBy(() -> service.upload("DRONE-01", null))
+        assertThatThrownBy(() -> service.upload("DEVICE-01", null))
                 .isInstanceOf(ApiException.class)
                 .hasMessage("Media file is required");
     }
 
     @Test
     void upload_rejectsUnsupportedContentType() {
-        MediaAssetService service = new MediaAssetService(
-                mock(S3ObjectStorageService.class),
-                new AwsS3Properties(),
+        MediaAssetServiceImpl service = new MediaAssetServiceImpl(
+                mock(IMediaObjectStorage.class),
                 mock(Environment.class),
-                mock(DroneRepository.class),
-                mock(MediaAssetRepository.class));
+                mock(IDeviceService.class),
+                mock(MediaAssetRepository.class),
+                mock(MissionDeviceAssignmentRepository.class));
         MultipartFile file = new org.springframework.mock.web.MockMultipartFile(
                 "file", "capture.txt", "text/plain", "not-an-image".getBytes());
 
-        assertThatThrownBy(() -> service.upload("DRONE-01", file))
+        assertThatThrownBy(() -> service.upload("DEVICE-01", file))
                 .isInstanceOf(ApiException.class)
                 .hasMessage("Only PNG, JPEG, and MP4 media are allowed");
     }
 
     @Test
     void upload_rejectsMismatchedVideoMediaType() {
-        MediaAssetService service = new MediaAssetService(
-                mock(S3ObjectStorageService.class),
-                new AwsS3Properties(),
+        MediaAssetServiceImpl service = new MediaAssetServiceImpl(
+                mock(IMediaObjectStorage.class),
                 mock(Environment.class),
-                mock(DroneRepository.class),
-                mock(MediaAssetRepository.class));
+                mock(IDeviceService.class),
+                mock(MediaAssetRepository.class),
+                mock(MissionDeviceAssignmentRepository.class));
         MultipartFile file = new org.springframework.mock.web.MockMultipartFile(
                 "file", "clip.mp4", "video/mp4", "fake-mp4".getBytes());
 
-        assertThatThrownBy(() -> service.upload("MISSION_001", "DRONE-01", null, file, "IMAGE"))
+        assertThatThrownBy(() -> service.upload("MISSION_001", "DEVICE-01", null, file, "IMAGE"))
                 .isInstanceOf(ApiException.class)
                 .hasMessage("mediaType does not match uploaded content type");
     }
@@ -72,69 +73,86 @@ class MediaAssetServiceTest {
     @Test
     void upload_acceptsVideoMp4AsLocalMedia() {
         Environment environment = mock(Environment.class);
-        DroneRepository droneRepository = mock(DroneRepository.class);
+        IDeviceService deviceService = mock(IDeviceService.class);
         MediaAssetRepository mediaAssetRepository = mock(MediaAssetRepository.class);
-        Drone drone = new Drone();
-        drone.setDroneCode("DRONE-01");
-        when(environment.getProperty("DRONE_IMAGE_STORAGE", "local")).thenReturn("local");
-        when(droneRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(drone));
-        when(mediaAssetRepository.save(org.mockito.ArgumentMatchers.any(MediaAsset.class)))
+        MissionDeviceAssignmentRepository assignmentRepository = mock(MissionDeviceAssignmentRepository.class);
+        Device device = new Device();
+        device.setId("DEVICE-01");
+        device.setDeviceCode("DEVICE-01");
+        MissionDeviceAssignment assignment = assignment("MISSION_001", device);
+        when(environment.getProperty("device_IMAGE_STORAGE", "local")).thenReturn("local");
+        when(deviceService.getEntityById("DEVICE-01")).thenReturn(device);
+        when(assignmentRepository.findByMissionIdAndDeviceIdAndIsCurrentTrue("MISSION_001", "DEVICE-01"))
+                .thenReturn(Optional.of(assignment));
+        when(mediaAssetRepository.save(any(MediaAsset.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        MediaAssetService service = new MediaAssetService(
-                mock(S3ObjectStorageService.class),
-                new AwsS3Properties(),
+        MediaAssetServiceImpl service = new MediaAssetServiceImpl(
+                mock(IMediaObjectStorage.class),
                 environment,
-                droneRepository,
-                mediaAssetRepository);
+                deviceService,
+                mediaAssetRepository,
+                assignmentRepository);
         MultipartFile file = new org.springframework.mock.web.MockMultipartFile(
                 "file", "clip.mp4", "video/mp4", "fake-mp4".getBytes());
 
-        MediaAsset saved = service.upload("MISSION_001", "DRONE-01", null, file, "VIDEO");
+        MediaAsset saved = service.upload("MISSION_001", "DEVICE-01", null, file, "VIDEO");
 
-        org.assertj.core.api.Assertions.assertThat(saved.getType()).isEqualTo("VIDEO");
-        org.assertj.core.api.Assertions.assertThat(saved.getContentType()).isEqualTo("video/mp4");
-        org.assertj.core.api.Assertions.assertThat(saved.getS3Key()).contains("drone-videos");
+        assertThat(saved.getType()).isEqualTo("VIDEO");
+        assertThat(saved.getContentType()).isEqualTo("video/mp4");
+        assertThat(saved.getS3Key()).contains("device-videos");
     }
 
     @Test
     void upload_storesImagesAndVideosInSeparateS3Folders() {
         Environment environment = mock(Environment.class);
-        DroneRepository droneRepository = mock(DroneRepository.class);
+        IDeviceService deviceService = mock(IDeviceService.class);
         MediaAssetRepository mediaAssetRepository = mock(MediaAssetRepository.class);
-        S3ObjectStorageService s3ObjectStorageService = mock(S3ObjectStorageService.class);
-        AwsS3Properties properties = new AwsS3Properties();
-        properties.setBucket("bucket");
-        Drone drone = new Drone();
-        drone.setDroneCode("DRONE-01");
-        when(environment.getProperty("DRONE_IMAGE_STORAGE", "local")).thenReturn("s3");
-        when(droneRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(drone));
-        when(s3ObjectStorageService.bucket()).thenReturn("bucket");
-        when(s3ObjectStorageService.put(any(), any(), eq(8L), any(InputStream.class), any()))
-                .thenAnswer(invocation -> new S3ObjectStorageService.StoredObject(
+        IMediaObjectStorage objectStorage = mock(IMediaObjectStorage.class);
+        MissionDeviceAssignmentRepository assignmentRepository = mock(MissionDeviceAssignmentRepository.class);
+        Device device = new Device();
+        device.setId("DEVICE-01");
+        device.setDeviceCode("DEVICE-01");
+        MissionDeviceAssignment assignment = assignment("MISSION_001", device);
+        when(environment.getProperty("device_IMAGE_STORAGE", "local")).thenReturn("s3");
+        when(deviceService.getEntityById("DEVICE-01")).thenReturn(device);
+        when(assignmentRepository.findByMissionIdAndDeviceIdAndIsCurrentTrue("MISSION_001", "DEVICE-01"))
+                .thenReturn(Optional.of(assignment));
+        when(objectStorage.bucket()).thenReturn("bucket");
+        when(objectStorage.put(any(), any(), eq(8L), any(InputStream.class), any()))
+                .thenAnswer(invocation -> new IMediaObjectStorage.StoredObject(
                         "bucket",
                         invocation.getArgument(0),
                         "s3://bucket/" + invocation.getArgument(0)));
-        when(mediaAssetRepository.save(org.mockito.ArgumentMatchers.any(MediaAsset.class)))
+        when(mediaAssetRepository.save(any(MediaAsset.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        MediaAssetService service = new MediaAssetService(
-                s3ObjectStorageService,
-                properties,
+        MediaAssetServiceImpl service = new MediaAssetServiceImpl(
+                objectStorage,
                 environment,
-                droneRepository,
-                mediaAssetRepository);
+                deviceService,
+                mediaAssetRepository,
+                assignmentRepository);
         MultipartFile imageFile = new org.springframework.mock.web.MockMultipartFile(
                 "file", "capture.jpg", "image/jpeg", "fake-jpg".getBytes());
         MultipartFile videoFile = new org.springframework.mock.web.MockMultipartFile(
                 "file", "clip.mp4", "video/mp4", "fake-mp4".getBytes());
 
-        MediaAsset savedImage = service.upload("MISSION_001", "DRONE-01", null, imageFile, "IMAGE");
-        MediaAsset savedVideo = service.upload("MISSION_001", "DRONE-01", null, videoFile, "VIDEO");
+        MediaAsset savedImage = service.upload("MISSION_001", "DEVICE-01", null, imageFile, "IMAGE");
+        MediaAsset savedVideo = service.upload("MISSION_001", "DEVICE-01", null, videoFile, "VIDEO");
 
-        org.assertj.core.api.Assertions.assertThat(savedImage.getS3Key())
+        assertThat(savedImage.getS3Key())
                 .contains("/images/")
                 .doesNotContain("/videos/");
-        org.assertj.core.api.Assertions.assertThat(savedVideo.getS3Key())
+        assertThat(savedVideo.getS3Key())
                 .contains("/videos/")
                 .doesNotContain("/images/");
+    }
+
+    private MissionDeviceAssignment assignment(String missionId, Device device) {
+        Mission mission = new Mission();
+        mission.setId(missionId);
+        MissionDeviceAssignment assignment = new MissionDeviceAssignment();
+        assignment.setMission(mission);
+        assignment.setDevice(device);
+        return assignment;
     }
 }

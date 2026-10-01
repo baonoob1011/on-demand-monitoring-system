@@ -26,6 +26,7 @@ class AStarEnergyAwareRealMapTest {
     @Test
     void comparesRequiredRealMapScenarios() {
         compare("SIMPLE", 200.0, -280.0);
+        compare("USER_REPORTED_TARGET", 284.43, -203.19);
         compare("AIRPORT_DETOUR", -400.0, -280.0);
     }
 
@@ -47,6 +48,13 @@ class AStarEnergyAwareRealMapTest {
         assertThat(aware.objectiveEnergyMah()).isCloseTo(
                 awareEnergy.estimatedEnergyMah(), org.assertj.core.data.Offset.offset(1.0e-9));
         assertRawRouteSafe(aware.rawPoints());
+        assertThat(aware.simplifiedPointCount()).isLessThanOrEqualTo(8);
+        assertThat(aware.route().points().getFirst())
+                .extracting(PlannedRoute.RoutePoint::simX, PlannedRoute.RoutePoint::simY)
+                .containsExactly(0.0, -280.0);
+        assertThat(aware.route().points().getLast())
+                .extracting(PlannedRoute.RoutePoint::simX, PlannedRoute.RoutePoint::simY)
+                .containsExactly(targetX, targetY);
 
         System.out.printf("ENERGY_REAL|%s|target=%.3f,%.3f|shortestDistance=%.12f|shortestZ=%.12f|shortestEnergy=%.12f|shortestRaw=%d|shortestSimplified=%d|shortestExpanded=%d|shortestMs=%d|awareDistance=%.12f|awareZ=%.12f|awareEnergy=%.12f|awareRaw=%d|awareSimplified=%d|awareExpanded=%d|awareGenerated=%d|awarePeakOpen=%d|awareMs=%d%n",
                 label, targetX, targetY, shortest.route().distanceM(), shortest.route().requiredWorldZM(),

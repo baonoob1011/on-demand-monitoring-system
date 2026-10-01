@@ -12,11 +12,11 @@ public interface IMissionMediaUploadService {
      * Upload media for a mission with automatic retry (up to 3 attempts).
      *
      * @param missionId  Target mission ID
-     * @param droneCode Drone drone code
+     * @param deviceId Device ID/code
      * @param file       Multipart media file (image / video)
      * @return Saved MediaAsset record
      */
-    MediaAsset uploadWithRetry(String missionId, String droneCode, MultipartFile file);
+    MediaAsset uploadWithRetry(String missionId, String deviceId, MultipartFile file);
 
-    MediaAsset uploadWithRetry(String missionId, String droneCode, MultipartFile file, String mediaType);
+    MediaAsset uploadWithRetry(String missionId, String deviceId, MultipartFile file, String mediaType);
 }

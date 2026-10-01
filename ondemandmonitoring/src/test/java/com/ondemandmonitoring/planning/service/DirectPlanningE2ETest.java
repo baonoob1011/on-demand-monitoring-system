@@ -18,6 +18,8 @@ import com.ondemandmonitoring.planning.dto.PlannedRoute;
 import com.ondemandmonitoring.planning.dto.SimulationPoint;
 import com.ondemandmonitoring.planning.dto.response.EnvironmentSample;
 import jakarta.persistence.EntityManager;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -99,6 +101,8 @@ class DirectPlanningE2ETest {
         mission.setMissionCode("E2E_DIRECT_PLANNING_TEST_" + UUID.randomUUID().toString().substring(0, 8));
         mission.setStatus(MissionStatus.CREATED);
         mission.setOrder(testOrder);
+        mission.setScheduledStartAt(Instant.now());
+        mission.setScheduledEndAt(Instant.now().plus(Duration.ofHours(2)));
         mission = missionRepository.saveAndFlush(mission);
 
         SimulationPoint home = simulationHomeProvider.home();

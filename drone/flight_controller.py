@@ -17,6 +17,7 @@ import threading
 import time
 import tty
 import sys
+import uuid
 import grpc
 import httpx
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -30,6 +31,7 @@ from video.video_recorder import RecordingResult, VideoRecorder
 from battery_simulator import BatterySimulator, preflight_battery_check
 from media_uploader import BackendUrlResolver
 from media_review import LocalMediaLibrary
+from devicecheck_media_probe import verify_media_storage_probe
 from thermal_camera_gateway import ThermalCameraGateway
 
 def resolve_project_root() -> Path:
@@ -45,6 +47,16 @@ def resolve_project_root() -> Path:
 
 
 PROJECT_ROOT = resolve_project_root()
+RUNTIME_SESSION_ID = uuid.uuid4().hex
+
+
+def build_media_probe_jpeg() -> bytes:
+    buffer = BytesIO()
+    PilImage.new("RGB", (1, 1), (18, 139, 84)).save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
+MEDIA_PROBE_JPEG = build_media_probe_jpeg()
 
 DRONE_DIR = PROJECT_ROOT / "drone"
 
@@ -1084,6 +1096,10 @@ CONTROL_COMMAND_KEYS = {
     "speed_up": "1",
     "speed_down": "2",
     "camera_switch": "c",
+    "camera_front": "camera_front",
+    "camera_fpv": "camera_front",
+    "camera_reset": "camera_front",
+    "camera_down": "camera_down",
     "camera_monitor_toggle": "3",
     "lidar_monitor_toggle": "4",
     "telemetry_monitor_toggle": "5",
@@ -1160,7 +1176,7 @@ class PreflightPersistenceBridge:
         for base_url in self.backend_urls.candidates():
             try:
                 response = httpx.post(
-                    f"{base_url}/api/missions/{self.mission_id}/preflight-checks",
+                    f"{base_url}/api/missions/{self.mission_id}/pre-device-checks",
                     headers=self._headers(),
                     timeout=1.5,
                 )
@@ -1177,7 +1193,7 @@ class PreflightPersistenceBridge:
                 self.base_url = base_url
                 self.warned_unavailable = False
                 print(
-                    f"[PREFLIGHT-DB] Created run={self.run_id} mission={self.mission_id}",
+                    f"[PRE-DEVICE-DB] Created run={self.run_id} mission={self.mission_id}",
                     flush=True,
                 )
                 return self.run_id
@@ -1186,7 +1202,7 @@ class PreflightPersistenceBridge:
 
         if not self.warned_unavailable:
             print(
-                f"[PREFLIGHT-DB] Not saved. Backend unavailable or mission missing: {self.mission_id}",
+                f"[PRE-DEVICE-DB] Not saved. Backend unavailable or mission missing: {self.mission_id}",
                 flush=True,
             )
             self.warned_unavailable = True
@@ -1210,7 +1226,7 @@ class PreflightPersistenceBridge:
 
             try:
                 response = httpx.patch(
-                    f"{self.base_url}/api/preflight-checks/{self.run_id}/items/{check_type}",
+                    f"{self.base_url}/api/pre-device-checks/{self.run_id}/items/{check_type}",
                     headers=self._headers(),
                     json={"status": status, "message": message},
                     timeout=1.0,
@@ -1222,6 +1238,18 @@ class PreflightPersistenceBridge:
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.access_token}"} if self.access_token else {}
+
+    def verify_media_upload_cycle(self, jpeg: bytes) -> tuple[bool, str]:
+        if not self.base_url:
+            return False, "Backend run was not created, cannot verify media upload"
+        if not self.run_id:
+            return False, "Pre-device check run is missing, cannot verify media upload"
+        return verify_media_storage_probe(
+            self.base_url,
+            self.run_id,
+            self.access_token,
+            jpeg,
+        )
 
     @staticmethod
     def _to_backend_status(status: str) -> str | None:
@@ -1245,6 +1273,7 @@ class FlightControlApi:
         thermal: ThermalCameraGateway | None = None,
         media_library: LocalMediaLibrary | None = None,
         session_binder=None,
+        session_releaser=None,
     ) -> None:
         self.camera = camera
         self.commands = commands
@@ -1254,6 +1283,7 @@ class FlightControlApi:
         self.thermal = thermal
         self.media_library = media_library
         self.session_binder = session_binder
+        self.session_releaser = session_releaser
         self.preflight_check_id: str | None = None
         self.preflight_started_at_s: float | None = None
         self.server: ThreadingHTTPServer | None = None
@@ -1406,6 +1436,19 @@ class FlightControlApi:
                             self._write_json(503, {"error": "Session binding unavailable"})
                             return
                         result = owner.session_binder(payload)
+                        self._write_json(200, {"ok": True, **result})
+                    except (ValueError, json.JSONDecodeError) as exc:
+                        self._write_json(400, {"error": str(exc)[:500]})
+                    return
+
+                if self.path == "/api/control/session/release":
+                    try:
+                        length = int(self.headers.get("Content-Length", "0"))
+                        payload = json.loads(self.rfile.read(length) or b"{}") if length > 0 else {}
+                        if owner.session_releaser is None:
+                            self._write_json(503, {"error": "Session release unavailable"})
+                            return
+                        result = owner.session_releaser(payload)
                         self._write_json(200, {"ok": True, **result})
                     except (ValueError, json.JSONDecodeError) as exc:
                         self._write_json(400, {"error": str(exc)[:500]})
@@ -2504,10 +2547,10 @@ async def main() -> None:
     backend_urls = BackendUrlResolver(BACKEND_BASE_URL)
     active_mission_id = None
     active_mission_code = None
-    active_drone_id = None
+    active_device_id = None
     media_root = Path(os.getenv("LOCAL_MEDIA_DIR", "/tmp/forest3d_drone_media"))
     media_library = LocalMediaLibrary(
-        media_root, active_mission_id, active_drone_id)
+        media_root, active_mission_id, active_device_id)
 
     video_recorder = VideoRecorder(
         VIDEO_RECORDING_DIR,
@@ -2606,6 +2649,11 @@ async def main() -> None:
     current_velocity_east_m_s = 0.0
     current_velocity_down_m_s = 0.0
     current_px4_battery_percent = None
+    current_px4_battery_update_s = None
+    media_probe_check_id = None
+    media_probe_status = "PENDING"
+    media_probe_message = "Media upload probe has not run yet"
+    media_probe_lock = threading.Lock()
     current_armed = False
     current_in_air = False
     current_health = None
@@ -2617,6 +2665,7 @@ async def main() -> None:
     auto_plan_active = False
     auto_plan_status = "IDLE"
     auto_plan_desired_altitude_m: float | None = None
+    auto_plan_land_on_complete = False
     safety_speed_scale = 1.0
     simulated_battery = BatterySimulator(
         float(os.getenv("SIM_BATTERY_INITIAL_PERCENT", "100.0")),
@@ -2636,9 +2685,11 @@ async def main() -> None:
         }
 
     def build_preflight_status(check_id: str, started_at_s: float | None) -> dict:
+        nonlocal media_probe_check_id, media_probe_status, media_probe_message
         now_s = time.monotonic()
         local_age_s = now_s - local_position_update_s if local_position_update_s is not None else None
         health_age_s = now_s - current_health_update_s if current_health_update_s is not None else None
+        px4_battery_age_s = now_s - current_px4_battery_update_s if current_px4_battery_update_s is not None else None
         camera_age_s = camera.latest_frame_age_s("DOWN")
         lidar_age_s = lidar.latest_scan_age_s() if lidar is not None and hasattr(lidar, "latest_scan_age_s") else None
         connection_age_s = connection_manager.connection_age_s()
@@ -2662,9 +2713,29 @@ async def main() -> None:
         ) if current_health is not None else False
         module_ok = LIDAR_IMPORT_ERROR is None and Node is not None and GzImage is not None
         backend_ok, backend_target = backend_urls.reachable()
-        battery_snapshot = simulated_battery.snapshot()
-        simulated_battery_percent = battery_snapshot.battery_percent
-        battery_ready_status, battery_ready_message = preflight_battery_check(simulated_battery_percent)
+        with media_probe_lock:
+            if media_probe_check_id != check_id:
+                media_probe_check_id = check_id
+                media_probe_status = "CHECKING"
+                media_probe_message = "Running isolated media storage round-trip probe"
+                if module_ok and backend_ok and control_api.preflight_persistence is not None:
+                    media_ok, media_message = control_api.preflight_persistence.verify_media_upload_cycle(
+                        MEDIA_PROBE_JPEG,
+                    )
+                    media_probe_status = "PASS" if media_ok else "FAIL"
+                    media_probe_message = media_message
+                else:
+                    media_probe_status = "FAIL"
+                    media_probe_message = "Media probe needs loaded modules and reachable backend"
+            media_probe_status_snapshot = media_probe_status
+            media_probe_message_snapshot = media_probe_message
+
+        if current_px4_battery_percent is not None and fresh(px4_battery_age_s, 10.0):
+            battery_ready_status, battery_ready_message = preflight_battery_check(current_px4_battery_percent)
+            battery_ready_message = f"{current_px4_battery_percent:.1f}% PX4 battery telemetry - {battery_ready_message}"
+        else:
+            battery_ready_status = "FAIL"
+            battery_ready_message = "No fresh PX4 battery telemetry received"
 
         checks = [
             check_item(
@@ -2740,8 +2811,8 @@ async def main() -> None:
             check_item(
                 "MEDIA",
                 "Media Upload",
-                "PASS" if module_ok else "WARN",
-                "Media capture pipeline ready" if module_ok else "Media capture pipeline not fully verified",
+                media_probe_status_snapshot,
+                media_probe_message_snapshot,
                 False,
             ),
             check_item(
@@ -2780,9 +2851,10 @@ async def main() -> None:
         )
         thermal.update_pose(sim_x_m, sim_y_m, max(0.0, -current_local_down_m))
         status = {
+            "runtimeSessionId": RUNTIME_SESSION_ID,
             "missionId": active_mission_id,
             "missionCode": active_mission_code,
-            "deviceCode": active_drone_id,
+            "deviceId": active_device_id,
             "positionReady": local_position_ready,
             "positionNed": {
                 "northM": current_local_north_m,
@@ -2869,18 +2941,18 @@ async def main() -> None:
         return status
 
     def bind_control_session(payload: dict) -> dict:
-        nonlocal active_mission_id, active_mission_code, active_drone_id, media_library
+        nonlocal active_mission_id, active_mission_code, active_device_id, media_library
         mission_id = str(payload.get("missionId", "")).strip()
-        drone_code = str(payload.get("droneCode", "")).strip()
+        device_id = str(payload.get("deviceId", "")).strip()
         access_token = str(payload.get("accessToken", "")).strip()
         if not mission_id or len(mission_id) > 255:
             raise ValueError("missionId is required")
-        if not drone_code or len(drone_code) > 50:
-            raise ValueError("droneCode is required")
+        if not device_id or len(device_id) > 80:
+            raise ValueError("deviceId is required")
         if not access_token or len(access_token) > 4096 or any(char.isspace() for char in access_token):
             raise ValueError("A valid operator access token is required")
         if video_recorder.is_recording() or current_in_air:
-            if mission_id != active_mission_id or drone_code != active_drone_id:
+            if mission_id != active_mission_id or device_id != active_device_id:
                 raise ValueError("Cannot switch control session while recording or in flight")
 
         assigned_mission = None
@@ -2915,24 +2987,55 @@ async def main() -> None:
                     raise ValueError("Backend rejected the operator access token; sign in again")
                 raise ValueError("Flight Controller cannot reach the backend mission API")
             raise ValueError("Mission is not assigned to the authenticated operator")
-        assigned_drone = str(assigned_mission.get("droneCode") or "").strip()
-        if not assigned_drone:
-            raise ValueError("Mission has no assigned drone code in the backend")
-        if assigned_drone != drone_code:
-            raise ValueError("Drone does not match the mission assignment")
+        assigned_device = str(assigned_mission.get("deviceId") or "").strip()
+        if not assigned_device:
+            raise ValueError("Mission has no assigned deviceId in the backend")
+        if assigned_device != device_id:
+            raise ValueError("Device does not match the mission assignment")
 
         active_mission_id = mission_id
         active_mission_code = str(assigned_mission.get("missionCode") or "").strip() or None
-        active_drone_id = assigned_drone
-        media_library = LocalMediaLibrary(media_root, mission_id, assigned_drone, active_mission_code)
+        active_device_id = assigned_device
+        media_library = LocalMediaLibrary(media_root, mission_id, assigned_device, active_mission_code)
         camera.media_library = media_library
         control_api.media_library = media_library
         control_api.preflight_persistence = PreflightPersistenceBridge(
             backend_urls, mission_id, access_token)
         control_api.preflight_check_id = None
         control_api.preflight_started_at_s = None
-        print(f"[SESSION] Bound mission={active_mission_code or mission_id} id={mission_id} drone={assigned_drone}", flush=True)
-        return {"missionId": mission_id, "missionCode": active_mission_code, "droneCode": assigned_drone}
+        print(f"[SESSION] Bound mission={active_mission_code or mission_id} id={mission_id} device={assigned_device}", flush=True)
+        return {
+            "missionId": mission_id,
+            "missionCode": active_mission_code,
+            "deviceId": assigned_device,
+        }
+
+    def release_control_session(payload: dict) -> dict:
+        nonlocal active_mission_id, active_mission_code, active_device_id, media_library, current_in_air
+        requested_mission_id = str(payload.get("missionId", "")).strip()
+        if requested_mission_id and active_mission_id and requested_mission_id != active_mission_id:
+            return {
+                "released": False,
+                "missionId": active_mission_id,
+                "message": "Active control session belongs to another mission",
+            }
+        retained_video = False
+        if video_recorder.is_recording():
+            result = stop_video_recording(retain=True)
+            retained_video = result is not None
+        stop_auto_plan("session release")
+        active_mission_id = None
+        active_mission_code = None
+        active_device_id = None
+        current_in_air = False
+        media_library = LocalMediaLibrary(media_root, None, None)
+        camera.media_library = media_library
+        control_api.media_library = media_library
+        control_api.preflight_persistence = None
+        control_api.preflight_check_id = None
+        control_api.preflight_started_at_s = None
+        print("[SESSION] Released active control session", flush=True)
+        return {"released": True, "retainedVideo": retained_video}
 
     control_api = FlightControlApi(
         camera,
@@ -2943,6 +3046,7 @@ async def main() -> None:
         thermal,
         media_library,
         bind_control_session,
+        release_control_session,
     )
     control_api.start()
     print(
@@ -3027,8 +3131,10 @@ async def main() -> None:
 
     def update_battery(percent: float | None) -> None:
         nonlocal current_px4_battery_percent
+        nonlocal current_px4_battery_update_s
         if percent is not None:
             current_px4_battery_percent = percent
+            current_px4_battery_update_s = time.monotonic()
 
     def update_in_air(in_air: bool) -> None:
         nonlocal current_in_air
@@ -3066,9 +3172,62 @@ async def main() -> None:
     def force_manual_control() -> None:
         set_motion_owner(MotionOwner.MANUAL)
 
+    def build_auto_plan_route(points: list[dict]) -> tuple[list[dict], bool]:
+        route = list(points)
+        if not route:
+            return route, False
+
+        home = next((point for point in route if str(point.get("reason", "")).upper() == "START"), route[0])
+        last = route[-1]
+        already_home = (
+            math.hypot(last["simX"] - home["simX"], last["simY"] - home["simY"])
+            <= AUTO_PLAN_REACHED_RADIUS_M
+        )
+        if not already_home:
+            route.append(
+                {
+                    **home,
+                    "sequence": max(point["sequence"] for point in route) + 1,
+                    "reason": "RETURN",
+                }
+            )
+        return route, True
+
+    async def land_current_drone(reason: str) -> None:
+        print(f"[AUTO-PLAN] {reason}: landing", flush=True)
+        stop_video_recording(retain=True)
+        await connection_manager.stop_offboard_sender()
+        active_drone = await connection_manager.get_drone()
+        if active_drone is None:
+            active_drone = await connection_manager.reconnect()
+        if active_drone is None:
+            print("[ERR] MAVSDK control bridge unavailable")
+            return
+        try:
+            await active_drone.offboard.stop()
+        except OffboardError:
+            pass
+        try:
+            await active_drone.action.land()
+        except ActionError as exc:
+            print_command_denied("land", exc)
+        except grpc.aio.AioRpcError as exc:
+            print_mavsdk_unavailable("land", exc)
+            if is_grpc_unavailable(exc):
+                new_drone = await connection_manager.reconnect()
+                if new_drone is not None and avoidance is not None:
+                    avoidance.set_drone(new_drone)
+                if new_drone is not None:
+                    try:
+                        await new_drone.action.land()
+                    except ActionError as retry_exc:
+                        print_command_denied("land", retry_exc)
+                    except grpc.aio.AioRpcError as retry_exc:
+                        print_mavsdk_unavailable("land retry", retry_exc)
+
     def stop_auto_plan(reason: str = "stopped") -> None:
         nonlocal auto_plan_active, auto_plan_points, auto_plan_index, auto_plan_status
-        nonlocal auto_plan_desired_altitude_m
+        nonlocal auto_plan_desired_altitude_m, auto_plan_land_on_complete
         if auto_plan_active:
             print(f"[AUTO-PLAN] {reason}", flush=True)
         auto_plan_active = False
@@ -3076,11 +3235,12 @@ async def main() -> None:
         auto_plan_index = 0
         auto_plan_status = reason
         auto_plan_desired_altitude_m = None
+        auto_plan_land_on_complete = False
 
     def start_auto_plan(points: list[dict]) -> None:
         nonlocal auto_plan_active, auto_plan_points, auto_plan_index, auto_plan_status
-        nonlocal auto_plan_desired_altitude_m
-        auto_plan_points = list(points)
+        nonlocal auto_plan_desired_altitude_m, auto_plan_land_on_complete
+        auto_plan_points, auto_plan_land_on_complete = build_auto_plan_route(points)
         auto_plan_index = 0
         auto_plan_desired_altitude_m = max(0.0, -current_local_down_m)
         if local_position_ready and auto_plan_points:
@@ -3109,7 +3269,7 @@ async def main() -> None:
         )
 
     async def update_auto_plan() -> None:
-        nonlocal auto_plan_index
+        nonlocal auto_plan_index, auto_plan_status
         nonlocal current_forward_m_s, current_right_m_s
         nonlocal current_north_m_s, current_east_m_s, current_down_m_s, current_yaw_deg
         nonlocal auto_plan_desired_altitude_m
@@ -3120,16 +3280,22 @@ async def main() -> None:
             print("[AUTO-PLAN] Waiting for local position", flush=True)
             return
         if auto_plan_index >= len(auto_plan_points):
+            should_land = auto_plan_land_on_complete
+            auto_plan_status = "LANDING" if should_land else "COMPLETE"
             stop_auto_plan("complete")
             active_drone = await set_motion(connection_manager, 0.0, 0.0, 0.0, current_yaw_deg)
             if active_drone is not None and avoidance is not None:
                 avoidance.set_drone(active_drone)
             set_motion_owner(MotionOwner.MANUAL)
+            if should_land:
+                auto_plan_status = "LANDING"
+                await land_current_drone("return complete")
             return
 
         sim_x_m, sim_y_m = px4_ned_to_sim_xy(current_local_north_m, current_local_east_m)
         altitude_m = max(0.0, -current_local_down_m)
         target = auto_plan_points[auto_plan_index]
+        auto_plan_status = "RETURNING" if str(target.get("reason", "")).upper() == "RETURN" else "RUNNING"
         dx = target["simX"] - sim_x_m
         dy = target["simY"] - sim_y_m
         horizontal_distance = math.hypot(dx, dy)
@@ -3671,6 +3837,10 @@ async def main() -> None:
             print(f"[SAFETY] Sensor toggle -> {state}", flush=True)
         elif key == "c":
             camera_orientation.toggle()
+        elif key == "camera_front":
+            camera_orientation.set_mode("FRONT")
+        elif key == "camera_down":
+            camera_orientation.set_mode("DOWN")
         elif key == "3":
             toggle_monitor_window(
                 "Camera monitor",

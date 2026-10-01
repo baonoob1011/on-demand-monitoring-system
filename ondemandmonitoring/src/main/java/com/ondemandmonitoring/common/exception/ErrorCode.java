@@ -21,6 +21,9 @@ public enum ErrorCode {
     RESOURCE_ALREADY_EXISTS("Dữ liệu đã tồn tại", HttpStatus.CONFLICT),
     METHOD_NOT_ALLOWED("Phương thức HTTP không được hỗ trợ", HttpStatus.METHOD_NOT_ALLOWED),
     EMAIL_ALREADY_EXISTS("Email đã được đăng ký", HttpStatus.CONFLICT),
+    LOCAL_IDENTITY_LINK_REQUIRED(
+            "Email đã đăng ký bằng Google. Hãy đăng nhập bằng Google để thiết lập mật khẩu đăng nhập local",
+            HttpStatus.CONFLICT),
     USER_NOT_FOUND("Không tìm thấy người dùng", HttpStatus.NOT_FOUND),
     INVALID_CREDENTIALS("Email hoặc mật khẩu không đúng", HttpStatus.UNAUTHORIZED),
     USER_NOT_CONFIRMED("Tài khoản chưa được xác thực email", HttpStatus.FORBIDDEN),
@@ -44,18 +47,15 @@ public enum ErrorCode {
     MISSION_NOT_FOUND("Mission not found", HttpStatus.NOT_FOUND),
     MISSION_STATUS_INVALID("Mission status is invalid for this operation", HttpStatus.CONFLICT),
     CONCURRENT_UPDATE("Resource changed during this request; refresh and retry", HttpStatus.CONFLICT),
-    DRONE_NOT_AVAILABLE("Drone is not available", HttpStatus.CONFLICT),
-    SCHEDULE_CONFLICT("The drone is already scheduled for another mission during this time period",
+    SCHEDULE_CONFLICT("The Device is already scheduled for another mission during this time period",
             HttpStatus.CONFLICT),
     MEDIA_UPLOAD_FAILED("File upload failed after 3 attempts", HttpStatus.BAD_GATEWAY),
     MEDIA_NOT_FOUND("Media not found", HttpStatus.NOT_FOUND),
     MEDIA_UPLOAD_NOT_ALLOWED("Media upload is not allowed", HttpStatus.CONFLICT),
     MEDIA_UPLOAD_ATTEMPT_INVALID("Media upload attempt is invalid", HttpStatus.CONFLICT),
     MEDIA_IDEMPOTENCY_CONFLICT("Local media ID conflicts with existing metadata", HttpStatus.CONFLICT),
-    DRONE_MODEL_NOT_FOUND("Drone model not found", HttpStatus.NOT_FOUND),
-    DRONE_PAYLOAD_NOT_FOUND("Drone payload not found", HttpStatus.NOT_FOUND),
-    DRONE_NOT_FOUND("Drone not found", HttpStatus.NOT_FOUND),
-
+    MEDIA_PROBE_INVALID("Media probe payload is invalid", HttpStatus.BAD_REQUEST),
+    MEDIA_PROBE_FAILED("Media storage round-trip probe failed", HttpStatus.BAD_GATEWAY),
     /**
      * Service & DeliverableType Error Codes
      */
@@ -70,7 +70,12 @@ public enum ErrorCode {
     DEVICE_MODEL_NOT_FOUND("Device model not found", HttpStatus.NOT_FOUND),
     DEVICE_MODEL_CODE_EXISTS("Device model code already exists", HttpStatus.CONFLICT),
     DEVICE_NOT_FOUND("Device not found", HttpStatus.NOT_FOUND),
-    DEVICE_SERIAL_NUMBER_EXISTS("Device serial number already exists", HttpStatus.CONFLICT);
+    DEVICE_SERIAL_NUMBER_EXISTS("Device serial number already exists", HttpStatus.CONFLICT),
+    /**
+     * Support Ticket Error Codes
+     */
+    SUPPORT_TICKET_NOT_FOUND("Support ticket not found with specified ID", HttpStatus.NOT_FOUND),
+    DEVICE_NOT_AVAILABLE("Device is not available", HttpStatus.CONFLICT);
 
     String message;
     HttpStatus status;

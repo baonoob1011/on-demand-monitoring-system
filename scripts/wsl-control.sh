@@ -6,13 +6,14 @@ sleep 35
 
 PROJECT_PATH="${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 REPO_CONTROLLER="$PROJECT_PATH/drone"
-ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
+ENV_FILE="$PROJECT_PATH/.env"
 DRONE_WORKDIR="${DRONE_WORKDIR:-$HOME/drone-controller}"
 DRONE_ENV="${DRONE_ENV:-$HOME/drone-env}"
 
 mkdir -p "$DRONE_WORKDIR"
 cd "$DRONE_WORKDIR" || exit 1
 cp "$REPO_CONTROLLER/flight_controller.py" flight_controller.py
+cp "$REPO_CONTROLLER/devicecheck_media_probe.py" devicecheck_media_probe.py
 cp "$REPO_CONTROLLER/media_uploader.py" media_uploader.py
 cp "$REPO_CONTROLLER/media_review.py" media_review.py
 cp "$REPO_CONTROLLER/battery_simulator.py" battery_simulator.py
@@ -44,7 +45,13 @@ then
     python -m pip install -q opencv-python
 fi
 
-MAVSDK_BIN="$HOME/drone-env/lib/python3.12/site-packages/mavsdk/bin/mavsdk_server"
+MAVSDK_BIN="$(python - <<'PY'
+from pathlib import Path
+import mavsdk
+
+print(Path(mavsdk.__file__).resolve().parent / "bin" / "mavsdk_server")
+PY
+)"
 MAVSDK_LOG="$PWD/mavsdk_control.log"
 MAVSDK_PORT=50052
 MAVSDK_MAVLINK_ADDRESS="${MAVSDK_MAVLINK_ADDRESS_OVERRIDE:-${PX4_CONTROL_SYSTEM_ADDRESS:-udpin://0.0.0.0:14030}}"

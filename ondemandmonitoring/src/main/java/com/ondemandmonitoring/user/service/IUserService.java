@@ -39,4 +39,6 @@ public interface IUserService {
 
     void linkLocalIdentity(User user, String cognitoUsername, String cognitoSub);
 
+    void unlinkIdentity(User user, IdentityProvider provider);
+
 }

@@ -6,4 +6,6 @@ import java.util.List;
 public interface IOperatorDirectoryService {
 
     List<AvailableOperatorResponse> getAvailableOperators();
+
+    List<AvailableOperatorResponse> getAvailableOperators(String missionId);
 }

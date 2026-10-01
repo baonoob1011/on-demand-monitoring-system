@@ -5,7 +5,6 @@ import com.ondemandmonitoring.auth.dto.request.CreateManagedAccountRequest;
 import com.ondemandmonitoring.auth.port.out.AuthenticationTokens;
 import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
 import com.ondemandmonitoring.auth.port.out.ManagedIdentity;
-import com.ondemandmonitoring.config.CognitoProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClient;

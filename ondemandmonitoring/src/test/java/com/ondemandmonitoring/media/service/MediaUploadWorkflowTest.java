@@ -6,8 +6,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.drone.domain.Drone;
-import com.ondemandmonitoring.drone.repository.DroneRepository;
+import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.device.service.IDeviceService;
 import com.ondemandmonitoring.media.domain.*;
 import com.ondemandmonitoring.media.dto.request.PrepareMediaUploadRequest;
 import com.ondemandmonitoring.media.repository.*;
@@ -15,7 +15,7 @@ import com.ondemandmonitoring.media.service.impl.MediaUploadServiceImpl;
 import com.ondemandmonitoring.mission.domain.*;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.*;
-import com.ondemandmonitoring.s3.*;
+import com.ondemandmonitoring.mission.service.impl.MissionMediaAccessServiceImpl;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.time.Instant;
@@ -32,18 +32,19 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 class MediaUploadWorkflowTest {
     private final MissionRepository missions = mock(MissionRepository.class);
-    private final MissionDroneAssignmentRepository droneAssignments = mock(MissionDroneAssignmentRepository.class);
-    private final MissionOperatorAssignmentRepository operatorAssignments = mock(MissionOperatorAssignmentRepository.class);
-    private final DroneRepository drones = mock(DroneRepository.class);
+    private final MissionDeviceAssignmentRepository deviceAssignments = mock(MissionDeviceAssignmentRepository.class);
+    private final MissionStaffAssignmentRepository staffAssignments = mock(MissionStaffAssignmentRepository.class);
+    private final IDeviceService devices = mock(IDeviceService.class);
     private final MediaAssetRepository media = mock(MediaAssetRepository.class);
     private final MediaUploadAttemptRepository attempts = mock(MediaUploadAttemptRepository.class);
     private final ManualUploadTaskRepository manualTasks = mock(ManualUploadTaskRepository.class);
     private final MediaAuditLogRepository audit = mock(MediaAuditLogRepository.class);
-    private final S3ObjectStorageService storage = mock(S3ObjectStorageService.class);
+    private final IMediaObjectStorage storage = mock(IMediaObjectStorage.class);
     private final AuthenticatedUserResolver userResolver = mock(AuthenticatedUserResolver.class);
-    private final AwsS3Properties s3 = new AwsS3Properties();
-    private final MediaUploadServiceImpl service = new MediaUploadServiceImpl(missions, droneAssignments,
-            operatorAssignments, drones, media, attempts, manualTasks, audit, storage, s3, userResolver);
+    private final MissionMediaAccessServiceImpl missionAccess = new MissionMediaAccessServiceImpl(
+            missions, deviceAssignments, staffAssignments, userResolver);
+    private final MediaUploadServiceImpl service = new MediaUploadServiceImpl(missionAccess, devices,
+            deviceAssignments, media, attempts, manualTasks, audit, storage, userResolver);
 
     @BeforeEach
     void setUp() {
@@ -54,23 +55,29 @@ class MediaUploadWorkflowTest {
         User user = new User();
         user.setId(UUID.randomUUID().toString());
         when(userResolver.getCurrentUser()).thenReturn(user);
+        when(userResolver.getCurrentUserId()).thenReturn(user.getId());
         Mission mission = new Mission();
         mission.setId("mission-id");
         mission.setStatus(MissionStatus.IN_FLIGHT);
         when(missions.findById("mission-id")).thenReturn(Optional.of(mission));
-        MissionOperatorAssignment operator = new MissionOperatorAssignment();
-        operator.setOperatorId(user.getId().toString());
-        when(operatorAssignments.findByMissionIdAndIsCurrentTrue("mission-id"))
-                .thenReturn(Optional.of(operator));
-        Drone drone = new Drone();
-        drone.setId("drone-id");
-        drone.setDroneCode("DRONE-01");
-        when(drones.findByDroneCode("DRONE-01")).thenReturn(Optional.of(drone));
-        MissionDroneAssignment assignment = new MissionDroneAssignment();
-        assignment.setDrone(drone);
-        when(droneAssignments.findByMissionIdAndIsCurrentTrue("mission-id"))
+        MissionStaffAssignment staff = new MissionStaffAssignment();
+        staff.setStaff(user);
+        when(staffAssignments.findByMissionIdAndStaffIdAndIsCurrentTrue("mission-id", user.getId()))
+                .thenReturn(Optional.of(staff));
+        Device device = new Device();
+        device.setId("device-id");
+        device.setDeviceCode("DEVICE-01");
+        when(devices.getEntityById("device-id")).thenReturn(device);
+        when(devices.getEntityById("DEVICE-01")).thenReturn(device);
+        MissionDeviceAssignment assignment = new MissionDeviceAssignment();
+        assignment.setMission(mission);
+        assignment.setDevice(device);
+        when(deviceAssignments.findByMissionIdAndIsCurrentTrue("mission-id"))
+                .thenReturn(Optional.of(assignment));
+        when(deviceAssignments.findByMissionIdAndDeviceIdAndIsCurrentTrue("mission-id", "device-id"))
                 .thenReturn(Optional.of(assignment));
         when(storage.bucket()).thenReturn("test-bucket");
+        when(storage.prefix()).thenReturn("");
     }
 
     @AfterEach
@@ -97,7 +104,7 @@ class MediaUploadWorkflowTest {
         existing.setFileSize(100L);
         existing.setChecksumSha256(request.getChecksumSha256());
         existing.setMediaStatus(MediaStatus.UPLOAD_PENDING);
-        when(media.findByMissionIdAndDroneCodeAndLocalMediaId("mission-id", "DRONE-01", "capture-1"))
+        when(media.findByMissionIdAndDeviceIdAndLocalMediaId("mission-id", "device-id", "capture-1"))
                 .thenReturn(Optional.of(existing));
         MediaUploadAttempt attempt = new MediaUploadAttempt();
         attempt.setId("attempt-id");
@@ -106,7 +113,7 @@ class MediaUploadWorkflowTest {
         when(attempts.findFirstByMediaIdOrderByAttemptNumberDesc("media-id"))
                 .thenReturn(Optional.of(attempt));
         when(storage.createPresignedPutUrl(any(), any(), anyLong(), any()))
-                .thenReturn(new S3ObjectStorageService.PresignedUpload("https://s3.example/upload", Map.of(), 900));
+                .thenReturn(new IMediaObjectStorage.PresignedUpload("https://s3.example/upload", Map.of(), 900));
 
         var result = service.prepare("mission-id", request);
 
@@ -119,18 +126,20 @@ class MediaUploadWorkflowTest {
     void completedMissionAllowsItsReleasedOperatorAndDrone() {
         Mission mission = missions.findById("mission-id").orElseThrow();
         mission.setStatus(MissionStatus.COMPLETED);
-        when(operatorAssignments.findByMissionIdAndIsCurrentTrue("mission-id"))
+        when(staffAssignments.findByMissionIdAndStaffIdAndIsCurrentTrue(
+                "mission-id", userResolver.getCurrentUserId()))
                 .thenReturn(Optional.empty());
-        when(droneAssignments.findByMissionIdAndIsCurrentTrue("mission-id"))
+        when(deviceAssignments.findByMissionIdAndIsCurrentTrue("mission-id"))
                 .thenReturn(Optional.empty());
-        MissionOperatorAssignment operator = new MissionOperatorAssignment();
-        operator.setOperatorId(userResolver.getCurrentUser().getId().toString());
-        operator.setStatus("COMPLETED");
-        when(operatorAssignments.findByMissionId("mission-id")).thenReturn(List.of(operator));
-        MissionDroneAssignment assignment = new MissionDroneAssignment();
-        assignment.setDrone(drones.findByDroneCode("DRONE-01").orElseThrow());
+        MissionStaffAssignment staff = new MissionStaffAssignment();
+        staff.setStaff(userResolver.getCurrentUser());
+        staff.setReleaseReason("MISSION_COMPLETE");
+        when(staffAssignments.findByMissionId("mission-id")).thenReturn(List.of(staff));
+        MissionDeviceAssignment assignment = new MissionDeviceAssignment();
+        assignment.setMission(mission);
+        assignment.setDevice(devices.getEntityById("device-id"));
         assignment.setReleaseReason("MISSION_COMPLETE");
-        when(droneAssignments.findByMissionId("mission-id")).thenReturn(List.of(assignment));
+        when(deviceAssignments.findByMissionId("mission-id")).thenReturn(List.of(assignment));
         MediaAsset existing = new MediaAsset();
         existing.setId("media-id");
         existing.setMissionId("mission-id");
@@ -139,7 +148,7 @@ class MediaUploadWorkflowTest {
         existing.setFileSize(100L);
         existing.setChecksumSha256("a".repeat(64));
         existing.setMediaStatus(MediaStatus.AVAILABLE);
-        when(media.findByMissionIdAndDroneCodeAndLocalMediaId("mission-id", "DRONE-01", "capture-1"))
+        when(media.findByMissionIdAndDeviceIdAndLocalMediaId("mission-id", "device-id", "capture-1"))
                 .thenReturn(Optional.of(existing));
         when(media.findById("media-id")).thenReturn(Optional.of(existing));
 
@@ -148,7 +157,7 @@ class MediaUploadWorkflowTest {
     }
 
     private PrepareMediaUploadRequest request(String type, String contentType) {
-        return new PrepareMediaUploadRequest("DRONE-01", "capture-1", type, "capture.jpg",
+        return new PrepareMediaUploadRequest("device-id", "capture-1", type, "capture.jpg",
                 contentType, 100L, "a".repeat(64), Instant.now());
     }
 }

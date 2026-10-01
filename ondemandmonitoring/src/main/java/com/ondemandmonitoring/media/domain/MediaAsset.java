@@ -1,7 +1,9 @@
 package com.ondemandmonitoring.media.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.drone.domain.Drone;
+import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -13,21 +15,22 @@ import java.time.Instant;
 @Getter
 @Setter
 @Entity
-@Table(name = "drone_media", uniqueConstraints =
-        @UniqueConstraint(name = "uk_drone_media_local_capture",
-                columnNames = {"mission_id", "drone_code", "local_media_id"}))
+@Table(name = "drone_media", uniqueConstraints = @UniqueConstraint(name = "uk_drone_media_local_capture", columnNames = {
+        "mission_id", "device_id", "local_media_id" }))
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class MediaAsset extends BaseEntity {
 
-    @Column(name = "drone_code", nullable = false, length = 50)
-    String droneCode;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "drone_id", nullable = false)
-    Drone drone;
+    @JoinColumn(name = "mission_id", nullable = false, insertable = false, updatable = false)
+    Mission mission;
 
-    @Column(name = "mission_id", nullable = false, length = 100)
-    String missionId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumns({
+            @JoinColumn(name = "mission_id", referencedColumnName = "mission_id", nullable = false),
+            @JoinColumn(name = "device_id", referencedColumnName = "device_id", nullable = false)
+    })
+    MissionDeviceAssignment deviceAssignment;
 
     @Column(name = "media_type", nullable = false, length = 50)
     String type;
@@ -77,4 +80,61 @@ public class MediaAsset extends BaseEntity {
 
     @Column(name = "available_at")
     Instant availableAt;
+
+    public String getMissionId() {
+        if (mission != null) {
+            return mission.getId();
+        }
+        return deviceAssignment != null && deviceAssignment.getMission() != null
+                ? deviceAssignment.getMission().getId()
+                : null;
+    }
+
+    public void setMissionId(String missionId) {
+        Mission missionRef = referenceMission(missionId);
+        this.mission = missionRef;
+        ensureDeviceAssignment().setMission(missionRef);
+    }
+
+    public Device getDevice() {
+        return deviceAssignment == null ? null : deviceAssignment.getDevice();
+    }
+
+    public void setDevice(Device device) {
+        ensureDeviceAssignment().setDevice(device);
+    }
+
+    public String getDeviceId() {
+        Device device = getDevice();
+        return device == null ? null : device.getId();
+    }
+
+    public void setDeviceId(String deviceId) {
+        ensureDeviceAssignment().setDevice(referenceDevice(deviceId));
+    }
+
+    private MissionDeviceAssignment ensureDeviceAssignment() {
+        if (deviceAssignment == null) {
+            deviceAssignment = new MissionDeviceAssignment();
+        }
+        return deviceAssignment;
+    }
+
+    private Mission referenceMission(String missionId) {
+        if (missionId == null) {
+            return null;
+        }
+        Mission missionRef = new Mission();
+        missionRef.setId(missionId);
+        return missionRef;
+    }
+
+    private Device referenceDevice(String deviceId) {
+        if (deviceId == null) {
+            return null;
+        }
+        Device deviceRef = new Device();
+        deviceRef.setId(deviceId);
+        return deviceRef;
+    }
 }

@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.environment.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.drone.domain.Drone;
+import com.ondemandmonitoring.device.domain.Device;
 import com.ondemandmonitoring.environment.enums.MeasurementType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -23,11 +23,11 @@ import lombok.Setter;
 public class EnvironmentalMeasurement extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "drone_id", foreignKey = @ForeignKey(name = "fk_environmental_measurements_drone"))
-    private Drone drone;
+    @JoinColumn(name = "device_id", foreignKey = @ForeignKey(name = "fk_environmental_measurements_device"))
+    private Device device;
 
-    @Column(name = "drone_code", length = 50)
-    private String droneCode;
+    @Column(name = "device_code", length = 50)
+    private String deviceCode;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "measurement_type", nullable = false, length = 40)

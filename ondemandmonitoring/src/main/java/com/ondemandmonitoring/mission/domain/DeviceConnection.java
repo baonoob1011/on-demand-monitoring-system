@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.mission.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
-import com.ondemandmonitoring.drone.domain.Drone;
+import com.ondemandmonitoring.device.domain.Device;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -22,11 +22,12 @@ public class DeviceConnection extends BaseEntity {
     Mission mission;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "drone_id", nullable = false)
-    Drone drone;
+    @JoinColumn(name = "mission_device_assignment_id", nullable = false)
+    MissionDeviceAssignment deviceAssignment;
 
-    @Column(name = "operator_id", length = 100)
-    String operatorId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "mission_staff_assignment_id", nullable = false)
+    MissionStaffAssignment staffAssignment;
 
     @Column(name = "connection_status", nullable = false, length = 50)
     String connectionStatus; // CONNECTED / DISCONNECTED / LOST
@@ -42,4 +43,8 @@ public class DeviceConnection extends BaseEntity {
 
     @Column(name = "disconnect_reason", length = 200)
     String disconnectReason; // NORMAL / SIGNAL_LOSS / EMERGENCY
+
+    public Device getDevice() {
+        return deviceAssignment == null ? null : deviceAssignment.getDevice();
+    }
 }

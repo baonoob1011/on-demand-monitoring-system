@@ -2,6 +2,7 @@ package com.ondemandmonitoring.order.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -9,6 +10,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.common.api.ApiResponse;
+import com.ondemandmonitoring.common.exception.ApiException;
+import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.request.OrderDeliverableRequest;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
@@ -43,7 +46,8 @@ class OrderControllerTest {
         PreAuthorize preAuthorize = createOrderMethod.getAnnotation(PreAuthorize.class);
 
         assertNotNull(preAuthorize, "createOrder method should be annotated with @PreAuthorize");
-        assertEquals("hasRole('CUSTOMER')", preAuthorize.value(), "Role authorization should be restricted to 'hasRole(\\'CUSTOMER\\')'");
+        assertEquals("hasRole('CUSTOMER')", preAuthorize.value(),
+                "Role authorization should be restricted to 'hasRole(\\'CUSTOMER\\')'");
     }
 
     @Test
@@ -84,5 +88,66 @@ class OrderControllerTest {
         assertEquals("ord-123", responseEntity.getBody().getData().getId());
 
         verify(orderService).createOrder(request);
+    }
+
+    @Test
+    @DisplayName("getOrderById delegates to OrderService and returns order details")
+    void getOrderById_Success_ReturnsOrderDetails() {
+        OrderCreateResponse mockResponse = OrderCreateResponse.builder()
+                .id("ord-123")
+                .title("Survey Forest")
+                .orderStatus(OrderStatus.PENDING)
+                .build();
+
+        when(orderService.getOrderById("ord-123")).thenReturn(mockResponse);
+
+        ResponseEntity<ApiResponse<OrderCreateResponse>> responseEntity = orderController.getOrderById("ord-123");
+
+        assertNotNull(responseEntity);
+        assertEquals(HttpStatus.OK, responseEntity.getStatusCode());
+        assertTrue(responseEntity.getBody().isSuccess());
+        assertEquals("ord-123", responseEntity.getBody().getData().getId());
+        verify(orderService).getOrderById("ord-123");
+    }
+
+    @Test
+    @DisplayName("getResourcePreview returns null data response")
+    void getResourcePreview_ReturnsNullData() {
+        ResponseEntity<ApiResponse<Object>> responseEntity = orderController.getResourcePreview("ord-123");
+
+        assertNotNull(responseEntity);
+        assertEquals(HttpStatus.OK, responseEntity.getStatusCode());
+        assertTrue(responseEntity.getBody().isSuccess());
+    }
+
+    @Test
+    @DisplayName("approveOrder returns the mission created for the approved order")
+    void approveOrder_ReturnsCreatedMission() {
+        OrderCreateResponse order = OrderCreateResponse.builder().id("ord-123").build();
+        when(orderService.approveOrder("ord-123")).thenReturn(order);
+
+        ResponseEntity<ApiResponse<OrderCreateResponse>> responseEntity = orderController.approveOrder("ord-123");
+
+        assertEquals(HttpStatus.OK, responseEntity.getStatusCode());
+        assertEquals("ord-123", responseEntity.getBody().getData().getId());
+        verify(orderService).approveOrder("ord-123");
+    }
+
+    @Test
+    @DisplayName("unsupported need-info decision must not report success")
+    void submitApproval_NeedInfo_Throws() {
+        assertThrows(ApiException.class, () -> orderController.submitApproval(
+                "ord-123", Map.of("decision", "NEED_INFO", "reason", "More details")));
+    }
+
+    @Test
+    @DisplayName("submitApproval delegates to rejectOrder when decision is REJECTED")
+    void submitApproval_Rejected_DelegatesToRejectOrder() {
+        ResponseEntity<ApiResponse<Void>> responseEntity = orderController.submitApproval("ord-123",
+                Map.of("decision", "REJECTED", "reason", "Out of zone"));
+
+        assertNotNull(responseEntity);
+        assertEquals(HttpStatus.OK, responseEntity.getStatusCode());
+        verify(orderService).rejectOrder("ord-123", "Out of zone");
     }
 }

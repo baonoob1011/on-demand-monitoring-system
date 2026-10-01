@@ -15,7 +15,7 @@ import java.util.HexFormat;
  *
  * Generates cryptographically signed, structured tokens following UTM / FAA LAANC standards.
  * Format: FTK-[MISSION_ID]-[DEVICE_CODE]-[TIMESTAMP_HEX]-[HMAC_SHA256_SIGNATURE_8]
- * Example: FTK-M001-DRONE01-191C80B40-A89F4C1B
+ * Example: FTK-M001-DEVICE01-191C80B40-A89F4C1B
  */
 @UtilityClass
 public class FlightTokenGenerator {
@@ -28,22 +28,22 @@ public class FlightTokenGenerator {
      * Generates an Enterprise Flight Access Token.
      *
      * @param missionId  Target mission ID (e.g. "M-001")
-     * @param droneCode Assigned drone code (e.g. "DRONE-01")
-     * @param operatorId Operator ID issuing token (e.g. "OP-001")
+     * @param deviceId Assigned device ID/code (e.g. "DEVICE-01")
+     * @param staffId Staff ID issuing token
      * @param issuedAt   Timestamp when token was issued
      * @return Cryptographically signed structured token string
      */
-    public static String generateTokenValue(String missionId, String droneCode, String operatorId, Instant issuedAt) {
+    public static String generateTokenValue(String missionId, String deviceId, String staffId, Instant issuedAt) {
         String cleanMission = sanitize(missionId);
-        String cleanDrone = sanitize(droneCode);
+        String cleanDevice = sanitize(deviceId);
         long epochSecond = issuedAt != null ? issuedAt.getEpochSecond() : Instant.now().getEpochSecond();
         String hexTimestamp = Long.toHexString(epochSecond).toUpperCase();
 
-        String rawPayload = String.format("%s:%s:%s:%d", cleanMission, cleanDrone,
-                operatorId != null ? operatorId : "OP-SYSTEM", epochSecond);
+        String rawPayload = String.format("%s:%s:%s:%d", cleanMission, cleanDevice,
+                staffId != null ? staffId : "DRONE_OPERATOR-SYSTEM", epochSecond);
         String signature = computeHmacSha256(rawPayload, SECRET_KEY).substring(0, 8).toUpperCase();
 
-        return String.format("FTK-%s-%s-%s-%s", cleanMission, cleanDrone, hexTimestamp, signature);
+        return String.format("FTK-%s-%s-%s-%s", cleanMission, cleanDevice, hexTimestamp, signature);
     }
 
     private static String sanitize(String input) {

@@ -8,17 +8,19 @@ import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.drone.domain.Drone;
-import com.ondemandmonitoring.drone.domain.DroneTelemetry;
-import com.ondemandmonitoring.drone.repository.DroneTelemetryRepository;
+import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.device.domain.DeviceTelemetry;
+import com.ondemandmonitoring.device.repository.DeviceTelemetryRepository;
+import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
-import com.ondemandmonitoring.mission.domain.MissionDroneAssignment;
+import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.domain.PlanWaypoint;
 import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
 import com.ondemandmonitoring.mission.enums.WaypointReason;
-import com.ondemandmonitoring.mission.repository.MissionDroneAssignmentRepository;
+import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionPlanRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.order.domain.Order;
@@ -45,19 +47,26 @@ class MissionPlanningServiceTest {
 
     private final MissionRepository missionRepository = org.mockito.Mockito.mock(MissionRepository.class);
     private final MissionPlanRepository missionPlanRepository = org.mockito.Mockito.mock(MissionPlanRepository.class);
-    private final MissionDroneAssignmentRepository missionDroneAssignmentRepository = org.mockito.Mockito.mock(MissionDroneAssignmentRepository.class);
-    private final DroneTelemetryRepository droneTelemetryRepository = org.mockito.Mockito.mock(DroneTelemetryRepository.class);
+    private final MissionDeviceAssignmentRepository missionDeviceAssignmentRepository = org.mockito.Mockito
+            .mock(MissionDeviceAssignmentRepository.class);
+    private final DeviceConnectionRepository deviceConnectionRepository = org.mockito.Mockito
+            .mock(DeviceConnectionRepository.class);
+    private final DeviceTelemetryRepository deviceTelemetryRepository = org.mockito.Mockito
+            .mock(DeviceTelemetryRepository.class);
     private final RoutePlanner directRoutePlanner = org.mockito.Mockito.mock(RoutePlanner.class);
     private final RoutePlanner aStarShortestRoutePlanner = org.mockito.Mockito.mock(RoutePlanner.class);
     private final RoutePlanner aStarEnergyAwareRoutePlanner = org.mockito.Mockito.mock(RoutePlanner.class);
-    private final SimulationHomeProvider simulationHomeProvider = org.mockito.Mockito.mock(SimulationHomeProvider.class);
+    private final SimulationHomeProvider simulationHomeProvider = org.mockito.Mockito
+            .mock(SimulationHomeProvider.class);
     private final PlanningEnvironment planningEnvironment = org.mockito.Mockito.mock(PlanningEnvironment.class);
-    private final MissionEnergyEstimator missionEnergyEstimator = org.mockito.Mockito.mock(MissionEnergyEstimator.class);
+    private final MissionEnergyEstimator missionEnergyEstimator = org.mockito.Mockito
+            .mock(MissionEnergyEstimator.class);
     private final MissionPlanningService service = new MissionPlanningServiceImpl(
             missionRepository,
             missionPlanRepository,
-            missionDroneAssignmentRepository,
-            droneTelemetryRepository,
+            missionDeviceAssignmentRepository,
+            deviceConnectionRepository,
+            deviceTelemetryRepository,
             directRoutePlanner,
             aStarShortestRoutePlanner,
             aStarEnergyAwareRoutePlanner,
@@ -68,7 +77,8 @@ class MissionPlanningServiceTest {
     @Test
     void existingMissionWithOrderTargetPlansFromConfiguredHomeToOrderPoint() {
         PlannedRoute expectedRoute = feasibleRoute();
-        when(missionRepository.findByIdWithOrder("mission-1")).thenReturn(Optional.of(missionWithOrder(point(260.0, 230.0))));
+        when(missionRepository.findByIdWithOrder("mission-1"))
+                .thenReturn(Optional.of(missionWithOrder(point(260.0, 230.0))));
         when(simulationHomeProvider.home()).thenReturn(new SimulationPoint(0.0, -280.0));
         when(directRoutePlanner.plan(0.0, -280.0, 260.0, 230.0)).thenReturn(expectedRoute);
 
@@ -117,7 +127,8 @@ class MissionPlanningServiceTest {
     @Test
     void epsg4326LongitudeLatitudeIsNotSentToGazeboPlanner() {
         Point longitudeLatitude = WGS84_GEOMETRY_FACTORY.createPoint(new Coordinate(-122.378, 37.7983));
-        when(missionRepository.findByIdWithOrder("mission-1")).thenReturn(Optional.of(missionWithOrder(longitudeLatitude)));
+        when(missionRepository.findByIdWithOrder("mission-1"))
+                .thenReturn(Optional.of(missionWithOrder(longitudeLatitude)));
 
         assertThatThrownBy(() -> service.validateDirectRoute("mission-1"))
                 .isInstanceOf(ApiException.class)
@@ -129,7 +140,8 @@ class MissionPlanningServiceTest {
     @Test
     void infeasibleDirectRouteIsReturnedUnchanged() {
         PlannedRoute expectedRoute = PlannedRoute.failed("Direct route intersects restricted zone.");
-        when(missionRepository.findByIdWithOrder("mission-1")).thenReturn(Optional.of(missionWithOrder(point(260.0, 230.0))));
+        when(missionRepository.findByIdWithOrder("mission-1"))
+                .thenReturn(Optional.of(missionWithOrder(point(260.0, 230.0))));
         when(simulationHomeProvider.home()).thenReturn(new SimulationPoint(0.0, -280.0));
         when(directRoutePlanner.plan(0.0, -280.0, 260.0, 230.0)).thenReturn(expectedRoute);
 
@@ -141,7 +153,8 @@ class MissionPlanningServiceTest {
 
     @Test
     void homeCoordinatesComeFromProvider() {
-        when(missionRepository.findByIdWithOrder("mission-1")).thenReturn(Optional.of(missionWithOrder(point(260.0, 230.0))));
+        when(missionRepository.findByIdWithOrder("mission-1"))
+                .thenReturn(Optional.of(missionWithOrder(point(260.0, 230.0))));
         when(simulationHomeProvider.home()).thenReturn(new SimulationPoint(12.0, -345.0));
         when(directRoutePlanner.plan(12.0, -345.0, 260.0, 230.0)).thenReturn(feasibleRoute());
 
@@ -174,14 +187,14 @@ class MissionPlanningServiceTest {
         when(simulationHomeProvider.home()).thenReturn(new SimulationPoint(0.0, -280.0));
         when(planningEnvironment.sample(0.0, -280.0)).thenReturn(homeSample(12.0));
         when(directRoutePlanner.plan(0.0, -280.0, 260.0, 230.0)).thenReturn(route);
-        when(missionEnergyEstimator.estimate(Mockito.argThat(request ->
-                request.plannedDistanceM() == 576.98
-                        && request.homeWorldZ() == 12.0
-                        && request.plannedCruiseWorldZ() == 55.0
-                        && request.includeAscend()
-                        && !request.includeDescend())))
+        when(missionEnergyEstimator.estimate(Mockito.argThat(request -> request.plannedDistanceM() == 576.98
+                && request.homeWorldZ() == 12.0
+                && request.plannedCruiseWorldZ() == 55.0
+                && request.includeAscend()
+                && !request.includeDescend())))
                 .thenReturn(energyEstimate());
-        when(missionPlanRepository.save(Mockito.any(MissionPlan.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(missionPlanRepository.save(Mockito.any(MissionPlan.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         MissionPlan missionPlan = service.generateDirectPlan("mission-1");
 
@@ -215,7 +228,8 @@ class MissionPlanningServiceTest {
         when(missionPlanRepository.findByMissionId("mission-1")).thenReturn(Optional.empty());
         when(simulationHomeProvider.home()).thenReturn(new SimulationPoint(0.0, -280.0));
         when(directRoutePlanner.plan(0.0, -280.0, 260.0, 230.0)).thenReturn(route);
-        when(missionPlanRepository.save(Mockito.any(MissionPlan.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(missionPlanRepository.save(Mockito.any(MissionPlan.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         MissionPlan missionPlan = service.generateDirectPlan("mission-1");
 
@@ -252,7 +266,8 @@ class MissionPlanningServiceTest {
         when(planningEnvironment.sample(0.0, -280.0)).thenReturn(homeSample(10.0));
         when(directRoutePlanner.plan(0.0, -280.0, 260.0, 230.0)).thenReturn(route);
         when(missionEnergyEstimator.estimate(Mockito.any())).thenReturn(energyEstimate());
-        when(missionPlanRepository.save(Mockito.any(MissionPlan.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(missionPlanRepository.save(Mockito.any(MissionPlan.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         MissionPlan missionPlan = service.generateDirectPlan("mission-1");
 
@@ -284,7 +299,8 @@ class MissionPlanningServiceTest {
         when(simulationHomeProvider.home()).thenReturn(new SimulationPoint(0.0, -280.0));
         when(directRoutePlanner.plan(0.0, -280.0, 260.0, 230.0))
                 .thenReturn(PlannedRoute.failed("Direct route leaves planning world."));
-        when(missionPlanRepository.save(Mockito.any(MissionPlan.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(missionPlanRepository.save(Mockito.any(MissionPlan.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         MissionPlan missionPlan = service.generateDirectPlan("mission-1");
 
@@ -298,12 +314,18 @@ class MissionPlanningServiceTest {
     void availableBatteryAtPlanningComesFromCurrentAssignedDroneTelemetryWhenPresent() {
         Mission mission = missionWithOrder(point(260.0, 230.0));
         mission.setId("mission-1");
-        Drone drone = new Drone();
-        drone.setDroneCode("DRONE-01");
-        MissionDroneAssignment assignment = new MissionDroneAssignment();
+        Device device = new Device();
+        device.setId("DEV-01");
+        device.setDeviceCode("DEVICE-01");
+        MissionDeviceAssignment assignment = new MissionDeviceAssignment();
         assignment.setMission(mission);
-        assignment.setDrone(drone);
-        DroneTelemetry telemetry = new DroneTelemetry();
+        assignment.setDevice(device);
+        DeviceConnection connection = new DeviceConnection();
+        connection.setId("CONN-01");
+        connection.setDeviceAssignment(assignment);
+        connection.setConnectionStatus("CONNECTED");
+        connection.setTelemetryActive(true);
+        DeviceTelemetry telemetry = new DeviceTelemetry();
         telemetry.setBatteryPercent(72.5);
 
         when(missionRepository.findByIdWithOrder("mission-1")).thenReturn(Optional.of(mission));
@@ -312,9 +334,13 @@ class MissionPlanningServiceTest {
         when(planningEnvironment.sample(0.0, -280.0)).thenReturn(homeSample(12.0));
         when(directRoutePlanner.plan(0.0, -280.0, 260.0, 230.0)).thenReturn(feasibleRoute());
         when(missionEnergyEstimator.estimate(Mockito.any())).thenReturn(energyEstimate());
-        when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1")).thenReturn(Optional.of(assignment));
-        when(droneTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(telemetry));
-        when(missionPlanRepository.save(Mockito.any(MissionPlan.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1"))
+                .thenReturn(Optional.of(assignment));
+        when(deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc("mission-1", "CONNECTED"))
+                .thenReturn(Optional.of(connection));
+        when(deviceTelemetryRepository.findTopByDeviceConnectionIdOrderByRecordedAtDesc("CONN-01")).thenReturn(Optional.of(telemetry));
+        when(missionPlanRepository.save(Mockito.any(MissionPlan.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         MissionPlan missionPlan = service.generateDirectPlan("mission-1");
 
@@ -352,15 +378,18 @@ class MissionPlanningServiceTest {
     void assignedDroneWithoutTelemetryDoesNotAssumeFullBattery() {
         Mission mission = missionWithOrder(point(260.0, 230.0));
         mission.setId("mission-1");
-        Drone drone = new Drone();
-        drone.setDroneCode("DRONE-01");
-        MissionDroneAssignment assignment = new MissionDroneAssignment();
+        Device device = new Device();
+        device.setId("DEV-01");
+        device.setDeviceCode("DEVICE-01");
+        MissionDeviceAssignment assignment = new MissionDeviceAssignment();
         assignment.setMission(mission);
-        assignment.setDrone(drone);
+        assignment.setDevice(device);
 
         arrangeFeasiblePlanning(mission, energyEstimateWithBatteryUse(18.0));
-        when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1")).thenReturn(Optional.of(assignment));
-        when(droneTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.empty());
+        when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1"))
+                .thenReturn(Optional.of(assignment));
+        when(deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc("mission-1", "CONNECTED"))
+                .thenReturn(Optional.empty());
 
         MissionPlan missionPlan = service.generateDirectPlan("mission-1");
 
@@ -405,14 +434,14 @@ class MissionPlanningServiceTest {
         when(simulationHomeProvider.home()).thenReturn(new SimulationPoint(0.0, -280.0));
         when(planningEnvironment.sample(0.0, -280.0)).thenReturn(homeSample(9.4));
         when(aStarShortestRoutePlanner.plan(0.0, -280.0, 260.0, 230.0)).thenReturn(route);
-        when(missionEnergyEstimator.estimate(Mockito.argThat(request ->
-                request.plannedDistanceM() == 725.5
-                        && request.homeWorldZ() == 9.4
-                        && request.plannedCruiseWorldZ() == 64.0
-                        && request.includeAscend()
-                        && !request.includeDescend())))
+        when(missionEnergyEstimator.estimate(Mockito.argThat(request -> request.plannedDistanceM() == 725.5
+                && request.homeWorldZ() == 9.4
+                && request.plannedCruiseWorldZ() == 64.0
+                && request.includeAscend()
+                && !request.includeDescend())))
                 .thenReturn(energyEstimate());
-        when(missionPlanRepository.save(Mockito.any(MissionPlan.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(missionPlanRepository.save(Mockito.any(MissionPlan.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         MissionPlan missionPlan = service.generateAStarShortestPlan("mission-1");
 
@@ -454,7 +483,8 @@ class MissionPlanningServiceTest {
         when(planningEnvironment.sample(0.0, -280.0)).thenReturn(homeSample(10.0));
         when(aStarShortestRoutePlanner.plan(0.0, -280.0, 260.0, 230.0)).thenReturn(route);
         when(missionEnergyEstimator.estimate(Mockito.any())).thenReturn(replacementEnergy);
-        when(missionPlanRepository.save(Mockito.any(MissionPlan.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(missionPlanRepository.save(Mockito.any(MissionPlan.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         MissionPlan result = service.generateAStarShortestPlan("mission-1");
 
@@ -485,7 +515,8 @@ class MissionPlanningServiceTest {
         when(simulationHomeProvider.home()).thenReturn(new SimulationPoint(0.0, -280.0));
         when(aStarShortestRoutePlanner.plan(0.0, -280.0, 260.0, 230.0))
                 .thenReturn(PlannedRoute.failed("Target is restricted."));
-        when(missionPlanRepository.save(Mockito.any(MissionPlan.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(missionPlanRepository.save(Mockito.any(MissionPlan.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         MissionPlan result = service.generateAStarShortestPlan("mission-1");
 
@@ -523,7 +554,8 @@ class MissionPlanningServiceTest {
         when(missionPlanRepository.findByMissionId("mission-1")).thenReturn(Optional.empty());
         when(planningEnvironment.sample(0.0, -280.0)).thenReturn(homeSample(9.4));
         when(missionEnergyEstimator.estimate(Mockito.any())).thenReturn(estimate);
-        when(missionPlanRepository.save(Mockito.any(MissionPlan.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(missionPlanRepository.save(Mockito.any(MissionPlan.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         MissionPlan result = service.generateAStarEnergyAwarePlan("mission-1");
 
@@ -558,7 +590,8 @@ class MissionPlanningServiceTest {
         when(missionPlanRepository.findByMissionId("mission-1")).thenReturn(Optional.of(existing));
         when(planningEnvironment.sample(0.0, -280.0)).thenReturn(homeSample(9.4));
         when(missionEnergyEstimator.estimate(Mockito.any())).thenReturn(energyEstimate());
-        when(missionPlanRepository.save(Mockito.any(MissionPlan.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(missionPlanRepository.save(Mockito.any(MissionPlan.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         MissionPlan result = service.generateAStarEnergyAwarePlan("mission-1");
 
@@ -588,7 +621,8 @@ class MissionPlanningServiceTest {
         when(aStarEnergyAwareRoutePlanner.plan(0.0, -280.0, -200.0, -280.0))
                 .thenReturn(PlannedRoute.failed("Target is inside restricted zone AIRPORT."));
         when(missionPlanRepository.findByMissionId("mission-1")).thenReturn(Optional.of(existing));
-        when(missionPlanRepository.save(Mockito.any(MissionPlan.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(missionPlanRepository.save(Mockito.any(MissionPlan.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         MissionPlan result = service.generateAStarEnergyAwarePlan("mission-1");
 
@@ -686,17 +720,26 @@ class MissionPlanningServiceTest {
     private MissionPlan planWithAssignedDroneBattery(double batteryPercent, EnergyEstimate estimate) {
         Mission mission = missionWithOrder(point(260.0, 230.0));
         mission.setId("mission-1");
-        Drone drone = new Drone();
-        drone.setDroneCode("DRONE-01");
-        MissionDroneAssignment assignment = new MissionDroneAssignment();
+        Device device = new Device();
+        device.setId("DEV-01");
+        device.setDeviceCode("DEVICE-01");
+        MissionDeviceAssignment assignment = new MissionDeviceAssignment();
         assignment.setMission(mission);
-        assignment.setDrone(drone);
-        DroneTelemetry telemetry = new DroneTelemetry();
+        assignment.setDevice(device);
+        DeviceConnection connection = new DeviceConnection();
+        connection.setId("CONN-01");
+        connection.setDeviceAssignment(assignment);
+        connection.setConnectionStatus("CONNECTED");
+        connection.setTelemetryActive(true);
+        DeviceTelemetry telemetry = new DeviceTelemetry();
         telemetry.setBatteryPercent(batteryPercent);
 
         arrangeFeasiblePlanning(mission, estimate);
-        when(missionDroneAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1")).thenReturn(Optional.of(assignment));
-        when(droneTelemetryRepository.findByDroneCode("DRONE-01")).thenReturn(Optional.of(telemetry));
+        when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1"))
+                .thenReturn(Optional.of(assignment));
+        when(deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc("mission-1", "CONNECTED"))
+                .thenReturn(Optional.of(connection));
+        when(deviceTelemetryRepository.findTopByDeviceConnectionIdOrderByRecordedAtDesc("CONN-01")).thenReturn(Optional.of(telemetry));
 
         return service.generateDirectPlan("mission-1");
     }
@@ -708,7 +751,8 @@ class MissionPlanningServiceTest {
         when(planningEnvironment.sample(0.0, -280.0)).thenReturn(homeSample(12.0));
         when(directRoutePlanner.plan(0.0, -280.0, 260.0, 230.0)).thenReturn(feasibleRoute());
         when(missionEnergyEstimator.estimate(Mockito.any())).thenReturn(estimate);
-        when(missionPlanRepository.save(Mockito.any(MissionPlan.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(missionPlanRepository.save(Mockito.any(MissionPlan.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     private static EnergyEstimate energyEstimateWithBatteryUse(double estimatedBatteryUsedPercent) {

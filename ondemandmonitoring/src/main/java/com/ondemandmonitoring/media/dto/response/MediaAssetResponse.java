@@ -3,16 +3,20 @@ package com.ondemandmonitoring.media.dto.response;
 import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.Builder;
-import lombok.Getter;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 import lombok.experimental.FieldDefaults;
 
-@Getter
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class MediaAssetResponse {
 
     String id;
-    String droneCode;
+    String deviceId;
     String missionId;
     String type;
     String storageProvider;

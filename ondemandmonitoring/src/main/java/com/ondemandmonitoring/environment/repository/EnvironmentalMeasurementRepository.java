@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface EnvironmentalMeasurementRepository extends JpaRepository<EnvironmentalMeasurement, String> {
 
-    List<EnvironmentalMeasurement> findTop20ByDroneCodeAndMeasurementTypeOrderByMeasuredAtDesc(
-            String droneCode,
+    List<EnvironmentalMeasurement> findTop20ByDeviceCodeAndMeasurementTypeOrderByMeasuredAtDesc(
+            String deviceCode,
             MeasurementType measurementType);
 }

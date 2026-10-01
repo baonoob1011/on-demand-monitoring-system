@@ -5,7 +5,7 @@ sleep 22
 
 PROJECT_PATH="${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 REPO_CONTROLLER="$PROJECT_PATH/drone"
-ENV_FILE="$PROJECT_PATH/ondemandmonitoring/.env"
+ENV_FILE="$PROJECT_PATH/.env"
 DRONE_WORKDIR="${DRONE_WORKDIR:-$HOME/drone-controller}"
 DRONE_ENV="${DRONE_ENV:-$HOME/drone-env}"
 

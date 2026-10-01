@@ -12,8 +12,11 @@ import com.ondemandmonitoring.media.repository.MediaNotificationOutboxRepository
 import com.ondemandmonitoring.media.service.impl.CustomerMediaServiceImpl;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
+import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
+import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepository;
+import com.ondemandmonitoring.mission.service.impl.MissionMediaAccessServiceImpl;
 import com.ondemandmonitoring.order.domain.Order;
-import com.ondemandmonitoring.s3.S3ObjectStorageService;
+import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.util.List;
@@ -25,16 +28,18 @@ class CustomerMediaServiceTest {
     private final MissionRepository missions = mock(MissionRepository.class);
     private final MediaAssetRepository media = mock(MediaAssetRepository.class);
     private final MediaNotificationOutboxRepository notifications = mock(MediaNotificationOutboxRepository.class);
-    private final S3ObjectStorageService storage = mock(S3ObjectStorageService.class);
+    private final IMediaObjectStorage storage = mock(IMediaObjectStorage.class);
     private final AuthenticatedUserResolver currentUser = mock(AuthenticatedUserResolver.class);
     private final CustomerMediaServiceImpl service = new CustomerMediaServiceImpl(
-            missions, media, notifications, storage, currentUser);
+            new MissionMediaAccessServiceImpl(missions, mock(MissionDeviceAssignmentRepository.class),
+                    mock(MissionStaffAssignmentRepository.class), currentUser), media, notifications, storage,
+            org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class));
 
     @Test
     void onlyAvailableMediaGetsDownloadUrl() {
         User customer = new User();
         customer.setId(UUID.randomUUID().toString());
-        when(currentUser.getCurrentUser()).thenReturn(customer);
+        when(currentUser.getCurrentUserId()).thenReturn(customer.getId());
         Order order = new Order();
         order.setCustomer(customer);
         Mission mission = new Mission();
@@ -68,7 +73,7 @@ class CustomerMediaServiceTest {
         owner.setId(UUID.randomUUID().toString());
         User other = new User();
         other.setId(UUID.randomUUID().toString());
-        when(currentUser.getCurrentUser()).thenReturn(other);
+        when(currentUser.getCurrentUserId()).thenReturn(other.getId());
         Order order = new Order();
         order.setCustomer(owner);
         Mission mission = new Mission();

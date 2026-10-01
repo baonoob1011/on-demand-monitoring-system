@@ -13,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "Operator Directory", description = "APIs for mission resource assignment")
@@ -24,10 +25,11 @@ public class OperatorDirectoryController {
 
     IOperatorDirectoryService operatorDirectoryService;
 
-    @Operation(summary = "Get available drone operators", description = "Returns active drone operator accounts")
-    @PreAuthorize("hasAnyRole('STAFF', 'SYSTEM_OPERATOR', 'ADMIN')")
+    @Operation(summary = "Get available device operators", description = "Returns active device operator accounts")
+    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN')")
     @GetMapping("/available")
-    public ResponseEntity<ApiResponse<List<AvailableOperatorResponse>>> getAvailableOperators() {
-        return ResponseEntity.ok(ApiResponse.ok(operatorDirectoryService.getAvailableOperators()));
+    public ResponseEntity<ApiResponse<List<AvailableOperatorResponse>>> getAvailableOperators(
+            @RequestParam(required = false) String missionId) {
+        return ResponseEntity.ok(ApiResponse.ok(operatorDirectoryService.getAvailableOperators(missionId)));
     }
 }

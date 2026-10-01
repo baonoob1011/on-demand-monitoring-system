@@ -3,7 +3,6 @@ package com.ondemandmonitoring.auth.infrastructure.cognito;
 import com.ondemandmonitoring.auth.dto.request.SocialSyncRequest;
 import com.ondemandmonitoring.auth.port.out.SocialAuthenticationResult;
 import com.ondemandmonitoring.auth.port.out.SocialIdentityProviderPort;
-import com.ondemandmonitoring.config.CognitoProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
