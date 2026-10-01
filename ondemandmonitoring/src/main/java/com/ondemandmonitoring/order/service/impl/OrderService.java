@@ -59,6 +59,10 @@ public class OrderService implements IOrderService {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
 
+        if (order.getOrderStatus() == OrderStatus.APPROVED) {
+            return orderMapper.toResponse(order);
+        }
+
         if (order.getOrderStatus() != OrderStatus.PENDING) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Only PENDING orders can be approved");
         }
@@ -203,6 +207,15 @@ public class OrderService implements IOrderService {
     @Transactional(readOnly = true)
     public List<OrderCreateResponse> getPendingOrders() {
         return orderRepository.findByOrderStatusOrderByCreatedAtAsc(OrderStatus.PENDING)
+                .stream()
+                .map(orderMapper::toResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderCreateResponse> getApprovedOrders() {
+        return orderRepository.findByOrderStatusOrderByCreatedAtAsc(OrderStatus.APPROVED)
                 .stream()
                 .map(orderMapper::toResponse)
                 .toList();

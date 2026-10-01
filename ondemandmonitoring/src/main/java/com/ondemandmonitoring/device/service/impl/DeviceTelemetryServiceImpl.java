@@ -33,7 +33,9 @@ public class DeviceTelemetryServiceImpl implements IDeviceTelemetryService {
     @Override
     @Transactional
     public void record(String deviceId, TelemetryRequest request) {
-        DeviceConnection connection = deviceConnectionService.requireActiveTelemetryConnection(deviceId);
+        DeviceConnection connection = deviceConnectionService.requireActiveTelemetryConnection(
+                deviceId,
+                request.getMissionId());
         Device device = connection.getDevice();
 
         DeviceTelemetry telemetry = new DeviceTelemetry();

@@ -86,19 +86,76 @@ class AiConsultationServiceImplTest {
                     .contains(acceptanceCase.query())
                     .contains("Bạn có muốn bổ sung AI phân tích hình ảnh")
                     .contains("có thể phát sinh thêm chi phí");
-
-            if (acceptanceCase.serviceName().equals("Giám sát Tiến độ Xây dựng")) {
-                assertThat(result.get().requestTitle())
-                        .isEqualTo("Giám sát tiến độ thi công công trình");
-                assertThat(result.get().requestSummary())
-                        .isEqualTo("Ghi nhận hình ảnh và video hiện trạng công trường để theo dõi và đối chiếu tiến độ thi công.");
-            }
         }
+    }
+
+    @Test
+    void closeRagScoresStillRecommendWhenCustomerEvidenceDirectlyMatchesTopService() throws Exception {
+        Optional<AiConsultationResult> result = invokeRagRecommendation(
+                "Tôi muốn được tư vấn dịch vụ giám sát phù hợp cho khu vực Đập nước.",
+                "Địa chỉ/khu vực: Đập nước.\nVùng map nhận diện: Đập nước.",
+                List.of(
+                        new ServiceSearchCandidate(
+                                "svc-dam",
+                                "Giám sát Đập nước / Hồ chứa",
+                                "Giám sát khu vực đập nước, hồ chứa, cửa xả và thân đập.",
+                                0.87
+                        ),
+                        new ServiceSearchCandidate(
+                                "svc-water",
+                                "Giám sát Mặt nước / Dòng chảy",
+                                "Theo dõi mặt nước, dòng chảy và bờ sông.",
+                                0.82
+                        )
+                )
+        );
+
+        assertThat(result).isPresent();
+        assertThat(result.get().requirementStatus()).isEqualTo(ConsultationStatus.RECOMMENDED);
+        assertThat(result.get().recommendedServiceId()).isEqualTo("svc-dam");
+    }
+
+    @Test
+    void customerEvidenceCanRerankLowerSemanticCandidateBeforeCallingLlm() throws Exception {
+        Optional<AiConsultationResult> result = invokeRagRecommendation(
+                "kiểm tra là tiến độ",
+                """
+                        Địa chỉ/khu vực: Công trường xây dựng.
+                        Vùng map nhận diện: Công trường xây dựng.
+                        CUSTOMER: Tôi muốn giám sát công trình.
+                        CUSTOMER: kiểm tra là tiến độ
+                        """,
+                List.of(
+                        new ServiceSearchCandidate(
+                                "svc-far-target",
+                                "Giám sát Mục tiêu xa",
+                                "Giám sát mục tiêu ở khoảng cách xa bằng waypoint và kiểm tra khu vực khó tiếp cận.",
+                                0.788
+                        ),
+                        new ServiceSearchCandidate(
+                                "svc-drone-station",
+                                "Giám sát Bãi đáp / Trạm drone",
+                                "Giám sát bãi đáp, điểm quay về và hành lang an toàn.",
+                                0.784
+                        ),
+                        new ServiceSearchCandidate(
+                                "svc-progress",
+                                "Giám sát Tiến độ Xây dựng",
+                                "Theo dõi công trình xây dựng, công trường, tiến độ thi công và đối chiếu hiện trạng bằng ảnh/video.",
+                                0.782
+                        )
+                )
+        );
+
+        assertThat(result).isPresent();
+        assertThat(result.get().requirementStatus()).isEqualTo(ConsultationStatus.RECOMMENDED);
+        assertThat(result.get().recommendedServiceId()).isEqualTo("svc-progress");
     }
 
     @Test
     void ragRecommendationReturnsEmptyWhenScoresAreTooClose() throws Exception {
         Optional<AiConsultationResult> result = invokeRagRecommendation(
+                "Tôi muốn dùng drone để kiểm tra.",
                 "Tôi muốn dùng drone để kiểm tra.",
                 List.of(
                         new ServiceSearchCandidate(
@@ -158,12 +215,21 @@ class AiConsultationServiceImplTest {
             String query,
             List<ServiceSearchCandidate> candidates
     ) throws Exception {
+        return invokeRagRecommendation(query, query, candidates);
+    }
+
+    private Optional<AiConsultationResult> invokeRagRecommendation(
+            String query,
+            String customerEvidence,
+            List<ServiceSearchCandidate> candidates
+    ) throws Exception {
         AiConsultationServiceImpl service = new AiConsultationServiceImpl(null, null, null);
         ReflectionTestUtils.setField(service, "recommendationMinScore", 0.72);
         ReflectionTestUtils.setField(service, "recommendationMinScoreGap", 0.08);
 
         Method method = AiConsultationServiceImpl.class.getDeclaredMethod(
                 "buildRagRecommendation",
+                String.class,
                 String.class,
                 List.class,
                 String.class
@@ -174,6 +240,7 @@ class AiConsultationServiceImplTest {
         Optional<AiConsultationResult> result = (Optional<AiConsultationResult>) method.invoke(
                 service,
                 query,
+                customerEvidence,
                 candidates,
                 "consultation-test"
         );

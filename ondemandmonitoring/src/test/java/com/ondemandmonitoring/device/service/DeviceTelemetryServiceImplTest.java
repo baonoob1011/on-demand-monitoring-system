@@ -62,8 +62,9 @@ class DeviceTelemetryServiceImplTest {
         request.setSimY(20.0);
         request.setRelativeAltitude(12.0);
         request.setConnected(true);
+        request.setMissionId("mission-1");
 
-        when(connections.requireActiveTelemetryConnection("device-1")).thenReturn(connection);
+        when(connections.requireActiveTelemetryConnection("device-1", "mission-1")).thenReturn(connection);
         when(telemetryRepository.save(any(DeviceTelemetry.class))).thenAnswer(invocation -> {
             DeviceTelemetry telemetry = invocation.getArgument(0);
             telemetry.setId("telemetry-1");

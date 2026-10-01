@@ -13,6 +13,7 @@ public interface MediaWorkflowMapper {
     @Mapping(target = "mediaId", source = "asset.id")
     @Mapping(target = "mediaType", source = "asset.type")
     @Mapping(target = "fileName", source = "asset.originalFileName")
+    @Mapping(target = "status", source = "asset.mediaStatus")
     OperatorMissionMediaResponse toOperatorResponse(MediaAsset asset, String downloadUrl,
             java.time.Instant urlExpiresAt);
 

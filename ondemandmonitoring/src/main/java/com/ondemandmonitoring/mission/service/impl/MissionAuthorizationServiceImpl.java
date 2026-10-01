@@ -33,10 +33,10 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
                                 .map(mission -> mission.getId())
                                 .orElse(missionIdOrOrderId);
                 boolean currentAssignment = missionStaffAssignmentRepository
-                                .findByMissionIdAndStaffIdAndIsCurrentTrue(
+                                .findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc(
                                                 missionId,
                                                 currentUser.getId().toString())
-                                .isPresent();
+                                .isEmpty() == false;
                 if (currentAssignment)
                         return true;
                 return missionRepository.findById(missionId)

@@ -22,7 +22,7 @@ public class AwsS3Config {
 
     @Bean
     public S3Client s3Client(Environment environment, AwsCredentialsProvider credentialsProvider) {
-        String region = environment.getProperty("aws.region");
+        String region = clean(environment.getProperty("aws.region"));
         if (!StringUtils.hasText(region)) {
             throw new IllegalStateException("AWS region is not configured. Set AWS_REGION to the S3 bucket region.");
         }
@@ -36,7 +36,7 @@ public class AwsS3Config {
 
     @Bean
     public S3Presigner s3Presigner(Environment environment, AwsCredentialsProvider credentialsProvider) {
-        String region = environment.getProperty("aws.region");
+        String region = clean(environment.getProperty("aws.region"));
         if (!StringUtils.hasText(region)) {
             throw new IllegalStateException("AWS region is not configured. Set AWS_REGION to the S3 bucket region.");
         }
@@ -49,8 +49,8 @@ public class AwsS3Config {
 
     @Bean
     public AwsCredentialsProvider credentialsProvider(AwsS3Properties properties) {
-        String accessKey = properties.getAccessKeyBao();
-        String secretKey = properties.getSecretKeyBao();
+        String accessKey = clean(properties.getAccessKeyBao());
+        String secretKey = clean(properties.getSecretKeyBao());
 
         if (StringUtils.hasText(accessKey) && StringUtils.hasText(secretKey)) {
             log.info("[S3-CONFIG] credentialSource=aws.s3.access-key-bao accessKey={}", maskAccessKey(accessKey));
@@ -70,5 +70,18 @@ public class AwsS3Config {
             return "***";
         }
         return trimmed.substring(0, 4) + "..." + trimmed.substring(trimmed.length() - 4);
+    }
+
+    private String clean(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.length() >= 2
+                && ((trimmed.startsWith("\"") && trimmed.endsWith("\""))
+                || (trimmed.startsWith("'") && trimmed.endsWith("'")))) {
+            return trimmed.substring(1, trimmed.length() - 1).trim();
+        }
+        return trimmed;
     }
 }

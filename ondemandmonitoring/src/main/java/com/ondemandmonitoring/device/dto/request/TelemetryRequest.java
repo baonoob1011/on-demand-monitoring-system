@@ -20,4 +20,6 @@ public class TelemetryRequest {
 
     @NotNull
     Boolean connected;
+
+    String missionId;
 }

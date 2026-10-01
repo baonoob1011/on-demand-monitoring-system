@@ -98,7 +98,7 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
                 ),
                 new ServiceSeed(
                         "Giám sát Tiến độ Xây dựng",
-                        "Theo dõi công trường xây dựng, tiến độ thi công và hiện trạng khu vực làm việc bằng ảnh/video."
+                        "Theo dõi công trình xây dựng, công trường, tiến độ thi công, khu vực làm việc, chụp ảnh định kỳ và đối chiếu hiện trạng bằng ảnh/video."
                 ),
                 new ServiceSeed(
                         "Giám sát Sạt lở / Ngập lụt",
@@ -359,6 +359,12 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
                         new SuggestionSeed("Hình thức giám sát", "Kiểm tra định kỳ.", "Tôi muốn kiểm tra định kỳ.", 20),
                         new SuggestionSeed("Kết quả cần nhận", "Nhận ảnh/video.", "Tôi muốn nhận ảnh/video hiện trạng.", 30),
                         new SuggestionSeed("Kết quả cần nhận", "Nhận báo cáo kèm hình.", "Tôi muốn nhận báo cáo kèm hình ảnh.", 40)
+                )),
+                Map.entry("Giám sát Tiến độ Xây dựng", List.of(
+                        new SuggestionSeed("Mục tiêu giám sát", "Theo dõi tiến độ thi công.", "Tôi muốn giám sát tiến độ thi công công trình.", 10),
+                        new SuggestionSeed("Mục tiêu giám sát", "Ghi nhận hiện trạng công trường.", "Tôi muốn ghi nhận hình ảnh hiện trạng công trường.", 20),
+                        new SuggestionSeed("Tần suất", "Chụp định kỳ.", "Tôi muốn chụp định kỳ để đối chiếu tiến độ.", 30),
+                        new SuggestionSeed("Kết quả cần nhận", "Báo cáo tiến độ.", "Tôi muốn nhận báo cáo tiến độ kèm hình ảnh.", 40)
                 ))
         );
 

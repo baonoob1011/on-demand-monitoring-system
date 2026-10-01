@@ -29,6 +29,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class MediaValidationServiceImpl implements IMediaValidationService {
 
     static String AVAILABLE_EVENT = "CUSTOMER_MEDIA_AVAILABLE";
+    static String MANAGER_APPROVAL_EVENT = "MANAGER_MEDIA_PENDING_APPROVAL";
 
     MediaUploadAttemptRepository attempts;
     MediaAssetRepository media;
@@ -116,10 +117,10 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
         Instant now = Instant.now();
         captured.setS3Key(finalKey);
         captured.setS3Url("s3://" + bucket + "/" + finalKey);
-        captured.setMediaStatus(MediaStatus.AVAILABLE);
+        captured.setMediaStatus(MediaStatus.PENDING_MANAGER_APPROVAL);
         captured.setValidationError(null);
         captured.setValidatedAt(now);
-        captured.setAvailableAt(now);
+        captured.setAvailableAt(null);
         attempt.setStatus(UploadAttemptStatus.SUCCEEDED);
         attempt.setCompletedAt(now);
         attempts.save(attempt);
@@ -130,11 +131,11 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
             manualTasks.save(task);
         });
 
-        if (!outbox.existsByMediaIdAndEventType(captured.getId(), AVAILABLE_EVENT)) {
+        if (!outbox.existsByMediaIdAndEventType(captured.getId(), MANAGER_APPROVAL_EVENT)) {
             MediaNotificationOutbox notification = new MediaNotificationOutbox();
             notification.setMedia(captured);
             notification.setMissionId(captured.getMissionId());
-            notification.setEventType(AVAILABLE_EVENT);
+            notification.setEventType(MANAGER_APPROVAL_EVENT);
             outbox.save(notification);
         }
 

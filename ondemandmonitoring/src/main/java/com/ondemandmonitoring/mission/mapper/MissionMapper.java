@@ -118,10 +118,10 @@ public abstract class MissionMapper {
         if (mission == null || mission.getId() == null) {
             return Optional.empty();
         }
-        Optional<MissionDeviceAssignment> current =
-                missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(mission.getId());
-        return current.isPresent()
-                ? current
+        List<MissionDeviceAssignment> current =
+                missionDeviceAssignmentRepository.findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc(mission.getId());
+        return !current.isEmpty()
+                ? Optional.of(current.get(0))
                 : missionDeviceAssignmentRepository.findFirstByMissionIdOrderByCreatedAtDesc(mission.getId());
     }
 

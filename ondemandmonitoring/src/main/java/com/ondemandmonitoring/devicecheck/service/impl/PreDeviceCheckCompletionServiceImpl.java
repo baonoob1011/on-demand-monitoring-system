@@ -20,6 +20,8 @@ import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentReposito
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepository;
 import com.ondemandmonitoring.mission.service.IFlightTokenService;
+import com.ondemandmonitoring.user.domain.User;
+import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +37,7 @@ public class PreDeviceCheckCompletionServiceImpl implements IPreDeviceCheckCompl
     private final MissionWeatherCheckRepository missionWeatherCheckRepository;
     private final IFlightTokenService flightTokenService;
     private final PreDeviceCheckCompletionMapper preDeviceCheckCompletionMapper;
+    private final AuthenticatedUserResolver authenticatedUserResolver;
 
     @Override
     @Transactional
@@ -95,7 +98,15 @@ public class PreDeviceCheckCompletionServiceImpl implements IPreDeviceCheckCompl
     }
 
     private String getCurrentStaffId(String missionId) {
-        return missionStaffAssignmentRepository.findFirstByMissionIdOrderByAssignedAtDesc(missionId)
+        User currentUser = authenticatedUserResolver.getCurrentUser();
+        if (currentUser.getId() == null) {
+            return null;
+        }
+        String currentStaffId = currentUser.getId().toString();
+        return missionStaffAssignmentRepository
+                .findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc(missionId, currentStaffId)
+                .stream()
+                .findFirst()
                 .map(assignment -> assignment.getStaff() != null && assignment.getStaff().getId() != null
                         ? assignment.getStaff().getId().toString()
                         : null)

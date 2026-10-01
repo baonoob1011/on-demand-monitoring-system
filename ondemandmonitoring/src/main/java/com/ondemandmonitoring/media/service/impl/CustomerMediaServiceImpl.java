@@ -43,7 +43,8 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
                 .availableCount(media.countByMissionIdAndMediaStatus(canonicalId, MediaStatus.AVAILABLE))
                 .processingCount(media.countByMissionIdAndMediaStatusIn(canonicalId, List.of(
                         MediaStatus.UPLOAD_PENDING, MediaStatus.UPLOADING, MediaStatus.VALIDATING,
-                        MediaStatus.RETRY_REQUIRED, MediaStatus.MANUAL_UPLOAD_REQUIRED)))
+                        MediaStatus.RETRY_REQUIRED, MediaStatus.MANUAL_UPLOAD_REQUIRED,
+                        MediaStatus.PENDING_MANAGER_APPROVAL)))
                 .rejectedCount(media.countByMissionIdAndMediaStatus(canonicalId, MediaStatus.REJECTED))
                 .build();
     }

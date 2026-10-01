@@ -5,7 +5,7 @@ import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.mission.domain.FlightToken;
 import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.domain.MissionStaffAssignment;
-import com.ondemandmonitoring.mission.enums.MissionStaffRole;
+import com.ondemandmonitoring.mission.enums.DeviceRole;
 import com.ondemandmonitoring.mission.repository.FlightTokenRepository;
 import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepository;
@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Comparator;
 
 /**
  * Dedicated service for issuing 60-minute HMAC-SHA256 flight tokens and
@@ -36,20 +37,19 @@ public class FlightTokenService implements IFlightTokenService {
     @Override
     @Transactional
     public FlightToken issueFlightToken(String missionId, String deviceId, String staffId) {
-        MissionDeviceAssignment deviceAssignment = missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+        MissionDeviceAssignment deviceAssignment = missionDeviceAssignmentRepository
+                .findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc(missionId)
+                .stream()
                 .filter(assignment -> assignment.getDevice() != null
                         && (deviceId == null || deviceId.isBlank()
                                 || deviceId.equals(assignment.getDevice().getId())))
+                .min(Comparator.comparing(assignment -> assignment.getDeviceRole() != DeviceRole.MAIN))
                 .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REQUEST,
                         "Device " + deviceId + " is not assigned to mission " + missionId));
 
         MissionStaffAssignment staffAssignment = missionStaffAssignmentRepository
-                .findAllByMissionIdAndAssignedRoleAndIsCurrentTrue(missionId, MissionStaffRole.OPERATOR)
+                .findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc(missionId, staffId)
                 .stream()
-                .filter(assignment -> assignment.getStaff() != null
-                        && assignment.getStaff().getId() != null
-                        && (staffId == null || staffId.isBlank()
-                                || staffId.equals(assignment.getStaff().getId().toString())))
                 .findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REQUEST,
                         "Staff " + staffId + " is not assigned to mission " + missionId));

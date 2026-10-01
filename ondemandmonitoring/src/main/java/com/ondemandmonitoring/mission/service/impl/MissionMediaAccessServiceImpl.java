@@ -45,8 +45,9 @@ public class MissionMediaAccessServiceImpl implements IMissionMediaAccessService
                 "ROLE_ADMIN".equals(authority.getAuthority())
                         || "ROLE_SYSTEM_OPERATOR".equals(authority.getAuthority()));
         String userId = currentUser.getCurrentUserId();
-        boolean assigned = staffAssignments.findByMissionIdAndStaffIdAndIsCurrentTrue(mission.getId(), userId)
-                .isPresent();
+        boolean assigned = !staffAssignments
+                .findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc(mission.getId(), userId)
+                .isEmpty();
         if (!assigned && mission.getStatus() == MissionStatus.COMPLETED) {
             assigned = staffAssignments.findByMissionId(mission.getId()).stream()
                     .anyMatch(entry -> userId.equals(entry.getStaff().getId()));
@@ -62,8 +63,9 @@ public class MissionMediaAccessServiceImpl implements IMissionMediaAccessService
         // Independently authorize the public boundary, even when called outside media.
         authorizeOperator(missionId);
         Mission mission = requireMission(missionId);
-        boolean assigned = deviceAssignments.findByMissionIdAndIsCurrentTrue(mission.getId())
-                .map(entry -> deviceId.equals(entry.getDevice().getId())).orElse(false);
+        boolean assigned = deviceAssignments.findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc(mission.getId())
+                .stream()
+                .anyMatch(entry -> entry.getDevice() != null && deviceId.equals(entry.getDevice().getId()));
         if (!assigned && mission.getStatus() == MissionStatus.COMPLETED) {
             assigned = deviceAssignments.findByMissionId(mission.getId()).stream()
                     .anyMatch(entry -> deviceId.equals(entry.getDevice().getId()));

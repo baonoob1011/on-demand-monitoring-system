@@ -8,6 +8,7 @@ import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.domain.MissionStaffAssignment;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
+import com.ondemandmonitoring.mission.enums.MissionStaffRole;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.mapper.MissionMapper;
 import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
@@ -24,6 +25,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -89,10 +91,13 @@ class DeviceConnectionServiceTest {
         MissionStaffAssignment msa = new MissionStaffAssignment();
         msa.setMission(mission);
         msa.setIsCurrent(true);
+        msa.setAssignedRole(MissionStaffRole.OPERATOR);
 
         when(missionRepository.findById(missionId)).thenReturn(Optional.of(mission));
-        when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)).thenReturn(Optional.of(mda));
-        when(missionStaffAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)).thenReturn(Optional.of(msa));
+        when(missionDeviceAssignmentRepository.findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc(missionId))
+                .thenReturn(List.of(mda));
+        when(missionStaffAssignmentRepository.findAllByMissionIdAndIsCurrentTrue(missionId))
+                .thenReturn(List.of(msa));
         when(deviceConnectionRepository.save(any(DeviceConnection.class))).thenAnswer(inv -> inv.getArgument(0));
         when(missionRepository.save(any(Mission.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -157,7 +162,8 @@ class DeviceConnectionServiceTest {
         when(missionRepository.findById(missionId)).thenReturn(Optional.of(mission));
         when(deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED"))
                 .thenReturn(Optional.of(activeSession));
-        when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)).thenReturn(Optional.of(mda));
+        when(missionDeviceAssignmentRepository.findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc(missionId))
+                .thenReturn(List.of(mda));
         when(missionRepository.save(any(Mission.class))).thenAnswer(inv -> inv.getArgument(0));
 
         MissionResponse response = deviceConnectionService.handleGcsSessionLost(missionId, "SIGNAL_LOSS_COMM_TIMEOUT");

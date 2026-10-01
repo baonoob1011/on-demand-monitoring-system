@@ -13,4 +13,6 @@ public interface ResourceTimeLockRepository extends JpaRepository<ResourceTimeLo
     List<ResourceTimeLock> findByResourceId(String resourceId);
 
     Optional<ResourceTimeLock> findByResourceIdAndMissionId(String resourceId, String missionId);
+
+    List<ResourceTimeLock> findAllByResourceIdAndMissionId(String resourceId, String missionId);
 }

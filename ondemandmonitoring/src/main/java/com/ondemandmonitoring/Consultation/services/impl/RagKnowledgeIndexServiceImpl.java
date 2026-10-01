@@ -4,8 +4,10 @@ import com.ondemandmonitoring.Consultation.services.RagKnowledgeIndexService;
 import com.ondemandmonitoring.service.domain.DeliverableType;
 import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.service.domain.ServiceDeliverable;
+import com.ondemandmonitoring.service.domain.ServiceRequirementSuggestion;
 import com.ondemandmonitoring.service.repository.DeliverableTypeRepository;
 import com.ondemandmonitoring.service.repository.ServiceDeliverableRepository;
+import com.ondemandmonitoring.service.repository.ServiceRequirementSuggestionRepository;
 import com.ondemandmonitoring.service.repository.ServiceRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +32,7 @@ public class RagKnowledgeIndexServiceImpl implements RagKnowledgeIndexService {
     private final ServiceRepository serviceRepository;
     private final ServiceDeliverableRepository serviceDeliverableRepository;
     private final DeliverableTypeRepository deliverableTypeRepository;
+    private final ServiceRequirementSuggestionRepository suggestionRepository;
 
     @Transactional
     public void indexAllKnowledge() {
@@ -83,10 +86,38 @@ public class RagKnowledgeIndexServiceImpl implements RagKnowledgeIndexService {
     }
 
     private Document toServiceDocument(Service service) {
-        String content = String.format("Service\n\nName: %s\n\nDescription:\n%s",
+        String deliverables = serviceDeliverableRepository.findAllByServiceId(service.getId()).stream()
+                .map(ServiceDeliverable::getDeliverableType)
+                .filter(type -> type != null && Boolean.TRUE.equals(type.getIsActive()))
+                .map(type -> "- " + safe(type.getName()) + formatDefaultFormat(type))
+                .collect(Collectors.joining("\n"));
+
+        String suggestions = suggestionRepository
+                .findByActiveTrueAndServiceIdInOrderBySortOrderAscCreatedAtAsc(List.of(service.getId()))
+                .stream()
+                .map(this::formatSuggestion)
+                .collect(Collectors.joining("\n"));
+
+        String content = String.format("""
+                Service
+
+                Name:
+                %s
+
+                Description:
+                %s
+
+                Deliverables:
+                %s
+
+                Requirement suggestions:
+                %s
+                """,
                 safe(service.getName()),
-                safe(service.getDescription())
-        );
+                safe(service.getDescription()),
+                deliverables.isBlank() ? "Chưa cấu hình" : deliverables,
+                suggestions.isBlank() ? "Chưa cấu hình" : suggestions
+        ).trim();
 
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("type", "SERVICE");
@@ -144,6 +175,20 @@ public class RagKnowledgeIndexServiceImpl implements RagKnowledgeIndexService {
 
     private String safe(String value) {
         return value != null ? value : "";
+    }
+
+    private String formatDefaultFormat(DeliverableType type) {
+        return type.getDefaultFormat() == null || type.getDefaultFormat().isBlank()
+                ? ""
+                : " (" + type.getDefaultFormat() + ")";
+    }
+
+    private String formatSuggestion(ServiceRequirementSuggestion suggestion) {
+        return "- %s: %s. Ví dụ khách nói: %s".formatted(
+                safe(suggestion.getCategory()),
+                safe(suggestion.getLabel()),
+                safe(suggestion.getMessage())
+        );
     }
 
     private String stableUuid(String key) {

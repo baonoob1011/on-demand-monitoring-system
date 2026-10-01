@@ -101,7 +101,7 @@ public class MediaProbeServiceImpl implements IMediaProbeService {
                     runId, bucket, key, exception);
             failure = exception instanceof ApiException
                     ? exception
-                    : probeFailure("Media probe storage operation failed", exception);
+                    : probeFailure("Media probe storage operation failed: " + rootMessage(exception), exception);
         } finally {
             if (stored) {
                 try {
@@ -109,7 +109,8 @@ public class MediaProbeServiceImpl implements IMediaProbeService {
                     cleanupVerified = true;
                 } catch (RuntimeException cleanupException) {
                     if (failure == null) {
-                        failure = probeFailure("Media probe cleanup failed", cleanupException);
+                        failure = probeFailure("Media probe cleanup failed: " + rootMessage(cleanupException),
+                                cleanupException);
                     }
                 }
             }
@@ -217,5 +218,16 @@ public class MediaProbeServiceImpl implements IMediaProbeService {
         ApiException exception = probeFailure(message);
         exception.initCause(cause);
         return exception;
+    }
+
+    private String rootMessage(Throwable throwable) {
+        Throwable cursor = throwable;
+        while (cursor.getCause() != null) {
+            cursor = cursor.getCause();
+        }
+        String message = cursor.getMessage();
+        return message == null || message.isBlank()
+                ? cursor.getClass().getSimpleName()
+                : message;
     }
 }

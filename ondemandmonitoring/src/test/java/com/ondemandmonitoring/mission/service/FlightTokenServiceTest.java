@@ -18,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -69,10 +70,12 @@ class FlightTokenServiceTest {
         staffAssignment.setStaff(staff);
         staffAssignment.setIsCurrent(true);
 
-        when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId))
-                .thenReturn(Optional.of(deviceAssignment));
-        when(missionStaffAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId))
-                .thenReturn(Optional.of(staffAssignment));
+        when(missionDeviceAssignmentRepository.findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc(missionId))
+                .thenReturn(List.of(deviceAssignment));
+        when(missionStaffAssignmentRepository.findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc(
+                missionId,
+                staffId))
+                .thenReturn(List.of(staffAssignment));
 
         when(flightTokenRepository.save(any(FlightToken.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -108,10 +111,12 @@ class FlightTokenServiceTest {
         staffAssignment.setStaff(staff);
         staffAssignment.setIsCurrent(true);
 
-        when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId))
-                .thenReturn(Optional.of(deviceAssignment));
-        when(missionStaffAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId))
-                .thenReturn(Optional.of(staffAssignment));
+        when(missionDeviceAssignmentRepository.findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc(missionId))
+                .thenReturn(List.of(deviceAssignment));
+        when(missionStaffAssignmentRepository.findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc(
+                missionId,
+                requestedStaffId))
+                .thenReturn(List.of());
 
         assertThatThrownBy(() -> flightTokenService.issueFlightToken(missionId, deviceId, requestedStaffId))
                 .isInstanceOf(ApiException.class)
@@ -132,8 +137,8 @@ class FlightTokenServiceTest {
         deviceAssignment.setDevice(device);
         deviceAssignment.setIsCurrent(true);
 
-        when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId))
-                .thenReturn(Optional.of(deviceAssignment));
+        when(missionDeviceAssignmentRepository.findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc(missionId))
+                .thenReturn(List.of(deviceAssignment));
 
         assertThatThrownBy(() -> flightTokenService.issueFlightToken(missionId, requestedDeviceId, staffId))
                 .isInstanceOf(ApiException.class)

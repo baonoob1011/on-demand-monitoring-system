@@ -539,6 +539,7 @@ async def send_telemetry() -> None:
                 continue
 
             payload = await state.snapshot()
+            payload["missionId"] = mission_id
             response = None
             for base_url in candidates:
                 try:

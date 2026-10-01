@@ -9,6 +9,7 @@ import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.domain.MissionStaffAssignment;
+import com.ondemandmonitoring.mission.enums.DeviceRole;
 import com.ondemandmonitoring.mission.enums.MissionStaffRole;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
@@ -24,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Service implementation managing device connection sessions
@@ -145,12 +147,114 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     @Transactional(readOnly = true)
     public DeviceConnection requireActiveTelemetryConnection(String deviceId) {
         return deviceConnectionRepository
-                .findFirstByDeviceAssignmentDeviceIdAndConnectionStatusAndTelemetryActiveTrueOrderByConnectedAtDesc(
+                .findActiveTelemetryByDeviceIdentifier(
                         deviceId,
                         "CONNECTED")
+                .stream()
+                .findFirst()
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.RESOURCE_NOT_FOUND,
                         "No active device connection found for telemetry device: " + deviceId));
+    }
+
+    @Override
+    @Transactional
+    public DeviceConnection requireActiveTelemetryConnection(String deviceId, String missionId) {
+        return deviceConnectionRepository
+                .findActiveTelemetryByDeviceIdentifier(deviceId, "CONNECTED")
+                .stream()
+                .findFirst()
+                .orElseGet(() -> connectTelemetrySession(deviceId, missionId));
+    }
+
+    private DeviceConnection connectTelemetrySession(String deviceId, String missionId) {
+        MissionDeviceAssignment deviceAssignment = resolveTelemetryDeviceAssignment(deviceId, missionId);
+        Mission mission = deviceAssignment.getMission();
+        if (mission.getStatus() != MissionStatus.SCHEDULED
+                && mission.getStatus() != MissionStatus.CONNECTED
+                && mission.getStatus() != MissionStatus.PREFLIGHT_CHECKING
+                && mission.getStatus() != MissionStatus.READY_TO_FLY
+                && mission.getStatus() != MissionStatus.IN_FLIGHT
+                && mission.getStatus() != MissionStatus.IN_PROGRESS) {
+            throw new ApiException(
+                    ErrorCode.MISSION_STATUS_INVALID,
+                    "Mission cannot accept telemetry in status: " + mission.getStatus());
+        }
+
+        MissionStaffAssignment staffAssignment = getCurrentStaffAssignment(mission.getId());
+        if (staffAssignment == null) {
+            throw new ApiException(
+                    ErrorCode.RESOURCE_NOT_FOUND,
+                    "Mission has no current staff assignment: " + mission.getId());
+        }
+
+        Device device = deviceAssignment.getDevice();
+        if (mission.getStatus() == MissionStatus.SCHEDULED) {
+            mission.setStatus(MissionStatus.CONNECTED);
+            missionRepository.save(mission);
+        }
+        if (mission.getStatus() == MissionStatus.CONNECTED
+                || mission.getStatus() == MissionStatus.PREFLIGHT_CHECKING
+                || mission.getStatus() == MissionStatus.READY_TO_FLY) {
+            device.setStatus(DeviceStatus.PREFLIGHT);
+            deviceRepository.save(device);
+        }
+
+        DeviceConnection connection = new DeviceConnection();
+        connection.setMission(mission);
+        connection.setDeviceAssignment(deviceAssignment);
+        connection.setStaffAssignment(staffAssignment);
+        connection.setConnectionStatus("CONNECTED");
+        connection.setTelemetryActive(true);
+        connection.setConnectedAt(Instant.now());
+        connection.setDisconnectedAt(null);
+        connection.setDisconnectReason(null);
+
+        DeviceConnection savedConnection = deviceConnectionRepository.save(connection);
+        log.info("Telemetry auto-connected mission {}. connectionId={} deviceId={}",
+                mission.getId(), savedConnection.getId(), device.getId());
+        return savedConnection;
+    }
+
+    private MissionDeviceAssignment resolveTelemetryDeviceAssignment(String deviceId, String missionId) {
+        if (missionId != null && !missionId.isBlank()) {
+            Mission mission = getMission(missionId);
+            return getAssignedDeviceAssignment(mission.getId())
+                    .filter(assignment -> matchesDevice(assignment.getDevice(), deviceId))
+                    .orElseThrow(() -> new ApiException(
+                            ErrorCode.RESOURCE_NOT_FOUND,
+                            "Telemetry device is not assigned to mission: " + deviceId));
+        }
+
+        List<MissionStatus> telemetryStatuses = List.of(
+                MissionStatus.SCHEDULED,
+                MissionStatus.CONNECTED,
+                MissionStatus.PREFLIGHT_CHECKING,
+                MissionStatus.READY_TO_FLY,
+                MissionStatus.IN_FLIGHT,
+                MissionStatus.IN_PROGRESS);
+        List<MissionDeviceAssignment> assignmentsById =
+                missionDeviceAssignmentRepository.findCurrentByDeviceIdAndMissionStatusIn(deviceId, telemetryStatuses);
+        List<MissionDeviceAssignment> assignments = assignmentsById.isEmpty()
+                ? missionDeviceAssignmentRepository.findCurrentByDeviceCodeAndMissionStatusIn(
+                        deviceId,
+                        telemetryStatuses)
+                : assignmentsById;
+
+        return assignments.stream()
+                .filter(assignment -> assignment.getDeviceRole() == DeviceRole.MAIN)
+                .findFirst()
+                .or(() -> assignments.stream().findFirst())
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.RESOURCE_NOT_FOUND,
+                        "No active device connection found for telemetry device: " + deviceId));
+    }
+
+    private boolean matchesDevice(Device device, String deviceId) {
+        if (device == null || deviceId == null || deviceId.isBlank()) {
+            return false;
+        }
+        return deviceId.equals(device.getId()) || deviceId.equals(device.getDeviceCode());
     }
 
     private Device getAssignedDevice(String missionId) {
@@ -160,15 +264,21 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     }
 
     private java.util.Optional<MissionDeviceAssignment> getAssignedDeviceAssignment(String missionId) {
-        return missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId);
+        List<MissionDeviceAssignment> assignments =
+                missionDeviceAssignmentRepository.findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc(missionId);
+        return assignments.stream()
+                .filter(assignment -> assignment.getDeviceRole() == DeviceRole.MAIN)
+                .findFirst()
+                .or(() -> assignments.stream().findFirst());
     }
 
     private MissionStaffAssignment getCurrentStaffAssignment(String missionId) {
-        return missionStaffAssignmentRepository.findAllByMissionIdAndAssignedRoleAndIsCurrentTrue(
-                        missionId,
-                        MissionStaffRole.OPERATOR)
-                .stream()
+        List<MissionStaffAssignment> assignments = missionStaffAssignmentRepository.findAllByMissionIdAndIsCurrentTrue(
+                missionId);
+        return assignments.stream()
+                .filter(assignment -> assignment.getAssignedRole() == MissionStaffRole.OPERATOR)
                 .findFirst()
+                .or(() -> assignments.stream().findFirst())
                 .orElse(null);
     }
 

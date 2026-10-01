@@ -51,7 +51,7 @@ public class S3ObjectStorageService implements IMediaObjectStorage {
             long contentLength,
             InputStream inputStream,
             String diagnosticPrefix) {
-        String bucket = awsS3Properties.getBucket();
+        String bucket = bucket();
         PutObjectRequest putObjectRequest = PutObjectRequest.builder()
                 .bucket(bucket)
                 .key(key)
@@ -161,18 +161,31 @@ public class S3ObjectStorageService implements IMediaObjectStorage {
 
     @Override
     public String bucket() {
-        return awsS3Properties.getBucket();
+        return clean(awsS3Properties.getBucket());
     }
 
     @Override
     public String prefix() {
-        String prefix = awsS3Properties.getPrefix();
+        String prefix = clean(awsS3Properties.getPrefix());
         return prefix == null ? "" : prefix.replaceAll("^/+|/+$", "");
     }
 
     @Override
     public long presignedUrlExpiresSeconds() {
         return PRESIGNED_URL_EXPIRES_SECONDS;
+    }
+
+    private String clean(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.length() >= 2
+                && ((trimmed.startsWith("\"") && trimmed.endsWith("\""))
+                || (trimmed.startsWith("'") && trimmed.endsWith("'")))) {
+            return trimmed.substring(1, trimmed.length() - 1).trim();
+        }
+        return trimmed;
     }
 
 }

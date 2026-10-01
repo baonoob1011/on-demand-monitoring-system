@@ -72,12 +72,13 @@ public class AiConsultationServiceImpl implements AiConsultationService {
         // Bước 1: Tìm các Service phù hợp nhất từ RAG.
         List<ServiceSearchCandidate> serviceCandidates =
                 ragKnowledgeSearchService.searchServices(
-                        latestCustomerText.isBlank() ? conversationContext : latestCustomerText
+                        conversationContext
                 );
 
         Optional<AiConsultationResult> directRecommendation =
                 buildRagRecommendation(
                         latestCustomerText,
+                        extractCustomerEvidence(conversationContext),
                         serviceCandidates,
                         consultation.getId()
                 );
@@ -91,7 +92,7 @@ public class AiConsultationServiceImpl implements AiConsultationService {
                     consultation.getId()
             );
             return needMoreInfo(
-                    "Mình chưa xác định được dịch vụ phù hợp từ nội dung hiện tại. Anh/chị mô tả ngắn gọn muốn giám sát công trình, mặt nước, nhiệt độ hay bản đồ khu vực nhé.",
+                    "Mình chưa đủ thông tin để chọn đúng dịch vụ. Anh/chị cho biết đối tượng cần giám sát là gì và mục tiêu chính muốn kiểm tra là tiến độ, hiện trạng, an toàn hay dấu hiệu bất thường nhé.",
                     latestCustomerText
             );
         }
@@ -185,6 +186,7 @@ public class AiConsultationServiceImpl implements AiConsultationService {
 
     private Optional<AiConsultationResult> buildRagRecommendation(
             String latestCustomerText,
+            String customerEvidence,
             List<ServiceSearchCandidate> candidates,
             String consultationId
     ) {
@@ -193,7 +195,11 @@ public class AiConsultationServiceImpl implements AiConsultationService {
             return Optional.empty();
         }
 
-        ServiceSearchCandidate best = candidates.get(0);
+        ServiceSearchCandidate semanticBest = candidates.get(0);
+        ServiceSearchCandidate best = strongestCustomerEvidenceMatch(
+                candidates,
+                customerEvidence
+        ).orElse(semanticBest);
         if (best.score() < recommendationMinScore) {
             log.info(
                     "RAG decision. consultationId={}, decision=AMBIGUOUS, reason=score_below_threshold, topScore={}, minScore={}",
@@ -205,9 +211,17 @@ public class AiConsultationServiceImpl implements AiConsultationService {
         }
 
         if (candidates.size() > 1) {
-            ServiceSearchCandidate second = candidates.get(1);
+            ServiceSearchCandidate second = candidates.stream()
+                    .filter(candidate -> !candidate.serviceId().equals(best.serviceId()))
+                    .findFirst()
+                    .orElse(candidates.get(1));
             double gap = best.score() - second.score();
-            if (gap < recommendationMinScoreGap) {
+            boolean hasDirectCustomerMatch = customerEvidenceMatchScore(
+                    best,
+                    customerEvidence
+            ) >= 2;
+            if (gap < recommendationMinScoreGap
+                    && !hasDirectCustomerMatch) {
                 log.info(
                         "RAG decision. consultationId={}, decision=AMBIGUOUS, reason=score_gap_below_threshold, topScore={}, secondScore={}, gap={}, minGap={}",
                         consultationId,
@@ -218,6 +232,26 @@ public class AiConsultationServiceImpl implements AiConsultationService {
                 );
                 return Optional.empty();
             }
+            if (!best.serviceId().equals(semanticBest.serviceId())) {
+                log.info(
+                        "RAG decision. consultationId={}, decision=RERANKED_BY_CUSTOMER_EVIDENCE, semanticServiceId={}, selectedServiceId={}, selectedServiceName={}, selectedScore={}",
+                        consultationId,
+                        semanticBest.serviceId(),
+                        best.serviceId(),
+                        best.serviceName(),
+                        best.score()
+                );
+            } else if (gap < recommendationMinScoreGap) {
+                log.info(
+                        "RAG decision. consultationId={}, decision=RECOMMENDED_BY_CUSTOMER_EVIDENCE, serviceId={}, serviceName={}, score={}, secondScore={}, gap={}",
+                        consultationId,
+                        best.serviceId(),
+                        best.serviceName(),
+                        best.score(),
+                        second.score(),
+                        gap
+                );
+            }
         }
 
         if (latestCustomerText == null || latestCustomerText.isBlank()) {
@@ -225,13 +259,15 @@ public class AiConsultationServiceImpl implements AiConsultationService {
         }
 
         String message = """
-                Dịch vụ %s phù hợp với nhu cầu %s của bạn.
+                Mình hiểu bạn đang cần: %s.
 
-                Bạn có muốn bổ sung AI phân tích hình ảnh để hỗ trợ phát hiện và đánh dấu các dấu hiệu bất thường không? Đây là yêu cầu bổ sung và có thể phát sinh thêm chi phí.
+                Dịch vụ phù hợp nhất là **%s** vì dịch vụ này đáp ứng đúng nhóm nhu cầu bạn vừa mô tả.
+
+                Bạn có muốn bổ sung AI phân tích hình ảnh để tự động phát hiện và đánh dấu dấu hiệu bất thường không? Đây là lựa chọn bổ sung và có thể phát sinh thêm chi phí.
                 """
                 .formatted(
-                        best.serviceName(),
-                        latestCustomerText.trim()
+                        latestCustomerText.trim(),
+                        best.serviceName()
                 )
                 .trim();
 
@@ -252,6 +288,118 @@ public class AiConsultationServiceImpl implements AiConsultationService {
                 buildRequestDescription(best, latestCustomerText),
                 null
         ));
+    }
+
+    private Optional<ServiceSearchCandidate> strongestCustomerEvidenceMatch(
+            List<ServiceSearchCandidate> candidates,
+            String customerEvidence
+    ) {
+        return candidates.stream()
+                .filter(candidate -> candidate.score() >= recommendationMinScore)
+                .map(candidate -> Map.entry(
+                        candidate,
+                        customerEvidenceMatchScore(candidate, customerEvidence)
+                ))
+                .filter(entry -> entry.getValue() >= 2)
+                .max((left, right) -> {
+                    int scoreCompare = Integer.compare(
+                            left.getValue(),
+                            right.getValue()
+                    );
+                    if (scoreCompare != 0) {
+                        return scoreCompare;
+                    }
+                    return Double.compare(
+                            left.getKey().score(),
+                            right.getKey().score()
+                    );
+                })
+                .map(Map.Entry::getKey);
+    }
+
+    private String extractCustomerEvidence(String conversationContext) {
+        if (conversationContext == null || conversationContext.isBlank()) {
+            return "";
+        }
+
+        StringBuilder evidence = new StringBuilder();
+        boolean insideServiceCatalog = false;
+
+        for (String line : conversationContext.split("\\R")) {
+            String trimmed = line.trim();
+            if (trimmed.contains("Danh sách service active từ BE:")) {
+                insideServiceCatalog = true;
+                continue;
+            }
+
+            if (insideServiceCatalog) {
+                if (trimmed.startsWith("CUSTOMER:")
+                        || trimmed.startsWith("ASSISTANT:")) {
+                    insideServiceCatalog = false;
+                } else {
+                    continue;
+                }
+            }
+
+            if (trimmed.startsWith("ASSISTANT:")) {
+                continue;
+            }
+
+            evidence.append(trimmed).append('\n');
+        }
+
+        return evidence.toString();
+    }
+
+    private int customerEvidenceMatchScore(
+            ServiceSearchCandidate candidate,
+            String customerEvidence
+    ) {
+        String evidence = " " + normalizeAnswer(customerEvidence) + " ";
+        if (evidence.isBlank()) {
+            return 0;
+        }
+
+        List<String> serviceTokens = meaningfulTokens(
+                candidate.serviceName() + " " + candidate.content()
+        );
+        if (serviceTokens.isEmpty()) {
+            return 0;
+        }
+
+        int score = 0;
+        for (String token : serviceTokens.stream().distinct().toList()) {
+            if (evidence.contains(" " + token + " ")) {
+                score++;
+            }
+        }
+
+        for (int index = 0; index < serviceTokens.size() - 1; index++) {
+            String phrase = serviceTokens.get(index)
+                    + " "
+                    + serviceTokens.get(index + 1);
+            if (evidence.contains(" " + phrase + " ")) {
+                score += 2;
+            }
+        }
+
+        return score;
+    }
+
+    private List<String> meaningfulTokens(String text) {
+        Set<String> ignoredWords = Set.of(
+                "ai", "anh", "bao", "bang", "ban", "cao", "can", "chon",
+                "co", "cua", "de", "dich", "du", "duoc", "gia", "giam",
+                "ghi", "hien", "ho", "khach", "khu", "kiem", "la", "lai",
+                "lam", "luu", "mot", "muon", "nay", "nhu", "nhan", "nhat",
+                "phu", "qua", "quan", "sat", "service", "theo", "thong",
+                "tra", "tu", "van", "video", "vung", "yeu"
+        );
+
+        return List.of(normalizeAnswer(text).split("\\s+")).stream()
+                .filter(token -> token.length() >= 3)
+                .filter(token -> !ignoredWords.contains(token))
+                .toList();
     }
 
     private String latestCustomerText(String conversationContext) {
@@ -350,9 +498,6 @@ public class AiConsultationServiceImpl implements AiConsultationService {
     }
 
     private String buildRequestTitle(ServiceSearchCandidate service, String latestCustomerText) {
-        if (service.serviceName().contains("Tiến độ Xây dựng")) {
-            return "Giám sát tiến độ thi công công trình";
-        }
         String base = latestCustomerText == null || latestCustomerText.isBlank()
                 ? service.serviceName()
                 : latestCustomerText.trim();
@@ -360,10 +505,12 @@ public class AiConsultationServiceImpl implements AiConsultationService {
     }
 
     private String buildRequestDescription(ServiceSearchCandidate service, String latestCustomerText) {
-        if (service.serviceName().contains("Tiến độ Xây dựng")) {
-            return "Ghi nhận hình ảnh và video hiện trạng công trường để theo dõi và đối chiếu tiến độ thi công.";
-        }
-        return "Ghi nhận hình ảnh và video khu vực giám sát theo nhu cầu đã cung cấp.";
+        String customerNeed = latestCustomerText == null || latestCustomerText.isBlank()
+                ? "nhu cầu đã cung cấp"
+                : latestCustomerText.trim();
+        return "Gợi ý service " + service.serviceName()
+                + " dựa trên nhu cầu: " + customerNeed
+                + ". Ghi nhận dữ liệu khu vực giám sát và bàn giao theo các deliverable đã cấu hình cho service.";
     }
 
     private String appendAiAnalysisSummary(String summary) {

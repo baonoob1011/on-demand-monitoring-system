@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import com.ondemandmonitoring.mission.enums.MissionStatus;
+import com.ondemandmonitoring.mission.enums.DeviceRole;
 
 import java.util.List;
 import java.util.Optional;
@@ -19,6 +20,12 @@ public interface MissionDeviceAssignmentRepository extends JpaRepository<Mission
 
     Optional<MissionDeviceAssignment> findByMissionIdAndIsCurrentTrue(String missionId);
 
+    List<MissionDeviceAssignment> findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc(String missionId);
+
+    List<MissionDeviceAssignment> findAllByMissionIdAndDeviceRoleAndIsCurrentTrueOrderByCreatedAtDesc(
+            String missionId,
+            DeviceRole deviceRole);
+
     @Query("""
             SELECT mda FROM MissionDeviceAssignment mda
             WHERE mda.mission.id = :missionId
@@ -26,6 +33,10 @@ public interface MissionDeviceAssignmentRepository extends JpaRepository<Mission
               AND mda.isCurrent = true
             """)
     Optional<MissionDeviceAssignment> findByMissionIdAndDeviceIdAndIsCurrentTrue(String missionId, String deviceId);
+
+    List<MissionDeviceAssignment> findAllByMissionIdAndDeviceIdAndIsCurrentTrueOrderByCreatedAtDesc(
+            String missionId,
+            String deviceId);
 
     List<MissionDeviceAssignment> findByMissionId(String missionId);
 

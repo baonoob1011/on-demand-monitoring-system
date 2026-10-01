@@ -141,9 +141,9 @@ public class ConsultationPromptTemplateInitializer implements CommandLineRunner 
     private Map<String, String> fallbackTemplates() {
         return Map.ofEntries(
                 Map.entry("FALLBACK_AI_UNAVAILABLE", """
-                        Mình chưa xác định được service phù hợp từ nội dung hiện tại.
+                        Mình chưa đủ thông tin để chọn đúng dịch vụ.
 
-                        Anh/chị mô tả ngắn gọn muốn giám sát công trình, đập/hồ nước, mặt nước/dòng chảy, nhiệt độ hay tiến độ thi công nhé.
+                        Anh/chị cho biết đối tượng cần giám sát là gì và mục tiêu chính muốn kiểm tra là tiến độ, hiện trạng, an toàn hay dấu hiệu bất thường nhé.
                         """),
                 Map.entry("FALLBACK_BUILDING_DELIVERABLE", """
                         Mình đã ghi nhận nhu cầu giám sát công trình.

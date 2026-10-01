@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.common.exception.ApiException;
@@ -163,6 +165,24 @@ class OrderServiceTest {
         assertNotNull(response.getDeliverables());
         assertEquals(1, response.getDeliverables().size());
         assertEquals("dt-1", response.getDeliverables().get(0).getDeliverableTypeId());
+    }
+
+    @Test
+    void approveOrder_ReturnsApprovedOrderWhenAlreadyApproved() {
+        Order order = Order.builder()
+                .title("Already approved")
+                .orderStatus(OrderStatus.APPROVED)
+                .build();
+        order.setId("ord-approved");
+
+        when(orderRepository.findById("ord-approved")).thenReturn(Optional.of(order));
+
+        OrderCreateResponse response = orderService.approveOrder("ord-approved");
+
+        assertNotNull(response);
+        assertEquals("ord-approved", response.getId());
+        assertEquals(OrderStatus.APPROVED, response.getOrderStatus());
+        verify(orderRepository, never()).save(any(Order.class));
     }
 
     @Test

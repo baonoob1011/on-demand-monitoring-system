@@ -105,4 +105,10 @@ public class OrderController {
     public ResponseEntity<ApiResponse<java.util.List<OrderCreateResponse>>> getPendingOrders() {
         return ResponseEntity.ok(ApiResponse.ok("Pending orders retrieved", orderService.getPendingOrders()));
     }
+
+    @Operation(summary = "Get approved orders", description = "Staff views approved orders that can be scheduled into missions")
+    @GetMapping("/approved")
+    public ResponseEntity<ApiResponse<java.util.List<OrderCreateResponse>>> getApprovedOrders() {
+        return ResponseEntity.ok(ApiResponse.ok("Approved orders retrieved", orderService.getApprovedOrders()));
+    }
 }

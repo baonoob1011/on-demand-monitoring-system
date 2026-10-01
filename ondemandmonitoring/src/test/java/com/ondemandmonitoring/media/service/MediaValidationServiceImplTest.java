@@ -128,7 +128,8 @@ class MediaValidationServiceImplTest {
         ArgumentCaptor<StorageEventInbox> event = ArgumentCaptor.forClass(StorageEventInbox.class);
         verify(inbox).save(event.capture());
         assertThat(event.getValue().getBucket()).isEqualTo(bucket);
-        assertThat(captured.getMediaStatus()).isEqualTo(MediaStatus.AVAILABLE);
+        assertThat(captured.getMediaStatus()).isEqualTo(MediaStatus.PENDING_MANAGER_APPROVAL);
+        assertThat(captured.getAvailableAt()).isNull();
         assertThat(attempt.getStatus()).isEqualTo(UploadAttemptStatus.SUCCEEDED);
         verify(storage).copy(bucket, stagingKey, stagingKey.replace("/staging/", "/final/"));
     }

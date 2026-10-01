@@ -16,5 +16,7 @@ public interface IOrderService {
 
     java.util.List<OrderCreateResponse> getPendingOrders();
 
+    java.util.List<OrderCreateResponse> getApprovedOrders();
+
     java.util.List<OrderCreateResponse> getMyOrders(OrderStatus status);
 }

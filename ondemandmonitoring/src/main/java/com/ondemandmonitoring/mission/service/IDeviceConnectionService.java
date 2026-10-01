@@ -44,4 +44,9 @@ public interface IDeviceConnectionService {
      * The caller never creates an implicit connection from telemetry input.
      */
     DeviceConnection requireActiveTelemetryConnection(String deviceId);
+
+    /**
+     * Resolves the active telemetry session, creating it from a trusted mission binding when needed.
+     */
+    DeviceConnection requireActiveTelemetryConnection(String deviceId, String missionId);
 }

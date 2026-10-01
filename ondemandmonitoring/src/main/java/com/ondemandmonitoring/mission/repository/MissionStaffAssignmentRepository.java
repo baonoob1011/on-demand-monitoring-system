@@ -21,6 +21,10 @@ public interface MissionStaffAssignmentRepository extends JpaRepository<MissionS
 
     Optional<MissionStaffAssignment> findByMissionIdAndStaffIdAndIsCurrentTrue(String missionId, String staffId);
 
+    List<MissionStaffAssignment> findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc(
+            String missionId,
+            String staffId);
+
     Optional<MissionStaffAssignment> findByMissionIdAndAssignedRoleAndIsCurrentTrue(
             String missionId,
             MissionStaffRole assignedRole);
@@ -30,6 +34,11 @@ public interface MissionStaffAssignmentRepository extends JpaRepository<MissionS
             MissionStaffRole assignedRole);
 
     Optional<MissionStaffAssignment> findByMissionIdAndStaffIdAndAssignedRoleAndIsCurrentTrue(
+            String missionId,
+            String staffId,
+            MissionStaffRole assignedRole);
+
+    List<MissionStaffAssignment> findAllByMissionIdAndStaffIdAndAssignedRoleAndIsCurrentTrueOrderByAssignedAtDesc(
             String missionId,
             String staffId,
             MissionStaffRole assignedRole);
