@@ -9,6 +9,7 @@ import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.devicecheck.dto.response.PreDeviceCheckResponse;
 import com.ondemandmonitoring.devicecheck.repository.PersistedPostDeviceCheckRepository;
 import com.ondemandmonitoring.devicecheck.service.IPreDeviceCheckCompletionService;
+import com.ondemandmonitoring.devicecheck.service.IPersistedPostDeviceCheckService;
 import com.ondemandmonitoring.mission.domain.ControlHandover;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.FlightToken;
@@ -30,6 +31,7 @@ import com.ondemandmonitoring.mission.mapper.FlightTokenMapper;
 import com.ondemandmonitoring.mission.mapper.MissionMapper;
 import com.ondemandmonitoring.mission.service.IDeviceConnectionService;
 import com.ondemandmonitoring.mission.service.IFlightTokenService;
+import com.ondemandmonitoring.mission.service.IMissionResultService;
 import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.planning.service.MissionPlanningService;
@@ -103,7 +105,9 @@ public class MissionService implements IMissionService {
     OrderRepository orderRepository;
     IDeviceConnectionService deviceConnectionService;
     IFlightTokenService flightTokenService;
+    IMissionResultService missionResultService;
     IPreDeviceCheckCompletionService preDeviceCheckCompletionService;
+    IPersistedPostDeviceCheckService persistedPostDeviceCheckService;
     UserRepository userRepository;
     AuthenticatedUserResolver authenticatedUserResolver;
     UserScheduleRepository userScheduleRepository;
@@ -297,6 +301,9 @@ public class MissionService implements IMissionService {
         List<ResourceTimeLock> existingLocks = resourceTimeLockRepository.findByResourceId(deviceId);
         boolean hasLockForThisMission = false;
         for (ResourceTimeLock lock : existingLocks) {
+            if (isReleasedLock(lock)) {
+                continue;
+            }
             if (lock.getMission() != null && lock.getMission().getId().equals(resolvedMissionId)) {
                 hasLockForThisMission = true;
                 continue;
@@ -424,6 +431,9 @@ public class MissionService implements IMissionService {
             validateStaffSchedule(staffId, missionStart, missionEnd, paddedStart, paddedEnd);
 
             for (ResourceTimeLock lock : existingLocks) {
+                if (isReleasedLock(lock)) {
+                    continue;
+                }
                 if (lock.getMission() != null && lock.getMission().getId().equals(resolvedMissionId)) {
                     continue;
                 }
@@ -875,7 +885,8 @@ public class MissionService implements IMissionService {
                                        Instant paddedEnd) {
         List<UserSchedule> schedules = userScheduleRepository.findByStaffId(staffId);
         for (UserSchedule schedule : schedules) {
-            if (schedule.getStatus() == UserScheduleStatus.CANCELLED) {
+            if (schedule.getStatus() == UserScheduleStatus.CANCELLED
+                    || schedule.getStatus() == UserScheduleStatus.COMPLETED) {
                 continue;
             }
 
@@ -1043,10 +1054,15 @@ public class MissionService implements IMissionService {
                     "A recorded post-flight inspection is required before mission completion");
         }
         mission.setStatus(MissionStatus.COMPLETED);
-        mission.setCompletedAt(Instant.now());
+        Instant completedAt = Instant.now();
+        if (mission.getActualEndAt() == null) {
+            mission.setActualEndAt(completedAt);
+        }
+        mission.setCompletedAt(completedAt);
         releaseMissionResources(mission, "MISSION_COMPLETE");
         log.info("Mission {} COMPLETED successfully", missionId);
         Mission saved = missionRepository.save(mission);
+        missionResultService.ensureCompletedResult(saved);
         return missionMapper.toResponse(saved);
     }
 
@@ -1153,26 +1169,22 @@ public class MissionService implements IMissionService {
 
         if (mission.getStatus() == MissionStatus.POSTFLIGHT_CHECKING) {
             mission.setStatus(MissionStatus.COMPLETED);
-//            mission.setCompletedAt(Instant.now());
+            Instant completedAt = Instant.now();
+            if (mission.getActualEndAt() == null) {
+                mission.setActualEndAt(completedAt);
+            }
+            mission.setCompletedAt(completedAt);
             releaseMissionResources(mission, "MISSION_COMPLETE");
         }
 
         if (notes != null && !notes.isBlank()) {
             log.info("Mission {} post-flight notes: {}", missionId, notes);
         }
+        persistedPostDeviceCheckService.recordInspection(mission.getId(), results, telemetrySnapshot);
         log.info("Mission {} post-flight completed – device {} status set to {}", missionId, device.getDeviceCode(),
                 newDeviceStatus);
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
-    }
-
-    private boolean passed(Map<String, InspectionResult> results, String... keys) {
-        for (String key : keys) {
-            if (results.get(key) == InspectionResult.FAIL) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private void requireScheduledWindow(Mission mission) {
@@ -1220,7 +1232,8 @@ public class MissionService implements IMissionService {
 
         List<UserSchedule> schedules = userScheduleRepository.findByStaffId(staffId);
         for (UserSchedule schedule : schedules) {
-            if (schedule.getStatus() == UserScheduleStatus.CANCELLED) {
+            if (schedule.getStatus() == UserScheduleStatus.CANCELLED
+                    || schedule.getStatus() == UserScheduleStatus.COMPLETED) {
                 continue;
             }
 
@@ -1337,7 +1350,22 @@ public class MissionService implements IMissionService {
         }
     }
 
+    private boolean isReleasedLock(ResourceTimeLock lock) {
+        return lock != null
+                && lock.getMission() != null
+                && isTerminalMission(lock.getMission().getStatus());
+    }
+
+    private boolean isTerminalMission(MissionStatus status) {
+        return status == MissionStatus.COMPLETED
+                || status == MissionStatus.FAILED
+                || status == MissionStatus.CANCELLED;
+    }
+
     private void releaseMissionResources(Mission mission, String reason) {
+        Instant releasedAt = Instant.now();
+        String missionId = mission.getId();
+
         Device device = getCurrentDevice(mission.getId());
         if (device != null) {
             if (device.getStatus() != DeviceStatus.MAINTENANCE) {
@@ -1346,13 +1374,69 @@ public class MissionService implements IMissionService {
             deviceRepository.save(device);
         }
 
-        missionStaffAssignmentRepository.findFirstByMissionIdOrderByAssignedAtDesc(mission.getId())
-                .ifPresent(assignment -> {
-                    if (assignment.getRespondedAt() == null) {
-                        assignment.setRespondedAt(Instant.now());
-                    }
-                    missionStaffAssignmentRepository.save(assignment);
-                });
+        List<MissionDeviceAssignment> deviceAssignments = missionDeviceAssignmentRepository.findByMissionId(missionId);
+        for (MissionDeviceAssignment assignment : deviceAssignments) {
+            if (assignment.getReleasedAt() == null) {
+                assignment.setReleasedAt(releasedAt);
+            }
+            assignment.setReleaseReason(reason);
+            if (assignment.getDevice() != null && assignment.getDevice().getId() != null) {
+                resourceTimeLockRepository
+                        .deleteAll(resourceTimeLockRepository.findAllByResourceIdAndMissionId(
+                                assignment.getDevice().getId(),
+                                missionId));
+            }
+        }
+        if (!deviceAssignments.isEmpty()) {
+            missionDeviceAssignmentRepository.saveAll(deviceAssignments);
+        }
+
+        List<MissionStaffAssignment> staffAssignments = missionStaffAssignmentRepository.findByMissionId(missionId);
+        for (MissionStaffAssignment assignment : staffAssignments) {
+            if (assignment.getRespondedAt() == null) {
+                assignment.setRespondedAt(releasedAt);
+            }
+            if (assignment.getReleasedAt() == null) {
+                assignment.setReleasedAt(releasedAt);
+            }
+            assignment.setReleaseReason(reason);
+            if (assignment.getStaff() != null && assignment.getStaff().getId() != null) {
+                resourceTimeLockRepository
+                        .deleteAll(resourceTimeLockRepository.findAllByResourceIdAndMissionId(
+                                assignment.getStaff().getId().toString(),
+                                missionId));
+            }
+        }
+        if (!staffAssignments.isEmpty()) {
+            missionStaffAssignmentRepository.saveAll(staffAssignments);
+        }
+
+        UserScheduleStatus releasedScheduleStatus = "MISSION_COMPLETE".equals(reason)
+                ? UserScheduleStatus.COMPLETED
+                : UserScheduleStatus.CANCELLED;
+        List<UserSchedule> schedules = userScheduleRepository.findByReferenceId(missionId);
+        for (UserSchedule schedule : schedules) {
+            if (schedule.getScheduleType() == UserScheduleType.MISSION
+                    && schedule.getStatus() != UserScheduleStatus.COMPLETED
+                    && schedule.getStatus() != UserScheduleStatus.CANCELLED) {
+                schedule.setStatus(releasedScheduleStatus);
+                schedule.setNotes(appendReleaseNote(schedule.getNotes(), reason));
+            }
+        }
+        if (!schedules.isEmpty()) {
+            userScheduleRepository.saveAll(schedules);
+        }
+    }
+
+    private String appendReleaseNote(String notes, String reason) {
+        String releaseNote = "Released: " + reason;
+        if (notes == null || notes.isBlank()) {
+            return releaseNote;
+        }
+        if (notes.contains(releaseNote)) {
+            return notes;
+        }
+        return notes + " | " + releaseNote;
     }
 
     private Device getCurrentDevice(String missionId) {

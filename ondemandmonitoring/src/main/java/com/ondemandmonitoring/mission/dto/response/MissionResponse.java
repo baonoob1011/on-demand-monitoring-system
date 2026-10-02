@@ -43,6 +43,8 @@ public class MissionResponse {
 
     String customerName;
 
+    String description;
+
     String address;
 
     Double latitude;
@@ -53,6 +55,9 @@ public class MissionResponse {
 
     String deviceId;
 
+    String deviceCode;
+
+    String deviceName;
 
     String staffId;
 
@@ -76,6 +81,12 @@ public class MissionResponse {
 
     @Schema(description = "Reason for mission failure, if any")
     String failureReason;
+
+    String rejectionReason;
+
+    MediaType mediaType;
+
+    String mediaSummary;
 
     @Schema(description = "Creation timestamp")
     Instant createdAt;

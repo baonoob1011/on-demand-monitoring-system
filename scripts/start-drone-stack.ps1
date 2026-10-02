@@ -2,7 +2,7 @@ param(
     [ValidateSet("legacy", "compact")]
     [string]$SimWorld = "compact",
     [switch]$ShowGazeboGui,
-    [switch]$WithTelemetry = $true,
+    [switch]$WithTelemetry,
     [switch]$WithCamera,
     [switch]$WithSensors,
     [switch]$WithWeather,

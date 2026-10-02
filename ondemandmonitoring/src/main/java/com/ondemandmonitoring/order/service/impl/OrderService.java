@@ -2,6 +2,8 @@ package com.ondemandmonitoring.order.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
+import com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus;
+import com.ondemandmonitoring.mission.repository.MissionResultRepository;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.domain.OrderDeliverable;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
@@ -52,6 +54,7 @@ public class OrderService implements IOrderService {
     ZoneRepository zoneRepository;
     AuthenticatedUserResolver authenticatedUserResolver;
     OrderMapper orderMapper;
+    MissionResultRepository missionResultRepository;
 
     @Override
     @Transactional
@@ -180,11 +183,11 @@ public class OrderService implements IOrderService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public OrderCreateResponse getOrderById(String orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
-        return orderMapper.toResponse(order);
+        return orderMapper.toResponse(syncCompletedOrder(order));
     }
 
     @Override
@@ -222,7 +225,7 @@ public class OrderService implements IOrderService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<OrderCreateResponse> getMyOrders(OrderStatus status) {
         User customer = authenticatedUserResolver.getCurrentUser();
         List<Order> orders = status == null
@@ -230,8 +233,24 @@ public class OrderService implements IOrderService {
                 : orderRepository.findByCustomer_IdAndOrderStatusOrderByCreatedAtDesc(customer.getId(), status);
 
         return orders.stream()
+                .map(this::syncCompletedOrder)
                 .map(orderMapper::toResponse)
                 .toList();
+    }
+
+    private Order syncCompletedOrder(Order order) {
+        if (order.getOrderStatus() == OrderStatus.COMPLETED
+                || order.getOrderStatus() == OrderStatus.REJECTED
+                || order.getOrderStatus() == OrderStatus.CANCELLED) {
+            return order;
+        }
+        boolean approvedResult = missionResultRepository.existsByMission_Order_IdAndApprovalStatus(
+                order.getId(), MissionResultApprovalStatus.APPROVED);
+        if (approvedResult) {
+            order.setOrderStatus(OrderStatus.COMPLETED);
+            return orderRepository.save(order);
+        }
+        return order;
     }
 
     private String generateUniqueOrderCode() {

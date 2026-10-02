@@ -4,6 +4,7 @@ import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.ResourceTimeLock;
+import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.mission.repository.ResourceTimeLockRepository;
 import com.ondemandmonitoring.role.domain.RoleCode;
@@ -70,6 +71,9 @@ public class OperatorDirectoryServiceImpl implements IOperatorDirectoryService {
         Instant start = mission.getScheduledStartAt();
         Instant end = mission.getScheduledEndAt();
         for (ResourceTimeLock lock : resourceTimeLockRepository.findByResourceId(staffId)) {
+            if (isReleasedLock(lock)) {
+                continue;
+            }
             if (lock.getMission() != null && mission.getId().equals(lock.getMission().getId())) {
                 continue;
             }
@@ -78,6 +82,18 @@ public class OperatorDirectoryServiceImpl implements IOperatorDirectoryService {
             }
         }
         return false;
+    }
+
+    private boolean isReleasedLock(ResourceTimeLock lock) {
+        return lock != null
+                && lock.getMission() != null
+                && isTerminalMission(lock.getMission().getStatus());
+    }
+
+    private boolean isTerminalMission(MissionStatus status) {
+        return status == MissionStatus.COMPLETED
+                || status == MissionStatus.FAILED
+                || status == MissionStatus.CANCELLED;
     }
 
     private boolean hasScheduleConflict(String staffId, Mission mission) {

@@ -8,6 +8,7 @@ import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.device.repository.MaintenanceTicketRepository;
 import com.ondemandmonitoring.devicecheck.repository.PersistedPostDeviceCheckRepository;
 import com.ondemandmonitoring.devicecheck.service.IPreDeviceCheckCompletionService;
+import com.ondemandmonitoring.devicecheck.service.IPersistedPostDeviceCheckService;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.FlightToken;
 import com.ondemandmonitoring.mission.domain.Mission;
@@ -81,7 +82,9 @@ class MissionServiceTest {
     OrderRepository orderRepository;
     IDeviceConnectionService deviceConnectionService;
     IFlightTokenService flightTokenService;
+    IMissionResultService missionResultService;
     IPreDeviceCheckCompletionService preDeviceCheckCompletionService;
+    IPersistedPostDeviceCheckService persistedPostDeviceCheckService;
     UserRepository userRepository;
     AuthenticatedUserResolver authenticatedUserResolver;
     UserScheduleRepository userScheduleRepository;
@@ -112,7 +115,9 @@ class MissionServiceTest {
         missionDeviceAssignmentRepository = mock(MissionDeviceAssignmentRepository.class);
         missionStaffAssignmentRepository = mock(MissionStaffAssignmentRepository.class);
         resourceTimeLockRepository = mock(ResourceTimeLockRepository.class);
+        missionResultService = mock(IMissionResultService.class);
         preDeviceCheckCompletionService = mock(IPreDeviceCheckCompletionService.class);
+        persistedPostDeviceCheckService = mock(IPersistedPostDeviceCheckService.class);
 
         deviceConnectionService = new DeviceConnectionService(
                 missionRepository,
@@ -143,7 +148,9 @@ class MissionServiceTest {
                 orderRepository,
                 deviceConnectionService,
                 flightTokenService,
+                missionResultService,
                 preDeviceCheckCompletionService,
+                persistedPostDeviceCheckService,
                 userRepository,
                 authenticatedUserResolver,
                 userScheduleRepository,

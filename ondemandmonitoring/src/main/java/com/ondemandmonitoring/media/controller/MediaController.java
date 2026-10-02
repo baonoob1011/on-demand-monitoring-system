@@ -75,14 +75,16 @@ public class MediaController {
     @Operation(summary = "List mission media",
             description = "Lists image/video assets captured for a mission")
     @GetMapping("/api/missions/{missionId}/media")
-    public ResponseEntity<ApiResponse<List<MediaAssetResponse>>> listMissionMedia(
+    public ResponseEntity<ApiResponse<List<MediaResponse>>> listMissionMedia(
             @PathVariable String missionId,
             @RequestParam(required = false) String mediaType) {
-        List<MediaAssetResponse> media = mediaAssetService
+        List<MediaResponse> media = mediaAssetService
                 .listByMission(missionId, mediaType)
                 .stream()
-                .filter(asset -> asset.getMediaStatus() == null)
-                .map(mediaAssetMapper::toResponse)
+                .map(asset -> mediaAssetMapper.toMediaResponse(
+                        asset,
+                        mediaAssetService.createPresignedGetUrl(asset),
+                        mediaAssetService.presignedUrlExpiresSeconds()))
                 .toList();
 
         return ResponseEntity.ok(ApiResponse.ok(media));
