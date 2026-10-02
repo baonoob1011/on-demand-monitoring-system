@@ -82,11 +82,8 @@ import com.ondemandmonitoring.mission.repository.*;
 public class MissionService implements IMissionService {
 
     static final long TOKEN_TTL_SECONDS = 900L; // 15 minutes
-    static final Set<MissionStaffRole> REQUIRED_CREW_ROLES = Set.of(
-            MissionStaffRole.PILOT,
-            MissionStaffRole.OPERATOR,
-            MissionStaffRole.MAINTAINER,
-            MissionStaffRole.INSPECTOR);
+    // Only the pilot is mandatory; missing OPERATOR/MAINTAINER/INSPECTOR roles make the matching flow step skipped.
+    static final Set<MissionStaffRole> REQUIRED_CREW_ROLES = Set.of(MissionStaffRole.PILOT);
 
     MissionRescheduleHistoryRepository missionRescheduleHistoryRepository;
     MissionRepository missionRepository;
