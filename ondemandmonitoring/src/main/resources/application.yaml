@@ -119,3 +119,27 @@ mapillary:
 simulation:
   telemetry:
     max-age-seconds: ${SIMULATION_TELEMETRY_MAX_AGE_SECONDS:5}
+
+# Customer weather preview (Open-Meteo, no API key). Thresholds are customer guidance only,
+# NOT aviation safety limits. All values have code defaults in WeatherProperties.
+weather:
+  open-meteo:
+    base-url: ${WEATHER_OPEN_METEO_BASE_URL:https://api.open-meteo.com}
+    connect-timeout-ms: 2000
+    read-timeout-ms: 4000
+    max-forecast-days: 16
+  cache:
+    enabled: true
+    ttl-minutes: 30
+    max-entries: 500
+  customer:
+    caution:
+      rain-probability-percent: 40
+      wind-speed-kmh: 20
+      wind-gust-kmh: 30
+      visibility-meters: 3000
+    poor:
+      rain-probability-percent: 70
+      wind-speed-kmh: 35
+      wind-gust-kmh: 50
+      visibility-meters: 1000
