@@ -45,6 +45,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, String> 
         List<MediaAsset> findByMissionIdInAndMediaStatusOrderByCapturedAtDesc(
                         List<String> missionIds, MediaStatus status);
 
+        @Query("select m from MediaAsset m where m.mission.id = :missionId and m.sourceType = :sourceType and m.createdAt >= :since order by m.createdAt desc")
+        List<MediaAsset> findRecentBySourceType(String missionId, String sourceType, java.time.Instant since);
+
         @Query("select m from MediaAsset m where m.mission.id = :missionId and m.type = :type order by m.capturedAt desc")
         List<MediaAsset> findByMissionIdAndTypeOrderByCapturedAtDesc(String missionId, String type);
 

@@ -81,6 +81,34 @@ public class MediaAsset extends BaseEntity {
     @Column(name = "available_at")
     Instant availableAt;
 
+    /** DRONE_CAMERA / MANUAL_UPLOAD / MAPILLARY_REFERENCE. Null on legacy rows (treated as drone/manual media). */
+    @Column(name = "source_type", length = 40)
+    String sourceType;
+
+    @Column(name = "source_reference_id", length = 100)
+    String sourceReferenceId;
+
+    @Column(name = "source_captured_at")
+    Instant sourceCapturedAt;
+
+    @Column(name = "source_latitude")
+    Double sourceLatitude;
+
+    @Column(name = "source_longitude")
+    Double sourceLongitude;
+
+    @Column(name = "capture_latitude")
+    Double captureLatitude;
+
+    @Column(name = "capture_longitude")
+    Double captureLongitude;
+
+    @Column(name = "capture_altitude_m")
+    Double captureAltitudeM;
+
+    @Column(name = "source_distance_meters")
+    Double sourceDistanceMeters;
+
     public String getMissionId() {
         if (mission != null) {
             return mission.getId();

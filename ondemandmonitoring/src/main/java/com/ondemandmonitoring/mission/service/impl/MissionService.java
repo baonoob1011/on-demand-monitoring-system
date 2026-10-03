@@ -181,7 +181,6 @@ public class MissionService implements IMissionService {
         mission.setScheduledEndAt(request.getScheduledEndAt());
 
         Mission saved = missionRepository.save(mission);
-        missionPlanningService.generateAStarEnergyAwarePlan(saved.getId());
         return missionMapper.toResponse(saved);
     }
 
@@ -790,7 +789,7 @@ public class MissionService implements IMissionService {
             return;
         }
 
-        missionPlanningService.generateAStarEnergyAwarePlan(mission.getId());
+        missionPlanningService.generateGpsDirectPlan(mission.getId());
     }
 //
 //    @Override
@@ -1025,7 +1024,14 @@ public class MissionService implements IMissionService {
     @Transactional
     public MissionResponse startPostDeviceChecking(String missionId) {
         Mission mission = getOrThrow(missionId);
-        requireStatus(mission, MissionStatus.RETURNING);
+        MissionStatus current = mission.getStatus();
+        // Cho phép sang Postcheck cả khi mission chưa bay (chỉ chụp ảnh tham chiếu).
+        boolean neverFlew = current == MissionStatus.CONNECTED
+                || current == MissionStatus.PREFLIGHT_CHECKING
+                || current == MissionStatus.READY_TO_FLY;
+        if (!neverFlew) {
+            requireStatus(mission, MissionStatus.RETURNING);
+        }
         mission.setStatus(MissionStatus.POSTFLIGHT_CHECKING);
         log.info("Mission {} – post-device inspection started", missionId);
         Mission saved = missionRepository.save(mission);

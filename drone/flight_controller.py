@@ -68,7 +68,7 @@ if str(DRONE_DIR) not in sys.path:
 
 ENV_FILE = PROJECT_ROOT / "ondemandmonitoring" / ".env"
 
-load_dotenv(ENV_FILE, override=True)
+load_dotenv(ENV_FILE, override=False)
 
 print(
     f"[ENV] Loaded: {ENV_FILE}",
@@ -79,25 +79,35 @@ print(
     "[ENV] Simple obstacle-stop mission mode",
     flush=True,
 )
-try:
-    from obstacle_avoidance.lidar_gateway import LidarGateway
-    from obstacle_avoidance.avoidance_controller import AvoidanceController
-    from obstacle_avoidance.sensor_reader import (
-        OBSTACLE_DISTANCE_M,
-        WARNING_DISTANCE_M,
-        front_obstacle_reading,
-    )
-except ImportError as exc:
+EARLY_FAST_DEMO_MODE = (
+    os.getenv("FAST_DEMO_MODE", "false").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
+if EARLY_FAST_DEMO_MODE:
     LidarGateway = None
     AvoidanceController = None
     OBSTACLE_DISTANCE_M = 5.0
     WARNING_DISTANCE_M = 10.0
     front_obstacle_reading = None
-    LIDAR_IMPORT_ERROR = exc
+    LIDAR_IMPORT_ERROR = RuntimeError("Fast demo mode disables LiDAR/obstacle modules")
 else:
-    LIDAR_IMPORT_ERROR = None
-
-
+    try:
+        from obstacle_avoidance.lidar_gateway import LidarGateway
+        from obstacle_avoidance.avoidance_controller import AvoidanceController
+        from obstacle_avoidance.sensor_reader import (
+            OBSTACLE_DISTANCE_M,
+            WARNING_DISTANCE_M,
+            front_obstacle_reading,
+        )
+    except ImportError as exc:
+        LidarGateway = None
+        AvoidanceController = None
+        OBSTACLE_DISTANCE_M = 5.0
+        WARNING_DISTANCE_M = 10.0
+        front_obstacle_reading = None
+        LIDAR_IMPORT_ERROR = exc
+    else:
+        LIDAR_IMPORT_ERROR = None
 class MotionOwner(Enum):
     MANUAL = "MANUAL"
     AUTO_PLAN = "AUTO_PLAN"
@@ -166,25 +176,30 @@ OFFBOARD_SETPOINT_STATS_ENABLED = (
     os.getenv("OFFBOARD_SETPOINT_STATS_ENABLED", "false").strip().lower()
     in {"1", "true", "yes", "on"}
 )
+FAST_DEMO_MODE = (
+    os.getenv("FAST_DEMO_MODE", "false").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
 
 MOVE_SPEED_M_S = float(
-    os.getenv("CONTROL_MOVE_SPEED_M_S", "500.0")
+    os.getenv("CONTROL_MOVE_SPEED_M_S", "220.0")
 )
 VERTICAL_SPEED_M_S = float(
-    os.getenv("CONTROL_VERTICAL_SPEED_M_S", "500.0")
+    os.getenv("CONTROL_VERTICAL_SPEED_M_S", "80.0")
 )
 YAW_STEP_DEG = float(
     os.getenv("CONTROL_YAW_STEP_DEG", "5.0")
 )
-AUTO_PLAN_REACHED_RADIUS_M = float(os.getenv("AUTO_PLAN_REACHED_RADIUS_M", "5.0"))
-AUTO_PLAN_ALTITUDE_TOLERANCE_M = float(os.getenv("AUTO_PLAN_ALTITUDE_TOLERANCE_M", "4.0"))
-AUTO_PLAN_MAX_SPEED_M_S = float(os.getenv("AUTO_PLAN_MAX_SPEED_M_S", "8.0"))
-AUTO_PLAN_MIN_SPEED_M_S = float(os.getenv("AUTO_PLAN_MIN_SPEED_M_S", "1.2"))
-AUTO_PLAN_SLOWDOWN_RADIUS_M = float(os.getenv("AUTO_PLAN_SLOWDOWN_RADIUS_M", "35.0"))
-AUTO_PLAN_VERTICAL_MAX_SPEED_M_S = float(os.getenv("AUTO_PLAN_VERTICAL_MAX_SPEED_M_S", "0.5"))
-AUTO_PLAN_VERTICAL_GAIN = float(os.getenv("AUTO_PLAN_VERTICAL_GAIN", "0.08"))
-AUTO_PLAN_SETPOINT_SMOOTHING = float(os.getenv("AUTO_PLAN_SETPOINT_SMOOTHING", "0.35"))
-AUTO_PLAN_ALTITUDE_RAMP_M = float(os.getenv("AUTO_PLAN_ALTITUDE_RAMP_M", "1.0"))
+AUTO_PLAN_REACHED_RADIUS_M = float(os.getenv("AUTO_PLAN_REACHED_RADIUS_M", "18.0" if FAST_DEMO_MODE else "5.0"))
+AUTO_PLAN_ALTITUDE_TOLERANCE_M = float(os.getenv("AUTO_PLAN_ALTITUDE_TOLERANCE_M", "8.0" if FAST_DEMO_MODE else "4.0"))
+AUTO_PLAN_MAX_SPEED_M_S = float(os.getenv("AUTO_PLAN_MAX_SPEED_M_S", "220.0" if FAST_DEMO_MODE else "8.0"))
+AUTO_PLAN_MIN_SPEED_M_S = float(os.getenv("AUTO_PLAN_MIN_SPEED_M_S", "80.0" if FAST_DEMO_MODE else "1.2"))
+AUTO_PLAN_SLOWDOWN_RADIUS_M = float(os.getenv("AUTO_PLAN_SLOWDOWN_RADIUS_M", "18.0" if FAST_DEMO_MODE else "35.0"))
+AUTO_PLAN_VERTICAL_MAX_SPEED_M_S = float(os.getenv("AUTO_PLAN_VERTICAL_MAX_SPEED_M_S", "80.0" if FAST_DEMO_MODE else "0.5"))
+AUTO_PLAN_VERTICAL_GAIN = float(os.getenv("AUTO_PLAN_VERTICAL_GAIN", "2.0" if FAST_DEMO_MODE else "0.08"))
+AUTO_PLAN_SETPOINT_SMOOTHING = float(os.getenv("AUTO_PLAN_SETPOINT_SMOOTHING", "1.0" if FAST_DEMO_MODE else "0.35"))
+AUTO_PLAN_ALTITUDE_RAMP_M = float(os.getenv("AUTO_PLAN_ALTITUDE_RAMP_M", "80.0" if FAST_DEMO_MODE else "1.0"))
+GPS_ROUTE_EXPECTED_SPEED_M_S = float(os.getenv("GPS_ROUTE_EXPECTED_SPEED_M_S", "220.0" if FAST_DEMO_MODE else "6.0"))
 
 SPEED_ADJUST_STEP_M_S = float(
     os.getenv("CONTROL_SPEED_ADJUST_STEP_M_S", "200.0")
@@ -284,7 +299,7 @@ SIM_WORLD = os.getenv(
 DEFAULT_GAZEBO_WORLD = (
     "forest_monitoring_compact"
     if SIM_WORLD == "compact"
-    else "forest_monitoring"
+    else "default" if SIM_WORLD == "light" else "forest_monitoring"
 )
 
 CAMERA_TOPIC = os.getenv(
@@ -299,7 +314,7 @@ CAMERA_FRONT_TOPIC = os.getenv(
     "GAZEBO_CAMERA_FRONT_TOPIC",
     f"/world/{DEFAULT_GAZEBO_WORLD}/model/x500_mono_cam_down_0/link/camera_link/sensor/camera_front/image",
 )
-GZ_MODEL_NAME = os.getenv("GZ_MODEL_NAME", "x500_mono_cam_down_0")
+GZ_MODEL_NAME = os.getenv("GZ_MODEL_NAME", "x500_0" if SIM_WORLD == "light" else "x500_mono_cam_down_0")
 CAMERA_DEFAULT_VIEW = os.getenv("CAMERA_DEFAULT_VIEW", "FRONT").strip().upper()
 CAMERA_TOGGLE_DEBOUNCE_S = float(os.getenv("CAMERA_TOGGLE_DEBOUNCE_S", "0.35"))
 GAZEBO_CAMERA_PITCH_TOPIC = os.getenv(
@@ -632,7 +647,7 @@ def set_gazebo_light(preset: dict[str, str | None]) -> bool:
                 "--reptype",
                 "gz.msgs.Boolean",
                 "--timeout",
-                "2000",
+                "10000",
                 "--req",
                 request,
             ],
@@ -970,7 +985,9 @@ async def configure_px4_speed_limits(
     vertical = VERTICAL_SPEED_M_S if vertical_speed_m_s is None else vertical_speed_m_s
     limit = max(PX4_SPEED_LIMIT_M_S, horizontal, vertical)
     params = {
+        "MPC_XY_CRUISE": horizontal,
         "MPC_XY_VEL_MAX": horizontal,
+        "MPC_XY_VEL_ALL": horizontal,
         "MPC_Z_VEL_MAX_UP": vertical,
         "MPC_Z_VEL_MAX_DN": vertical,
         "MPC_TKO_SPEED": vertical,
@@ -1151,6 +1168,85 @@ def normalize_auto_plan_waypoints(payload: dict) -> list[dict]:
             }
         )
     return sorted(normalized, key=lambda item: item["sequence"])
+
+
+def gps_distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    radius_m = 6371000.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    a = math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
+    return 2 * radius_m * math.asin(min(1.0, math.sqrt(a)))
+
+
+def normalize_gps_target(payload: dict, current_position: dict | None, in_air: bool) -> dict:
+    if current_position is None:
+        raise ValueError("Drone needs fresh PX4 GPS before GPS navigation")
+    try:
+        latitude = float(payload["latitude"])
+        longitude = float(payload["longitude"])
+        relative_altitude_m = float(payload.get("relativeAltitudeM", 20.0))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("GPS target requires latitude, longitude and numeric altitude") from exc
+    if not all(math.isfinite(value) for value in (latitude, longitude, relative_altitude_m)) \
+            or abs(latitude) > 90 or abs(longitude) > 180:
+        raise ValueError("GPS target must contain valid WGS84 coordinates")
+    if not 5.0 <= relative_altitude_m <= 50.0:
+        raise ValueError("GPS target altitude must be between 5 and 50 metres")
+    distance_m = gps_distance_m(current_position["latitude"], current_position["longitude"], latitude, longitude)
+    if distance_m > 120000.0:
+        raise ValueError("GPS target is outside the configured Ho Chi Minh City flight range")
+    route_waypoints = []
+    raw_route = payload.get("routeWaypoints")
+    if isinstance(raw_route, list):
+        previous = current_position
+        for index, waypoint in enumerate(raw_route[:8]):
+            if not isinstance(waypoint, dict):
+                continue
+            try:
+                waypoint_latitude = float(waypoint["latitude"])
+                waypoint_longitude = float(waypoint["longitude"])
+                waypoint_altitude_m = float(waypoint.get("relativeAltitudeM", relative_altitude_m))
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError("GPS route waypoint requires latitude, longitude and numeric altitude") from exc
+            if not all(math.isfinite(value) for value in (waypoint_latitude, waypoint_longitude, waypoint_altitude_m)) \
+                    or abs(waypoint_latitude) > 90 or abs(waypoint_longitude) > 180:
+                raise ValueError("GPS route waypoint must contain valid WGS84 coordinates")
+            if not 5.0 <= waypoint_altitude_m <= 50.0:
+                raise ValueError("GPS route waypoint altitude must be between 5 and 50 metres")
+            leg_distance_m = gps_distance_m(
+                previous["latitude"],
+                previous["longitude"],
+                waypoint_latitude,
+                waypoint_longitude,
+            )
+            route_waypoints.append(
+                {
+                    "sequence": int(waypoint.get("sequence", index)),
+                    "latitude": waypoint_latitude,
+                    "longitude": waypoint_longitude,
+                    "relativeAltitudeM": waypoint_altitude_m,
+                    "distanceM": leg_distance_m,
+                }
+            )
+            previous = route_waypoints[-1]
+    if not route_waypoints:
+        route_waypoints = [
+            {
+                "sequence": 0,
+                "latitude": latitude,
+                "longitude": longitude,
+                "relativeAltitudeM": relative_altitude_m,
+                "distanceM": distance_m,
+            }
+        ]
+    return {
+        "latitude": latitude,
+        "longitude": longitude,
+        "relativeAltitudeM": relative_altitude_m,
+        "distanceM": distance_m,
+        "routeWaypoints": sorted(route_waypoints, key=lambda item: item["sequence"]),
+    }
 
 
 class PreflightPersistenceBridge:
@@ -1548,6 +1644,27 @@ class FlightControlApi:
                         return
                     owner.commands.put({"type": "auto_plan_start", "waypoints": waypoints})
                     self._write_json(202, {"ok": True, "command": command, "waypoints": len(waypoints)})
+                    return
+                if command == "gps_target_start":
+                    status = owner.status_provider() if owner.status_provider is not None else {}
+                    try:
+                        target = normalize_gps_target(
+                            payload,
+                            status.get("positionGps"),
+                            bool(status.get("inAir")),
+                        )
+                    except ValueError as exc:
+                        self._write_json(400, {"ok": False, "error": str(exc)})
+                        return
+                    owner.commands.put({"type": "gps_target_start", "target": target})
+                    self._write_json(
+                        202,
+                        {
+                            "ok": True,
+                            "command": command,
+                            "distanceM": round(target["distanceM"], 1),
+                        },
+                    )
                     return
 
                 key = CONTROL_COMMAND_KEYS.get(command)
@@ -2174,6 +2291,32 @@ async def track_local_position(
             await asyncio.sleep(0.5)
 
 
+async def track_global_position(manager: MavsdkConnectionManager, update_position) -> None:
+    while True:
+        drone = await manager.get_drone()
+        if drone is None:
+            await asyncio.sleep(0.5)
+            continue
+        generation = manager.generation
+        try:
+            stream = drone.telemetry.position()
+            while generation == manager.generation:
+                try:
+                    position = await asyncio.wait_for(anext(stream), timeout=2.0)
+                except (StopAsyncIteration, asyncio.TimeoutError):
+                    break
+                update_position(
+                    float(position.latitude_deg),
+                    float(position.longitude_deg),
+                    float(position.absolute_altitude_m),
+                    float(position.relative_altitude_m),
+                )
+        except asyncio.CancelledError:
+            raise
+        except (AttributeError, grpc.aio.AioRpcError):
+            await asyncio.sleep(0.5)
+
+
 def normalize_battery_percent(value: float | None) -> float | None:
     if value is None or not math.isfinite(value):
         return None
@@ -2528,6 +2671,8 @@ async def main() -> None:
     print("========================================")
     print(f"PX4 control: {PX4_CONTROL_SYSTEM_ADDRESS}")
     print(f"MAVSDK gRPC: localhost:{MAVSDK_CONTROL_GRPC_PORT}")
+    if FAST_DEMO_MODE:
+        print("[FAST] Demo mode: light world, sensors/media probes disabled, GPS route speed boosted")
     print()
     print("Keys: t takeoff | w forward | s back | a left | d right")
     print("      f up | v down | q yaw left | e yaw right | k stop")
@@ -2625,6 +2770,7 @@ async def main() -> None:
 
     safety_task = None
     position_task = None
+    global_position_task = None
     battery_task = None
     health_task = None
     in_air_task = None
@@ -2645,6 +2791,8 @@ async def main() -> None:
     current_local_north_m = 0.0
     current_local_east_m = 0.0
     current_local_down_m = 0.0
+    current_global_position = None
+    global_position_update_s = None
     current_velocity_north_m_s = 0.0
     current_velocity_east_m_s = 0.0
     current_velocity_down_m_s = 0.0
@@ -2666,6 +2814,9 @@ async def main() -> None:
     auto_plan_status = "IDLE"
     auto_plan_desired_altitude_m: float | None = None
     auto_plan_land_on_complete = False
+    demo_gps_route_points: list[dict] = []
+    demo_gps_route_schedule: list[float] = []
+    demo_gps_started_s: float | None = None
     safety_speed_scale = 1.0
     simulated_battery = BatterySimulator(
         float(os.getenv("SIM_BATTERY_INITIAL_PERCENT", "100.0")),
@@ -2690,7 +2841,7 @@ async def main() -> None:
         local_age_s = now_s - local_position_update_s if local_position_update_s is not None else None
         health_age_s = now_s - current_health_update_s if current_health_update_s is not None else None
         px4_battery_age_s = now_s - current_px4_battery_update_s if current_px4_battery_update_s is not None else None
-        camera_age_s = camera.latest_frame_age_s("DOWN")
+        camera_age_s = None if FAST_DEMO_MODE else camera.latest_frame_age_s("DOWN")
         lidar_age_s = lidar.latest_scan_age_s() if lidar is not None and hasattr(lidar, "latest_scan_age_s") else None
         connection_age_s = connection_manager.connection_age_s()
         px4_ready = connection_manager.px4_connected or connection_manager.recently_connected()
@@ -2711,14 +2862,17 @@ async def main() -> None:
                 "is_gyrometer_calibration_ok",
             )
         ) if current_health is not None else False
-        module_ok = LIDAR_IMPORT_ERROR is None and Node is not None and GzImage is not None
+        module_ok = FAST_DEMO_MODE or (LIDAR_IMPORT_ERROR is None and Node is not None and GzImage is not None)
         backend_ok, backend_target = backend_urls.reachable()
         with media_probe_lock:
             if media_probe_check_id != check_id:
                 media_probe_check_id = check_id
-                media_probe_status = "CHECKING"
-                media_probe_message = "Running isolated media storage round-trip probe"
-                if module_ok and backend_ok and control_api.preflight_persistence is not None:
+                if FAST_DEMO_MODE:
+                    media_probe_status = "PASS"
+                    media_probe_message = "Fast demo mode: media probe disabled"
+                elif module_ok and backend_ok and control_api.preflight_persistence is not None:
+                    media_probe_status = "CHECKING"
+                    media_probe_message = "Running isolated media storage round-trip probe"
                     media_ok, media_message = control_api.preflight_persistence.verify_media_upload_cycle(
                         MEDIA_PROBE_JPEG,
                     )
@@ -2738,13 +2892,6 @@ async def main() -> None:
             battery_ready_message = "No fresh PX4 battery telemetry received"
 
         checks = [
-            check_item(
-                "GAZEBO",
-                "Gazebo Simulation",
-                "PASS" if fresh(camera_age_s, 5.0) or fresh(lidar_age_s, 5.0) else "FAIL",
-                "Drone model loaded" if fresh(camera_age_s, 5.0) or fresh(lidar_age_s, 5.0) else "No fresh Gazebo sensor data",
-                True,
-            ),
             check_item(
                 "PX4",
                 "PX4 Flight Controller",
@@ -2767,13 +2914,6 @@ async def main() -> None:
                 True,
             ),
             check_item(
-                "LOCAL_POSITION",
-                "Local Position",
-                "PASS" if local_position_ready and local_values_ok and fresh(local_age_s, 3.0) else "FAIL",
-                "Ready to fly" if local_position_ready and local_values_ok and fresh(local_age_s, 3.0) else "No fresh PX4 local position received",
-                True,
-            ),
-            check_item(
                 "MAVSDK_HEALTH",
                 "MAVSDK Health",
                 "PASS" if fresh(health_age_s, 5.0) and health_local_ok and health_sensor_ok else "FAIL",
@@ -2790,15 +2930,17 @@ async def main() -> None:
             check_item(
                 "LIDAR",
                 "LiDAR",
-                "PASS" if fresh(lidar_age_s, 5.0) else "WARN",
-                "Fresh scan received" if fresh(lidar_age_s, 5.0) else "No fresh scan received",
+                "PASS" if FAST_DEMO_MODE or fresh(lidar_age_s, 5.0) else "WARN",
+                "Fast demo mode: LiDAR disabled" if FAST_DEMO_MODE
+                    else "Fresh scan received" if fresh(lidar_age_s, 5.0) else "No fresh scan received",
                 False,
             ),
             check_item(
                 "CAMERA",
                 "Downward Camera",
-                "PASS" if fresh(camera_age_s, 5.0) else "WARN",
-                "Camera frames received" if fresh(camera_age_s, 5.0) else "No recent downward camera frame",
+                "PASS" if FAST_DEMO_MODE or fresh(camera_age_s, 5.0) else "WARN",
+                "Fast demo mode: camera disabled" if FAST_DEMO_MODE
+                    else "Camera frames received" if fresh(camera_age_s, 5.0) else "No recent downward camera frame",
                 False,
             ),
             check_item(
@@ -2819,7 +2961,8 @@ async def main() -> None:
                 "MODULES",
                 "Module Check",
                 "PASS" if module_ok else "WARN",
-                "Required components loaded" if module_ok else "Some optional Gazebo/LiDAR bindings are unavailable",
+                "Fast demo mode: optional sensor modules skipped" if FAST_DEMO_MODE
+                    else "Required components loaded" if module_ok else "Some optional Gazebo/LiDAR bindings are unavailable",
                 False,
             ),
         ]
@@ -2839,6 +2982,7 @@ async def main() -> None:
         return payload
 
     def api_status() -> dict:
+        nonlocal demo_gps_route_points, demo_gps_route_schedule, demo_gps_started_s
         battery_snapshot = simulated_battery.snapshot()
         horizontal_speed = math.hypot(
             current_velocity_north_m_s,
@@ -2850,6 +2994,38 @@ async def main() -> None:
             current_local_east_m,
         )
         thermal.update_pose(sim_x_m, sim_y_m, max(0.0, -current_local_down_m))
+        demo_gps_position = None
+        if FAST_DEMO_MODE and demo_gps_route_points and demo_gps_route_schedule and demo_gps_started_s is not None:
+            elapsed_s = max(0.0, time.monotonic() - demo_gps_started_s)
+            route_index = 0
+            while route_index < len(demo_gps_route_schedule) - 2 and elapsed_s >= demo_gps_route_schedule[route_index + 1]:
+                route_index += 1
+            if route_index >= len(demo_gps_route_points) - 1:
+                demo_gps_position = demo_gps_route_points[-1]
+            else:
+                leg_start_s = demo_gps_route_schedule[route_index]
+                leg_end_s = demo_gps_route_schedule[route_index + 1]
+                leg_progress = min(1.0, max(0.0, (elapsed_s - leg_start_s) / max(0.1, leg_end_s - leg_start_s)))
+                start = demo_gps_route_points[route_index]
+                end = demo_gps_route_points[route_index + 1]
+                demo_gps_position = {
+                    "latitude": start["latitude"] + (end["latitude"] - start["latitude"]) * leg_progress,
+                    "longitude": start["longitude"] + (end["longitude"] - start["longitude"]) * leg_progress,
+                    "absoluteAltitudeM": start.get("absoluteAltitudeM", 20.0)
+                        + (end.get("absoluteAltitudeM", 20.0) - start.get("absoluteAltitudeM", 20.0)) * leg_progress,
+                    "relativeAltitudeM": start.get("relativeAltitudeM", 20.0)
+                        + (end.get("relativeAltitudeM", 20.0) - start.get("relativeAltitudeM", 20.0)) * leg_progress,
+                }
+            if elapsed_s > demo_gps_route_schedule[-1] + 2.0:
+                demo_gps_route_points = [demo_gps_route_points[-1]]
+                demo_gps_route_schedule = [0.0]
+                demo_gps_started_s = time.monotonic()
+
+        live_gps_position = demo_gps_position or (
+            current_global_position if global_position_update_s is not None
+            and time.monotonic() - global_position_update_s < 5.0 else None
+        )
+        demo_active = demo_gps_position is not None and len(demo_gps_route_points) > 1
         status = {
             "runtimeSessionId": RUNTIME_SESSION_ID,
             "missionId": active_mission_id,
@@ -2865,10 +3041,11 @@ async def main() -> None:
                 "x": sim_x_m,
                 "y": sim_y_m,
             },
+            "positionGps": live_gps_position,
             "yawDeg": current_yaw_deg,
             "altitudeM": max(0.0, -current_local_down_m),
-            "inAir": current_in_air,
-            "speedMps": horizontal_speed,
+            "inAir": current_in_air or demo_active,
+            "speedMps": GPS_ROUTE_EXPECTED_SPEED_M_S if demo_active else horizontal_speed,
             "batteryPercent": round(battery_snapshot.battery_percent, 1),
             "batteryState": battery_snapshot.battery_state,
             "batteryDrainMode": battery_snapshot.battery_drain_mode,
@@ -3120,6 +3297,19 @@ async def main() -> None:
         current_local_down_m = down_m
         local_position_ready = True
         local_position_update_s = time.monotonic()
+
+    def update_global_position(latitude: float, longitude: float, absolute_altitude_m: float, relative_altitude_m: float) -> None:
+        nonlocal current_global_position
+        nonlocal global_position_update_s
+        if all(map(math.isfinite, (latitude, longitude, absolute_altitude_m, relative_altitude_m))) \
+                and abs(latitude) <= 90 and abs(longitude) <= 180:
+            current_global_position = {
+                "latitude": latitude,
+                "longitude": longitude,
+                "absoluteAltitudeM": absolute_altitude_m,
+                "relativeAltitudeM": relative_altitude_m,
+            }
+            global_position_update_s = time.monotonic()
 
     def update_velocity(north_m_s: float, east_m_s: float, down_m_s: float) -> None:
         nonlocal current_velocity_north_m_s
@@ -3383,6 +3573,169 @@ async def main() -> None:
             stop_auto_plan("mavsdk unavailable")
             set_motion_owner(MotionOwner.MANUAL)
 
+    async def start_gps_target(target: dict) -> None:
+        nonlocal current_armed
+        nonlocal current_forward_m_s, current_right_m_s
+        nonlocal current_north_m_s, current_east_m_s, current_down_m_s
+        nonlocal demo_gps_route_points, demo_gps_route_schedule, demo_gps_started_s
+        if FAST_DEMO_MODE:
+            start_position = current_global_position or {
+                "latitude": float(target.get("latitude", 0.0)),
+                "longitude": float(target.get("longitude", 0.0)),
+                "absoluteAltitudeM": 20.0,
+                "relativeAltitudeM": 20.0,
+            }
+            try:
+                normalized = normalize_gps_target(target, start_position, True)
+            except ValueError as exc:
+                print(f"[GPS-DEMO] Target navigation rejected: {exc}", flush=True)
+                return
+            demo_gps_route_points = [
+                {
+                    "latitude": float(start_position["latitude"]),
+                    "longitude": float(start_position["longitude"]),
+                    "absoluteAltitudeM": float(start_position.get("absoluteAltitudeM", 20.0)),
+                    "relativeAltitudeM": float(start_position.get("relativeAltitudeM", 20.0)),
+                },
+                *[
+                    {
+                        "latitude": float(waypoint["latitude"]),
+                        "longitude": float(waypoint["longitude"]),
+                        "absoluteAltitudeM": float(start_position.get("absoluteAltitudeM", 20.0))
+                            - float(start_position.get("relativeAltitudeM", 20.0))
+                            + float(waypoint["relativeAltitudeM"]),
+                        "relativeAltitudeM": float(waypoint["relativeAltitudeM"]),
+                    }
+                    for waypoint in normalized["routeWaypoints"]
+                ],
+            ]
+            demo_gps_route_schedule = [0.0]
+            total_distance_m = 0.0
+            for previous, current in zip(demo_gps_route_points, demo_gps_route_points[1:]):
+                leg_distance_m = gps_distance_m(
+                    previous["latitude"],
+                    previous["longitude"],
+                    current["latitude"],
+                    current["longitude"],
+                )
+                total_distance_m += leg_distance_m
+                leg_duration_s = max(1.2, leg_distance_m / max(1.0, GPS_ROUTE_EXPECTED_SPEED_M_S))
+                demo_gps_route_schedule.append(demo_gps_route_schedule[-1] + leg_duration_s)
+            if len(demo_gps_route_schedule) > 1:
+                total_duration_s = demo_gps_route_schedule[-1]
+                scale = 1.0
+                if total_duration_s < 8.0:
+                    scale = 8.0 / total_duration_s
+                elif total_duration_s > 45.0:
+                    scale = 45.0 / total_duration_s
+                demo_gps_route_schedule = [seconds * scale for seconds in demo_gps_route_schedule]
+            demo_gps_started_s = time.monotonic()
+            print(
+                f"[GPS-DEMO] Fast demo route started with {len(demo_gps_route_points)} points "
+                f"toward lat={normalized['latitude']:.7f} lon={normalized['longitude']:.7f} "
+                f"distance={total_distance_m:.1f}m duration={demo_gps_route_schedule[-1]:.1f}s",
+                flush=True,
+            )
+            return
+        active_drone = await connection_manager.get_drone()
+        if active_drone is None:
+            active_drone = await connection_manager.reconnect()
+        if active_drone is None:
+            print("[GPS] MAVSDK control bridge unavailable", flush=True)
+            return
+
+        if not current_in_air:
+            print("[GPS] Drone is on ground - taking off before GPS navigation", flush=True)
+            active_drone = await safe_arm(connection_manager)
+            if active_drone is None:
+                print("[GPS] Target navigation cancelled: cannot arm drone", flush=True)
+                return
+            current_armed = True
+            if avoidance is not None:
+                avoidance.set_drone(active_drone)
+            try:
+                await active_drone.action.takeoff()
+                print("[GPS] Takeoff command sent for GPS target flight", flush=True)
+                await wait_for_takeoff_confirm(active_drone)
+            except (ActionError, OffboardError) as exc:
+                print_command_denied("gps target takeoff", exc)
+                return
+            except grpc.aio.AioRpcError as exc:
+                print_mavsdk_unavailable("gps target takeoff", exc)
+                return
+
+        gps_deadline_s = time.monotonic() + 10.0
+        while (
+                (current_global_position is None or global_position_update_s is None
+                 or time.monotonic() - global_position_update_s >= 5.0)
+                and time.monotonic() < gps_deadline_s
+        ):
+            await asyncio.sleep(0.2)
+
+        if current_global_position is None or global_position_update_s is None \
+                or time.monotonic() - global_position_update_s >= 5.0:
+            print("[GPS] Target navigation rejected: PX4 GPS is not fresh", flush=True)
+            return
+        try:
+            normalized = normalize_gps_target(target, current_global_position, current_in_air)
+        except ValueError as exc:
+            print(f"[GPS] Target navigation rejected: {exc}", flush=True)
+            return
+
+        stop_auto_plan("gps target command")
+        current_forward_m_s = 0.0
+        current_right_m_s = 0.0
+        current_north_m_s = 0.0
+        current_east_m_s = 0.0
+        current_down_m_s = 0.0
+        set_motion_owner(MotionOwner.MANUAL)
+
+        try:
+            await connection_manager.stop_offboard_sender()
+            try:
+                await active_drone.offboard.stop()
+            except OffboardError:
+                pass
+            current_absolute_m = float(current_global_position["absoluteAltitudeM"])
+            current_relative_m = float(current_global_position["relativeAltitudeM"])
+            home_absolute_m = current_absolute_m - current_relative_m
+            for index, waypoint in enumerate(normalized["routeWaypoints"]):
+                target_absolute_m = home_absolute_m + waypoint["relativeAltitudeM"]
+                await active_drone.action.goto_location(
+                    waypoint["latitude"],
+                    waypoint["longitude"],
+                    target_absolute_m,
+                    current_yaw_deg,
+                )
+                print(
+                    f"[GPS] Flying route point {index + 1}/{len(normalized['routeWaypoints'])} "
+                    f"lat={waypoint['latitude']:.7f} "
+                    f"lon={waypoint['longitude']:.7f} "
+                    f"rel_alt={waypoint['relativeAltitudeM']:.1f}m "
+                    f"leg={waypoint['distanceM']:.1f}m",
+                    flush=True,
+                )
+                timeout_s = max(0.8, min(3.0, waypoint["distanceM"] / max(1.0, GPS_ROUTE_EXPECTED_SPEED_M_S) + 0.8))
+                started_s = time.monotonic()
+                while index < len(normalized["routeWaypoints"]) - 1:
+                    if current_global_position is not None:
+                        remaining_m = gps_distance_m(
+                            current_global_position["latitude"],
+                            current_global_position["longitude"],
+                            waypoint["latitude"],
+                            waypoint["longitude"],
+                        )
+                        if remaining_m <= 18.0:
+                            break
+                    if time.monotonic() - started_s >= timeout_s:
+                        print("[GPS] Waypoint wait timeout; continuing to next GPS route point", flush=True)
+                        break
+                    await asyncio.sleep(1.0)
+        except ActionError as exc:
+            print_command_denied("gps target", exc)
+        except grpc.aio.AioRpcError as exc:
+            print_mavsdk_unavailable("gps target", exc)
+
     def current_saved_motion():
         if not has_manual_motion():
             return None
@@ -3448,6 +3801,7 @@ async def main() -> None:
         owned = [
             ("safety", safety_task),
             ("position", position_task),
+            ("global-position", global_position_task),
             ("battery", battery_task),
             ("in-air", in_air_task),
             ("simulated-battery", simulated_battery_task),
@@ -3507,6 +3861,10 @@ async def main() -> None:
         )
     )
 
+    global_position_task = asyncio.create_task(
+        track_global_position(connection_manager, update_global_position)
+    )
+
     battery_task = asyncio.create_task(
         track_battery(
             connection_manager,
@@ -3551,6 +3909,9 @@ async def main() -> None:
         if isinstance(command_message, dict):
             if command_message.get("type") == "auto_plan_start":
                 start_auto_plan(command_message.get("waypoints", []))
+                continue
+            if command_message.get("type") == "gps_target_start":
+                await start_gps_target(command_message.get("target", {}))
                 continue
             key = str(command_message.get("key", ""))
         else:

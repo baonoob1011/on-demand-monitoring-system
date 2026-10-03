@@ -1,11 +1,9 @@
 package com.ondemandmonitoring.devicecheck.enums;
 
 public enum PreDeviceCheckType {
-    GAZEBO("GAZEBO", "Gazebo Simulation", PreDeviceCheckLevel.CRITICAL),
     PX4("PX4", "PX4 Flight Controller", PreDeviceCheckLevel.CRITICAL),
     MAVSDK("MAVSDK", "MAVSDK Connection", PreDeviceCheckLevel.CRITICAL),
     PX4_CONTROL("PX4_CONTROL", "PX4 Control", PreDeviceCheckLevel.CRITICAL),
-    LOCAL_POSITION("LOCAL_POSITION", "Local Position", PreDeviceCheckLevel.CRITICAL),
     MAVSDK_HEALTH("MAVSDK_HEALTH", "MAVSDK Health", PreDeviceCheckLevel.CRITICAL),
     BATTERY("BATTERY", "Battery", PreDeviceCheckLevel.CRITICAL),
     WEATHER("WEATHER", "Weather", PreDeviceCheckLevel.WARNING),

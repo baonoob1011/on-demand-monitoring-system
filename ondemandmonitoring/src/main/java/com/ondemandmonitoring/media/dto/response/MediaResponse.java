@@ -24,4 +24,13 @@ public class MediaResponse {
     String contentType;
     Long fileSize;
     Instant capturedAt;
+    String sourceType;
+    String sourceReferenceId;
+    Instant sourceCapturedAt;
+    Double sourceLatitude;
+    Double sourceLongitude;
+    Double captureLatitude;
+    Double captureLongitude;
+    Double captureAltitudeM;
+    Double sourceDistanceMeters;
 }

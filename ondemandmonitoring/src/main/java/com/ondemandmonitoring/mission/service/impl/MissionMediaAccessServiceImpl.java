@@ -55,7 +55,7 @@ public class MissionMediaAccessServiceImpl implements IMissionMediaAccessService
         if (!privileged && !assigned) {
             throw new ApiException(ErrorCode.ACCESS_DENIED, "Operator is not assigned to mission");
         }
-        return new MissionMediaContext(mission.getId(), CAPTURE_STATUSES.contains(mission.getStatus()));
+        return new MissionMediaContext(mission.getId(), CAPTURE_STATUSES.contains(mission.getStatus()), mission.getStatus());
     }
 
     @Override

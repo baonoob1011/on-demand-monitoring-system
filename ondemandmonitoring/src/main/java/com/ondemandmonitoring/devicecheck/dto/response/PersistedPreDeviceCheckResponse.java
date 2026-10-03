@@ -2,6 +2,7 @@ package com.ondemandmonitoring.devicecheck.dto.response;
 
 import com.ondemandmonitoring.device.domain.Device;
 import com.ondemandmonitoring.devicecheck.domain.PersistedPreDeviceCheck;
+import com.ondemandmonitoring.devicecheck.domain.PersistedPreDeviceCheckItem;
 import com.ondemandmonitoring.devicecheck.enums.PreDeviceCheckLevel;
 import com.ondemandmonitoring.devicecheck.enums.PreDeviceCheckStatus;
 import com.ondemandmonitoring.devicecheck.enums.PreDeviceItemStatus;
@@ -46,12 +47,22 @@ public class PersistedPreDeviceCheckResponse {
     public static PersistedPreDeviceCheckResponse from(PersistedPreDeviceCheck run) {
         DeviceConnection connection = run.getDeviceConnection();
         Device device = connection == null ? null : connection.getDevice();
-        int total = run.getTotalChecks() == null ? 0 : run.getTotalChecks();
-        int done = run.getItems().stream()
+        List<PersistedPreDeviceCheckItem> visibleItems = run.getItems().stream()
+                .filter(i -> !"GAZEBO".equals(i.getCheckType()))
+                .filter(i -> !"LOCAL_POSITION".equals(i.getCheckType()))
+                .toList();
+        int total = visibleItems.size();
+        int done = (int) visibleItems.stream()
                 .filter(i -> i.getStatus() == PreDeviceItemStatus.PASSED
                         || i.getStatus() == PreDeviceItemStatus.FAILED)
-                .toList()
-                .size();
+                .count();
+        int passed = (int) visibleItems.stream()
+                .filter(i -> i.getStatus() == PreDeviceItemStatus.PASSED)
+                .count();
+        int failed = (int) visibleItems.stream()
+                .filter(i -> i.getStatus() == PreDeviceItemStatus.FAILED)
+                .count();
+        PreDeviceCheckStatus status = resolveStatus(run, total, done, failed);
 
         return builder()
                 .id(run.getId())
@@ -61,14 +72,14 @@ public class PersistedPreDeviceCheckResponse {
                 .deviceCode(device == null ? null : device.getDeviceCode())
                 .deviceName(device == null ? null : device.getName())
                 .deviceSerialNumber(device == null ? null : device.getSerialNumber())
-                .status(run.getStatus())
+                .status(status)
                 .totalChecks(total)
-                .passedChecks(run.getPassedChecks())
-                .failedChecks(run.getFailedChecks())
+                .passedChecks(passed)
+                .failedChecks(failed)
                 .startedAt(run.getStartedAt())
                 .completedAt(run.getCompletedAt())
                 .progressPercent(total == 0 ? 0 : done * 100 / total)
-                .items(run.getItems().stream()
+                .items(visibleItems.stream()
                         .map(i -> Item.builder()
                                 .checkType(i.getCheckType())
                                 .checkName(i.getCheckName())
@@ -79,5 +90,15 @@ public class PersistedPreDeviceCheckResponse {
                                 .build())
                         .toList())
                 .build();
+    }
+
+    private static PreDeviceCheckStatus resolveStatus(PersistedPreDeviceCheck run, int total, int done, int failed) {
+        if (failed > 0) {
+            return PreDeviceCheckStatus.FAILED;
+        }
+        if (total > 0 && done == total) {
+            return PreDeviceCheckStatus.PASSED;
+        }
+        return run.getStatus() == PreDeviceCheckStatus.FAILED ? PreDeviceCheckStatus.CHECKING : run.getStatus();
     }
 }

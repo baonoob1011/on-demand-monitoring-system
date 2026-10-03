@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.common.exception.ApiException;
+import com.ondemandmonitoring.mission.repository.MissionResultRepository;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.request.OrderDeliverableRequest;
@@ -28,8 +29,6 @@ import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import com.ondemandmonitoring.warehouse.domain.PreferredTime;
 import com.ondemandmonitoring.warehouse.repository.PreferredTimeRepository;
-import com.ondemandmonitoring.zone.domain.Zone;
-import com.ondemandmonitoring.zone.repository.ZoneRepository;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -37,10 +36,6 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.locationtech.jts.geom.Coordinate;
-import org.locationtech.jts.geom.GeometryFactory;
-import org.locationtech.jts.geom.Polygon;
-import org.locationtech.jts.geom.PrecisionModel;
 
 class OrderServiceTest {
 
@@ -49,11 +44,10 @@ class OrderServiceTest {
     private DeliverableTypeRepository deliverableTypeRepository;
     private ServiceDeliverableRepository serviceDeliverableRepository;
     private PreferredTimeRepository preferredTimeRepository;
-    private ZoneRepository zoneRepository;
     private AuthenticatedUserResolver authenticatedUserResolver;
     private OrderMapper orderMapper;
+    private MissionResultRepository missionResultRepository;
     private OrderService orderService;
-    private GeometryFactory geometryFactory;
 
     @BeforeEach
     void setUp() {
@@ -62,10 +56,9 @@ class OrderServiceTest {
         deliverableTypeRepository = mock(DeliverableTypeRepository.class);
         serviceDeliverableRepository = mock(ServiceDeliverableRepository.class);
         preferredTimeRepository = mock(PreferredTimeRepository.class);
-        zoneRepository = mock(ZoneRepository.class);
         authenticatedUserResolver = mock(AuthenticatedUserResolver.class);
         orderMapper = Mappers.getMapper(OrderMapper.class);
-        geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
+        missionResultRepository = mock(MissionResultRepository.class);
 
         orderService = new OrderService(
                 orderRepository,
@@ -73,28 +66,15 @@ class OrderServiceTest {
                 deliverableTypeRepository,
                 serviceDeliverableRepository,
                 preferredTimeRepository,
-                zoneRepository,
                 authenticatedUserResolver,
-                orderMapper
+                orderMapper,
+                missionResultRepository
         );
 
         String userId = UUID.randomUUID().toString();
         User mockUser = User.builder().fullName("Test Customer").email("test@example.com").build();
         mockUser.setId(userId);
         when(authenticatedUserResolver.getCurrentUser()).thenReturn(mockUser);
-    }
-
-    private Polygon createSquarePolygon(double minX, double minY, double maxX, double maxY) {
-        Coordinate[] coords = new Coordinate[] {
-                new Coordinate(minX, minY),
-                new Coordinate(maxX, minY),
-                new Coordinate(maxX, maxY),
-                new Coordinate(minX, maxY),
-                new Coordinate(minX, minY)
-        };
-        Polygon poly = geometryFactory.createPolygon(coords);
-        poly.setSRID(4326);
-        return poly;
     }
 
     private Map<String, Object> sampleCoverageAreaMap() {
@@ -120,14 +100,10 @@ class OrderServiceTest {
         DeliverableType delType = DeliverableType.builder().name("Photo Map").defaultFormat("JPEG").build();
         delType.setId("dt-1");
 
-        Zone zone = new Zone();
-        zone.setPolygon(createSquarePolygon(0.0, 0.0, 10.0, 10.0));
-
         when(serviceRepository.findById("srv-1")).thenReturn(Optional.of(service));
         when(preferredTimeRepository.findById("pt-1")).thenReturn(Optional.of(preferredTime));
         when(deliverableTypeRepository.findById("dt-1")).thenReturn(Optional.of(delType));
         when(serviceDeliverableRepository.existsByServiceIdAndDeliverableTypeId("srv-1", "dt-1")).thenReturn(true);
-        when(zoneRepository.findAll()).thenReturn(List.of(zone));
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
             Order o = invocation.getArgument(0);
             o.setId("ord-123");
@@ -186,7 +162,7 @@ class OrderServiceTest {
     }
 
     @Test
-    void createOrder_ThrowsWhenPointOutsideZone() {
+    void createOrder_ThrowsWhenGpsCoordinatesInvalid() {
         Service service = Service.builder().name("Land Monitoring").build();
         service.setId("srv-1");
         PreferredTime preferredTime = PreferredTime.builder().name("Morning").build();
@@ -194,14 +170,10 @@ class OrderServiceTest {
         DeliverableType delType = DeliverableType.builder().name("Photo Map").build();
         delType.setId("dt-1");
 
-        Zone zone = new Zone();
-        zone.setPolygon(createSquarePolygon(0.0, 0.0, 10.0, 10.0));
-
         when(serviceRepository.findById("srv-1")).thenReturn(Optional.of(service));
         when(preferredTimeRepository.findById("pt-1")).thenReturn(Optional.of(preferredTime));
         when(deliverableTypeRepository.findById("dt-1")).thenReturn(Optional.of(delType));
         when(serviceDeliverableRepository.existsByServiceIdAndDeliverableTypeId("srv-1", "dt-1")).thenReturn(true);
-        when(zoneRepository.findAll()).thenReturn(List.of(zone));
 
         OrderCreateRequest request = OrderCreateRequest.builder()
                 .title("Outside Point")
@@ -209,8 +181,8 @@ class OrderServiceTest {
                 .preferredTimeId("pt-1")
                 .preferredDateFrom(LocalDate.now())
                 .preferredDateTo(LocalDate.now().plusDays(2))
-                .longitude(20.0)
-                .latitude(20.0)
+                .longitude(106.7)
+                .latitude(121.0)
                 .coverageArea(sampleCoverageAreaMap())
                 .deliverables(List.of(OrderDeliverableRequest.builder().deliverableTypeId("dt-1").requirement(Map.of()).build()))
                 .build();

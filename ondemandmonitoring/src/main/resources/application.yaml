@@ -109,3 +109,13 @@ springdoc:
     path: /swagger-ui.html
     operationsSorter: method
     tagsSorter: alpha
+
+mapillary:
+  enabled: ${MAPILLARY_ENABLED:true}
+  base-url: ${MAPILLARY_BASE_URL}
+  access-token: ${MAPILLARY_ACCESS_TOKEN}
+  search-radius-meters: ${MAPILLARY_SEARCH_RADIUS_METERS:50}
+
+simulation:
+  telemetry:
+    max-age-seconds: ${SIMULATION_TELEMETRY_MAX_AGE_SECONDS:5}

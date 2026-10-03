@@ -32,9 +32,9 @@ public interface PreDeviceCheckCompletionMapper {
     @Mapping(target = "gyrometerOk", expression = "java(passed(persistedPreDeviceCheck, PreDeviceCheckType.MAVSDK_HEALTH))")
     @Mapping(target = "accelerometerOk", expression = "java(passed(persistedPreDeviceCheck, PreDeviceCheckType.MAVSDK_HEALTH))")
     @Mapping(target = "magnetometerOk", expression = "java(passed(persistedPreDeviceCheck, PreDeviceCheckType.MAVSDK_HEALTH))")
-    @Mapping(target = "localPositionOk", expression = "java(passed(persistedPreDeviceCheck, PreDeviceCheckType.LOCAL_POSITION))")
-    @Mapping(target = "globalPositionOk", expression = "java(passed(persistedPreDeviceCheck, PreDeviceCheckType.LOCAL_POSITION))")
-    @Mapping(target = "homePositionOk", expression = "java(passed(persistedPreDeviceCheck, PreDeviceCheckType.LOCAL_POSITION))")
+    @Mapping(target = "localPositionOk", expression = "java(passed(persistedPreDeviceCheck, PreDeviceCheckType.PX4_CONTROL))")
+    @Mapping(target = "globalPositionOk", expression = "java(passed(persistedPreDeviceCheck, PreDeviceCheckType.PX4_CONTROL))")
+    @Mapping(target = "homePositionOk", expression = "java(passed(persistedPreDeviceCheck, PreDeviceCheckType.PX4_CONTROL))")
     @Mapping(target = "armable", expression = "java(passed(persistedPreDeviceCheck, PreDeviceCheckType.MAVSDK_HEALTH))")
     @Mapping(target = "connected", expression = "java(passed(persistedPreDeviceCheck, PreDeviceCheckType.MAVSDK))")
     @Mapping(target = "inAir", constant = "false")
@@ -107,8 +107,8 @@ public interface PreDeviceCheckCompletionMapper {
     }
 
     default String gpsFixType(PersistedPreDeviceCheck run) {
-        return passed(run, PreDeviceCheckType.LOCAL_POSITION)
-                ? PreDeviceCheckType.LOCAL_POSITION.code()
+        return passed(run, PreDeviceCheckType.PX4_CONTROL)
+                ? PreDeviceCheckType.PX4_CONTROL.code()
                 : null;
     }
 

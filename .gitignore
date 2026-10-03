@@ -49,3 +49,4 @@ bin/
 .DS_Store
 *.example
 evd/
+ondemandmonitoring/src/main/resources/application-local.yaml

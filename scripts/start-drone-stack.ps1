@@ -1,17 +1,42 @@
 param(
-    [ValidateSet("legacy", "compact")]
-    [string]$SimWorld = "compact",
+    [ValidateSet("legacy", "compact", "light")]
+    [string]$SimWorld = "light",
     [switch]$ShowGazeboGui,
     [switch]$WithTelemetry,
+    [switch]$NoTelemetry,
     [switch]$WithCamera,
     [switch]$WithSensors,
     [switch]$WithWeather,
     [ValidateRange(0.1, 180.0)]
     [double]$YawStepDeg = 5.0,
+    [double]$HomeLatitude = 10.7769,
+    [double]$HomeLongitude = 106.7009,
+    [double]$HomeAltitude = 0.0,
     [switch]$SkipBootstrap
 )
 
 $ErrorActionPreference = "Stop"
+
+# Backend telemetry (GPS/battery -> backend DB) is required for Mapillary reference capture, so it is on by default.
+if (-not $NoTelemetry) { $WithTelemetry = [switch]::new($true) }
+
+$hasHomeLatitude = $PSBoundParameters.ContainsKey("HomeLatitude")
+$hasHomeLongitude = $PSBoundParameters.ContainsKey("HomeLongitude")
+if ($hasHomeLatitude -ne $hasHomeLongitude) {
+    throw "Set both HomeLatitude and HomeLongitude for the PX4 SITL launch point."
+}
+if ($hasHomeLatitude -and (
+    [double]::IsNaN($HomeLatitude) -or [double]::IsInfinity($HomeLatitude) -or
+    [double]::IsNaN($HomeLongitude) -or [double]::IsInfinity($HomeLongitude) -or
+    [Math]::Abs($HomeLatitude) -gt 90 -or [Math]::Abs($HomeLongitude) -gt 180)) {
+    throw "HOME must be valid WGS84 latitude and longitude."
+}
+if ([double]::IsNaN($HomeAltitude) -or [double]::IsInfinity($HomeAltitude)) {
+    throw "HomeAltitude must be a finite number of metres above sea level."
+}
+if ($SimWorld -eq "light" -and ($WithCamera -or $WithSensors -or $WithWeather)) {
+    throw "Light mode has no camera, LiDAR, or weather world. Use compact mode for those sensors."
+}
 
 function ConvertTo-WslPath([string]$WindowsPath) {
     $fullPath = (Resolve-Path $WindowsPath).Path
@@ -112,8 +137,8 @@ function Assert-DronePackage([string]$Forest3DPath, [string]$World) {
 
 $ubuntuDistro = "Ubuntu-24.04"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$forest3DPath = Resolve-Forest3DPath $repoRoot
-Assert-DronePackage $forest3DPath $SimWorld
+$forest3DPath = if ($SimWorld -eq "light") { $null } else { Resolve-Forest3DPath $repoRoot }
+if ($forest3DPath) { Assert-DronePackage $forest3DPath $SimWorld }
 $backendEnvFile = Join-Path $repoRoot ".env"
 if (-not (Test-Path -LiteralPath $backendEnvFile -PathType Leaf)) {
     throw "Missing shared backend and drone configuration: $backendEnvFile"
@@ -124,11 +149,16 @@ if (-not $SkipBootstrap) {
 }
 
 $repoRootWsl = ConvertTo-WslPath $repoRoot
-$forest3DPathWsl = ConvertTo-WslPath $forest3DPath
+$forest3DPathWsl = if ($forest3DPath) { ConvertTo-WslPath $forest3DPath } else { "" }
 $scriptRoot = "$repoRootWsl/scripts"
 $simArg = $SimWorld
 $webOnly = if ($ShowGazeboGui) { "0" } else { "1" }
-$baseWslEnv = "PROJECT_PATH='$repoRootWsl' FOREST3D_PATH='$forest3DPathWsl' CONTROL_YAW_STEP_DEG='$YawStepDeg'"
+$baseWslEnv = "PROJECT_PATH='$repoRootWsl' CONTROL_YAW_STEP_DEG='$YawStepDeg' FAST_DEMO_MODE='1' CONTROL_MOVE_SPEED_M_S='220' CONTROL_VERTICAL_SPEED_M_S='80' PX4_SPEED_LIMIT_M_S='220' GPS_ROUTE_EXPECTED_SPEED_M_S='220'"
+if ($forest3DPathWsl) { $baseWslEnv += " FOREST3D_PATH='$forest3DPathWsl'" }
+if ($hasHomeLatitude -or (-not $PSBoundParameters.ContainsKey("HomeLatitude") -and -not $PSBoundParameters.ContainsKey("HomeLongitude"))) {
+    $culture = [System.Globalization.CultureInfo]::InvariantCulture
+    $baseWslEnv += " PX4_HOME_LAT='$($HomeLatitude.ToString($culture))' PX4_HOME_LON='$($HomeLongitude.ToString($culture))' PX4_HOME_ALT='$($HomeAltitude.ToString($culture))'"
+}
 $simCommand = "$baseWslEnv FOREST3D_WEB_ONLY=${webOnly} SIM_WORLD=${simArg} exec ${scriptRoot}/wsl-sim-pane.sh ${simArg}"
 
 wsl.exe -d $ubuntuDistro -- bash -lc "$baseWslEnv exec ${scriptRoot}/wsl-clean-drone-stack.sh" | Out-Null

@@ -17,6 +17,7 @@ import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentReposito
 import com.ondemandmonitoring.mission.repository.MissionPlanRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.order.domain.Order;
+import com.ondemandmonitoring.order.util.ServiceAreaPolicy;
 import com.ondemandmonitoring.planning.dto.EnergyEstimate;
 import com.ondemandmonitoring.planning.dto.EnergyEstimateRequest;
 import com.ondemandmonitoring.planning.dto.PlannedRoute;
@@ -27,8 +28,17 @@ import com.ondemandmonitoring.planning.service.MissionPlanningService;
 import com.ondemandmonitoring.planning.service.PlanningEnvironment;
 import com.ondemandmonitoring.planning.service.RoutePlanner;
 import com.ondemandmonitoring.planning.service.SimulationHomeProvider;
+import com.ondemandmonitoring.zone.domain.Zone;
+import com.ondemandmonitoring.zone.repository.ZoneRepository;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
 import java.time.Instant;
+import org.locationtech.jts.geom.Coordinate;
+import org.locationtech.jts.geom.GeometryFactory;
+import org.locationtech.jts.geom.LineString;
+import org.locationtech.jts.geom.Polygon;
 import org.locationtech.jts.geom.Point;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -51,6 +61,8 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
     private final SimulationHomeProvider simulationHomeProvider;
     private final PlanningEnvironment planningEnvironment;
     private final MissionEnergyEstimator missionEnergyEstimator;
+    private final ZoneRepository zoneRepository;
+    private final GeometryFactory geometryFactory = new GeometryFactory();
 
     public MissionPlanningServiceImpl(
             MissionRepository missionRepository,
@@ -63,7 +75,8 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
             @Qualifier("aStarEnergyAwareRoutePlanner") RoutePlanner aStarEnergyAwareRoutePlanner,
             SimulationHomeProvider simulationHomeProvider,
             PlanningEnvironment planningEnvironment,
-            MissionEnergyEstimator missionEnergyEstimator) {
+            MissionEnergyEstimator missionEnergyEstimator,
+            ZoneRepository zoneRepository) {
         this.missionRepository = missionRepository;
         this.missionPlanRepository = missionPlanRepository;
         this.missionDeviceAssignmentRepository = missionDeviceAssignmentRepository;
@@ -75,6 +88,7 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         this.simulationHomeProvider = simulationHomeProvider;
         this.planningEnvironment = planningEnvironment;
         this.missionEnergyEstimator = missionEnergyEstimator;
+        this.zoneRepository = zoneRepository;
     }
 
     @Override
@@ -100,6 +114,65 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
     @Transactional
     public MissionPlan generateAStarEnergyAwarePlan(String missionId) {
         return generatePlan(missionId, aStarEnergyAwareRoutePlanner, PlanningAlgorithm.ASTAR_ENERGY_AWARE);
+    }
+
+    @Override
+    @Transactional
+    public MissionPlan generateGpsDirectPlan(String missionId) {
+        Mission mission = missionRepository.findByIdWithOrder(missionId)
+                .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND, "Mission not found: " + missionId));
+        Order order = mission.getOrder();
+        if (order == null || order.getPoint() == null) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Mission order has no GPS target point.");
+        }
+
+        Point target = order.getPoint();
+        ServiceAreaPolicy.assertSupported(target, order.getTargetArea());
+        List<GpsRoutePoint> gpsRoute = buildGpsAvoidanceRoute(
+                new GpsRoutePoint(ServiceAreaPolicy.HCMC_HOME_LONGITUDE, ServiceAreaPolicy.HCMC_HOME_LATITUDE),
+                new GpsRoutePoint(target.getX(), target.getY()));
+        double distanceM = routeDistanceMeters(gpsRoute);
+        EnergyEstimate energyEstimate = missionEnergyEstimator.estimate(new EnergyEstimateRequest(
+                distanceM,
+                0.0,
+                20.0,
+                true,
+                false));
+
+        MissionPlan missionPlan = missionPlanRepository.findByMissionId(missionId)
+                .orElseGet(() -> {
+                    MissionPlan newPlan = new MissionPlan();
+                    newPlan.setMission(mission);
+                    return newPlan;
+                });
+
+        missionPlan.setMission(mission);
+        clearPlanningResult(missionPlan);
+        missionPlan.setPlanningAlgorithm(PlanningAlgorithm.DIRECT);
+        if (missionPlan.getPlanVersion() == null) {
+            missionPlan.setPlanVersion(1);
+        }
+        missionPlan.setReplanningReason(null);
+        missionPlan.setReplanningStatus(null);
+        missionPlan.setReplannedAt(null);
+        missionPlan.setPlannedDistanceM(distanceM);
+        missionPlan.setMaxPlannedAltitudeM(20.0);
+        missionPlan.setPlanningTimeMs(0L);
+        applyEnergyEstimate(missionPlan, energyEstimate, mission.getId());
+        for (int sequence = 0; sequence < gpsRoute.size(); sequence++) {
+            GpsRoutePoint point = gpsRoute.get(sequence);
+            missionPlan.getWaypoints().add(toGpsWaypoint(
+                    missionPlan,
+                    sequence,
+                    point.longitude(),
+                    point.latitude(),
+                    sequence == 0
+                            ? WaypointReason.START
+                            : sequence == gpsRoute.size() - 1
+                                    ? WaypointReason.TARGET
+                                    : WaypointReason.CRUISE));
+        }
+        return missionPlanRepository.save(missionPlan);
     }
 
     @Override
@@ -386,6 +459,121 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
         return waypoint;
     }
 
+    private PlanWaypoint toGpsWaypoint(
+            MissionPlan missionPlan,
+            int sequence,
+            double longitude,
+            double latitude,
+            WaypointReason reason) {
+        PlanWaypoint waypoint = new PlanWaypoint();
+        waypoint.setMissionPlan(missionPlan);
+        waypoint.setSequence(sequence);
+        waypoint.setSimX(longitude);
+        waypoint.setSimY(latitude);
+        waypoint.setAltitudeM(20.0);
+        waypoint.setPlannedSpeedMps(null);
+        waypoint.setReason(reason);
+        return waypoint;
+    }
+
+    private List<GpsRoutePoint> buildGpsAvoidanceRoute(GpsRoutePoint home, GpsRoutePoint target) {
+        List<Zone> restrictedGpsZones = zoneRepository.findAllByRestrictedTrueOrderByCodeAsc().stream()
+                .filter(zone -> zone.getPolygon() != null)
+                .filter(zone -> isGpsPolygon(zone.getPolygon()))
+                .toList();
+        List<GpsRoutePoint> route = new ArrayList<>(List.of(home, target));
+
+        for (int guard = 0; guard < 4; guard++) {
+            boolean changed = false;
+            for (int index = 0; index < route.size() - 1; index++) {
+                GpsRoutePoint from = route.get(index);
+                GpsRoutePoint to = route.get(index + 1);
+                Optional<Zone> hitZone = restrictedGpsZones.stream()
+                        .filter(zone -> segmentIntersectsZone(from, to, zone.getPolygon()))
+                        .findFirst();
+                if (hitZone.isEmpty()) {
+                    continue;
+                }
+
+                Optional<GpsRoutePoint> detour = findGpsDetour(from, to, hitZone.get(), restrictedGpsZones);
+                if (detour.isEmpty()) {
+                    continue;
+                }
+                route.add(index + 1, detour.get());
+                changed = true;
+                break;
+            }
+            if (!changed) {
+                break;
+            }
+        }
+
+        return route;
+    }
+
+    private boolean isGpsPolygon(Polygon polygon) {
+        for (Coordinate coordinate : polygon.getExteriorRing().getCoordinates()) {
+            if (!Double.isFinite(coordinate.x) || !Double.isFinite(coordinate.y)
+                    || Math.abs(coordinate.x) > 180 || Math.abs(coordinate.y) > 90) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean segmentIntersectsZone(GpsRoutePoint from, GpsRoutePoint to, Polygon polygon) {
+        LineString line = geometryFactory.createLineString(new Coordinate[]{
+                new Coordinate(from.longitude(), from.latitude()),
+                new Coordinate(to.longitude(), to.latitude())
+        });
+        return line.intersects(polygon) || polygon.contains(geometryFactory.createPoint(line.getCoordinateN(0)))
+                || polygon.contains(geometryFactory.createPoint(line.getCoordinateN(1)));
+    }
+
+    private Optional<GpsRoutePoint> findGpsDetour(
+            GpsRoutePoint from,
+            GpsRoutePoint to,
+            Zone hitZone,
+            List<Zone> restrictedZones) {
+        Coordinate[] coordinates = hitZone.getPolygon().getExteriorRing().getCoordinates();
+        Coordinate centroid = hitZone.getPolygon().getCentroid().getCoordinate();
+        double paddingDegrees = 0.008;
+
+        return java.util.Arrays.stream(coordinates)
+                .limit(Math.max(0, coordinates.length - 1L))
+                .map(coordinate -> new GpsRoutePoint(
+                        coordinate.x + (Math.signum(coordinate.x - centroid.x) == 0 ? 1 : Math.signum(coordinate.x - centroid.x)) * paddingDegrees,
+                        coordinate.y + (Math.signum(coordinate.y - centroid.y) == 0 ? 1 : Math.signum(coordinate.y - centroid.y)) * paddingDegrees))
+                .filter(candidate -> restrictedZones.stream().noneMatch(zone ->
+                        segmentIntersectsZone(from, candidate, zone.getPolygon())
+                                || segmentIntersectsZone(candidate, to, zone.getPolygon())))
+                .min(Comparator.comparingDouble(candidate ->
+                        distanceMeters(from.latitude(), from.longitude(), candidate.latitude(), candidate.longitude())
+                                + distanceMeters(candidate.latitude(), candidate.longitude(), to.latitude(), to.longitude())));
+    }
+
+    private double routeDistanceMeters(List<GpsRoutePoint> route) {
+        double distanceM = 0.0;
+        for (int index = 0; index < route.size() - 1; index++) {
+            GpsRoutePoint from = route.get(index);
+            GpsRoutePoint to = route.get(index + 1);
+            distanceM += distanceMeters(from.latitude(), from.longitude(), to.latitude(), to.longitude());
+        }
+        return distanceM;
+    }
+
+    private double distanceMeters(double lat1, double lon1, double lat2, double lon2) {
+        double radiusM = 6_371_000.0;
+        double phi1 = Math.toRadians(lat1);
+        double phi2 = Math.toRadians(lat2);
+        double deltaPhi = Math.toRadians(lat2 - lat1);
+        double deltaLambda = Math.toRadians(lon2 - lon1);
+        double a = Math.sin(deltaPhi / 2.0) * Math.sin(deltaPhi / 2.0)
+                + Math.cos(phi1) * Math.cos(phi2)
+                * Math.sin(deltaLambda / 2.0) * Math.sin(deltaLambda / 2.0);
+        return 2.0 * radiusM * Math.asin(Math.min(1.0, Math.sqrt(a)));
+    }
+
     private SimulationPoint resolveSimulationTarget(Point point) {
         double targetX = point.getX();
         double targetY = point.getY();
@@ -407,6 +595,11 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
     private record BatterySnapshot(
             boolean hasAssignedDevice,
             Optional<Double> batteryPercent) {
+    }
+
+    private record GpsRoutePoint(
+            double longitude,
+            double latitude) {
     }
 }
 

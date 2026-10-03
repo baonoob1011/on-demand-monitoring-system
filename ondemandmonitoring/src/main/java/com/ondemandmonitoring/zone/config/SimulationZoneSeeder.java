@@ -19,6 +19,7 @@ import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.LinearRing;
 import org.locationtech.jts.geom.LineString;
+import org.locationtech.jts.geom.Point;
 import org.locationtech.jts.geom.Polygon;
 import org.locationtech.jts.geom.PrecisionModel;
 import org.springframework.boot.CommandLineRunner;
@@ -78,6 +79,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
         log.info("Seeded simulation zones from {} (created={}, updated={})",
                 SOURCE_WORLD, createdZones, updatedZones);
         markAirportRestricted();
+        seedTanSonNhatNoFlyZone();
         seedThermalSources();
         seedAtmosphereProfile();
 
@@ -238,6 +240,47 @@ public class SimulationZoneSeeder implements CommandLineRunner {
                 SET restricted = TRUE
                 WHERE code = 'AIRPORT'
                 """);
+    }
+
+    private void seedTanSonNhatNoFlyZone() {
+        Polygon polygon = polygonExact(
+                new Coordinate(106.6348, 10.8079),
+                new Coordinate(106.6348, 10.8142),
+                new Coordinate(106.6380, 10.8179),
+                new Coordinate(106.6479, 10.8212),
+                new Coordinate(106.6548, 10.8219),
+                new Coordinate(106.6610, 10.8232),
+                new Coordinate(106.6700, 10.8258),
+                new Coordinate(106.6741, 10.8271),
+                new Coordinate(106.6785, 10.8264),
+                new Coordinate(106.6748, 10.8244),
+                new Coordinate(106.6736, 10.8215),
+                new Coordinate(106.6731, 10.8188),
+                new Coordinate(106.6711, 10.8175),
+                new Coordinate(106.6683, 10.8151),
+                new Coordinate(106.6672, 10.8133),
+                new Coordinate(106.6661, 10.8098),
+                new Coordinate(106.6636, 10.8079),
+                new Coordinate(106.6610, 10.8090),
+                new Coordinate(106.6587, 10.8103),
+                new Coordinate(106.6514, 10.8095),
+                new Coordinate(106.6438, 10.8077),
+                new Coordinate(106.6376, 10.8066));
+        Point centroid = polygon.getCentroid();
+
+        Zone zone = zoneRepository.findByCode("HCMC_TSN_NO_FLY").orElseGet(Zone::new);
+        zone.setCode("HCMC_TSN_NO_FLY");
+        zone.setName("Vùng cấm bay sân bay Tân Sơn Nhất");
+        zone.setZoneType("RESTRICTED");
+        zone.setPurpose("No-fly zone for real GPS flight planning around Tan Son Nhat airport.");
+        zone.setRestricted(true);
+        zone.setCenterXM(centroid.getX());
+        zone.setCenterYM(centroid.getY());
+        zone.setRadiusM(0.0);
+        zone.setSourceWorld("hcmc_real_gps");
+        zone.setCoordinateSystem("WGS84_GPS_LON_LAT");
+        zone.setPolygon(polygon);
+        zoneRepository.save(zone);
     }
 
     private void createPgAdminGeometryViewerViews() {
