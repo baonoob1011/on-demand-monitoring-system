@@ -74,7 +74,7 @@ class SocialAuthServiceTest {
     void socialLoginLinksGoogleToExistingLocalUserWithoutChangingRole() {
         SocialSyncRequest request = request(SocialAuthIntent.LOGIN_OR_REGISTER);
         User staff = customer();
-        staff.setRole(Role.builder().code(RoleCode.STAFF).build());
+        staff.setRole(Role.builder().code(RoleCode.MANAGER).build());
         when(socialProvider.exchangeSocialCode(request)).thenReturn(identity(true));
         when(users.findOptionalByEmail("user@example.com")).thenReturn(Optional.of(staff));
         when(users.hasIdentity(staff.getId(), IdentityProvider.LOCAL)).thenReturn(true);
@@ -85,8 +85,8 @@ class SocialAuthServiceTest {
 
         var result = service.sync(request, mock(HttpServletResponse.class));
 
-        assertEquals(RoleCode.STAFF, result.getUser().getRole());
-        verify(cognito).addUserToGroup("local-uuid", "STAFF");
+        assertEquals(RoleCode.MANAGER, result.getUser().getRole());
+        verify(cognito).addUserToGroup("local-uuid", "MANAGER");
         verify(users, never()).createSocialUser(anyString(), anyString(), any(), anyString(), anyString());
     }
 

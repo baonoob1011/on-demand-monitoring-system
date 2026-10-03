@@ -41,13 +41,18 @@ class MediaUploadWorkflowTest {
     private final MediaAuditLogRepository audit = mock(MediaAuditLogRepository.class);
     private final IMediaObjectStorage storage = mock(IMediaObjectStorage.class);
     private final AuthenticatedUserResolver userResolver = mock(AuthenticatedUserResolver.class);
+    private final com.ondemandmonitoring.mission.service.IMissionAuthorizationService authorization =
+            mock(com.ondemandmonitoring.mission.service.IMissionAuthorizationService.class);
     private final MissionMediaAccessServiceImpl missionAccess = new MissionMediaAccessServiceImpl(
-            missions, deviceAssignments, staffAssignments, userResolver);
+            missions, deviceAssignments, userResolver, authorization);
     private final MediaUploadServiceImpl service = new MediaUploadServiceImpl(missionAccess, devices,
-            deviceAssignments, media, attempts, manualTasks, audit, storage, userResolver);
+            media, attempts, manualTasks, audit, storage, userResolver);
 
     @BeforeEach
     void setUp() {
+        when(authorization.canViewMissionMedia("mission-id")).thenReturn(true);
+        when(authorization.canOperatePayload("mission-id")).thenReturn(true);
+        when(authorization.canUploadMissionMedia("mission-id")).thenReturn(true);
         ReflectionTestUtils.setField(service, "maxImageBytes", 25_000_000L);
         ReflectionTestUtils.setField(service, "maxVideoBytes", 1_000_000_000L);
         SecurityContextHolder.getContext().setAuthentication(
@@ -74,6 +79,8 @@ class MediaUploadWorkflowTest {
         assignment.setDevice(device);
         when(deviceAssignments.findByMissionIdAndIsCurrentTrue("mission-id"))
                 .thenReturn(Optional.of(assignment));
+        when(deviceAssignments.findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc("mission-id"))
+                .thenReturn(java.util.List.of(assignment));
         when(deviceAssignments.findByMissionIdAndDeviceIdAndIsCurrentTrue("mission-id", "device-id"))
                 .thenReturn(Optional.of(assignment));
         when(storage.bucket()).thenReturn("test-bucket");

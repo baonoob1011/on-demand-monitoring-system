@@ -48,7 +48,7 @@ public class OperatorDirectoryServiceImpl implements IOperatorDirectoryService {
                     .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND, "Mission not found: " + missionId));
         }
         Mission targetMission = mission;
-        return userRepository.findAllByRole_CodeAndIsActiveTrueOrderByFullNameAsc(RoleCode.DRONE_OPERATOR)
+        return userRepository.findAllByRole_CodeAndIsActiveTrueOrderByFullNameAsc(RoleCode.STAFF)
                 .stream()
                 .filter(user -> targetMission == null || isAvailableForMission(user, targetMission))
                 .map(user -> AvailableOperatorResponse.builder()

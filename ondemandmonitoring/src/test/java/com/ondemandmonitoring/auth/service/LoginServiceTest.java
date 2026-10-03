@@ -52,6 +52,8 @@ class LoginServiceTest {
         var result = service.login(request, response);
 
         assertEquals("AUTHENTICATED", result.getStatus());
+        verify(identityProvider).authenticate("uuid-user", "Password1!");
+        verify(identityProvider, never()).addUserToGroup(anyString(), anyString());
         assertEquals(RoleCode.CUSTOMER, result.getUser().getRole());
         verify(cookies).write(response, "refresh", "uuid-user");
         verify(users).recordLogin(user.getId());
@@ -101,6 +103,7 @@ class LoginServiceTest {
         var result = service.completeFirstLogin(request, response);
 
         assertEquals("AUTHENTICATED", result.getStatus());
+        verify(identityProvider, never()).addUserToGroup(anyString(), anyString());
         verify(cookies).write(response, "refresh", "uuid-user");
         verify(users).recordLogin(user.getId());
     }
@@ -118,6 +121,7 @@ class LoginServiceTest {
 
         assertEquals("new-access", result.getAccessToken());
         verify(identityProvider).refresh("refresh", "uuid-user");
+        verify(identityProvider, never()).addUserToGroup(anyString(), anyString());
     }
 
     @Test

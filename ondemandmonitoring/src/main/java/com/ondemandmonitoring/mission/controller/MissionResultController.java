@@ -28,13 +28,13 @@ public class MissionResultController {
     IMissionResultService missionResultService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedStaff(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canViewMission(#missionId)")
     public ResponseEntity<ApiResponse<MissionResultResponse>> get(@PathVariable String missionId) {
         return ResponseEntity.ok(ApiResponse.ok(missionResultService.getByMissionId(missionId)));
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedStaff(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canUploadMissionMedia(#missionId)")
     public ResponseEntity<ApiResponse<MissionResultResponse>> createOrUpdate(
             @PathVariable String missionId,
             @Valid @RequestBody MissionResultRequest request) {
@@ -43,7 +43,7 @@ public class MissionResultController {
     }
 
     @PutMapping
-    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedStaff(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canUploadMissionMedia(#missionId)")
     public ResponseEntity<ApiResponse<MissionResultResponse>> update(
             @PathVariable String missionId,
             @Valid @RequestBody MissionResultRequest request) {

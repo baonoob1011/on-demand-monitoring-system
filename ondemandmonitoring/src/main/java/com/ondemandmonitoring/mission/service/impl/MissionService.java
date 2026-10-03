@@ -37,7 +37,7 @@ import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.planning.service.MissionPlanningService;
 import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
-import com.ondemandmonitoring.user.repository.UserRepository;
+import com.ondemandmonitoring.user.service.IStaffDirectoryService;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import com.ondemandmonitoring.userschedule.domain.UserSchedule;
 import com.ondemandmonitoring.userschedule.enums.UserScheduleStatus;
@@ -48,6 +48,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.transaction.annotation.Transactional;
@@ -105,7 +106,7 @@ public class MissionService implements IMissionService {
     IMissionResultService missionResultService;
     IPreDeviceCheckCompletionService preDeviceCheckCompletionService;
     IPersistedPostDeviceCheckService persistedPostDeviceCheckService;
-    UserRepository userRepository;
+    IStaffDirectoryService staffDirectory;
     AuthenticatedUserResolver authenticatedUserResolver;
     UserScheduleRepository userScheduleRepository;
     MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
@@ -117,6 +118,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional(readOnly = true)
+    @PreAuthorize("@missionAuthorizationService.canManageMissions()")
     public PageResponse<MissionResponse> searchStaffMissions(
             MissionStatus status, Instant from, Instant toExclusive, Pageable pageable) {
         Specification<Mission> criteria = (root, query, builder) -> {
@@ -134,6 +136,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canViewMission(#missionId)")
     public MissionResponse getByIdResponse(String missionId) {
         Mission mission = getOrThrow(missionId);
         ensureAcceptedMissionPlan(mission);
@@ -141,6 +144,7 @@ public class MissionService implements IMissionService {
     }
         @Override
     @Transactional(readOnly = true)
+    @PreAuthorize("@missionAuthorizationService.canManageMissions()")
     public List<MissionResponse> getAllMissions() {
         return missionRepository.findAll().stream()
                 .map(missionMapper::toResponse)
@@ -148,6 +152,7 @@ public class MissionService implements IMissionService {
     }
     @Override
     @Transactional(readOnly = true)
+    @PreAuthorize("@missionAuthorizationService.canViewMission(#missionCode)")
     public MissionResponse getByCodeResponse(String missionCode) {
         Mission mission = missionRepository.findByMissionCode(missionCode)
                 .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND,
@@ -157,6 +162,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canManageMissions()")
     public MissionResponse createMission(MissionCreateRequest request) {
         var existingMission = missionRepository.findByOrderId(request.getOrderId());
         if (existingMission.isPresent()) {
@@ -187,6 +193,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional(readOnly = true)
+    @PreAuthorize("@missionAuthorizationService.canViewStaffMissions(#staffId)")
     public List<MissionResponse> getByStaffId(String staffId) {
         List<MissionStatus> activeStatuses = List.of(MissionStatus.values());
         return missionRepository.findByStaffIdAndStatusIn(staffId, activeStatuses)
@@ -200,6 +207,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional(readOnly = true)
+    @PreAuthorize("hasRole('STAFF')")
     public List<MissionResponse> getCurrentStaffMissions() {
         return getByStaffId(currentStaffId());
     }
@@ -208,6 +216,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional(readOnly = true)
+    @PreAuthorize("@missionAuthorizationService.canManageMissions()")
     public List<MissionResponse> getPendingAssignmentMissions() {
         return missionRepository.findByStatusIn(List.of(
                 MissionStatus.CREATED,
@@ -222,6 +231,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional(readOnly = true)
+    @PreAuthorize("@missionAuthorizationService.canViewMission(#missionId)")
     public MissionPlanResponse getMissionPlan(String missionId) {
         Mission mission = getOrThrow(missionId);
         MissionPlan plan = missionPlanRepository.findByMissionId(mission.getId())
@@ -243,18 +253,21 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canRespondToMission(#missionId)")
     public MissionResponse acceptCurrentStaffMission(String missionId) {
         return acceptMission(missionId, currentStaffId());
     }
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canRespondToMission(#missionId)")
     public MissionResponse rejectCurrentStaffMission(String missionId, String reason) {
         return rejectMission(missionId, currentStaffId(), reason);
     }
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse handoverCurrentStaffControl(String missionId) {
         return handoverControl(missionId, currentStaffId());
     }
@@ -263,6 +276,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canManageMissions()")
     public MissionResponse assignDevice(String missionId, AssignDeviceRequest request) {
         String deviceId = request.getDeviceId();
         DeviceRole deviceRole = request.getDeviceRole();
@@ -377,6 +391,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canManageMissions()")
     public MissionResponse assignStaff(String missionId, AssignStaffRequest request) {
         String staffId = request.getStaffId();
         MissionStaffRole assignedRole = resolveStaffRole(request.getAssignedRole());
@@ -389,11 +404,7 @@ public class MissionService implements IMissionService {
                     "Mission status must be RESOURCE_ASSIGNING to assign staff.");
         }
 
-        User staff = userRepository.findById(staffId)
-                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, "Staff not found with id: " + staffId));
-        if (!Boolean.TRUE.equals(staff.getIsActive())) {
-            throw new ApiException(ErrorCode.ACCOUNT_DISABLED, "Selected staff account is inactive");
-        }
+        User staff = staffDirectory.requireActiveStaff(staffId);
 
         Instant missionStart = mission.getScheduledStartAt();
         Instant missionEnd = mission.getScheduledEndAt();
@@ -484,6 +495,7 @@ public class MissionService implements IMissionService {
     }
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canManageMissions()")
     public MissionResponse updateMission(String missionId, MissionUpdateRequest request) {
         Mission mission = getOrThrow(missionId);
 
@@ -529,6 +541,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canRespondToMission(#missionId,#staffId)")
     public MissionResponse rejectMission(String missionId, String staffId, String reason) {
         Mission mission = getOrThrow(missionId);
         String resolvedMissionId = mission.getId();
@@ -538,6 +551,7 @@ public class MissionService implements IMissionService {
 
         Instant now = Instant.now();
         assignments.forEach(assignment -> {
+            if (assignment.getResponseStatus() != StaffResponseStatus.PENDING) return;
             assignment.setResponseStatus(StaffResponseStatus.REJECTED);
             assignment.setDeclineReason(reason);
             assignment.setRespondedAt(now);
@@ -551,6 +565,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canRespondToMission(#missionId,#staffId)")
     public MissionResponse acceptMission(String missionId, String staffId) {
         Mission mission = getOrThrow(missionId);
         String resolvedMissionId = mission.getId();
@@ -560,6 +575,7 @@ public class MissionService implements IMissionService {
 
         Instant now = Instant.now();
         assignments.forEach(assignment -> {
+            if (assignment.getResponseStatus() != StaffResponseStatus.PENDING) return;
             assignment.setResponseStatus(StaffResponseStatus.ACCEPTED);
             assignment.setRespondedAt(now);
         });
@@ -580,12 +596,14 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse connectGcs(String missionId) {
         return deviceConnectionService.connectGcs(getOrThrow(missionId).getId());
     }
 
     @Override
     @Transactional(readOnly = true)
+    @PreAuthorize("@missionAuthorizationService.canViewMission(#missionId)")
     public MissionTelemetryReadinessResponse getTelemetryReadiness(String missionId) {
         Mission mission = getOrThrow(missionId);
         Device assignedDevice = getCurrentDevice(mission.getId());
@@ -598,6 +616,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse disconnectGcs(String missionId, String disconnectReason) {
         return deviceConnectionService.disconnectGcs(getOrThrow(missionId).getId(), disconnectReason);
     }
@@ -610,6 +629,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#missionId)")
     public PreDeviceCheckResponse runPreDeviceCheck(String missionId, String deviceId) {
         return preDeviceCheckCompletionService.complete(missionId, deviceId);
     }
@@ -692,6 +712,8 @@ public class MissionService implements IMissionService {
 
     private MissionStaffAssignment requireCurrentStaffAssignment(String missionId, String staffId) {
         return requireCurrentStaffAssignments(missionId, staffId).stream()
+                .filter(entry -> entry.getAssignedRole() == MissionStaffRole.PILOT
+                        && entry.getResponseStatus() == StaffResponseStatus.ACCEPTED)
                 .findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.ACCESS_DENIED,
                         "Staff is not assigned to mission " + missionId));
@@ -730,7 +752,8 @@ public class MissionService implements IMissionService {
                 .filter(assignment -> assignment.getResponseStatus() == StaffResponseStatus.ACCEPTED)
                 .map(MissionStaffAssignment::getAssignedRole)
                 .collect(java.util.stream.Collectors.toSet());
-        return acceptedRoles.containsAll(REQUIRED_CREW_ROLES);
+        return acceptedRoles.containsAll(REQUIRED_CREW_ROLES)
+                && assignments.stream().allMatch(entry -> entry.getResponseStatus() == StaffResponseStatus.ACCEPTED);
     }
 
     private void requireFeasiblePlan(MissionPlan plan, boolean allowRuntimePreflightBatteryFallback) {
@@ -926,6 +949,7 @@ public class MissionService implements IMissionService {
     }
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId) and @missionAuthorizationService.canViewStaffMissions(#staffId)")
     public MissionResponse handoverControl(String missionId, String staffId) {
         Mission mission = getOrThrow(missionId);
         String resolvedMissionId = mission.getId();
@@ -955,6 +979,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse startMission(String missionId, String tokenValue) {
         Mission mission = getOrThrow(missionId);
         String resolvedMissionId = mission.getId();
@@ -963,6 +988,10 @@ public class MissionService implements IMissionService {
         if (tokenValue != null && !tokenValue.isBlank()) {
             FlightToken token = flightTokenRepository.findByTokenValue(tokenValue)
                     .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REQUEST, "Invalid flight access token"));
+
+            if (!resolvedMissionId.equals(token.getMissionId())) {
+                throw new ApiException(ErrorCode.ACCESS_DENIED, "Flight token belongs to another mission");
+            }
 
             if (!token.isValid()) {
                 token.setRevoked(true);
@@ -1002,12 +1031,14 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse startMission(String missionId) {
         return startMission(missionId, null);
     }
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse markReturning(String missionId) {
         Mission mission = getOrThrow(missionId);
         if (mission.getStatus() != MissionStatus.IN_FLIGHT && mission.getStatus() != MissionStatus.IN_PROGRESS) {
@@ -1023,6 +1054,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse startPostDeviceChecking(String missionId) {
         Mission mission = getOrThrow(missionId);
         requireStatus(mission, MissionStatus.RETURNING);
@@ -1034,6 +1066,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse completeMission(String missionId) {
         Mission mission = getOrThrow(missionId);
         String resolvedMissionId = mission.getId();
@@ -1065,6 +1098,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse failMission(String missionId, String reason) {
         Mission mission = getOrThrow(missionId);
         if (mission.getStatus() == MissionStatus.IN_FLIGHT
@@ -1101,12 +1135,14 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#missionId)")
     public MissionResponse updatePostFlightStatus(String missionId, DeviceStatus newDeviceStatus, String notes) {
         return savePostFlightStatus(missionId, newDeviceStatus, notes, Map.of());
     }
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#missionId)")
     public MissionResponse recordPostFlightInspection(String missionId, DeviceStatus newDeviceStatus,
             String notes, Map<String, InspectionResult> results,
             PostFlightStatusRequest.TelemetrySnapshot telemetrySnapshot) {
@@ -1164,6 +1200,7 @@ public class MissionService implements IMissionService {
                     device.getDeviceCode());
         }
 
+        persistedPostDeviceCheckService.recordInspection(mission.getId(), results, telemetrySnapshot);
         if (mission.getStatus() == MissionStatus.POSTFLIGHT_CHECKING) {
             mission.setStatus(MissionStatus.COMPLETED);
             Instant completedAt = Instant.now();
@@ -1177,7 +1214,6 @@ public class MissionService implements IMissionService {
         if (notes != null && !notes.isBlank()) {
             log.info("Mission {} post-flight notes: {}", missionId, notes);
         }
-        persistedPostDeviceCheckService.recordInspection(mission.getId(), results, telemetrySnapshot);
         log.info("Mission {} post-flight completed – device {} status set to {}", missionId, device.getDeviceCode(),
                 newDeviceStatus);
         Mission saved = missionRepository.save(mission);
@@ -1315,21 +1351,10 @@ public class MissionService implements IMissionService {
 
     private String currentStaffId() {
         User staff = authenticatedUserResolver.getCurrentUser();
-        if (staff.getRole() == null || !staff.getRole().getCode().isEmployeeRole()) {
+        if (staff.getRole() == null || staff.getRole().getCode() != RoleCode.STAFF) {
             throw new ApiException(ErrorCode.ACCESS_DENIED, "A staff account is required");
         }
         return staff.getId().toString();
-    }
-
-    private void validateStaff(String staffId) {
-        User staff = userRepository.findById(staffId)
-                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND, "Staff not found: " + staffId));
-        if (staff.getRole() == null || !staff.getRole().getCode().isEmployeeRole()) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Selected user is not a staff account");
-        }
-        if (!Boolean.TRUE.equals(staff.getIsActive())) {
-            throw new ApiException(ErrorCode.ACCOUNT_DISABLED, "Selected staff account is inactive");
-        }
     }
 
     private void requireStatus(Mission mission, MissionStatus expected) {

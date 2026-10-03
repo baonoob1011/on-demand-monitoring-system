@@ -12,6 +12,11 @@ import com.ondemandmonitoring.support.repository.SupportCustomerTicketRepository
 import com.ondemandmonitoring.support.repository.SupportFaqArticleRepository;
 import com.ondemandmonitoring.support.repository.SupportFaqFeedbackRepository;
 import com.ondemandmonitoring.support.service.ISupportTicketService;
+import com.ondemandmonitoring.support.service.ISupportAuthorizationService;
+import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
+import com.ondemandmonitoring.user.service.IStaffDirectoryService;
+import com.ondemandmonitoring.user.domain.User;
+import org.springframework.security.access.prepost.PreAuthorize;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,17 +38,22 @@ public class SupportTicketService implements ISupportTicketService {
     private final SupportCustomerMessageRepository messageRepository;
     private final SupportFaqFeedbackRepository faqFeedbackRepository;
     private final SupportFaqArticleRepository faqArticleRepository;
+    private final AuthenticatedUserResolver currentUser;
+    private final ISupportAuthorizationService authorization;
+    private final IStaffDirectoryService staffDirectory;
 
     @Override
     @Transactional
+    @PreAuthorize("hasRole('CUSTOMER')")
     public SupportTicketDto createTicket(CreateSupportTicketRequest req) {
+        User customer = currentUser.getCurrentUser();
         long count = ticketRepository.count() + 1;
         String ticketCode = String.format("TKT-2026-%04d", count);
 
         SupportCustomerTicket ticket = new SupportCustomerTicket();
         ticket.setTicketCode(ticketCode);
-        ticket.setCustomerId(req.getCustomerId());
-        ticket.setCustomerName(req.getCustomerName());
+        ticket.setCustomerId(customer.getId());
+        ticket.setCustomerName(customer.getFullName());
         ticket.setOrderId(req.getOrderId());
         ticket.setMissionId(req.getMissionId());
         ticket.setCategory(req.getCategory() != null ? req.getCategory() : "ORDERS");
@@ -72,6 +82,7 @@ public class SupportTicketService implements ISupportTicketService {
     }
 
     @Override
+    @PreAuthorize("@supportAuthorizationService.canViewCustomerTickets(#customerId)")
     public List<SupportTicketDto> getCustomerTickets(String customerId) {
         List<SupportCustomerTicket> tickets = (customerId != null && !customerId.isBlank())
                 ? ticketRepository.findByCustomerIdOrderByOpenedAtDesc(customerId)
@@ -80,14 +91,17 @@ public class SupportTicketService implements ISupportTicketService {
     }
 
     @Override
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN','STAFF')")
     public List<SupportTicketDto> getAllTickets(String statusFilter) {
         List<SupportCustomerTicket> tickets = (statusFilter != null && !statusFilter.isBlank() && !"ALL".equalsIgnoreCase(statusFilter))
                 ? ticketRepository.findByStatusOrderByOpenedAtDesc(statusFilter)
                 : ticketRepository.findAllByOrderByOpenedAtDesc();
-        return tickets.stream().map(this::mapToDto).toList();
+        return tickets.stream().filter(ticket -> authorization.canAccessTicket(ticket.getId()))
+                .map(this::mapToDto).toList();
     }
 
     @Override
+    @PreAuthorize("@supportAuthorizationService.canAccessTicket(#id)")
     public SupportTicketDto getTicketById(String id) {
         SupportCustomerTicket ticket = ticketRepository.findById(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.SUPPORT_TICKET_NOT_FOUND, "Support ticket not found with ID: " + id));
@@ -96,15 +110,17 @@ public class SupportTicketService implements ISupportTicketService {
 
     @Override
     @Transactional
+    @PreAuthorize("@supportAuthorizationService.canAccessTicket(#ticketId)")
     public SupportMessageDto addMessage(String ticketId, AddMessageRequest req) {
         SupportCustomerTicket ticket = ticketRepository.findById(ticketId)
                 .orElseThrow(() -> new ApiException(ErrorCode.SUPPORT_TICKET_NOT_FOUND, "Support ticket not found with ID: " + ticketId));
 
         SupportCustomerMessage msg = new SupportCustomerMessage();
         msg.setTicketId(ticketId);
-        msg.setSenderId(req.getSenderId());
-        msg.setSenderName(req.getSenderName());
-        msg.setSenderRole(req.getSenderRole() != null ? req.getSenderRole() : "STAFF");
+        User sender = currentUser.getCurrentUser();
+        msg.setSenderId(sender.getId());
+        msg.setSenderName(sender.getFullName());
+        msg.setSenderRole(sender.getRole().getCode().name());
         msg.setContent(req.getContent());
         msg.setAttachmentUrl(req.getAttachmentUrl());
         msg.setCreatedAt(Instant.now());
@@ -112,9 +128,9 @@ public class SupportTicketService implements ISupportTicketService {
         SupportCustomerMessage saved = messageRepository.save(msg);
 
         // Update ticket status automatically based on sender role
-        if ("STAFF".equalsIgnoreCase(req.getSenderRole()) || "MANAGER".equalsIgnoreCase(req.getSenderRole())) {
+        if (!"CUSTOMER".equals(msg.getSenderRole())) {
             ticket.setStatus("WAITING_FOR_CUSTOMER");
-        } else if ("CUSTOMER".equalsIgnoreCase(req.getSenderRole())) {
+        } else {
             ticket.setStatus("WAITING_FOR_STAFF");
         }
         ticketRepository.save(ticket);
@@ -124,6 +140,7 @@ public class SupportTicketService implements ISupportTicketService {
 
     @Override
     @Transactional
+    @PreAuthorize("@supportAuthorizationService.canProcessTicket(#ticketId)")
     public SupportTicketDto updateTicketStatus(String ticketId, UpdateTicketStatusRequest req) {
         SupportCustomerTicket ticket = ticketRepository.findById(ticketId)
                 .orElseThrow(() -> new ApiException(ErrorCode.SUPPORT_TICKET_NOT_FOUND, "Support ticket not found with ID: " + ticketId));
@@ -135,8 +152,12 @@ public class SupportTicketService implements ISupportTicketService {
             }
         }
         if (req.getAssignedStaffId() != null) {
-            ticket.setAssignedStaffId(req.getAssignedStaffId());
-            ticket.setAssignedStaffName(req.getAssignedStaffName());
+            if (!authorization.canManageTickets()) {
+                throw new ApiException(ErrorCode.ACCESS_DENIED, "Only a Manager or Admin can assign support tickets");
+            }
+            User staff = staffDirectory.requireActiveStaff(req.getAssignedStaffId());
+            ticket.setAssignedStaffId(staff.getId());
+            ticket.setAssignedStaffName(staff.getFullName());
         }
         if (req.getPriority() != null) {
             ticket.setPriority(req.getPriority());
@@ -151,6 +172,7 @@ public class SupportTicketService implements ISupportTicketService {
 
     @Override
     @Transactional
+    @PreAuthorize("hasRole('CUSTOMER')")
     public void recordFaqFeedback(FaqFeedbackRequest req) {
         if (req.getArticleId() == null || req.getArticleId().isBlank()) return;
 
@@ -158,7 +180,7 @@ public class SupportTicketService implements ISupportTicketService {
         feedback.setArticleId(req.getArticleId());
         feedback.setArticleQuestion(req.getArticleQuestion());
         feedback.setArticleCategory(req.getArticleCategory());
-        feedback.setCustomerId(req.getCustomerId());
+        feedback.setCustomerId(currentUser.getCurrentUserId());
         feedback.setIsHelpful(req.getIsHelpful() != null ? req.getIsHelpful() : true);
         feedback.setCreatedAt(Instant.now());
 
@@ -166,6 +188,7 @@ public class SupportTicketService implements ISupportTicketService {
     }
 
     @Override
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public SupportAnalyticsDto getSupportAnalytics() {
         long totalHelpfulVotes = faqFeedbackRepository.countByIsHelpfulTrue();
         List<SupportCustomerTicket> allTickets = ticketRepository.findAllByOrderByOpenedAtDesc();

@@ -23,6 +23,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import lombok.AccessLevel;
+import org.springframework.security.access.prepost.PreAuthorize;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.springframework.data.domain.PageRequest;
@@ -44,6 +45,7 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
 
     @Override
     @Transactional(readOnly = true)
+    @PreAuthorize("@missionAuthorizationService.canViewMission(#missionId)")
     public MissionResultResponse getByMissionId(String missionId) {
         MissionResult result = missionResultRepository.findByMissionId(missionId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
@@ -53,6 +55,7 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canUploadMissionMedia(#missionId)")
     public MissionResultResponse upsert(String missionId, MissionResultRequest request) {
         Mission mission = missionRepository.findById(missionId)
                 .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND,
@@ -70,6 +73,7 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
 
     @Override
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public PageResponse<MissionResultResponse> listPendingManagerApproval(int page, int size) {
         var pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "submittedAt", "id"));
         return PageResponse.from(missionResultRepository
@@ -79,6 +83,7 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
 
     @Override
     @Transactional
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public MissionResultResponse approve(String resultId, MissionResultReviewRequest request) {
         MissionResult result = requirePendingResult(resultId);
         Instant now = Instant.now();
@@ -98,6 +103,7 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
 
     @Override
     @Transactional
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public MissionResultResponse reject(String resultId, MissionResultReviewRequest request) {
         MissionResult result = requirePendingResult(resultId);
         Instant now = Instant.now();

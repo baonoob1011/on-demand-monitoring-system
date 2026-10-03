@@ -178,7 +178,7 @@
 //                .id(UUID.randomUUID())
 //                .fullName("Staff Name")
 //                .email("staff@example.com")
-//                .role(Role.builder().code(RoleCode.STAFF).build())
+//                .role(Role.builder().code(RoleCode.MANAGER).build())
 //                .build();
 //        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
 //        when(userIdentityRepository.findAllByUserId(user.getId())).thenReturn(List.of());

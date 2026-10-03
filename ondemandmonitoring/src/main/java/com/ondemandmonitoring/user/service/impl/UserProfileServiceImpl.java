@@ -10,6 +10,7 @@ import com.ondemandmonitoring.user.dto.response.UserProfileResponse;
 import com.ondemandmonitoring.user.mapper.UserProfileMapper;
 import com.ondemandmonitoring.user.repository.CustomerProfileRepository;
 import com.ondemandmonitoring.user.repository.UserRepository;
+import com.ondemandmonitoring.user.repository.UserIdentityRepository;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import com.ondemandmonitoring.user.service.IUserProfileService;
 import lombok.AccessLevel;
@@ -27,12 +28,13 @@ public class UserProfileServiceImpl implements IUserProfileService {
     CustomerProfileRepository customerProfileRepository;
     UserRepository userRepository;
     UserProfileMapper userProfileMapper;
+    UserIdentityRepository userIdentityRepository;
 
     @Override
     @Transactional(readOnly = true)
     public UserProfileResponse getCurrentProfile() {
         User user = authenticatedUserResolver.getCurrentUser();
-        return userProfileMapper.toResponse(user, findCustomerProfile(user));
+        return toProfileResponse(user, findCustomerProfile(user));
     }
 
     @Override
@@ -58,7 +60,14 @@ public class UserProfileServiceImpl implements IUserProfileService {
             customerProfileRepository.save(customerProfile);
         }
 
-        return userProfileMapper.toResponse(user, customerProfile);
+        return toProfileResponse(user, customerProfile);
+    }
+
+    private UserProfileResponse toProfileResponse(User user, CustomerProfile customerProfile) {
+        UserProfileResponse response = userProfileMapper.toResponse(user, customerProfile);
+        response.setLinkedProviders(userIdentityRepository.findAllByUserId(user.getId()).stream()
+                .map(identity -> identity.getProvider()).distinct().sorted().toList());
+        return response;
     }
 
     private void validateUpdateRequest(UserProfileUpdateRequest request) {

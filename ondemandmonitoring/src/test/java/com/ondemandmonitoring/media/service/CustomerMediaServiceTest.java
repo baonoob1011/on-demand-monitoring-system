@@ -32,7 +32,7 @@ class CustomerMediaServiceTest {
     private final AuthenticatedUserResolver currentUser = mock(AuthenticatedUserResolver.class);
     private final CustomerMediaServiceImpl service = new CustomerMediaServiceImpl(
             new MissionMediaAccessServiceImpl(missions, mock(MissionDeviceAssignmentRepository.class),
-                    mock(MissionStaffAssignmentRepository.class), currentUser), media, notifications, storage,
+                    currentUser, mock(com.ondemandmonitoring.mission.service.IMissionAuthorizationService.class)), media, notifications, storage,
             org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class));
 
     @Test

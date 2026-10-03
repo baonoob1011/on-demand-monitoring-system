@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.springframework.security.access.prepost.PreAuthorize;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -48,11 +49,15 @@ public class PersistedPostDeviceCheckService implements IPersistedPostDeviceChec
 
     @Transactional
     @Override
+    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#missionId)")
     public PersistedPostDeviceCheckResponse start(String missionId) {
         Mission mission = missionRepository.findById(missionId)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.MISSION_NOT_FOUND,
                         "Mission not found: " + missionId));
+        if (mission.getStatus() != com.ondemandmonitoring.mission.enums.MissionStatus.POSTFLIGHT_CHECKING) {
+            throw new ApiException(ErrorCode.MISSION_STATUS_INVALID, "Post-device inspection requires postflight state");
+        }
         DeviceConnection deviceConnection = deviceConnectionRepository
                 .findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED")
                 .orElseThrow(() -> new ApiException(
@@ -82,6 +87,7 @@ public class PersistedPostDeviceCheckService implements IPersistedPostDeviceChec
 
     @Transactional(readOnly = true)
     @Override
+    @PreAuthorize("@missionAuthorizationService.canViewMission(#missionId)")
     public List<PersistedPostDeviceCheckResponse> history(String missionId) {
         ensureMission(missionId);
         return runRepository.findByMissionIdOrderByCreatedAtDesc(missionId)
@@ -92,6 +98,7 @@ public class PersistedPostDeviceCheckService implements IPersistedPostDeviceChec
 
     @Transactional(readOnly = true)
     @Override
+    @PreAuthorize("@missionAuthorizationService.canViewMission(#missionId)")
     public PersistedPostDeviceCheckResponse current(String missionId) {
         ensureMission(missionId);
         return runRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId)
@@ -101,6 +108,7 @@ public class PersistedPostDeviceCheckService implements IPersistedPostDeviceChec
 
     @Transactional(readOnly = true)
     @Override
+    @PreAuthorize("@deviceCheckAuthorizationService.canViewPostCheck(#id)")
     public PersistedPostDeviceCheckResponse get(String id) {
         return PersistedPostDeviceCheckResponse.from(runRepository.findById(id)
                 .orElseThrow(() -> new ApiException(
@@ -110,6 +118,7 @@ public class PersistedPostDeviceCheckService implements IPersistedPostDeviceChec
 
     @Transactional
     @Override
+    @PreAuthorize("@deviceCheckAuthorizationService.canInspectPostCheck(#id)")
     public PersistedPostDeviceCheckResponse update(String id, String type, DeviceCheckItemUpdateRequest request) {
         PersistedPostDeviceCheck run = runRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ApiException(
@@ -158,6 +167,7 @@ public class PersistedPostDeviceCheckService implements IPersistedPostDeviceChec
 
     @Transactional
     @Override
+    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#missionId)")
     public void recordInspection(String missionId, Map<String, InspectionResult> results,
             PostFlightStatusRequest.TelemetrySnapshot telemetrySnapshot) {
         if (results == null || results.isEmpty()) {

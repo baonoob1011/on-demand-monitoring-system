@@ -8,7 +8,7 @@ import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.IMediaAssetService;
 import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
-import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
+import com.ondemandmonitoring.mission.service.IMissionMediaAccessService;
 import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import com.ondemandmonitoring.media.service.IMediaObjectStorage.StoredObject;
 import com.ondemandmonitoring.media.service.IMediaObjectStorage.StoredObjectStream;
@@ -47,7 +47,7 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
     Environment environment;
     IDeviceService deviceService;
     MediaAssetRepository mediaAssetRepository;
-    MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
+    IMissionMediaAccessService missionAccess;
 
     @Transactional
     @Override
@@ -399,10 +399,8 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
 
     private MissionDeviceAssignment requireDeviceAssignment(String missionId, String deviceId) {
         Device device = deviceService.getEntityById(deviceId);
-        return missionDeviceAssignmentRepository
-                .findByMissionIdAndDeviceIdAndIsCurrentTrue(missionId, device.getId())
-                .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REQUEST,
-                        "Device is not assigned to this mission"));
+        missionAccess.requireUploadPermission(missionId);
+        return missionAccess.requireDeviceAssignment(missionId, device.getId());
     }
 
     private String normalizeMediaType(String requestedMediaType) {

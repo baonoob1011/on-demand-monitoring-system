@@ -24,7 +24,7 @@ public class PersistedPreDeviceCheckController {
     private final IPersistedPreDeviceCheckService service;
 
     @PostMapping("/api/missions/{missionId}/pre-device-checks")
-    @PreAuthorize("hasRole('DRONE_OPERATOR') and @missionAuthorizationService.isAssignedStaff(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#missionId)")
     public ResponseEntity<ApiResponse<PersistedPreDeviceCheckResponse>> start(
             @PathVariable String missionId) {
         return ResponseEntity
@@ -33,28 +33,28 @@ public class PersistedPreDeviceCheckController {
     }
 
     @GetMapping("/api/missions/{missionId}/pre-device-checks")
-    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedStaff(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canViewMission(#missionId)")
     public ApiResponse<List<PersistedPreDeviceCheckResponse>> history(
             @PathVariable String missionId) {
         return ApiResponse.ok(service.history(missionId));
     }
 
     @GetMapping("/api/missions/{missionId}/pre-device-checks/current")
-    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedStaff(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canViewMission(#missionId)")
     public ApiResponse<PersistedPreDeviceCheckResponse> current(
             @PathVariable String missionId) {
         return ApiResponse.ok(service.current(missionId));
     }
 
     @GetMapping("/api/pre-device-checks/{id}")
-    @PreAuthorize("hasAnyRole('STAFF', 'DRONE_OPERATOR', 'SYSTEM_OPERATOR', 'ADMIN') or @missionAuthorizationService.isAssignedStaffForPreDeviceCheck(#id)")
+    @PreAuthorize("@deviceCheckAuthorizationService.canViewPreCheck(#id)")
     public ApiResponse<PersistedPreDeviceCheckResponse> get(
             @PathVariable String id) {
         return ApiResponse.ok(service.get(id));
     }
 
     @PatchMapping("/api/pre-device-checks/{id}/items/{checkType}")
-    @PreAuthorize("hasRole('DRONE_OPERATOR') and @missionAuthorizationService.isAssignedStaffForPreDeviceCheck(#id)")
+    @PreAuthorize("@deviceCheckAuthorizationService.canInspectPreCheck(#id)")
     public ApiResponse<PersistedPreDeviceCheckResponse> update(
             @PathVariable String id,
             @PathVariable String checkType,

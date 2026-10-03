@@ -66,7 +66,6 @@ public class OrderCreateRequest {
     String preferredTimeId;
 
     @NotEmpty(message = "At least one deliverable is required")
-    @Valid
     @Schema(description = "List of deliverable types with requirements for the service")
-    List<OrderDeliverableRequest> deliverables;
+    List<@Valid OrderDeliverableRequest> deliverables;
 }

@@ -57,6 +57,7 @@ public class OrderController {
 
     @Operation(summary = "Get order details", description = "Retrieves details of a specific order by ID")
     @GetMapping("/{orderId}")
+    @PreAuthorize("@orderAuthorizationService.canViewOrder(#orderId)")
     public ResponseEntity<ApiResponse<OrderCreateResponse>> getOrderById(@PathVariable String orderId) {
         OrderCreateResponse response = orderService.getOrderById(orderId);
         return ResponseEntity.ok(ApiResponse.ok("Order details retrieved successfully", response));
@@ -64,18 +65,21 @@ public class OrderController {
 
     @Operation(summary = "Get order resource preview", description = "Retrieves resource preview for an order (returns null if none)")
     @GetMapping("/{orderId}/resource-preview")
+    @PreAuthorize("@orderAuthorizationService.canViewOrder(#orderId)")
     public ResponseEntity<ApiResponse<Object>> getResourcePreview(@PathVariable String orderId) {
         return ResponseEntity.ok(ApiResponse.ok("Resource preview retrieved", null));
     }
 
     @Operation(summary = "Get order latest analysis", description = "Retrieves latest AI analysis for an order (returns null if none)")
     @GetMapping("/{orderId}/analysis/latest")
+    @PreAuthorize("@orderAuthorizationService.canViewOrder(#orderId)")
     public ResponseEntity<ApiResponse<Object>> getLatestAnalysis(@PathVariable String orderId) {
         return ResponseEntity.ok(ApiResponse.ok("Latest analysis retrieved", null));
     }
 
     @Operation(summary = "Approve an order", description = "Manager approves an order. Mission scheduling is assigned later by staff.")
     @PostMapping("/{orderId}/approve")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<OrderCreateResponse>> approveOrder(@PathVariable String orderId) {
         OrderCreateResponse order = orderService.approveOrder(orderId);
         return ResponseEntity.ok(ApiResponse.ok("Order approved successfully", order));
@@ -83,6 +87,7 @@ public class OrderController {
 
     @Operation(summary = "Submit approval decision", description = "Manager submits rejection or need-info decision with reason")
     @PostMapping("/{orderId}/approval")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<Void>> submitApproval(
             @PathVariable String orderId,
             @RequestBody java.util.Map<String, String> body) {
@@ -102,12 +107,14 @@ public class OrderController {
 
     @Operation(summary = "Get pending orders", description = "Manager views pending orders")
     @GetMapping("/pending")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<java.util.List<OrderCreateResponse>>> getPendingOrders() {
         return ResponseEntity.ok(ApiResponse.ok("Pending orders retrieved", orderService.getPendingOrders()));
     }
 
     @Operation(summary = "Get approved orders", description = "Staff views approved orders that can be scheduled into missions")
     @GetMapping("/approved")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<java.util.List<OrderCreateResponse>>> getApprovedOrders() {
         return ResponseEntity.ok(ApiResponse.ok("Approved orders retrieved", orderService.getApprovedOrders()));
     }

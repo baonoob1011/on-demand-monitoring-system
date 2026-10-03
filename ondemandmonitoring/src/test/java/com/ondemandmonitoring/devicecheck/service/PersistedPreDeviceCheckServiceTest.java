@@ -89,6 +89,7 @@ class PersistedPreDeviceCheckServiceTest {
     private static Mission mission(String id) {
         Mission mission = new Mission();
         mission.setId(id);
+        mission.setStatus(com.ondemandmonitoring.mission.enums.MissionStatus.CONNECTED);
         return mission;
     }
 

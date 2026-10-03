@@ -43,7 +43,7 @@ import com.ondemandmonitoring.planning.service.MissionPlanningService;
 import com.ondemandmonitoring.role.domain.Role;
 import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
-import com.ondemandmonitoring.user.repository.UserRepository;
+import com.ondemandmonitoring.user.service.IStaffDirectoryService;
 import com.ondemandmonitoring.userschedule.repository.UserScheduleRepository;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 
@@ -85,7 +85,7 @@ class MissionServiceTest {
     IMissionResultService missionResultService;
     IPreDeviceCheckCompletionService preDeviceCheckCompletionService;
     IPersistedPostDeviceCheckService persistedPostDeviceCheckService;
-    UserRepository userRepository;
+    IStaffDirectoryService staffDirectory;
     AuthenticatedUserResolver authenticatedUserResolver;
     UserScheduleRepository userScheduleRepository;
     MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
@@ -109,7 +109,7 @@ class MissionServiceTest {
         postDeviceCheckRepository = mock(PersistedPostDeviceCheckRepository.class);
         maintenanceTicketRepository = mock(MaintenanceTicketRepository.class);
         orderRepository = mock(OrderRepository.class);
-        userRepository = mock(UserRepository.class);
+        staffDirectory = mock(IStaffDirectoryService.class);
         authenticatedUserResolver = mock(AuthenticatedUserResolver.class);
         userScheduleRepository = mock(UserScheduleRepository.class);
         missionDeviceAssignmentRepository = mock(MissionDeviceAssignmentRepository.class);
@@ -151,7 +151,7 @@ class MissionServiceTest {
                 missionResultService,
                 preDeviceCheckCompletionService,
                 persistedPostDeviceCheckService,
-                userRepository,
+                staffDirectory,
                 authenticatedUserResolver,
                 userScheduleRepository,
                 missionDeviceAssignmentRepository,
@@ -219,16 +219,19 @@ class MissionServiceTest {
             staffUser.setIsActive(true);
             Role role = new Role();
             role.setCode(RoleCode.STAFF);
+            role.setActive(true);
             staffUser.setRole(role);
 
             when(missionRepository.findById("m-assign")).thenReturn(Optional.of(mission));
-            when(userRepository.findById("op-01")).thenReturn(Optional.of(staffUser));
+            when(staffDirectory.requireActiveStaff("op-01")).thenReturn(staffUser);
             when(missionDeviceAssignmentRepository.existsByMissionId("m-assign")).thenReturn(true);
+            when(missionStaffAssignmentRepository.findAllByMissionIdAndIsCurrentTrue("m-assign"))
+                    .thenReturn(List.of(staffAssignment(mission, "op-01", "PENDING")));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             AssignStaffRequest request = AssignStaffRequest.builder().staffId("op-01").build();
             assertThat(missionService.assignStaff("m-assign", request).getStatus())
-                    .isEqualTo(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
+                    .isEqualTo(MissionStatus.WAITING_CREW_CONFIRMATION);
             verifyNoInteractions(missionPlanningService);
         }
 
@@ -237,14 +240,17 @@ class MissionServiceTest {
         void acceptMission_success() {
             Mission mission = buildMission("m-1", MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
             when(missionRepository.findById("m-1")).thenReturn(Optional.of(mission));
-            when(missionStaffAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-1"))
-                    .thenReturn(Optional.of(staffAssignment(mission, "op-01", "PENDING")));
+            MissionStaffAssignment assignment = staffAssignment(mission, "op-01", "PENDING");
+            when(missionStaffAssignmentRepository.findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc("m-1", "op-01"))
+                    .thenReturn(List.of(assignment));
+            when(missionStaffAssignmentRepository.findAllByMissionIdAndIsCurrentTrue("m-1"))
+                    .thenReturn(List.of(assignment));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             MissionResponse result = missionService.acceptMission("m-1", "op-01");
 
             assertThat(result.getStatus()).isEqualTo(MissionStatus.SCHEDULED);
-            verify(missionStaffAssignmentRepository, atLeastOnce()).save(any());
+            verify(missionStaffAssignmentRepository).saveAll(any());
         }
 
         @Test
@@ -265,7 +271,7 @@ class MissionServiceTest {
 
             assertThatThrownBy(() -> missionService.acceptMission("m-1", "op-01"))
                     .isInstanceOf(ApiException.class)
-                    .hasMessageContaining("must be WAITING_OPERATOR_ACCEPTANCE");
+                    .hasMessageContaining("waiting for crew confirmation");
         }
 
         @Test
@@ -273,8 +279,6 @@ class MissionServiceTest {
         void acceptMission_wrongOperator_doesNotPlan() {
             Mission mission = buildMission("m-operator", MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
             when(missionRepository.findById("m-operator")).thenReturn(Optional.of(mission));
-            when(missionStaffAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-operator"))
-                    .thenReturn(Optional.of(staffAssignment(mission, "op-expected", "PENDING")));
 
             assertThatThrownBy(() -> missionService.acceptMission("m-operator", "op-other"))
                     .isInstanceOf(ApiException.class)
@@ -286,15 +290,15 @@ class MissionServiceTest {
         void rejectMission_success() {
             Mission mission = buildMission("m-2", MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
             MissionStaffAssignment assignment = staffAssignment(mission, "op-01", "PENDING");
-            when(missionStaffAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-2"))
-                    .thenReturn(Optional.of(assignment));
+            when(missionStaffAssignmentRepository.findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc("m-2", "op-01"))
+                    .thenReturn(List.of(assignment));
             when(missionRepository.findById("m-2")).thenReturn(Optional.of(mission));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             MissionResponse result = missionService.rejectMission("m-2", "op-01", "Trùng lịch cá nhân");
 
             assertThat(result.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
-            verify(missionStaffAssignmentRepository, atLeastOnce()).save(any());
+            verify(missionStaffAssignmentRepository).saveAll(any());
         }
 
         @Test
@@ -315,7 +319,7 @@ class MissionServiceTest {
 
             assertThatThrownBy(() -> missionService.rejectMission("m-2", "op-01", "Trùng lịch"))
                     .isInstanceOf(ApiException.class)
-                    .hasMessageContaining("must be WAITING_OPERATOR_ACCEPTANCE");
+                    .hasMessageContaining("waiting for crew confirmation");
         }
     }
 
@@ -340,12 +344,15 @@ class MissionServiceTest {
             MissionStaffAssignment msa = new MissionStaffAssignment();
             msa.setStaff(staff);
             msa.setIsCurrent(true);
+            msa.setAssignedRole(MissionStaffRole.PILOT);
+            msa.setResponseStatus(StaffResponseStatus.ACCEPTED);
 
             when(missionRepository.findById("m-gcs")).thenReturn(Optional.of(mission));
-            when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-gcs"))
-                    .thenReturn(Optional.of(mda));
-            when(missionStaffAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-gcs"))
-                    .thenReturn(Optional.of(msa));
+            when(missionDeviceAssignmentRepository.findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc("m-gcs"))
+                    .thenReturn(List.of(mda));
+            when(missionStaffAssignmentRepository.findAllByMissionIdAndIsCurrentTrue("m-gcs"))
+                    .thenReturn(List.of(msa));
+            when(deviceConnectionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(deviceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -359,6 +366,15 @@ class MissionServiceTest {
         @DisplayName("2. connectGcs success from CONNECTED status")
         void connectGcs_success_fromConnected() {
             Mission mission = buildMission("m-gcs2", MissionStatus.CONNECTED);
+            Device device = buildDevice("DEV-02", DeviceStatus.PREFLIGHT);
+            MissionDeviceAssignment deviceAssignment = new MissionDeviceAssignment();
+            deviceAssignment.setDevice(device);
+            deviceAssignment.setIsCurrent(true);
+            when(missionDeviceAssignmentRepository.findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc("m-gcs2"))
+                    .thenReturn(List.of(deviceAssignment));
+            when(missionStaffAssignmentRepository.findAllByMissionIdAndIsCurrentTrue("m-gcs2"))
+                    .thenReturn(List.of(staffAssignment(mission, "staff-01", "ACCEPTED")));
+            when(deviceConnectionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(missionRepository.findById("m-gcs2")).thenReturn(Optional.of(mission));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -408,8 +424,8 @@ class MissionServiceTest {
             MissionDeviceAssignment mda = new MissionDeviceAssignment();
             mda.setDevice(device);
             mda.setIsCurrent(true);
-            when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-lost"))
-                    .thenReturn(Optional.of(mda));
+            when(missionDeviceAssignmentRepository.findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc("m-lost"))
+                    .thenReturn(List.of(mda));
 
             DeviceConnection session = new DeviceConnection();
             session.setConnectionStatus("CONNECTED");
@@ -469,8 +485,10 @@ class MissionServiceTest {
             msa.setIsCurrent(true);
 
             when(missionRepository.findById("m-5")).thenReturn(Optional.of(mission));
-            when(missionStaffAssignmentRepository.findByMissionIdAndIsCurrentTrue("m-5"))
-                    .thenReturn(Optional.of(msa));
+            msa.setAssignedRole(MissionStaffRole.PILOT);
+            msa.setResponseStatus(StaffResponseStatus.ACCEPTED);
+            when(missionStaffAssignmentRepository.findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc("m-5", "op-new"))
+                    .thenReturn(List.of(msa));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             MissionResponse result = missionService.handoverControl("m-5", "op-new");
@@ -509,6 +527,7 @@ class MissionServiceTest {
 
             FlightToken token = new FlightToken();
             token.setTokenValue("valid-token");
+            token.setMissionId("m-7");
             token.setExpiresAt(Instant.now().plusSeconds(600));
             token.setUsed(false);
             token.setRevoked(false);
@@ -532,6 +551,7 @@ class MissionServiceTest {
 
             FlightToken expiredToken = new FlightToken();
             expiredToken.setTokenValue("expired-token");
+            expiredToken.setMissionId("m-7");
             expiredToken.setExpiresAt(Instant.now().minusSeconds(10));
             expiredToken.setUsed(false);
             expiredToken.setRevoked(false);
@@ -575,8 +595,8 @@ class MissionServiceTest {
             token.setRevoked(false);
 
             when(missionRepository.findById("m-7")).thenReturn(Optional.of(mission));
-            when(flightTokenRepository.findByMissionIdAndUsedFalseAndRevokedFalse("m-7"))
-                    .thenReturn(Optional.of(token));
+            when(flightTokenRepository.findAllByMissionIdAndUsedFalseAndRevokedFalseOrderByIssuedAtDesc("m-7"))
+                    .thenReturn(List.of(token));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(deviceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 

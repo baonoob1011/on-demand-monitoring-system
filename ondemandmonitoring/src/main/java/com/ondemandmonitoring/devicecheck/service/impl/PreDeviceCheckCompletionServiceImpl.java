@@ -16,12 +16,13 @@ import com.ondemandmonitoring.mission.domain.FlightToken;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
+import com.ondemandmonitoring.mission.enums.MissionStaffRole;
+import com.ondemandmonitoring.mission.enums.StaffResponseStatus;
 import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepository;
 import com.ondemandmonitoring.mission.service.IFlightTokenService;
-import com.ondemandmonitoring.user.domain.User;
-import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
+import org.springframework.security.access.prepost.PreAuthorize;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,10 +38,10 @@ public class PreDeviceCheckCompletionServiceImpl implements IPreDeviceCheckCompl
     private final MissionWeatherCheckRepository missionWeatherCheckRepository;
     private final IFlightTokenService flightTokenService;
     private final PreDeviceCheckCompletionMapper preDeviceCheckCompletionMapper;
-    private final AuthenticatedUserResolver authenticatedUserResolver;
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#missionId)")
     public PreDeviceCheckResponse complete(String missionId, String deviceId) {
         Mission mission = missionRepository.findById(missionId)
                 .orElseThrow(() -> new ApiException(
@@ -98,14 +99,12 @@ public class PreDeviceCheckCompletionServiceImpl implements IPreDeviceCheckCompl
     }
 
     private String getCurrentStaffId(String missionId) {
-        User currentUser = authenticatedUserResolver.getCurrentUser();
-        if (currentUser.getId() == null) {
-            return null;
-        }
-        String currentStaffId = currentUser.getId().toString();
         return missionStaffAssignmentRepository
-                .findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc(missionId, currentStaffId)
+                .findAllByMissionIdAndAssignedRoleAndIsCurrentTrue(missionId,
+                        MissionStaffRole.PILOT)
                 .stream()
+                .filter(entry -> entry.getResponseStatus() ==
+                        StaffResponseStatus.ACCEPTED)
                 .findFirst()
                 .map(assignment -> assignment.getStaff() != null && assignment.getStaff().getId() != null
                         ? assignment.getStaff().getId().toString()

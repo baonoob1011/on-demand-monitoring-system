@@ -21,7 +21,7 @@ public class PreDeviceMediaProbeController {
 
     @PostMapping(path = "/api/internal/v1/pre-device-checks/{runId}/media-probe",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('DRONE_OPERATOR') and @missionAuthorizationService.isAssignedStaffForPreDeviceCheck(#runId)")
+    @PreAuthorize("@deviceCheckAuthorizationService.canInspectPreCheck(#runId)")
     public ApiResponse<MediaProbeResponse> verify(
             @PathVariable String runId,
             @Valid @ModelAttribute MediaProbeRequest request) {

@@ -29,8 +29,9 @@ class MissionMediaAccessServiceTest {
     private final MissionDeviceAssignmentRepository deviceAssignments = mock(MissionDeviceAssignmentRepository.class);
     private final MissionStaffAssignmentRepository staffAssignments = mock(MissionStaffAssignmentRepository.class);
     private final AuthenticatedUserResolver currentUser = mock(AuthenticatedUserResolver.class);
+    private final IMissionAuthorizationService authorization = mock(IMissionAuthorizationService.class);
     private final IMissionMediaAccessService service =
-            new MissionMediaAccessServiceImpl(missions, deviceAssignments, staffAssignments, currentUser);
+            new MissionMediaAccessServiceImpl(missions, deviceAssignments, currentUser, authorization);
     private Mission mission;
 
     @BeforeEach
@@ -67,7 +68,9 @@ class MissionMediaAccessServiceTest {
     @Test
     void permitsPrivilegedOperatorButStillRequiresAssignedDevice() {
         authenticate(List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
-        assertThat(service.authorizeOperator("mission-id").isCaptureAllowed()).isTrue();
+        when(authorization.canViewMissionMedia("mission-id")).thenReturn(true);
+        assertThat(service.authorizeOperator("mission-id").isCaptureAllowed()).isFalse();
+        assertThatThrownBy(() -> service.requireUploadPermission("mission-id")).isInstanceOf(ApiException.class);
         assertThatThrownBy(() -> service.requireAssignedDevice("mission-id", "other-device"))
                 .isInstanceOf(ApiException.class).hasMessageContaining("Device is not assigned");
     }
@@ -75,6 +78,7 @@ class MissionMediaAccessServiceTest {
     @Test
     void completedMissionAllowsOnlyCompletedOperatorAndReleasedMissionDevice() {
         mission.setStatus(MissionStatus.COMPLETED);
+        when(authorization.canViewMissionMedia("mission-id")).thenReturn(true);
         User staffUser = new User();
         staffUser.setId("operator-id");
         var operator = new MissionStaffAssignment();
@@ -107,6 +111,8 @@ class MissionMediaAccessServiceTest {
     }
 
     private void assignOperator() {
+        when(authorization.canViewMissionMedia("mission-id")).thenReturn(true);
+        when(authorization.canOperatePayload("mission-id")).thenReturn(true);
         User staffUser = new User();
         staffUser.setId("operator-id");
         var assignment = new MissionStaffAssignment();

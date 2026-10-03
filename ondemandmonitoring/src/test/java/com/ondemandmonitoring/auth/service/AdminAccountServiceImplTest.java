@@ -35,7 +35,7 @@ class AdminAccountServiceImplTest {
 
     @Test
     void createsInvitedEmployeeAndAssignsMatchingGroup() {
-        CreateManagedAccountRequest request = request(RoleCode.DRONE_OPERATOR);
+        CreateManagedAccountRequest request = request(RoleCode.STAFF);
         when(users.findOptionalByEmail("operator@example.com")).thenReturn(Optional.empty());
         when(identityProvider.createInvitedUser(request)).thenReturn(new ManagedIdentity("uuid-user", "sub"));
 
@@ -43,9 +43,9 @@ class AdminAccountServiceImplTest {
 
         assertTrue(result.isInvitationSent());
         assertTrue(result.isPasswordChangeRequired());
-        verify(users).createManagedUser("operator@example.com", "Operator", RoleCode.DRONE_OPERATOR,
+        verify(users).createManagedUser("operator@example.com", "Operator", RoleCode.STAFF,
                 "uuid-user", "sub");
-        verify(identityProvider).addUserToGroup("uuid-user", "DRONE_OPERATOR");
+        verify(identityProvider).addUserToGroup("uuid-user", "STAFF");
     }
 
     @Test
@@ -60,7 +60,7 @@ class AdminAccountServiceImplTest {
 
     @Test
     void rejectsDuplicateEmailBeforeCreatingCognitoAccount() {
-        CreateManagedAccountRequest request = request(RoleCode.STAFF);
+        CreateManagedAccountRequest request = request(RoleCode.MANAGER);
         when(users.findOptionalByEmail("operator@example.com"))
                 .thenReturn(Optional.of(User.builder().build()));
 
@@ -72,7 +72,7 @@ class AdminAccountServiceImplTest {
 
     @Test
     void schedulesCleanupWhenManagedUserPersistenceFails() {
-        CreateManagedAccountRequest request = request(RoleCode.STAFF);
+        CreateManagedAccountRequest request = request(RoleCode.MANAGER);
         when(users.findOptionalByEmail(anyString())).thenReturn(Optional.empty());
         when(identityProvider.createInvitedUser(request)).thenReturn(new ManagedIdentity("uuid-user", "sub"));
         when(users.createManagedUser(anyString(), anyString(), any(), anyString(), anyString()))

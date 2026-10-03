@@ -75,7 +75,8 @@ class OrderServiceTest {
                 preferredTimeRepository,
                 zoneRepository,
                 authenticatedUserResolver,
-                orderMapper
+                orderMapper,
+                mock(com.ondemandmonitoring.mission.repository.MissionResultRepository.class)
         );
 
         String userId = UUID.randomUUID().toString();

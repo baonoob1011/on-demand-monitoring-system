@@ -21,6 +21,10 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfFilter;
+import org.springframework.security.web.util.matcher.RequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -33,9 +37,8 @@ public class SecurityConfig {
 
     private static final Set<String> BUSINESS_ROLE_GROUPS = Set.of(
             RoleCode.CUSTOMER.name(),
+            RoleCode.MANAGER.name(),
             RoleCode.STAFF.name(),
-            RoleCode.DRONE_OPERATOR.name(),
-            RoleCode.SYSTEM_OPERATOR.name(),
             RoleCode.ADMIN.name());
 
     @Value("${cors.address:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174}")
@@ -88,6 +91,17 @@ public class SecurityConfig {
     };
 
     @Bean
+    RequestMatcher cookieAuthenticationCsrfMatcher() {
+        var paths = PathPatternRequestMatcher.withDefaults();
+        RequestMatcher cookieEndpoints = new OrRequestMatcher(
+                paths.matcher("/api/auth/refresh"), paths.matcher("/api/auth/logout"),
+                paths.matcher("/api/v1/auth/refresh"), paths.matcher("/api/v1/auth/logout"));
+        // Business APIs authenticate only with Bearer tokens, never with cookies.
+        return request -> CsrfFilter.DEFAULT_CSRF_MATCHER.matches(request)
+                && cookieEndpoints.matches(request);
+    }
+
+    @Bean
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             @Qualifier("cognitoAccessTokenDecoder") JwtDecoder cognitoAccessTokenDecoder,
@@ -96,39 +110,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-                        .ignoringRequestMatchers(
-                                "/api/auth/register",
-                                "/api/auth/verify-otp",
-                                "/api/auth/resend-otp",
-                                "/api/auth/login",
-                                "/ws",
-                                "/ws/**",
-                                "/error",
-                                "/api/dev/ai/knowledge/index",
-                                "/.well-known/**",
-                                "/mcp/**",
-                                "/api/auth/first-login/change-password",
-                                "/api/auth/social/sync",
-                                "/api/auth/forgot-password",
-                                "/api/auth/reset-password",
-                                "/api/v1/auth/register",
-                                "/api/v1/auth/verify-otp",
-                                "/api/v1/auth/resend-otp",
-                                "/api/v1/auth/login",
-                                "/api/v1/auth/first-login/change-password",
-                                "/api/v1/auth/social/sync",
-                                "/api/v1/auth/forgot-password",
-                                "/api/v1/auth/reset-password",
-                                // Simulation Viewer APIs (PUT/POST/DELETE from browser JS)
-                                "/api/zones/**",
-                                "/api/thermal-sources/**",
-                                "/api/simulation-map/**",
-                                "/api/planning/environment/**",
-                                "/api/internal/v1/drone-telemetry/*",
-                                "/api/missions/**",
-                                "/api/missions/*/images",
-                                "/api/missions/*/media",
-                                "/api/orders/**"))
+                        .requireCsrfProtectionMatcher(cookieAuthenticationCsrfMatcher()))
 
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .headers(headers -> headers.frameOptions(frameOptions -> frameOptions.disable()))
@@ -162,7 +144,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(List.of(allowedOrigins.split(",")));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Operator-Id"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Operator-Id", "X-XSRF-TOKEN"));
         configuration.setExposedHeaders(List.of("Authorization"));
         configuration.setAllowCredentials(true);
 

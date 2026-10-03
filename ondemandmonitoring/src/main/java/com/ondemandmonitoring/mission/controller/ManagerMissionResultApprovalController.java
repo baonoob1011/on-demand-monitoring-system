@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/manager/mission-results")
-@PreAuthorize("hasAnyRole('STAFF', 'ADMIN', 'SYSTEM_OPERATOR')")
+@PreAuthorize("hasAnyRole('MANAGER', 'ADMIN')")
 @Validated
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)

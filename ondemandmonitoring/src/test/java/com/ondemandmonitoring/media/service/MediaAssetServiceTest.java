@@ -15,7 +15,7 @@ import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.impl.MediaAssetServiceImpl;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
-import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
+import com.ondemandmonitoring.mission.service.IMissionMediaAccessService;
 import java.io.InputStream;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -31,7 +31,7 @@ class MediaAssetServiceTest {
                 mock(Environment.class),
                 mock(IDeviceService.class),
                 mock(MediaAssetRepository.class),
-                mock(MissionDeviceAssignmentRepository.class));
+                mock(IMissionMediaAccessService.class));
 
         assertThatThrownBy(() -> service.upload("DEVICE-01", null))
                 .isInstanceOf(ApiException.class)
@@ -45,7 +45,7 @@ class MediaAssetServiceTest {
                 mock(Environment.class),
                 mock(IDeviceService.class),
                 mock(MediaAssetRepository.class),
-                mock(MissionDeviceAssignmentRepository.class));
+                mock(IMissionMediaAccessService.class));
         MultipartFile file = new org.springframework.mock.web.MockMultipartFile(
                 "file", "capture.txt", "text/plain", "not-an-image".getBytes());
 
@@ -61,7 +61,7 @@ class MediaAssetServiceTest {
                 mock(Environment.class),
                 mock(IDeviceService.class),
                 mock(MediaAssetRepository.class),
-                mock(MissionDeviceAssignmentRepository.class));
+                mock(IMissionMediaAccessService.class));
         MultipartFile file = new org.springframework.mock.web.MockMultipartFile(
                 "file", "clip.mp4", "video/mp4", "fake-mp4".getBytes());
 
@@ -75,15 +75,15 @@ class MediaAssetServiceTest {
         Environment environment = mock(Environment.class);
         IDeviceService deviceService = mock(IDeviceService.class);
         MediaAssetRepository mediaAssetRepository = mock(MediaAssetRepository.class);
-        MissionDeviceAssignmentRepository assignmentRepository = mock(MissionDeviceAssignmentRepository.class);
+        IMissionMediaAccessService assignmentRepository = mock(IMissionMediaAccessService.class);
         Device device = new Device();
         device.setId("DEVICE-01");
         device.setDeviceCode("DEVICE-01");
         MissionDeviceAssignment assignment = assignment("MISSION_001", device);
         when(environment.getProperty("device_IMAGE_STORAGE", "local")).thenReturn("local");
         when(deviceService.getEntityById("DEVICE-01")).thenReturn(device);
-        when(assignmentRepository.findByMissionIdAndDeviceIdAndIsCurrentTrue("MISSION_001", "DEVICE-01"))
-                .thenReturn(Optional.of(assignment));
+        when(assignmentRepository.requireDeviceAssignment("MISSION_001", "DEVICE-01"))
+                .thenReturn(assignment);
         when(mediaAssetRepository.save(any(MediaAsset.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         MediaAssetServiceImpl service = new MediaAssetServiceImpl(
@@ -108,15 +108,15 @@ class MediaAssetServiceTest {
         IDeviceService deviceService = mock(IDeviceService.class);
         MediaAssetRepository mediaAssetRepository = mock(MediaAssetRepository.class);
         IMediaObjectStorage objectStorage = mock(IMediaObjectStorage.class);
-        MissionDeviceAssignmentRepository assignmentRepository = mock(MissionDeviceAssignmentRepository.class);
+        IMissionMediaAccessService assignmentRepository = mock(IMissionMediaAccessService.class);
         Device device = new Device();
         device.setId("DEVICE-01");
         device.setDeviceCode("DEVICE-01");
         MissionDeviceAssignment assignment = assignment("MISSION_001", device);
         when(environment.getProperty("device_IMAGE_STORAGE", "local")).thenReturn("s3");
         when(deviceService.getEntityById("DEVICE-01")).thenReturn(device);
-        when(assignmentRepository.findByMissionIdAndDeviceIdAndIsCurrentTrue("MISSION_001", "DEVICE-01"))
-                .thenReturn(Optional.of(assignment));
+        when(assignmentRepository.requireDeviceAssignment("MISSION_001", "DEVICE-01"))
+                .thenReturn(assignment);
         when(objectStorage.bucket()).thenReturn("bucket");
         when(objectStorage.put(any(), any(), eq(8L), any(InputStream.class), any()))
                 .thenAnswer(invocation -> new IMediaObjectStorage.StoredObject(

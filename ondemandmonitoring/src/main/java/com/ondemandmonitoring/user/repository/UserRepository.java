@@ -7,12 +7,19 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.EntityGraph;
 
 public interface UserRepository extends JpaRepository<User, String>, JpaSpecificationExecutor<User> {
 
+    @Override
+    @EntityGraph(attributePaths = "role")
+    Optional<User> findById(String id);
+
+    @EntityGraph(attributePaths = "role")
     Optional<User> findByEmailIgnoreCase(String email);
 
     boolean existsByEmailIgnoreCase(String email);
 
+    @EntityGraph(attributePaths = "role")
     List<User> findAllByRole_CodeAndIsActiveTrueOrderByFullNameAsc(RoleCode roleCode);
 }

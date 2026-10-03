@@ -17,6 +17,7 @@ import com.ondemandmonitoring.mission.repository.MissionRepository;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import org.springframework.security.access.prepost.PreAuthorize;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,11 +34,16 @@ public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckS
 
     @Transactional
     @Override
+    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#missionId)")
     public PersistedPreDeviceCheckResponse start(String missionId) {
         Mission mission = missionRepository.findById(missionId)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.MISSION_NOT_FOUND,
                         "Mission not found: " + missionId));
+        if (mission.getStatus() != com.ondemandmonitoring.mission.enums.MissionStatus.CONNECTED
+                && mission.getStatus() != com.ondemandmonitoring.mission.enums.MissionStatus.PREFLIGHT_CHECKING) {
+            throw new ApiException(ErrorCode.MISSION_STATUS_INVALID, "Pre-device inspection requires a connected mission");
+        }
 
         PersistedPreDeviceCheck activeRun = runRepository
                 .findFirstByMissionIdOrderByCreatedAtDesc(missionId)
@@ -72,6 +78,7 @@ public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckS
 
     @Transactional(readOnly = true)
     @Override
+    @PreAuthorize("@missionAuthorizationService.canViewMission(#missionId)")
     public List<PersistedPreDeviceCheckResponse> history(String missionId) {
         ensureMission(missionId);
 
@@ -83,6 +90,7 @@ public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckS
 
     @Transactional(readOnly = true)
     @Override
+    @PreAuthorize("@missionAuthorizationService.canViewMission(#missionId)")
     public PersistedPreDeviceCheckResponse current(String missionId) {
         ensureMission(missionId);
 
@@ -93,6 +101,7 @@ public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckS
 
     @Transactional(readOnly = true)
     @Override
+    @PreAuthorize("@deviceCheckAuthorizationService.canViewPreCheck(#id)")
     public PersistedPreDeviceCheckResponse get(String id) {
         return PersistedPreDeviceCheckResponse.from(runRepository.findById(id)
                 .orElseThrow(() -> new ApiException(
@@ -102,6 +111,7 @@ public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckS
 
     @Transactional
     @Override
+    @PreAuthorize("@deviceCheckAuthorizationService.canInspectPreCheck(#id)")
     public PersistedPreDeviceCheckResponse update(String id, String type, PreDeviceCheckItemUpdateRequest request) {
         PersistedPreDeviceCheck run = runRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ApiException(

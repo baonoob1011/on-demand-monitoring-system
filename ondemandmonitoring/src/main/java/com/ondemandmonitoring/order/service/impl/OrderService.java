@@ -38,6 +38,7 @@ import org.locationtech.jts.geom.Point;
 import org.locationtech.jts.geom.Polygon;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 @Component
 @RequiredArgsConstructor
@@ -58,6 +59,7 @@ public class OrderService implements IOrderService {
 
     @Override
     @Transactional
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public OrderCreateResponse approveOrder(String orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
@@ -80,6 +82,7 @@ public class OrderService implements IOrderService {
 
     @Override
     @Transactional
+    @PreAuthorize("hasRole('CUSTOMER')")
     public OrderCreateResponse createOrder(OrderCreateRequest request) {
 
         // 1. Resolve Customer from logged-in user session
@@ -184,6 +187,7 @@ public class OrderService implements IOrderService {
 
     @Override
     @Transactional
+    @PreAuthorize("@orderAuthorizationService.canViewOrder(#orderId)")
     public OrderCreateResponse getOrderById(String orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
@@ -192,6 +196,7 @@ public class OrderService implements IOrderService {
 
     @Override
     @Transactional
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public void rejectOrder(String orderId, String reason) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
@@ -208,6 +213,7 @@ public class OrderService implements IOrderService {
 
     @Override
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public List<OrderCreateResponse> getPendingOrders() {
         return orderRepository.findByOrderStatusOrderByCreatedAtAsc(OrderStatus.PENDING)
                 .stream()
@@ -217,6 +223,7 @@ public class OrderService implements IOrderService {
 
     @Override
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public List<OrderCreateResponse> getApprovedOrders() {
         return orderRepository.findByOrderStatusOrderByCreatedAtAsc(OrderStatus.APPROVED)
                 .stream()
@@ -226,6 +233,7 @@ public class OrderService implements IOrderService {
 
     @Override
     @Transactional
+    @PreAuthorize("hasRole('CUSTOMER')")
     public List<OrderCreateResponse> getMyOrders(OrderStatus status) {
         User customer = authenticatedUserResolver.getCurrentUser();
         List<Order> orders = status == null
