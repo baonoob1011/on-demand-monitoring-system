@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-echo 'Waiting 35s for PX4 + Gazebo to fully initialize...'
-sleep 35
+if [ "${FAST_DEMO_MODE:-0}" = "1" ] || [ "${FAST_DEMO_MODE:-}" = "true" ]; then
+    echo 'Waiting 12s for fast PX4 light world to initialize...'
+    sleep 12
+else
+    echo 'Waiting 35s for PX4 + Gazebo to fully initialize...'
+    sleep 35
+fi
 
 PROJECT_PATH="${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 REPO_CONTROLLER="$PROJECT_PATH/drone"
@@ -23,11 +28,21 @@ mkdir -p video
 cp "$REPO_CONTROLLER/video/__init__.py" video/__init__.py
 cp "$REPO_CONTROLLER/video/video_recorder.py" video/video_recorder.py
 
+requested_sim_world="${SIM_WORLD:-}"
 if [ -f "$ENV_FILE" ]; then
     set -a
     # Strip Windows BOM/CRLF endings while keeping the source .env unchanged.
-    source <(sed '1s/^\xEF\xBB\xBF//; s/\r$//' "$ENV_FILE")
+    source <(sed '1s/^\xEF\xBB\xBF//; s/\r$//; /^MAPILLARY_ACCESS_TOKEN=/{s/\\|/|/g;s/|/\\|/g}' "$ENV_FILE")
     set +a
+fi
+if [ -n "$requested_sim_world" ]; then
+    SIM_WORLD="$requested_sim_world"
+    export SIM_WORLD
+fi
+if [ "$SIM_WORLD" = "light" ]; then
+    export GAZEBO_CAMERA_TOPIC="/world/default/model/x500_0/link/camera_link/sensor/camera_down/image"
+    export GAZEBO_CAMERA_DOWN_TOPIC="$GAZEBO_CAMERA_TOPIC"
+    export GAZEBO_CAMERA_FRONT_TOPIC="/world/default/model/x500_0/link/camera_link/sensor/camera_front/image"
 fi
 
 source "$DRONE_ENV/bin/activate"

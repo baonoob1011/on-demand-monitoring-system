@@ -14,6 +14,7 @@ import com.ondemandmonitoring.order.mapper.OrderMapper;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.IOrderService;
 import com.ondemandmonitoring.order.util.GeoReader;
+import com.ondemandmonitoring.order.util.ServiceAreaPolicy;
 import com.ondemandmonitoring.service.domain.DeliverableType;
 import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.service.repository.DeliverableTypeRepository;
@@ -23,8 +24,6 @@ import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import com.ondemandmonitoring.warehouse.domain.PreferredTime;
 import com.ondemandmonitoring.warehouse.repository.PreferredTimeRepository;
-import com.ondemandmonitoring.zone.domain.Zone;
-import com.ondemandmonitoring.zone.repository.ZoneRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.time.Instant;
@@ -52,7 +51,6 @@ public class OrderService implements IOrderService {
     DeliverableTypeRepository deliverableTypeRepository;
     ServiceDeliverableRepository serviceDeliverableRepository;
     PreferredTimeRepository preferredTimeRepository;
-    ZoneRepository zoneRepository;
     AuthenticatedUserResolver authenticatedUserResolver;
     OrderMapper orderMapper;
     MissionResultRepository missionResultRepository;
@@ -105,6 +103,10 @@ public class OrderService implements IOrderService {
         }
 
         // 5. Convert & validate GeoJSON geometries
+        if (!Double.isFinite(request.getLatitude()) || !Double.isFinite(request.getLongitude())
+                || Math.abs(request.getLatitude()) > 90 || Math.abs(request.getLongitude()) > 180) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Location must be valid WGS84 GPS coordinates");
+        }
         Point location = GeoReader.createPoint(request.getLongitude(), request.getLatitude());
         if (location == null) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Invalid location coordinates");
@@ -113,8 +115,7 @@ public class OrderService implements IOrderService {
         if (targetArea == null) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Invalid coverageArea GeoJSON");
         }
-
-        validatePointInsideZone(location);
+        ServiceAreaPolicy.assertSupported(location, targetArea);
 
         // 6. Validate Deliverables requirement
         if (request.getDeliverables() == null || request.getDeliverables().isEmpty()) {
@@ -162,27 +163,6 @@ public class OrderService implements IOrderService {
 
         Order savedOrder = orderRepository.save(order);
         return orderMapper.toResponse(savedOrder);
-    }
-
-    private void validatePointInsideZone(Point point) {
-        List<Zone> zones = zoneRepository.findAll();
-        if (zones.isEmpty()) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "No monitoring zones configured in the system");
-        }
-
-        boolean contains = false;
-        for (Zone zone : zones) {
-            if (zone.getPolygon() != null && (zone.getPolygon().contains(point) || zone.getPolygon().covers(point))) {
-                contains = true;
-                break;
-            }
-        }
-
-        if (!contains) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST,
-                    String.format("Location point [%f, %f] is not within any defined monitoring zone",
-                            point.getX(), point.getY()));
-        }
     }
 
     @Override

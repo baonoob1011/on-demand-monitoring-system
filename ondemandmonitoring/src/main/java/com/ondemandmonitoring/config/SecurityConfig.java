@@ -82,6 +82,8 @@ public class SecurityConfig {
             "/api/simulation-map/**",
             "/api/planning/environment",
             "/api/planning/environment/**",
+            "/api/geocoding/search",
+            "/api/geocoding/reverse",
             "/api/internal/v1/drone-telemetry/*",
             "/swagger-ui/**",
             "/error",
@@ -113,7 +115,16 @@ public class SecurityConfig {
                         .requireCsrfProtectionMatcher(cookieAuthenticationCsrfMatcher()))
 
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .headers(headers -> headers.frameOptions(frameOptions -> frameOptions.disable()))
+                .headers(headers -> headers
+                        .frameOptions(frameOptions -> frameOptions.disable())
+                        .contentSecurityPolicy(csp -> csp.policyDirectives(
+                                "default-src 'self'; " +
+                                        "img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://server.arcgisonline.com; " +
+                                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; " +
+                                        "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; " +
+                                        "font-src 'self' data:; " +
+                                        "connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; " +
+                                        "frame-ancestors 'self';")))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
                         .anyRequest().authenticated())

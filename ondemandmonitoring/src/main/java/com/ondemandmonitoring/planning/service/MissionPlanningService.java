@@ -14,6 +14,8 @@ public interface MissionPlanningService {
 
     MissionPlan generateAStarEnergyAwarePlan(String missionId);
 
+    MissionPlan generateGpsDirectPlan(String missionId);
+
     MissionPlan replanAStarEnergyAwareFromCurrentPosition(
             String missionId,
             double currentSimX,

@@ -16,6 +16,9 @@ public interface MissionDeviceAssignmentRepository extends JpaRepository<Mission
 
     boolean existsByMissionId(String missionId);
 
+    @Query("select a.device.id from MissionDeviceAssignment a where a.mission.id = :missionId and a.isCurrent = true order by a.createdAt desc")
+    List<String> findCurrentDeviceIds(String missionId);
+
     Optional<MissionDeviceAssignment> findFirstByMissionIdOrderByCreatedAtDesc(String missionId);
 
     Optional<MissionDeviceAssignment> findByMissionIdAndIsCurrentTrue(String missionId);

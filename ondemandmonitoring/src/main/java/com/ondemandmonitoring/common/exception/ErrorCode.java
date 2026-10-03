@@ -56,6 +56,11 @@ public enum ErrorCode {
     MEDIA_IDEMPOTENCY_CONFLICT("Local media ID conflicts with existing metadata", HttpStatus.CONFLICT),
     MEDIA_PROBE_INVALID("Media probe payload is invalid", HttpStatus.BAD_REQUEST),
     MEDIA_PROBE_FAILED("Media storage round-trip probe failed", HttpStatus.BAD_GATEWAY),
+    MAPILLARY_UNAVAILABLE("Dịch vụ ảnh tham chiếu Mapillary hiện không khả dụng", HttpStatus.BAD_GATEWAY),
+    MAPILLARY_IMAGE_NOT_FOUND("Không tìm thấy ảnh tham chiếu gần vị trí hiện tại của drone.", HttpStatus.NOT_FOUND),
+    WEATHER_PROVIDER_UNAVAILABLE("Hiện chưa thể tải dự báo thời tiết", HttpStatus.BAD_GATEWAY),
+    DRONE_TELEMETRY_UNAVAILABLE("Chưa có vị trí GPS hiện tại của drone.", HttpStatus.CONFLICT),
+    DRONE_TELEMETRY_STALE("Telemetry của drone đã quá cũ. Vui lòng chờ kết nối realtime.", HttpStatus.CONFLICT),
     /**
      * Service & DeliverableType Error Codes
      */

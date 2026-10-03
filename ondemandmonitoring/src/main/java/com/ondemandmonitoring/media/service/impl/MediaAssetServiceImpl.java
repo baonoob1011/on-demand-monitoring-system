@@ -144,6 +144,29 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
         }
     }
 
+    @Transactional
+    @Override
+    public MediaAsset uploadReference(String missionId, String deviceId, Instant capturedAt,
+            MultipartFile file, ReferenceProvenance provenance) {
+        MediaAsset stored = upload(missionId, deviceId, capturedAt, file, MEDIA_TYPE_IMAGE);
+        stored.setSourceType(provenance.sourceType());
+        stored.setSourceReferenceId(provenance.sourceReferenceId());
+        stored.setSourceCapturedAt(provenance.sourceCapturedAt());
+        stored.setSourceLatitude(provenance.sourceLatitude());
+        stored.setSourceLongitude(provenance.sourceLongitude());
+        stored.setCaptureLatitude(provenance.captureLatitude());
+        stored.setCaptureLongitude(provenance.captureLongitude());
+        stored.setCaptureAltitudeM(provenance.captureAltitudeM());
+        stored.setSourceDistanceMeters(provenance.sourceDistanceMeters());
+        return mediaAssetRepository.save(stored);
+    }
+
+    @Transactional(readOnly = true)
+    @Override
+    public java.util.Optional<MediaAsset> findRecentBySource(String missionId, String sourceType, Instant since) {
+        return mediaAssetRepository.findRecentBySourceType(missionId, sourceType, since).stream().findFirst();
+    }
+
     @Transactional(readOnly = true)
     @Override
     public MediaAsset getById(String mediaId) {
@@ -234,7 +257,9 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
     @Override
     public String createPresignedGetUrl(MediaAsset image) {
         if (STORAGE_PROVIDER_LOCAL.equalsIgnoreCase(image.getStorageProvider())) {
-            return image.getS3Url();
+            if (!migrateLocalToS3(image)) {
+                return image.getS3Url();
+            }
         }
 
         return objectStorage.createPresignedGetUrl(image.getS3Bucket(), image.getS3Key());
@@ -375,8 +400,48 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
         return mediaAssetRepository.save(image);
     }
 
+    /**
+     * Repairs media that was stored on the backend disk while S3 is now the configured storage:
+     * uploads the local file under a deterministic key and flips the record to S3. Best effort.
+     */
+    private boolean migrateLocalToS3(MediaAsset image) {
+        try {
+            if (!useS3Storage() || objectStorage.bucket() == null || objectStorage.bucket().isBlank()) {
+                return false;
+            }
+            Path localFile = Path.of(image.getS3Key());
+            if (!Files.isRegularFile(localFile)) {
+                return false;
+            }
+            String prefix = objectStorage.prefix();
+            String normalizedPrefix = prefix == null ? "" : prefix.strip().replaceAll("^/+|/+$", "");
+            String key = (normalizedPrefix.isBlank() ? "" : normalizedPrefix + "/")
+                    + "missions/" + safePathSegment(image.getMissionId()) + "/migrated/" + image.getId() + ".jpg";
+            StoredObject stored;
+            try (InputStream in = Files.newInputStream(localFile)) {
+                stored = objectStorage.put(key, image.getContentType(), Files.size(localFile), in, "[S3-MIGRATE]");
+            }
+            image.setStorageProvider(STORAGE_PROVIDER_S3);
+            image.setS3Bucket(stored.bucket());
+            image.setS3Key(stored.key());
+            image.setS3Url(stored.url());
+            mediaAssetRepository.save(image);
+            return true;
+        } catch (IOException | RuntimeException exception) {
+            log.warn("Cannot migrate local media {} to S3: {}", image.getId(), rootMessage(exception));
+            return false;
+        }
+    }
+
     private boolean useS3Storage() {
         String storage = environment.getProperty("device_IMAGE_STORAGE", "local");
+        if (STORAGE_PROVIDER_LOCAL.equalsIgnoreCase(storage)) {
+            // .env uses DRONE_IMAGE_STORAGE; fall back to it when the legacy key is not set.
+            String configured = environment.getProperty("DRONE_IMAGE_STORAGE");
+            if (configured != null && !configured.isBlank()) {
+                storage = configured;
+            }
+        }
         return STORAGE_PROVIDER_S3.equalsIgnoreCase(storage);
     }
 

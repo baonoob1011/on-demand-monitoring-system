@@ -1,0 +1,13 @@
+./.env: line 4: $'\r': command not found
+./.env: line 22: $'\r': command not found
+./.env: line 28: $'\r': command not found
+./.env: line 59: $'\r': command not found
+./.env: line 74: $'\r': command not found
+./.env: line 94: $'\r': command not found
+./.env: line 116: $'\r': command not found
+./.env: line 122: $'\r': command not found
+./.env: line 128: $'\r': command not found
+./.env: line 140: $'\r': command not found
+./.env: line 147: $'\r': command not found
+./.env: line 154: $'\r': command not found
+./.env: line 161: $'\r': command not found

@@ -72,7 +72,8 @@ class MissionPlanningServiceTest {
             aStarEnergyAwareRoutePlanner,
             simulationHomeProvider,
             planningEnvironment,
-            missionEnergyEstimator);
+            missionEnergyEstimator,
+            org.mockito.Mockito.mock(com.ondemandmonitoring.zone.repository.ZoneRepository.class));
 
     @Test
     void existingMissionWithOrderTargetPlansFromConfiguredHomeToOrderPoint() {
@@ -125,16 +126,17 @@ class MissionPlanningServiceTest {
     }
 
     @Test
-    void epsg4326LongitudeLatitudeIsNotSentToGazeboPlanner() {
-        Point longitudeLatitude = WGS84_GEOMETRY_FACTORY.createPoint(new Coordinate(-122.378, 37.7983));
+    void gpsCoordinatesAreAcceptedByDirectRouteValidation() {
+        Point longitudeLatitude = WGS84_GEOMETRY_FACTORY.createPoint(new Coordinate(106.701, 10.777));
         when(missionRepository.findByIdWithOrder("mission-1"))
                 .thenReturn(Optional.of(missionWithOrder(longitudeLatitude)));
 
-        assertThatThrownBy(() -> service.validateDirectRoute("mission-1"))
-                .isInstanceOf(ApiException.class)
-                .hasMessageContaining("EPSG:4326 longitude/latitude");
+        when(simulationHomeProvider.home()).thenReturn(new SimulationPoint(106.7009, 10.7769));
+        PlannedRoute expectedRoute = feasibleRoute();
+        when(directRoutePlanner.plan(106.7009, 10.7769, 106.701, 10.777)).thenReturn(expectedRoute);
 
-        verifyNoInteractions(directRoutePlanner);
+        assertThat(service.validateDirectRoute("mission-1")).isSameAs(expectedRoute);
+        verify(directRoutePlanner).plan(106.7009, 10.7769, 106.701, 10.777);
     }
 
     @Test
