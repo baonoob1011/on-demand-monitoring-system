@@ -11,6 +11,7 @@ import com.ondemandmonitoring.service.repository.ServiceRepository;
 import org.junit.jupiter.api.*;
 import org.mapstruct.factory.Mappers;
 import java.util.Optional;
+import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -96,5 +97,33 @@ class ServiceChecklistServiceImplTest {
         when(assignments.findByServiceIdAndChecklistId("s1", "c1")).thenReturn(Optional.of(link));
         assertEquals(3, useCase.updateOrder("s1", "c1", 3).getDisplayOrder());
         assertThrows(ApiException.class, () -> useCase.updateOrder("s1", "c1", -1));
+    }
+
+    @Test void customerReadsOnlyActiveTemplateWhileAdminSeesInactive() {
+        when(services.findById("s1")).thenReturn(Optional.of(service));
+        when(assignments.findAllByServiceIdAndChecklistIsActiveTrueOrderByDisplayOrderAscIdAsc("s1"))
+                .thenReturn(List.of(link()));
+        checklist.setIsActive(false);
+        when(assignments.findAllByServiceIdOrderByDisplayOrderAscIdAsc("s1")).thenReturn(List.of(link()));
+        assertEquals(1, useCase.getByService("s1", true).size());
+        assertFalse(useCase.getByService("s1", false).getFirst().getChecklistActive());
+    }
+
+    @Test void customerCannotLoadInactiveServiceButAdminCan() {
+        service.setIsActive(false);
+        when(services.findById("s1")).thenReturn(Optional.of(service));
+        assertEquals(ErrorCode.SERVICE_INACTIVE,
+                assertThrows(ApiException.class, () -> useCase.getByService("s1", true)).getErrorCode());
+        assertTrue(useCase.getByService("s1", false).isEmpty());
+    }
+
+    @Test void emptyTemplateAndReverseLookupAreSupported() {
+        when(services.findById("s1")).thenReturn(Optional.of(service));
+        assertTrue(useCase.getByService("s1", true).isEmpty());
+        when(checklists.existsById("c1")).thenReturn(true);
+        when(assignments.findAllByChecklistIdOrderByServiceNameAscServiceIdAsc("c1")).thenReturn(List.of(link()));
+        assertEquals("s1", useCase.getByChecklist("c1").getFirst().getServiceId());
+        assertEquals(ErrorCode.CHECKLIST_NOT_FOUND,
+                assertThrows(ApiException.class, () -> useCase.getByChecklist("missing")).getErrorCode());
     }
 }

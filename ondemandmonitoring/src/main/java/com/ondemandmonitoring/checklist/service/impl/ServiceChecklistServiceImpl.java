@@ -10,6 +10,7 @@ import com.ondemandmonitoring.common.exception.*;
 import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.service.repository.ServiceRepository;
 import lombok.RequiredArgsConstructor;
+import java.util.List;
 import org.springframework.transaction.annotation.Transactional;
 
 @org.springframework.stereotype.Service
@@ -58,6 +59,28 @@ public class ServiceChecklistServiceImpl implements IServiceChecklistService {
     private Service lockService(String id) {
         return services.findByIdForUpdate(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.SERVICE_NOT_FOUND));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ServiceChecklistResponse> getByService(String serviceId, boolean activeOnly) {
+        Service service = services.findById(serviceId)
+                .orElseThrow(() -> new ApiException(ErrorCode.SERVICE_NOT_FOUND));
+        if (activeOnly && !Boolean.TRUE.equals(service.getIsActive())) {
+            throw new ApiException(ErrorCode.SERVICE_INACTIVE);
+        }
+        List<ServiceChecklist> rows = activeOnly
+                ? assignments.findAllByServiceIdAndChecklistIsActiveTrueOrderByDisplayOrderAscIdAsc(serviceId)
+                : assignments.findAllByServiceIdOrderByDisplayOrderAscIdAsc(serviceId);
+        return rows.stream().map(mapper::toResponse).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ServiceChecklistResponse> getByChecklist(String checklistId) {
+        if (!checklists.existsById(checklistId)) throw new ApiException(ErrorCode.CHECKLIST_NOT_FOUND);
+        return assignments.findAllByChecklistIdOrderByServiceNameAscServiceIdAsc(checklistId)
+                .stream().map(mapper::toResponse).toList();
     }
 
     private ServiceChecklist assignment(String serviceId, String checklistId) {

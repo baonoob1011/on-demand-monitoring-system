@@ -5,6 +5,7 @@ import com.ondemandmonitoring.checklist.dto.response.ServiceChecklistResponse;
 import com.ondemandmonitoring.checklist.service.IServiceChecklistService;
 import com.ondemandmonitoring.common.api.ApiResponse;
 import jakarta.validation.Valid;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -16,6 +17,11 @@ import org.springframework.web.bind.annotation.*;
 @PreAuthorize("hasRole('ADMIN')")
 public class ServiceChecklistController {
     private final IServiceChecklistService service;
+
+    @GetMapping
+    public ApiResponse<List<ServiceChecklistResponse>> getAll(@PathVariable String serviceId) {
+        return ApiResponse.ok(service.getByService(serviceId, false));
+    }
 
     @PostMapping
     public ResponseEntity<ApiResponse<ServiceChecklistResponse>> assign(
