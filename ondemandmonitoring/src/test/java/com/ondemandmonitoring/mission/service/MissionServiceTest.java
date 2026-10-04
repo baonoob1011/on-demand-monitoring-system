@@ -184,6 +184,33 @@ class MissionServiceTest {
     }
 
     @Test
+    void creationLocksOrderBeforeCheckingExistingMission() {
+        var order = new com.ondemandmonitoring.order.domain.Order();
+        order.setId("order-1");
+        order.setOrderStatus(com.ondemandmonitoring.order.enums.OrderStatus.IN_PROGRESS);
+        var existing = new Mission(); existing.setId("mission-1");
+        var request = new com.ondemandmonitoring.mission.dto.request.MissionCreateRequest();
+        request.setOrderId(order.getId());
+        when(orderRepository.findByIdForUpdate(order.getId())).thenReturn(Optional.of(order));
+        when(missionRepository.findByOrderId(order.getId())).thenReturn(Optional.of(existing));
+        assertThat(missionService.createMission(request).getId()).isEqualTo(existing.getId());
+        var ordered = inOrder(orderRepository, missionRepository);
+        ordered.verify(orderRepository).findByIdForUpdate(order.getId());
+        ordered.verify(missionRepository).findByOrderId(order.getId());
+        verify(missionRepository, never()).save(any());
+    }
+
+    @Test
+    void creationDoesNotTreatUnrelatedDatabaseFailureAsDuplicate() {
+        var request = new com.ondemandmonitoring.mission.dto.request.MissionCreateRequest();
+        request.setOrderId("order-1");
+        var failure = new org.springframework.dao.DataAccessResourceFailureException("Database unavailable");
+        when(orderRepository.findByIdForUpdate("order-1")).thenThrow(failure);
+        assertThatThrownBy(() -> missionService.createMission(request)).isSameAs(failure);
+        verifyNoInteractions(missionRepository);
+    }
+
+    @Test
     void searchStaffMissionsMapsRepositoryPage() {
         Mission mission = new Mission();
         mission.setMissionCode("MS-001");

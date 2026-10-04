@@ -14,7 +14,7 @@ import java.time.Instant;
 @Getter
 @Setter
 @Entity
-@Table(name = "missions")
+@Table(name = "missions", uniqueConstraints = @UniqueConstraint(name = "uk_missions_order", columnNames = "order_id"))
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class Mission extends BaseEntity {
 
@@ -26,8 +26,8 @@ public class Mission extends BaseEntity {
     MissionStatus status;
 
     // ===== Relationship to Order =====
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "order_id")
+    @OneToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "order_id", nullable = false, unique = true)
     Order order;
 
     // ===== Schedule =====

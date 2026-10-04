@@ -164,14 +164,14 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canManageMissions()")
     public MissionResponse createMission(MissionCreateRequest request) {
+        Order order = orderRepository.findByIdForUpdate(request.getOrderId())
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
+                        "Order not found with id: " + request.getOrderId()));
         var existingMission = missionRepository.findByOrderId(request.getOrderId());
         if (existingMission.isPresent()) {
             return missionMapper.toResponse(existingMission.get());
         }
 
-        Order order = orderRepository.findById(request.getOrderId())
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
-                        "Order not found with id: " + request.getOrderId()));
         if (order.getOrderStatus() != OrderStatus.APPROVED) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
                     "Order status must be APPROVED to create a mission");
