@@ -20,6 +20,7 @@ import com.ondemandmonitoring.order.mapper.OrderMapper;
 import org.mapstruct.factory.Mappers;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.impl.OrderService;
+import com.ondemandmonitoring.order.service.IOrderChecklistSnapshotService;
 import com.ondemandmonitoring.service.domain.DeliverableType;
 import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.service.repository.DeliverableTypeRepository;
@@ -68,7 +69,8 @@ class OrderServiceTest {
                 preferredTimeRepository,
                 authenticatedUserResolver,
                 orderMapper,
-                missionResultRepository
+                missionResultRepository,
+                mock(IOrderChecklistSnapshotService.class)
         );
 
         String userId = UUID.randomUUID().toString();
@@ -100,7 +102,7 @@ class OrderServiceTest {
         DeliverableType delType = DeliverableType.builder().name("Photo Map").defaultFormat("JPEG").build();
         delType.setId("dt-1");
 
-        when(serviceRepository.findById("srv-1")).thenReturn(Optional.of(service));
+        when(serviceRepository.findByIdForUpdate("srv-1")).thenReturn(Optional.of(service));
         when(preferredTimeRepository.findById("pt-1")).thenReturn(Optional.of(preferredTime));
         when(deliverableTypeRepository.findById("dt-1")).thenReturn(Optional.of(delType));
         when(serviceDeliverableRepository.existsByServiceIdAndDeliverableTypeId("srv-1", "dt-1")).thenReturn(true);
@@ -170,7 +172,7 @@ class OrderServiceTest {
         DeliverableType delType = DeliverableType.builder().name("Photo Map").build();
         delType.setId("dt-1");
 
-        when(serviceRepository.findById("srv-1")).thenReturn(Optional.of(service));
+        when(serviceRepository.findByIdForUpdate("srv-1")).thenReturn(Optional.of(service));
         when(preferredTimeRepository.findById("pt-1")).thenReturn(Optional.of(preferredTime));
         when(deliverableTypeRepository.findById("dt-1")).thenReturn(Optional.of(delType));
         when(serviceDeliverableRepository.existsByServiceIdAndDeliverableTypeId("srv-1", "dt-1")).thenReturn(true);

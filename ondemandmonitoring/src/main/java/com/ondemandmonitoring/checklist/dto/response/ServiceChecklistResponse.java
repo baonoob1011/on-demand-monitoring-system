@@ -15,4 +15,5 @@ public class ServiceChecklistResponse {
     private Boolean checklistActive;
     private int displayOrder;
     private Long version;
+    private Long checklistVersion;
 }

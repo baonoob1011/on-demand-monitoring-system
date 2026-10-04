@@ -9,6 +9,29 @@ import com.ondemandmonitoring.checklist.service.impl.*;
 import com.ondemandmonitoring.common.exception.*;
 import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.service.repository.ServiceRepository;
+import com.ondemandmonitoring.order.domain.Order;
+import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
+import com.ondemandmonitoring.order.dto.request.OrderChecklistItemRequest;
+import com.ondemandmonitoring.order.dto.request.OrderDeliverableRequest;
+import com.ondemandmonitoring.order.repository.OrderRepository;
+import com.ondemandmonitoring.order.repository.OrderChecklistItemRepository;
+import com.ondemandmonitoring.order.mapper.OrderMapper;
+import com.ondemandmonitoring.order.mapper.OrderChecklistItemMapper;
+import com.ondemandmonitoring.order.service.IOrderService;
+import com.ondemandmonitoring.order.service.IOrderChecklistSnapshotService;
+import com.ondemandmonitoring.order.service.impl.OrderService;
+import com.ondemandmonitoring.order.service.impl.OrderChecklistSnapshotService;
+import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
+import com.ondemandmonitoring.user.domain.User;
+import com.ondemandmonitoring.role.domain.Role;
+import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.warehouse.domain.PreferredTime;
+import com.ondemandmonitoring.warehouse.enums.PreferredTimeCode;
+import com.ondemandmonitoring.service.domain.DeliverableType;
+import com.ondemandmonitoring.service.repository.DeliverableTypeRepository;
+import com.ondemandmonitoring.service.repository.ServiceDeliverableRepository;
+import com.ondemandmonitoring.warehouse.repository.PreferredTimeRepository;
+import com.ondemandmonitoring.mission.repository.MissionResultRepository;
 import jakarta.persistence.EntityManagerFactory;
 import java.util.*;
 import java.util.concurrent.*;
@@ -33,6 +56,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.support.TransactionTemplate;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 /** Opt-in: Hibernate creates tables only in a random schema of a dedicated local test database. */
 @SpringJUnitConfig(ChecklistPostgresTest.Config.class)
@@ -50,13 +74,25 @@ class ChecklistPostgresTest {
     @Autowired PlatformTransactionManager transactionManager;
     @Autowired DataSource dataSource;
     @Autowired EntityManagerFactory entityManagerFactory;
+    @Autowired IOrderService orderService;
+    @Autowired IOrderChecklistSnapshotService snapshotService;
+    @Autowired OrderRepository orders;
+    @Autowired OrderChecklistItemRepository snapshots;
+    @Autowired AuthenticatedUserResolver resolver;
+    @Autowired PreferredTimeRepository times;
+    @Autowired DeliverableTypeRepository deliverables;
+    @Autowired ServiceDeliverableRepository serviceDeliverables;
     TransactionTemplate transaction;
 
     @BeforeEach void prepare() {
         transaction = new TransactionTemplate(transactionManager);
+        reset(resolver, times, deliverables, serviceDeliverables);
         transaction.executeWithoutResult(status -> {
+            snapshots.deleteAllInBatch(); orders.deleteAll();
+            orders.flush();
             links.deleteAllInBatch(); definitions.deleteAllInBatch(); services.deleteAllInBatch();
         });
+        new JdbcTemplate(dataSource).execute("TRUNCATE users, roles, preferred_times, deliverable_types CASCADE");
     }
 
     @AfterAll void cleanup() {
@@ -191,6 +227,224 @@ class ChecklistPostgresTest {
         }
     }
 
+
+    OrderCreateRequest orderRequest(String serviceId) {
+        transaction.executeWithoutResult(status -> {
+            var em = SharedEntityManagerCreator.createSharedEntityManager(entityManagerFactory);
+            var role = Role.builder().code(RoleCode.CUSTOMER).name("Customer").active(true).systemRole(true).build();
+            em.persist(role);
+            var user = User.builder().fullName("Snapshot customer").email("snapshot@test.local").role(role).build();
+            em.persist(user);
+            var time = PreferredTime.builder().code(PreferredTimeCode.MORNING).name("Morning")
+                    .startTime(java.time.LocalTime.of(7, 0)).endTime(java.time.LocalTime.of(11, 0)).build();
+            em.persist(time);
+            var type = DeliverableType.builder().name("Photos").isActive(true).defaultFormat("JPG").build();
+            em.persist(type); em.flush();
+            when(resolver.getCurrentUser()).thenReturn(user);
+            when(times.findById(time.getId())).thenReturn(Optional.of(time));
+            when(deliverables.findById(type.getId())).thenReturn(Optional.of(type));
+            when(serviceDeliverables.existsByServiceIdAndDeliverableTypeId(serviceId, type.getId())).thenReturn(true);
+        });
+        var timeId = new JdbcTemplate(dataSource).queryForObject("select id from preferred_times", String.class);
+        var typeId = new JdbcTemplate(dataSource).queryForObject("select id from deliverable_types", String.class);
+        return OrderCreateRequest.builder().title("Snapshot order").serviceId(serviceId).preferredTimeId(timeId)
+                .preferredDateFrom(java.time.LocalDate.now()).preferredDateTo(java.time.LocalDate.now().plusDays(2))
+                .longitude(106.7005).latitude(10.7765)
+                .coverageArea(Map.of("type", "Polygon", "coordinates", List.of(List.of(
+                        List.of(106.7000, 10.7760), List.of(106.7010, 10.7760),
+                        List.of(106.7010, 10.7770), List.of(106.7000, 10.7770), List.of(106.7000, 10.7760)))))
+                .deliverables(List.of(OrderDeliverableRequest.builder().deliverableTypeId(typeId)
+                        .requirement(Map.of("resolution", "4K")).build())).build();
+    }
+
+    OrderChecklistItemRequest selected(String id, String override) {
+        var item = new OrderChecklistItemRequest();
+        item.setSourceChecklistId(id); item.setContentOverride(override);
+        if (id != null) item.setExpectedChecklistVersion(catalog.getById(id).getVersion());
+        return item;
+    }
+
+    @Test void orderCapturesDefaultsAndCatalogChangesNeverAlterHistory() {
+        String s = service("A"), c = checklist("Original");
+        assignments.assign(s, assignment(c, 0));
+        var result = orderService.createOrder(orderRequest(s));
+        assertNotNull(result.getChecklistSnapshotAt());
+        assertEquals("Original", result.getChecklistItems().getFirst().getContent());
+        String stableId = result.getChecklistItems().getFirst().getId();
+        var edit = new ChecklistRequest(); edit.setContent("Changed");
+        catalog.update(c, edit);
+        catalog.updateStatus(c, false);
+        assignments.unassign(s, c);
+        var historical = orderService.getOrderById(result.getId()).getChecklistItems().getFirst();
+        assertEquals("Original", historical.getContent()); assertEquals(stableId, historical.getId());
+        assertEquals(1, orderService.getPendingOrders().getFirst().getChecklistItems().size());
+        assertEquals(1, orderService.getMyOrders(null).getFirst().getChecklistItems().size());
+        orderService.approveOrder(result.getId());
+        assertEquals(stableId, orderService.getApprovedOrders().getFirst().getChecklistItems().getFirst().getId());
+    }
+
+    @Test void mixedSnapshotSurvivesCatalogEditDeactivationAndUnassignment() {
+        String s = service("History"), c1 = checklist("Check emergency exits"), c2 = checklist("Check PPE");
+        assignments.assign(s, assignment(c1, 0)); assignments.assign(s, assignment(c2, 1));
+        var request = orderRequest(s);
+        request.setChecklistItems(List.of(selected(c1, "Check emergency exits on floors 1-3"),
+                selected(c2, null), selected(null, "Check temporary safety barriers")));
+        var created = orderService.createOrder(request);
+        var before = created.getChecklistItems();
+        var persistedSnapshotAt = orderService.getOrderById(created.getId()).getChecklistSnapshotAt();
+        var edit = new ChecklistRequest(); edit.setContent("New catalog requirement");
+        catalog.update(c1, edit); catalog.updateStatus(c2, false);
+        assignments.unassign(s, c1); assignments.unassign(s, c2);
+        var reloaded = orderService.getOrderById(created.getId());
+        assertEquals(persistedSnapshotAt, reloaded.getChecklistSnapshotAt());
+        assertEquals(before.stream().map(item -> item.getId()).toList(),
+                reloaded.getChecklistItems().stream().map(item -> item.getId()).toList());
+        assertEquals(List.of("Check emergency exits on floors 1-3", "Check PPE", "Check temporary safety barriers"),
+                reloaded.getChecklistItems().stream().map(item -> item.getContent()).toList());
+        assertEquals(c1, reloaded.getChecklistItems().get(0).getSourceChecklistId());
+        assertEquals(c2, reloaded.getChecklistItems().get(1).getSourceChecklistId());
+        assertNull(reloaded.getChecklistItems().get(2).getSourceChecklistId());
+        assertEquals(com.ondemandmonitoring.order.enums.OrderChecklistSourceType.SERVICE_TEMPLATE,
+                reloaded.getChecklistItems().get(0).getSourceType());
+        assertEquals(com.ondemandmonitoring.order.enums.OrderChecklistSourceType.CUSTOMER_CUSTOM,
+                reloaded.getChecklistItems().get(2).getSourceType());
+    }
+
+    @Test void orderSupportsSubsetEditedCustomAndExplicitEmptySnapshots() {
+        String s = service("A"), c1 = checklist("Original"), c2 = checklist("Omitted");
+        assignments.assign(s, assignment(c1, 0)); assignments.assign(s, assignment(c2, 1));
+        var request = orderRequest(s);
+        request.setChecklistItems(List.of(selected(c1, "Customer edited"), selected(null, "Customer custom")));
+        var result = orderService.createOrder(request);
+        assertEquals(List.of("Customer edited", "Customer custom"),
+                result.getChecklistItems().stream().map(item -> item.getContent()).toList());
+        assertEquals("Original", catalog.getById(c1).getContent());
+        request.setChecklistItems(List.of());
+        var empty = orderService.createOrder(request);
+        assertTrue(empty.getChecklistItems().isEmpty());
+        assertNotNull(orderService.getOrderById(empty.getId()).getChecklistSnapshotAt());
+    }
+
+    @Test void invalidItemRollsBackOrderAndDeliverables() {
+        String s = service("A"), c = checklist("Valid");
+        assignments.assign(s, assignment(c, 0));
+        var request = orderRequest(s);
+        request.setChecklistItems(List.of(selected(c, null), selected(null, " ")));
+        assertThrows(ApiException.class, () -> orderService.createOrder(request));
+        assertEquals(0, orders.count()); assertEquals(0, snapshots.count());
+        assertEquals(0, new JdbcTemplate(dataSource).queryForObject("select count(*) from order_deliverables", Integer.class));
+    }
+
+    @Test void snapshotPersistenceFailureRollsBackPreviouslyInsertedItemsAndOrder() {
+        String s = service("A");
+        var request = orderRequest(s);
+        request.setChecklistItems(List.of(selected(null, "Valid"), selected(null, "FAIL")));
+        var jdbc = new JdbcTemplate(dataSource);
+        jdbc.execute("ALTER TABLE order_checklist_items ADD CONSTRAINT fixture_reject_content CHECK (content <> 'FAIL')");
+        try {
+            assertThrows(DataIntegrityViolationException.class, () -> orderService.createOrder(request));
+            assertEquals(0, orders.count()); assertEquals(0, snapshots.count());
+            assertEquals(0, jdbc.queryForObject("select count(*) from order_deliverables", Integer.class));
+        } finally {
+            jdbc.execute("ALTER TABLE order_checklist_items DROP CONSTRAINT fixture_reject_content");
+        }
+    }
+
+    @Test void sourceValidationRejectsForeignInactiveDuplicateAndStaleTemplates() {
+        String s = service("A"), foreign = checklist("Foreign"), c = checklist("Valid");
+        assignments.assign(s, assignment(c, 0));
+        var request = orderRequest(s);
+        request.setChecklistItems(List.of(selected(foreign, null)));
+        assertThrows(ApiException.class, () -> orderService.createOrder(request));
+        request.setChecklistItems(List.of(selected(c, null), selected(c, null)));
+        assertThrows(ApiException.class, () -> orderService.createOrder(request));
+        request.setChecklistItems(List.of(selected(c, null)));
+        catalog.updateStatus(c, false);
+        assertThrows(ApiException.class, () -> orderService.createOrder(request));
+        catalog.updateStatus(c, true);
+        var stale = selected(c, null); stale.setExpectedChecklistVersion(0L);
+        request.setChecklistItems(List.of(stale));
+        assertThrows(ApiException.class, () -> orderService.createOrder(request));
+        assertEquals(0, orders.count());
+    }
+
+    @Test void historicalReadUsesOneBatchQueryAndNoCatalogContentJoin() {
+        String s = service("A"), c = checklist("Original");
+        assignments.assign(s, assignment(c, 0));
+        var request = orderRequest(s);
+        var first = orderService.createOrder(request);
+        var second = orderService.createOrder(request);
+        var statistics = entityManagerFactory.unwrap(org.hibernate.SessionFactory.class).getStatistics();
+        statistics.clear();
+        var items = snapshotService.getByOrders(List.of(first.getId(), second.getId()));
+        assertEquals(2, items.size()); assertEquals(1, statistics.getPrepareStatementCount());
+    }
+
+    @Test void templateEditBeforeCatalogLockIsDetectedAndWholeOrderRollsBack() throws Exception {
+        String s = service("A"), c = checklist("Original");
+        assignments.assign(s, assignment(c, 0));
+        var request = orderRequest(s); request.setChecklistItems(List.of(selected(c, null)));
+        CountDownLatch locked = new CountDownLatch(1), release = new CountDownLatch(1);
+        try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
+            Future<?> editor = pool.submit(() -> transaction.executeWithoutResult(status -> {
+                var row = definitions.findByIdForUpdate(c).orElseThrow();
+                row.setContent("Concurrent edit"); row.setNormalizedContent("concurrent edit");
+                definitions.saveAndFlush(row); locked.countDown();
+                try {
+                    if (!release.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("Test timeout");
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt(); throw new IllegalStateException(exception);
+                }
+            }));
+            assertTrue(locked.await(5, TimeUnit.SECONDS));
+            Future<?> customer = pool.submit(() -> orderService.createOrder(request));
+            release.countDown(); editor.get(10, TimeUnit.SECONDS);
+            var exception = assertThrows(ExecutionException.class, () -> customer.get(10, TimeUnit.SECONDS));
+            assertEquals(ErrorCode.ORDER_CHECKLIST_TEMPLATE_CHANGED, ((ApiException) exception.getCause()).getErrorCode());
+            assertEquals(0, orders.count()); assertEquals(0, snapshots.count());
+        } finally { release.countDown(); }
+    }
+
+    @Test void snapshotCaptureRequiresTransactionAndCannotBeRepeated() {
+        String s = service("A");
+        var request = orderRequest(s);
+        var created = orderService.createOrder(request);
+        Order detached = orders.findById(created.getId()).orElseThrow();
+        assertThrows(org.springframework.transaction.IllegalTransactionStateException.class,
+                () -> snapshotService.capture(detached, List.of()));
+        assertThrows(ApiException.class, () -> transaction.execute(status -> snapshotService.capture(detached, List.of())));
+    }
+
+    @Test void snapshotDatabaseConstraintsProtectSourceAndShape() {
+        String s = service("A"), c = checklist("Original");
+        assignments.assign(s, assignment(c, 0));
+        var created = orderService.createOrder(orderRequest(s));
+        var jdbc = new JdbcTemplate(dataSource);
+        String sql = "INSERT INTO order_checklist_items(id, order_id, source_checklist_id, content, display_order, source_type, created_at, version) VALUES (?, ?, ?, 'Copied', 0, ?, now(), 0)";
+        var duplicate = assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(sql,
+                UUID.randomUUID().toString(), created.getId(), c, "SERVICE_TEMPLATE"));
+        assertTrue(duplicate.getMostSpecificCause().getMessage().contains("uk_order_checklist_source"));
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(sql,
+                UUID.randomUUID().toString(), created.getId(), "missing", "SERVICE_TEMPLATE"));
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(sql,
+                UUID.randomUUID().toString(), created.getId(), c, "CUSTOMER_CUSTOM"));
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(sql,
+                UUID.randomUUID().toString(), created.getId(), null, "SERVICE_TEMPLATE"));
+        assertThrows(DataIntegrityViolationException.class,
+                () -> jdbc.update("DELETE FROM checklist_definitions WHERE id = ?", c));
+        assertEquals(1, snapshots.count());
+    }
+
+    @Test void legacyOrderWithoutSnapshotIsNotBackfilledFromCurrentTemplate() {
+        String s = service("A"), c = checklist("Current template");
+        assignments.assign(s, assignment(c, 0));
+        var request = orderRequest(s); request.setChecklistItems(List.of());
+        var created = orderService.createOrder(request);
+        new JdbcTemplate(dataSource).update("UPDATE orders SET checklist_snapshot_at = null WHERE id = ?", created.getId());
+        var legacy = orderService.getOrderById(created.getId());
+        assertNull(legacy.getChecklistSnapshotAt());
+        assertTrue(legacy.getChecklistItems().isEmpty());
+    }
     private List<Object> race(Callable<?> action) throws Exception {
         CountDownLatch ready = new CountDownLatch(2), start = new CountDownLatch(1);
         try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
@@ -207,7 +461,7 @@ class ChecklistPostgresTest {
     @Configuration
     @EnableTransactionManagement
     @EnableJpaAuditing
-    @EnableJpaRepositories(basePackageClasses = ChecklistDefinitionRepository.class)
+    @EnableJpaRepositories(basePackageClasses = {ChecklistDefinitionRepository.class, OrderRepository.class})
     static class Config {
         @Bean DataSource dataSource() {
             String url = System.getenv("ODMS_CHECKLIST_TEST_JDBC_URL");
@@ -241,6 +495,24 @@ class ChecklistPostgresTest {
                 ChecklistDefinitionRepository checklists, ServiceChecklistRepository links) {
             return new ServiceChecklistServiceImpl(services, checklists, links,
                     Mappers.getMapper(ServiceChecklistMapper.class));
+        }
+        @Bean AuthenticatedUserResolver resolver() { return mock(AuthenticatedUserResolver.class); }
+        @Bean PreferredTimeRepository times() { return mock(PreferredTimeRepository.class); }
+        @Bean DeliverableTypeRepository deliverables() { return mock(DeliverableTypeRepository.class); }
+        @Bean ServiceDeliverableRepository serviceDeliverables() { return mock(ServiceDeliverableRepository.class); }
+        @Bean MissionResultRepository results() { return mock(MissionResultRepository.class); }
+        @Bean IOrderChecklistSnapshotService snapshots(ServiceRepository services,
+                ChecklistDefinitionRepository definitions, ServiceChecklistRepository assignments,
+                OrderChecklistItemRepository snapshots, AuthenticatedUserResolver resolver) {
+            return new OrderChecklistSnapshotService(services, definitions, assignments, snapshots,
+                    Mappers.getMapper(OrderChecklistItemMapper.class), resolver);
+        }
+        @Bean IOrderService orderService(OrderRepository orders, ServiceRepository services,
+                DeliverableTypeRepository deliverables, ServiceDeliverableRepository links,
+                PreferredTimeRepository times, AuthenticatedUserResolver resolver, MissionResultRepository results,
+                IOrderChecklistSnapshotService snapshots) {
+            return new OrderService(orders, services, deliverables, links, times, resolver,
+                    Mappers.getMapper(OrderMapper.class), results, snapshots);
         }
     }
 }

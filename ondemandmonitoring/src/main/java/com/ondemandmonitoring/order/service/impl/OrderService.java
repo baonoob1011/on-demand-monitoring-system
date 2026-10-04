@@ -13,6 +13,7 @@ import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.mapper.OrderMapper;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.IOrderService;
+import com.ondemandmonitoring.order.service.IOrderChecklistSnapshotService;
 import com.ondemandmonitoring.order.util.GeoReader;
 import com.ondemandmonitoring.order.util.ServiceAreaPolicy;
 import com.ondemandmonitoring.service.domain.DeliverableType;
@@ -54,6 +55,7 @@ public class OrderService implements IOrderService {
     AuthenticatedUserResolver authenticatedUserResolver;
     OrderMapper orderMapper;
     MissionResultRepository missionResultRepository;
+    IOrderChecklistSnapshotService checklistSnapshots;
 
     @Override
     @Transactional
@@ -63,7 +65,7 @@ public class OrderService implements IOrderService {
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
 
         if (order.getOrderStatus() == OrderStatus.APPROVED) {
-            return orderMapper.toResponse(order);
+            return toResponse(order);
         }
 
         if (order.getOrderStatus() != OrderStatus.PENDING) {
@@ -75,7 +77,7 @@ public class OrderService implements IOrderService {
         order.setReviewAt(Instant.now());
         orderRepository.save(order);
 
-        return orderMapper.toResponse(order);
+        return toResponse(order);
     }
 
     @Override
@@ -87,9 +89,12 @@ public class OrderService implements IOrderService {
         User customer = authenticatedUserResolver.getCurrentUser();
 
         // 2. Validate & fetch Service
-        Service service = serviceRepository.findById(request.getServiceId())
+        Service service = serviceRepository.findByIdForUpdate(request.getServiceId())
                 .orElseThrow(() -> new ApiException(ErrorCode.SERVICE_NOT_FOUND,
                         "Service not found with id: " + request.getServiceId()));
+        if (!Boolean.TRUE.equals(service.getIsActive())) {
+            throw new ApiException(ErrorCode.SERVICE_INACTIVE);
+        }
 
         // 3. Validate & fetch Preferred Time
         PreferredTime preferredTime = preferredTimeRepository.findById(request.getPreferredTimeId())
@@ -162,7 +167,11 @@ public class OrderService implements IOrderService {
         order.setDeliverables(orderDeliverables);
 
         Order savedOrder = orderRepository.save(order);
-        return orderMapper.toResponse(savedOrder);
+        var items = checklistSnapshots.capture(savedOrder, request.getChecklistItems());
+        orderRepository.flush();
+        OrderCreateResponse response = orderMapper.toResponse(savedOrder);
+        response.setChecklistItems(items);
+        return response;
     }
 
     @Override
@@ -171,7 +180,7 @@ public class OrderService implements IOrderService {
     public OrderCreateResponse getOrderById(String orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
-        return orderMapper.toResponse(syncCompletedOrder(order));
+        return toResponse(syncCompletedOrder(order));
     }
 
     @Override
@@ -195,20 +204,14 @@ public class OrderService implements IOrderService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public List<OrderCreateResponse> getPendingOrders() {
-        return orderRepository.findByOrderStatusOrderByCreatedAtAsc(OrderStatus.PENDING)
-                .stream()
-                .map(orderMapper::toResponse)
-                .toList();
+        return toResponses(orderRepository.findByOrderStatusOrderByCreatedAtAsc(OrderStatus.PENDING));
     }
 
     @Override
     @Transactional(readOnly = true)
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public List<OrderCreateResponse> getApprovedOrders() {
-        return orderRepository.findByOrderStatusOrderByCreatedAtAsc(OrderStatus.APPROVED)
-                .stream()
-                .map(orderMapper::toResponse)
-                .toList();
+        return toResponses(orderRepository.findByOrderStatusOrderByCreatedAtAsc(OrderStatus.APPROVED));
     }
 
     @Override
@@ -220,10 +223,22 @@ public class OrderService implements IOrderService {
                 ? orderRepository.findByCustomer_IdOrderByCreatedAtDesc(customer.getId())
                 : orderRepository.findByCustomer_IdAndOrderStatusOrderByCreatedAtDesc(customer.getId(), status);
 
-        return orders.stream()
+        return toResponses(orders.stream()
                 .map(this::syncCompletedOrder)
-                .map(orderMapper::toResponse)
-                .toList();
+                .toList());
+    }
+
+    private OrderCreateResponse toResponse(Order order) {
+        return toResponses(List.of(order)).getFirst();
+    }
+
+    private List<OrderCreateResponse> toResponses(List<Order> orders) {
+        var snapshots = checklistSnapshots.getByOrders(orders.stream().map(Order::getId).toList());
+        return orders.stream().map(order -> {
+            var response = orderMapper.toResponse(order);
+            response.setChecklistItems(snapshots.getOrDefault(order.getId(), List.of()));
+            return response;
+        }).toList();
     }
 
     private Order syncCompletedOrder(Order order) {

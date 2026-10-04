@@ -8,7 +8,8 @@ import com.ondemandmonitoring.checklist.repository.ChecklistDefinitionRepository
 import com.ondemandmonitoring.checklist.service.IChecklistService;
 import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.common.exception.*;
-import java.text.Normalizer;
+import static com.ondemandmonitoring.checklist.util.ChecklistContentNormalizer.content;
+import static com.ondemandmonitoring.checklist.util.ChecklistContentNormalizer.canonicalize;
 import java.util.Locale;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
@@ -97,16 +98,4 @@ public class ChecklistServiceImpl implements IChecklistService {
                 .orElseThrow(() -> new ApiException(ErrorCode.CHECKLIST_NOT_FOUND));
     }
 
-    private String content(String raw) {
-        if (raw == null) throw new ApiException(ErrorCode.VALIDATION_ERROR, "Checklist content is required");
-        String value = canonicalize(raw);
-        if (value.isBlank() || value.length() > 500) {
-            throw new ApiException(ErrorCode.VALIDATION_ERROR, "Checklist content must contain 1 to 500 characters");
-        }
-        return value;
-    }
-
-    private String canonicalize(String raw) {
-        return Normalizer.normalize(raw, Normalizer.Form.NFC).replaceAll("(?U)\\s+", " ").strip();
-    }
 }

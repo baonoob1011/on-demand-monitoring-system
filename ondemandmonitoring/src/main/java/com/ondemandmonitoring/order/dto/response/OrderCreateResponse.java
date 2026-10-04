@@ -57,6 +57,9 @@ public class OrderCreateResponse {
     // Deliverables
     List<OrderDeliverableResponse> deliverables;
 
+    List<OrderChecklistItemResponse> checklistItems;
+    Instant checklistSnapshotAt;
+
     Instant createdAt;
     Instant updatedAt;
 }

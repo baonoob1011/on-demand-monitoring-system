@@ -12,5 +12,6 @@ public interface ServiceChecklistMapper {
     @Mapping(target = "checklistId", source = "checklist.id")
     @Mapping(target = "content", source = "checklist.content")
     @Mapping(target = "checklistActive", source = "checklist.isActive")
+    @Mapping(target = "checklistVersion", source = "checklist.version")
     ServiceChecklistResponse toResponse(ServiceChecklist entity);
 }
