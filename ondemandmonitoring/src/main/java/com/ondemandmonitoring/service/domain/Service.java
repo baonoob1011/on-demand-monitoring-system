@@ -27,6 +27,12 @@ public class Service extends BaseEntity {
     @Column(name = "description", length = 1000)
     private String description;
 
+    @Column(name = "image_s3_key", length = 500)
+    private String imageS3Key;
+
+    @Column(name = "image_s3_bucket", length = 255)
+    private String imageS3Bucket;
+
     @Builder.Default
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;

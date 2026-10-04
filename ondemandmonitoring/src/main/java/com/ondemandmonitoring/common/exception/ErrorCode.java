@@ -65,6 +65,7 @@ public enum ErrorCode {
      * Service & DeliverableType Error Codes
      */
     SERVICE_NOT_FOUND("Service not found", HttpStatus.NOT_FOUND),
+    SERVICE_IMAGE_STORAGE_ERROR("Unable to store service illustration", HttpStatus.BAD_GATEWAY),
     SERVICE_ALREADY_EXISTS("Service already exists", HttpStatus.CONFLICT),
     DELIVERABLE_TYPE_NOT_FOUND("Deliverable type not found", HttpStatus.NOT_FOUND),
     DELIVERABLE_TYPE_ALREADY_EXISTS("Deliverable type already exists", HttpStatus.CONFLICT),

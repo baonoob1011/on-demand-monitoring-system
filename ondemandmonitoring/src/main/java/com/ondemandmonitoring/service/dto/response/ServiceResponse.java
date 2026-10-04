@@ -20,6 +20,7 @@ public class ServiceResponse {
     String id;
     String name;
     String description;
+    String imageUrl;
     Boolean isActive;
     Instant createdAt;
     Instant updatedAt;
