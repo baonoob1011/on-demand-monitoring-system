@@ -262,7 +262,7 @@ public class MissionController {
      * Transitions: SCHEDULED -> CONNECTED
      */
     @PostMapping("/{id}/connect")
-    @PreAuthorize("@missionAuthorizationService.canControlFlight(#id)")
+    @PreAuthorize("@missionAuthorizationService.canOperatePayload(#id)")
     public ResponseEntity<ApiResponse<MissionResponse>> connectGcs(@PathVariable String id) {
         MissionResponse response = missionService.connectGcs(id);
         return ResponseEntity.ok(ApiResponse.ok("Telemetry link with GCS confirmed (CONNECTED)", response));
@@ -280,7 +280,7 @@ public class MissionController {
      * Normal or explicit disconnection from GCS app.
      */
     @PostMapping("/{id}/disconnect")
-    @PreAuthorize("@missionAuthorizationService.canControlFlight(#id)")
+    @PreAuthorize("@missionAuthorizationService.canOperatePayload(#id)")
     public ResponseEntity<ApiResponse<MissionResponse>> disconnectGcs(
             @PathVariable String id,
             @RequestParam(required = false, defaultValue = "NORMAL") String reason) {
@@ -294,7 +294,7 @@ public class MissionController {
      * Return-To-Launch (RTL).
      */
     @PostMapping("/{id}/gcs-lost")
-    @PreAuthorize("@missionAuthorizationService.canControlFlight(#id)")
+    @PreAuthorize("@missionAuthorizationService.canOperatePayload(#id)")
     public ResponseEntity<ApiResponse<MissionResponse>> reportGcsLost(
             @PathVariable String id,
             @RequestParam(required = false, defaultValue = "SIGNAL_LOSS") String reason) {
@@ -303,7 +303,7 @@ public class MissionController {
     }
 
     @PostMapping("/{id}/pre-device-check")
-    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#id)")
+    @PreAuthorize("@missionAuthorizationService.canOperatePayload(#id)")
     public ResponseEntity<ApiResponse<PreDeviceCheckResponse>> runPreDeviceCheck(
             @PathVariable String id,
             @RequestParam String deviceId) {
@@ -339,7 +339,7 @@ public class MissionController {
      * Staff formally accepts control of the device console.
      */
     @PostMapping("/{id}/handover")
-    @PreAuthorize("@missionAuthorizationService.canControlFlight(#id)")
+    @PreAuthorize("@missionAuthorizationService.canOperatePayload(#id)")
     public ResponseEntity<ApiResponse<MissionResponse>> handover(
             @PathVariable String id,
             @RequestHeader(value = "X-Staff-Id", required = false) String ignoredstaffId) {
@@ -347,7 +347,7 @@ public class MissionController {
         return ResponseEntity.ok(ApiResponse.ok("Control handed over", response));
     }
 
-    @PreAuthorize("@missionAuthorizationService.canControlFlight(#id)")
+    @PreAuthorize("@missionAuthorizationService.canOperatePayload(#id)")
     @PostMapping("/{id}/handover-current")
     public ResponseEntity<ApiResponse<MissionResponse>> handoverCurrentStaff(@PathVariable String id) {
         return ResponseEntity.ok(ApiResponse.ok(
@@ -399,7 +399,7 @@ public class MissionController {
 
     /** POST /api/missions/{id}/complete – Staff confirms complete */
     @PostMapping("/{id}/complete")
-    @PreAuthorize("@missionAuthorizationService.canControlFlight(#id)")
+    @PreAuthorize("@missionAuthorizationService.canUploadMissionMedia(#id)")
     public ResponseEntity<ApiResponse<MissionResponse>> complete(@PathVariable String id) {
         MissionResponse response = missionService.completeMission(id);
         return ResponseEntity.ok(ApiResponse.ok("Mission đã hoàn thành", response));
@@ -443,7 +443,7 @@ public class MissionController {
      * PATCH /api/missions/{id}/postflight-status
      */
     @PatchMapping("/{id}/postflight-status")
-    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#id)")
+    @PreAuthorize("@missionAuthorizationService.canMaintainDevice(#id)")
     public ResponseEntity<ApiResponse<MissionResponse>> updatePostFlightStatus(
             @PathVariable String id,
             @RequestParam String deviceId,
@@ -458,7 +458,7 @@ public class MissionController {
     }
 
     @PatchMapping("/{id}/postflight-device-status")
-    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#id)")
+    @PreAuthorize("@missionAuthorizationService.canMaintainDevice(#id)")
     public ResponseEntity<ApiResponse<MissionResponse>> updatePostflightDeviceStatus(
             @PathVariable String id,
             @RequestParam com.ondemandmonitoring.device.enums.DeviceStatus status,

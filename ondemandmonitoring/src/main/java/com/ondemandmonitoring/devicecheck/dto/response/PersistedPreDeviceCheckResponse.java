@@ -9,12 +9,14 @@ import com.ondemandmonitoring.devicecheck.enums.PreDeviceItemStatus;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import lombok.Builder;
 import lombok.Getter;
 
 @Getter
 @Builder
 public class PersistedPreDeviceCheckResponse {
+    private static final Set<String> IGNORED_CHECK_TYPES = Set.of("GAZEBO", "LOCAL_POSITION", "MODULES");
 
     String id;
     String missionId;
@@ -48,8 +50,7 @@ public class PersistedPreDeviceCheckResponse {
         DeviceConnection connection = run.getDeviceConnection();
         Device device = connection == null ? null : connection.getDevice();
         List<PersistedPreDeviceCheckItem> visibleItems = run.getItems().stream()
-                .filter(i -> !"GAZEBO".equals(i.getCheckType()))
-                .filter(i -> !"LOCAL_POSITION".equals(i.getCheckType()))
+                .filter(i -> !IGNORED_CHECK_TYPES.contains(i.getCheckType()))
                 .toList();
         int total = visibleItems.size();
         int done = (int) visibleItems.stream()

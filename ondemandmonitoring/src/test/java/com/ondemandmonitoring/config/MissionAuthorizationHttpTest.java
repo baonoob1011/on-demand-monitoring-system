@@ -68,12 +68,16 @@ class MissionAuthorizationHttpTest {
     }
 
     @Test
-    void acceptedPilotCanConnectButInspectorCannot() throws Exception {
+    void acceptedOperatorCanConnectButInspectorAndPilotCannot() throws Exception {
         crew(MissionStaffRole.INSPECTOR, StaffResponseStatus.ACCEPTED);
         mvc.perform(post("/api/missions/mission-1/connect").with(jwt().authorities(() -> "ROLE_STAFF")).with(csrf()))
                 .andExpect(status().isForbidden());
         verifyNoInteractions(service);
         crew(MissionStaffRole.PILOT, StaffResponseStatus.ACCEPTED);
+        mvc.perform(post("/api/missions/mission-1/connect").with(jwt().authorities(() -> "ROLE_STAFF")).with(csrf()))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(service);
+        crew(MissionStaffRole.OPERATOR, StaffResponseStatus.ACCEPTED);
         mvc.perform(post("/api/missions/mission-1/connect").with(jwt().authorities(() -> "ROLE_STAFF")).with(csrf()))
                 .andExpect(status().isOk());
         verify(service).connectGcs("mission-1");
@@ -111,15 +115,24 @@ class MissionAuthorizationHttpTest {
     }
 
     @Test
-    void permissionsReflectAcceptedAssignmentAndPilotFallback() throws Exception {
+    void permissionsReflectAcceptedMissionRoleWithoutPilotFallback() throws Exception {
         crew(MissionStaffRole.PILOT, StaffResponseStatus.ACCEPTED);
         mvc.perform(get("/api/missions/mission-1/permissions")
                         .with(jwt().authorities(() -> "ROLE_STAFF")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.canControlFlight").value(true))
-                .andExpect(jsonPath("$.data.canInspectDevice").value(true))
+                .andExpect(jsonPath("$.data.canInspectDevice").value(false))
+                .andExpect(jsonPath("$.data.canOperatePayload").value(false))
                 .andExpect(jsonPath("$.data.canUploadMedia").value(true))
                 .andExpect(jsonPath("$.data.canMaintainDevice").value(false));
+        crew(MissionStaffRole.OPERATOR, StaffResponseStatus.ACCEPTED);
+        mvc.perform(get("/api/missions/mission-1/permissions")
+                        .with(jwt().authorities(() -> "ROLE_STAFF")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.canControlFlight").value(false))
+                .andExpect(jsonPath("$.data.canOperatePayload").value(true))
+                .andExpect(jsonPath("$.data.canInspectDevice").value(false))
+                .andExpect(jsonPath("$.data.canUploadMedia").value(true));
         crew(MissionStaffRole.INSPECTOR, StaffResponseStatus.ACCEPTED);
         mvc.perform(get("/api/missions/mission-1/permissions")
                         .with(jwt().authorities(() -> "ROLE_STAFF")))

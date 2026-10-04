@@ -372,7 +372,7 @@ class MissionServiceTest {
             MissionStaffAssignment msa = new MissionStaffAssignment();
             msa.setStaff(staff);
             msa.setIsCurrent(true);
-            msa.setAssignedRole(MissionStaffRole.PILOT);
+            msa.setAssignedRole(MissionStaffRole.OPERATOR);
             msa.setResponseStatus(StaffResponseStatus.ACCEPTED);
 
             when(missionRepository.findById("m-gcs")).thenReturn(Optional.of(mission));
@@ -401,7 +401,7 @@ class MissionServiceTest {
             when(missionDeviceAssignmentRepository.findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc("m-gcs2"))
                     .thenReturn(List.of(deviceAssignment));
             when(missionStaffAssignmentRepository.findAllByMissionIdAndIsCurrentTrue("m-gcs2"))
-                    .thenReturn(List.of(staffAssignment(mission, "staff-01", "ACCEPTED")));
+                    .thenReturn(List.of(staffAssignment(mission, "staff-01", MissionStaffRole.OPERATOR, "ACCEPTED")));
             when(deviceConnectionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(missionRepository.findById("m-gcs2")).thenReturn(Optional.of(mission));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -513,7 +513,7 @@ class MissionServiceTest {
             msa.setIsCurrent(true);
 
             when(missionRepository.findById("m-5")).thenReturn(Optional.of(mission));
-            msa.setAssignedRole(MissionStaffRole.PILOT);
+            msa.setAssignedRole(MissionStaffRole.OPERATOR);
             msa.setResponseStatus(StaffResponseStatus.ACCEPTED);
             when(missionStaffAssignmentRepository.findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc("m-5", "op-new"))
                     .thenReturn(List.of(msa));
@@ -666,9 +666,9 @@ class MissionServiceTest {
         }
 
         @Test
-        @DisplayName("3. completeMission success when POSTFLIGHT_CHECKING")
+        @DisplayName("3. completeMission success after postcheck is ready for review")
         void completeMission_success() {
-            Mission mission = buildMission("m-8", MissionStatus.POSTFLIGHT_CHECKING);
+            Mission mission = buildMission("m-8", MissionStatus.PENDING_REVIEW);
             Device device = buildDevice("DEV-01", DeviceStatus.RETURNING);
             MissionDeviceAssignment mda = new MissionDeviceAssignment();
             mda.setDevice(device);
@@ -745,12 +745,12 @@ class MissionServiceTest {
 
             assertThatThrownBy(() -> missionService.completeMission("m-8"))
                     .isInstanceOf(ApiException.class)
-                    .hasMessageContaining("POSTFLIGHT_CHECKING");
+                    .hasMessageContaining("PENDING_REVIEW");
         }
 
         @Test
         void completeMission_rejectsMissingPostflightInspection() {
-            Mission mission = buildMission("m-8", MissionStatus.POSTFLIGHT_CHECKING);
+            Mission mission = buildMission("m-8", MissionStatus.PENDING_REVIEW);
             when(missionRepository.findById("m-8")).thenReturn(Optional.of(mission));
             when(postDeviceCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc("m-8"))
                     .thenReturn(Optional.empty());
@@ -798,7 +798,7 @@ class MissionServiceTest {
                     "Cánh quạt bình thường");
 
             assertThat(device.getStatus()).isEqualTo(DeviceStatus.AVAILABLE);
-            assertThat(result.getStatus()).isEqualTo(MissionStatus.COMPLETED);
+            assertThat(result.getStatus()).isEqualTo(MissionStatus.PENDING_REVIEW);
         }
 
         @Test
@@ -856,12 +856,20 @@ class MissionServiceTest {
     }
 
     private MissionStaffAssignment staffAssignment(Mission mission, String staffId, String status) {
+        return staffAssignment(mission, staffId, MissionStaffRole.PILOT, status);
+    }
+
+    private MissionStaffAssignment staffAssignment(
+            Mission mission,
+            String staffId,
+            MissionStaffRole role,
+            String status) {
         MissionStaffAssignment assignment = new MissionStaffAssignment();
         assignment.setMission(mission);
         User staff = new User();
         staff.setId(staffId);
         assignment.setStaff(staff);
-        assignment.setAssignedRole(MissionStaffRole.PILOT);
+        assignment.setAssignedRole(role);
         assignment.setResponseStatus(StaffResponseStatus.valueOf(status));
         assignment.setIsCurrent(true);
         return assignment;

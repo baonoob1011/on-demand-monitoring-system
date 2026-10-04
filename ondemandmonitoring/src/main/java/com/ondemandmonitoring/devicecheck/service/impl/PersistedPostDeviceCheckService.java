@@ -49,7 +49,7 @@ public class PersistedPostDeviceCheckService implements IPersistedPostDeviceChec
 
     @Transactional
     @Override
-    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canMaintainDevice(#missionId)")
     public PersistedPostDeviceCheckResponse start(String missionId) {
         Mission mission = missionRepository.findById(missionId)
                 .orElseThrow(() -> new ApiException(
@@ -167,7 +167,7 @@ public class PersistedPostDeviceCheckService implements IPersistedPostDeviceChec
 
     @Transactional
     @Override
-    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canMaintainDevice(#missionId)")
     public void recordInspection(String missionId, Map<String, InspectionResult> results,
             PostFlightStatusRequest.TelemetrySnapshot telemetrySnapshot) {
         if (results == null || results.isEmpty()) {

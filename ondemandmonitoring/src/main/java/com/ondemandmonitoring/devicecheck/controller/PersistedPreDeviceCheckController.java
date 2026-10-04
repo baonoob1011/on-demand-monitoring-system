@@ -24,7 +24,7 @@ public class PersistedPreDeviceCheckController {
     private final IPersistedPreDeviceCheckService service;
 
     @PostMapping("/api/missions/{missionId}/pre-device-checks")
-    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canOperatePayload(#missionId)")
     public ResponseEntity<ApiResponse<PersistedPreDeviceCheckResponse>> start(
             @PathVariable String missionId) {
         return ResponseEntity

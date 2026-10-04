@@ -17,6 +17,7 @@ import com.ondemandmonitoring.mission.repository.MissionRepository;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import org.springframework.security.access.prepost.PreAuthorize;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -28,13 +29,14 @@ public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckS
 
     private static final long START_IDEMPOTENCY_WINDOW_SECONDS = 30;
     private static final List<PreDeviceCheckType> CHECKS = Arrays.asList(PreDeviceCheckType.values());
+    private static final Set<String> IGNORED_CHECK_TYPES = Set.of("GAZEBO", "LOCAL_POSITION", "MODULES");
 
     private final PersistedPreDeviceCheckRepository runRepository;
     private final MissionRepository missionRepository;
 
     @Transactional
     @Override
-    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canOperatePayload(#missionId)")
     public PersistedPreDeviceCheckResponse start(String missionId) {
         Mission mission = missionRepository.findById(missionId)
                 .orElseThrow(() -> new ApiException(
@@ -133,18 +135,23 @@ public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckS
         item.setMessage(request.getMessage());
         item.setCheckedAt(Instant.now());
 
-        int passed = (int) run.getItems().stream()
+        List<PersistedPreDeviceCheckItem> activeItems = run.getItems().stream()
+                .filter(i -> !IGNORED_CHECK_TYPES.contains(i.getCheckType()))
+                .toList();
+
+        int passed = (int) activeItems.stream()
                 .filter(i -> i.getStatus() == PreDeviceItemStatus.PASSED)
                 .count();
-        int failed = (int) run.getItems().stream()
+        int failed = (int) activeItems.stream()
                 .filter(i -> i.getStatus() == PreDeviceItemStatus.FAILED)
                 .count();
-        boolean failedItem = run.getItems().stream()
+        boolean failedItem = activeItems.stream()
                 .anyMatch(i -> i.getStatus() == PreDeviceItemStatus.FAILED);
-        boolean finished = run.getItems().stream()
+        boolean finished = activeItems.stream()
                 .allMatch(i -> i.getStatus() == PreDeviceItemStatus.PASSED
                         || i.getStatus() == PreDeviceItemStatus.FAILED);
 
+        run.setTotalChecks(activeItems.size());
         run.setPassedChecks(passed);
         run.setFailedChecks(failed);
 

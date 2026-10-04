@@ -24,7 +24,7 @@ public class PersistedPostDeviceCheckController {
     private final IPersistedPostDeviceCheckService service;
 
     @PostMapping("/api/missions/{missionId}/post-device-checks")
-    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canMaintainDevice(#missionId)")
     public ResponseEntity<ApiResponse<PersistedPostDeviceCheckResponse>> start(
             @PathVariable String missionId) {
         return ResponseEntity

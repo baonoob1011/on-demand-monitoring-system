@@ -59,6 +59,18 @@ public class MissionResponse {
 
     String deviceName;
 
+    String deviceSerialNumber;
+
+    String deviceStatus;
+
+    String deviceModelCode;
+
+    String deviceModelName;
+
+    String deviceManufacturer;
+
+    String devicePayload;
+
     String staffId;
 
     String operatorId;

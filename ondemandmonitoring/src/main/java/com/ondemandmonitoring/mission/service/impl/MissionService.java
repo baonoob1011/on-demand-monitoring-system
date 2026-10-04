@@ -269,7 +269,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canOperatePayload(#missionId) or @missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse handoverCurrentStaffControl(String missionId) {
         return handoverControl(missionId, currentStaffId());
     }
@@ -598,7 +598,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canOperatePayload(#missionId)")
     public MissionResponse connectGcs(String missionId) {
         return deviceConnectionService.connectGcs(getOrThrow(missionId).getId());
     }
@@ -618,20 +618,21 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canOperatePayload(#missionId)")
     public MissionResponse disconnectGcs(String missionId, String disconnectReason) {
         return deviceConnectionService.disconnectGcs(getOrThrow(missionId).getId(), disconnectReason);
     }
 
     @Override
     @Transactional
+    @PreAuthorize("@missionAuthorizationService.canOperatePayload(#missionId)")
     public MissionResponse handleGcsSessionLost(String missionId, String reason) {
         return deviceConnectionService.handleGcsSessionLost(getOrThrow(missionId).getId(), reason);
     }
 
     @Override
     @Transactional
-    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canOperatePayload(#missionId)")
     public PreDeviceCheckResponse runPreDeviceCheck(String missionId, String deviceId) {
         return preDeviceCheckCompletionService.complete(missionId, deviceId);
     }
@@ -713,10 +714,13 @@ public class MissionService implements IMissionService {
     }
 
     private MissionStaffAssignment requireCurrentStaffAssignment(String missionId, String staffId) {
-        return requireCurrentStaffAssignments(missionId, staffId).stream()
-                .filter(entry -> entry.getAssignedRole() == MissionStaffRole.PILOT
-                        && entry.getResponseStatus() == StaffResponseStatus.ACCEPTED)
+        List<MissionStaffAssignment> acceptedAssignments = requireCurrentStaffAssignments(missionId, staffId).stream()
+                .filter(entry -> entry.getResponseStatus() == StaffResponseStatus.ACCEPTED)
+                .toList();
+        return acceptedAssignments.stream()
+                .filter(entry -> entry.getAssignedRole() == MissionStaffRole.OPERATOR)
                 .findFirst()
+                .or(() -> acceptedAssignments.stream().findFirst())
                 .orElseThrow(() -> new ApiException(ErrorCode.ACCESS_DENIED,
                         "Staff is not assigned to mission " + missionId));
     }
@@ -951,7 +955,7 @@ public class MissionService implements IMissionService {
     }
     @Override
     @Transactional
-    @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId) and @missionAuthorizationService.canViewStaffMissions(#staffId)")
+    @PreAuthorize("(@missionAuthorizationService.canOperatePayload(#missionId) or @missionAuthorizationService.canControlFlight(#missionId)) and @missionAuthorizationService.canViewStaffMissions(#staffId)")
     public MissionResponse handoverControl(String missionId, String staffId) {
         Mission mission = getOrThrow(missionId);
         String resolvedMissionId = mission.getId();
@@ -1075,7 +1079,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canUploadMissionMedia(#missionId)")
     public MissionResponse completeMission(String missionId) {
         Mission mission = getOrThrow(missionId);
         String resolvedMissionId = mission.getId();
@@ -1083,9 +1087,9 @@ public class MissionService implements IMissionService {
                 && postDeviceCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(resolvedMissionId).isPresent()) {
             return missionMapper.toResponse(mission);
         }
-        if (mission.getStatus() != MissionStatus.POSTFLIGHT_CHECKING) {
+        if (mission.getStatus() != MissionStatus.PENDING_REVIEW) {
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID,
-                    "Mission must be POSTFLIGHT_CHECKING with a recorded inspection to complete but is "
+                    "Mission must be PENDING_REVIEW with a recorded inspection to complete but is "
                             + mission.getStatus());
         }
         if (postDeviceCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(resolvedMissionId).isEmpty()) {
@@ -1144,14 +1148,14 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canMaintainDevice(#missionId)")
     public MissionResponse updatePostFlightStatus(String missionId, DeviceStatus newDeviceStatus, String notes) {
         return savePostFlightStatus(missionId, newDeviceStatus, notes, Map.of());
     }
 
     @Override
     @Transactional
-    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canMaintainDevice(#missionId)")
     public MissionResponse recordPostFlightInspection(String missionId, DeviceStatus newDeviceStatus,
             String notes, Map<String, InspectionResult> results,
             PostFlightStatusRequest.TelemetrySnapshot telemetrySnapshot) {
@@ -1211,13 +1215,7 @@ public class MissionService implements IMissionService {
 
         persistedPostDeviceCheckService.recordInspection(mission.getId(), results, telemetrySnapshot);
         if (mission.getStatus() == MissionStatus.POSTFLIGHT_CHECKING) {
-            mission.setStatus(MissionStatus.COMPLETED);
-            Instant completedAt = Instant.now();
-            if (mission.getActualEndAt() == null) {
-                mission.setActualEndAt(completedAt);
-            }
-            mission.setCompletedAt(completedAt);
-            releaseMissionResources(mission, "MISSION_COMPLETE");
+            mission.setStatus(MissionStatus.PENDING_REVIEW);
         }
 
         if (notes != null && !notes.isBlank()) {

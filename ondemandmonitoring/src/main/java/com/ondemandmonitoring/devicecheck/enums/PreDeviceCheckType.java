@@ -10,8 +10,7 @@ public enum PreDeviceCheckType {
     LIDAR("LIDAR", "LiDAR", PreDeviceCheckLevel.WARNING),
     CAMERA("CAMERA", "Downward Camera", PreDeviceCheckLevel.WARNING),
     BACKEND("BACKEND", "Backend Connection", PreDeviceCheckLevel.WARNING),
-    MEDIA("MEDIA", "Media Storage Probe", PreDeviceCheckLevel.CRITICAL),
-    MODULES("MODULES", "Module Check", PreDeviceCheckLevel.INFO);
+    MEDIA("MEDIA", "Media Storage Probe", PreDeviceCheckLevel.CRITICAL);
 
     private final String code;
     private final String displayName;

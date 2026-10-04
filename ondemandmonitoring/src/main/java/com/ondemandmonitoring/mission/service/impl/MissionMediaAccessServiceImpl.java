@@ -26,9 +26,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class MissionMediaAccessServiceImpl implements IMissionMediaAccessService {
-    static Set<MissionStatus> CAPTURE_STATUSES = Set.of(
-            MissionStatus.IN_FLIGHT, MissionStatus.IN_PROGRESS, MissionStatus.RETURNING,
-            MissionStatus.POSTFLIGHT_CHECKING, MissionStatus.COMPLETED);
+    static Set<MissionStatus> REVIEW_STATUSES = Set.of(
+            MissionStatus.PENDING_REVIEW, MissionStatus.COMPLETED);
 
     MissionRepository missions;
     MissionDeviceAssignmentRepository deviceAssignments;
@@ -38,7 +37,7 @@ public class MissionMediaAccessServiceImpl implements IMissionMediaAccessService
     @Override
     public void requireUploadPermission(String identifier) {
         if (!authorization.canUploadMissionMedia(identifier)) {
-            throw new ApiException(ErrorCode.ACCESS_DENIED, "A payload assignment is required to upload media");
+            throw new ApiException(ErrorCode.ACCESS_DENIED, "An inspection assignment is required to upload media");
         }
     }
 
@@ -53,7 +52,8 @@ public class MissionMediaAccessServiceImpl implements IMissionMediaAccessService
             throw new ApiException(ErrorCode.ACCESS_DENIED, "Operator is not assigned to mission");
         }
         return new MissionMediaContext(mission.getId(),
-                CAPTURE_STATUSES.contains(mission.getStatus()) && authorization.canOperatePayload(mission.getId()), mission.getStatus());
+                REVIEW_STATUSES.contains(mission.getStatus())
+                        && authorization.canUploadMissionMedia(mission.getId()), mission.getStatus());
     }
 
     @Override

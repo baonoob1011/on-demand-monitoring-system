@@ -53,9 +53,29 @@ class MissionMediaAccessServiceTest {
         assignOperator();
         var context = service.authorizeOperator("MS-001");
         assertThat(context.getId()).isEqualTo("mission-id");
-        assertThat(context.isCaptureAllowed()).isTrue();
-        mission.setStatus(MissionStatus.SCHEDULED);
+        assertThat(context.isCaptureAllowed()).isFalse();
+        mission.setStatus(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
         assertThat(service.authorizeOperator("mission-id").isCaptureAllowed()).isFalse();
+    }
+
+    @Test
+    void pendingReviewAllowsInspectorMediaUpload() {
+        mission.setStatus(MissionStatus.PENDING_REVIEW);
+        when(authorization.canViewMissionMedia("mission-id")).thenReturn(true);
+        when(authorization.canUploadMissionMedia("mission-id")).thenReturn(true);
+
+        assertThat(service.authorizeOperator("mission-id").isCaptureAllowed()).isTrue();
+    }
+
+    @Test
+    void completedMissionAllowsInspectorMediaUpload() {
+        mission.setStatus(MissionStatus.COMPLETED);
+        when(authorization.canViewMissionMedia("mission-id")).thenReturn(true);
+        when(authorization.canUploadMissionMedia("mission-id")).thenReturn(true);
+
+        var context = service.authorizeOperator("mission-id");
+
+        assertThat(context.isCaptureAllowed()).isTrue();
     }
 
     @Test
@@ -76,7 +96,7 @@ class MissionMediaAccessServiceTest {
     }
 
     @Test
-    void completedMissionAllowsOnlyCompletedOperatorAndReleasedMissionDevice() {
+    void completedMissionAllowsReleasedMissionDevice() {
         mission.setStatus(MissionStatus.COMPLETED);
         when(authorization.canViewMissionMedia("mission-id")).thenReturn(true);
         User staffUser = new User();
@@ -112,7 +132,7 @@ class MissionMediaAccessServiceTest {
 
     private void assignOperator() {
         when(authorization.canViewMissionMedia("mission-id")).thenReturn(true);
-        when(authorization.canOperatePayload("mission-id")).thenReturn(true);
+        when(authorization.canUploadMissionMedia("mission-id")).thenReturn(true);
         User staffUser = new User();
         staffUser.setId("operator-id");
         var assignment = new MissionStaffAssignment();
