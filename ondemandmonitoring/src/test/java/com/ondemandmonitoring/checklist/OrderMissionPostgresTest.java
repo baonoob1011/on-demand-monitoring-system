@@ -12,6 +12,7 @@ import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.mission.service.impl.MissionService;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.repository.OrderRepository;
+import com.ondemandmonitoring.order.repository.OrderChecklistItemRepository;
 import jakarta.persistence.EntityManagerFactory;
 import java.util.UUID;
 import java.util.concurrent.*;
@@ -237,7 +238,8 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
             return new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory))
                     .getRepository(MissionRepository.class);
         }
-        @Bean IMissionService missionService(MissionRepository missions, OrderRepository orders) {
+        @Bean IMissionService missionService(MissionRepository missions, OrderRepository orders,
+                com.ondemandmonitoring.mission.service.IMissionChecklistExecutionService executions) {
             var mapper = mock(MissionMapper.class);
             when(mapper.toResponse(any())).thenAnswer(call -> {
                 com.ondemandmonitoring.mission.domain.Mission mission = call.getArgument(0);
@@ -246,7 +248,31 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
             });
             // Unused lifecycle collaborators are not loaded: only the real transactional creation path is exercised.
             return new MissionService(null, missions, null, null, mapper, null, null, null, null, null,
-                    null, null, orders, null, null, null, null, null, null, null, null, null, null, null);
+                    null, null, orders, null, null, null, null, null, null, null, null, null, null, null, executions);
+        }
+        @Bean com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository executions(EntityManagerFactory factory) {
+            return new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory))
+                    .getRepository(com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository.class);
+        }
+        @Bean @Primary com.ondemandmonitoring.mission.repository.MissionResultRepository executionResults(EntityManagerFactory factory) {
+            return new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory))
+                    .getRepository(com.ondemandmonitoring.mission.repository.MissionResultRepository.class);
+        }
+        @Bean com.ondemandmonitoring.mission.service.IMissionAuthorizationService missionAuthorization() {
+            var auth = mock(com.ondemandmonitoring.mission.service.IMissionAuthorizationService.class);
+            when(auth.canViewMission(anyString())).thenReturn(true);
+            when(auth.canExecuteMonitoringChecklist(anyString())).thenReturn(true);
+            return auth;
+        }
+        @Bean com.ondemandmonitoring.mission.service.IMissionChecklistExecutionService executionService(
+                MissionRepository missions, OrderChecklistItemRepository items,
+                com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository executions,
+                com.ondemandmonitoring.mission.repository.MissionResultRepository results,
+                com.ondemandmonitoring.mission.service.IMissionAuthorizationService auth,
+                com.ondemandmonitoring.user.service.AuthenticatedUserResolver resolver) {
+            return new com.ondemandmonitoring.mission.service.impl.MissionChecklistExecutionServiceImpl(
+                    missions, items, executions, results, auth, resolver,
+                    org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.mission.mapper.MissionChecklistExecutionMapper.class));
         }
     }
 }

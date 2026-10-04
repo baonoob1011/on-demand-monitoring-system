@@ -156,7 +156,8 @@ class MissionServiceTest {
                 userScheduleRepository,
                 missionDeviceAssignmentRepository,
                 missionStaffAssignmentRepository,
-                resourceTimeLockRepository);
+                resourceTimeLockRepository,
+                mock(com.ondemandmonitoring.mission.service.IMissionChecklistExecutionService.class));
 
         when(missionMapper.toResponse(any())).thenAnswer(inv -> {
             Mission m = inv.getArgument(0);
@@ -685,6 +686,55 @@ class MissionServiceTest {
             assertThat(result.getStatus()).isEqualTo(MissionStatus.COMPLETED);
             assertThat(mission.getCompletedAt()).isNotNull();
             assertThat(device.getStatus()).isEqualTo(DeviceStatus.AVAILABLE);
+        }
+
+        @Test
+        void incompleteBusinessChecklistDoesNotBlockCompletionOrResourceReleaseAndProducesDraft() {
+            Mission mission = buildMission("m-business", MissionStatus.POSTFLIGHT_CHECKING);
+            var order = new com.ondemandmonitoring.order.domain.Order(); order.setId("o"); mission.setOrder(order);
+            Device device = buildDevice("DEV-01", DeviceStatus.RETURNING);
+            var deviceAssignment = new MissionDeviceAssignment(); deviceAssignment.setDevice(device);
+            var staffAssignment = new MissionStaffAssignment();
+            when(missionRepository.findById(mission.getId())).thenReturn(Optional.of(mission));
+            when(missionRepository.findByIdForUpdate(mission.getId())).thenReturn(Optional.of(mission));
+            when(missionRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+            when(missionDeviceAssignmentRepository.findFirstByMissionIdOrderByCreatedAtDesc(mission.getId()))
+                    .thenReturn(Optional.of(deviceAssignment));
+            when(missionDeviceAssignmentRepository.findByMissionId(mission.getId())).thenReturn(List.of(deviceAssignment));
+            when(missionStaffAssignmentRepository.findByMissionId(mission.getId())).thenReturn(List.of(staffAssignment));
+            when(postDeviceCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(mission.getId()))
+                    .thenReturn(Optional.of(new PersistedPostDeviceCheck()));
+            var resultRepository = mock(com.ondemandmonitoring.mission.repository.MissionResultRepository.class);
+            var itemRepository = mock(com.ondemandmonitoring.order.repository.OrderChecklistItemRepository.class);
+            var executionRepository = mock(com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository.class);
+            var auth = mock(IMissionAuthorizationService.class);
+            when(auth.canExecuteMonitoringChecklist(mission.getId())).thenReturn(true);
+            var item = new com.ondemandmonitoring.order.domain.OrderChecklistItem(); item.setId("pending-item"); item.setOrder(order);
+            when(itemRepository.findAllByOrderIdInOrderByDisplayOrderAscIdAsc(List.of("o"))).thenReturn(List.of(item));
+            var checklist = new com.ondemandmonitoring.mission.service.impl.MissionChecklistExecutionServiceImpl(
+                    missionRepository, itemRepository, executionRepository, resultRepository, auth, authenticatedUserResolver,
+                    org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.mission.mapper.MissionChecklistExecutionMapper.class));
+            assertThat(checklist.isReadyForSubmission(mission)).isFalse();
+            var results = new com.ondemandmonitoring.mission.service.impl.MissionResultService(
+                    resultRepository, missionRepository, mock(com.ondemandmonitoring.media.repository.MediaAssetRepository.class),
+                    mock(com.ondemandmonitoring.media.service.IMediaAssetService.class),
+                    mock(com.ondemandmonitoring.mission.mapper.MissionResultMapper.class), orderRepository,
+                    checklist, authenticatedUserResolver, auth);
+            org.springframework.test.util.ReflectionTestUtils.setField(missionService, "missionResultService", results);
+
+            assertThat(missionService.completeMission(mission.getId()).getStatus()).isEqualTo(MissionStatus.COMPLETED);
+            assertThat(device.getStatus()).isEqualTo(DeviceStatus.AVAILABLE);
+            assertThat(deviceAssignment.getReleasedAt()).isNotNull();
+            assertThat(staffAssignment.getReleaseReason()).isEqualTo("MISSION_COMPLETE");
+            var captured = org.mockito.ArgumentCaptor.forClass(com.ondemandmonitoring.mission.domain.MissionResult.class);
+            verify(resultRepository).save(captured.capture());
+            assertThat(captured.getValue().getApprovalStatus())
+                    .isEqualTo(com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus.DRAFT);
+            assertThat(captured.getValue().getSubmittedAt()).isNull();
+            assertThatThrownBy(() -> results.upsert(mission.getId(),
+                    new com.ondemandmonitoring.mission.dto.request.MissionResultRequest()))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("not ready");
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.COMPLETED);
         }
 
         @Test

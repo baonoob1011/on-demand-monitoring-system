@@ -14,7 +14,9 @@ import java.time.Instant;
 @Getter
 @Setter
 @Entity
-@Table(name = "missions", uniqueConstraints = @UniqueConstraint(name = "uk_missions_order", columnNames = "order_id"))
+@Table(name = "missions", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_missions_order", columnNames = "order_id"),
+        @UniqueConstraint(name = "uk_mission_id_order", columnNames = {"id", "order_id"})})
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class Mission extends BaseEntity {
 

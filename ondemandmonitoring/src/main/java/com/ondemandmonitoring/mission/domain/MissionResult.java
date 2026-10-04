@@ -51,7 +51,7 @@ public class MissionResult extends BaseEntity {
     @Column(name = "completed_at", nullable = false)
     Instant completedAt;
 
-    @Column(name = "submitted_at", nullable = false)
+    @Column(name = "submitted_at")
     Instant submittedAt;
 
     @Column(name = "approved_at")

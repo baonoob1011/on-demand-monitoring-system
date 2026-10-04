@@ -13,6 +13,10 @@ import com.ondemandmonitoring.mission.dto.request.MissionResultReviewRequest;
 import com.ondemandmonitoring.mission.dto.response.MissionResultResponse;
 import com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus;
 import com.ondemandmonitoring.mission.enums.MissionResultStatus;
+import com.ondemandmonitoring.mission.enums.MissionStatus;
+import com.ondemandmonitoring.mission.service.IMissionChecklistExecutionService;
+import com.ondemandmonitoring.mission.service.IMissionAuthorizationService;
+import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import com.ondemandmonitoring.mission.mapper.MissionResultMapper;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.mission.repository.MissionResultRepository;
@@ -22,6 +26,7 @@ import com.ondemandmonitoring.order.repository.OrderRepository;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.ArrayList;
 import lombok.AccessLevel;
 import org.springframework.security.access.prepost.PreAuthorize;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +47,9 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
     IMediaAssetService mediaAssetService;
     MissionResultMapper missionResultMapper;
     OrderRepository orderRepository;
+    IMissionChecklistExecutionService checklistExecutionService;
+    AuthenticatedUserResolver currentUser;
+    IMissionAuthorizationService authorization;
 
     @Override
     @Transactional(readOnly = true)
@@ -55,18 +63,25 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
 
     @Override
     @Transactional
-    @PreAuthorize("@missionAuthorizationService.canUploadMissionMedia(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canExecuteMonitoringChecklist(#missionId)")
     public MissionResultResponse upsert(String missionId, MissionResultRequest request) {
-        Mission mission = missionRepository.findById(missionId)
+        Mission mission = missionRepository.findByIdForUpdate(missionId)
                 .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND,
                         "Mission not found: " + missionId));
+        if (!authorization.canExecuteMonitoringChecklist(missionId)) throw new ApiException(ErrorCode.ACCESS_DENIED);
+        if (mission.getStatus() != MissionStatus.COMPLETED)
+            throw new ApiException(ErrorCode.MISSION_STATUS_INVALID, "Complete operational mission before submitting results");
+        checklistExecutionService.requireReadyForSubmission(mission);
         MissionResult result = missionResultRepository.findByMissionId(missionId)
                 .orElseGet(() -> {
                     MissionResult created = new MissionResult();
                     created.setMission(mission);
-                    created.setCreatedBy(request.getReviewedBy());
+                    created.setCreatedBy(currentUser.getCurrentUserId());
                     return created;
                 });
+        if (result.getApprovalStatus() == MissionResultApprovalStatus.APPROVED
+                || result.getApprovalStatus() == MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL)
+            throw new ApiException(ErrorCode.CHECKLIST_EXECUTION_LOCKED);
         applyRequest(result, mission, request);
         return toResponse(missionResultRepository.save(result));
     }
@@ -86,11 +101,14 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public MissionResultResponse approve(String resultId, MissionResultReviewRequest request) {
         MissionResult result = requirePendingResult(resultId);
+        checklistExecutionService.requireReadyForSubmission(result.getMission());
+        if (result.getMission().getStatus() != MissionStatus.COMPLETED)
+            throw new ApiException(ErrorCode.MISSION_STATUS_INVALID);
         Instant now = Instant.now();
         result.setApprovalStatus(MissionResultApprovalStatus.APPROVED);
         result.setApprovedAt(now);
         result.setRejectedAt(null);
-        result.setReviewedBy(request == null ? null : request.getReviewedBy());
+        result.setReviewedBy(currentUser.getCurrentUserId());
         result.setReviewNote(request == null ? null : request.getNote());
         attachMissionMedia(result, result.getMission().getId());
         Order order = result.getMission().getOrder();
@@ -110,7 +128,7 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
         result.setApprovalStatus(MissionResultApprovalStatus.REJECTED);
         result.setRejectedAt(now);
         result.setApprovedAt(null);
-        result.setReviewedBy(request == null ? null : request.getReviewedBy());
+        result.setReviewedBy(currentUser.getCurrentUserId());
         result.setReviewNote(request == null ? null : request.getNote());
         return toResponse(missionResultRepository.save(result));
     }
@@ -118,17 +136,20 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
     @Override
     @Transactional
     public void ensureCompletedResult(Mission mission) {
+        missionRepository.findByIdForUpdate(mission.getId())
+                .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
         if (missionResultRepository.existsByMissionId(mission.getId())) {
             return;
         }
         MissionResult result = new MissionResult();
         result.setMission(mission);
         result.setStatus(MissionResultStatus.COMPLETED);
-        result.setApprovalStatus(MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL);
+        // Operational completion is not business submission. Never gate resource release here.
+        result.setApprovalStatus(MissionResultApprovalStatus.DRAFT);
         result.setStartedAt(mission.getActualStartAt());
         result.setEndedAt(mission.getActualEndAt() != null ? mission.getActualEndAt() : mission.getCompletedAt());
         result.setCompletedAt(mission.getCompletedAt() != null ? mission.getCompletedAt() : Instant.now());
-        result.setSubmittedAt(result.getCompletedAt());
+        result.setSubmittedAt(null);
         result.setMediaCount(countMedia(mission.getId()));
         attachMissionMedia(result, mission.getId());
         result.setSummary("Mission completed successfully");
@@ -165,7 +186,7 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
 
     private void attachMissionMedia(MissionResult result, String missionId) {
         List<MediaAsset> missionMedia = mediaAssetRepository.findByMissionIdOrderByCapturedAtDesc(missionId);
-        result.setMediaFiles(missionMedia);
+        result.setMediaFiles(new ArrayList<>(missionMedia));
         result.setMediaCount(missionMedia.size());
     }
 
@@ -175,6 +196,10 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
     }
 
     private MissionResult requirePendingResult(String resultId) {
+        String missionId = missionResultRepository.findMissionIdByResultId(resultId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND));
+        missionRepository.findByIdForUpdate(missionId)
+                .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
         return missionResultRepository.findById(resultId)
                 .filter(result -> result.getApprovalStatus() == MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,

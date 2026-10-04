@@ -32,6 +32,7 @@ import com.ondemandmonitoring.mission.mapper.MissionMapper;
 import com.ondemandmonitoring.mission.service.IDeviceConnectionService;
 import com.ondemandmonitoring.mission.service.IFlightTokenService;
 import com.ondemandmonitoring.mission.service.IMissionResultService;
+import com.ondemandmonitoring.mission.service.IMissionChecklistExecutionService;
 import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.planning.service.MissionPlanningService;
@@ -112,6 +113,7 @@ public class MissionService implements IMissionService {
     MissionDeviceAssignmentRepository missionDeviceAssignmentRepository;
     MissionStaffAssignmentRepository missionStaffAssignmentRepository;
     ResourceTimeLockRepository resourceTimeLockRepository;
+    IMissionChecklistExecutionService checklistExecutionService;
     // =========================================================================
     // Query Methods
     // =========================================================================
@@ -187,6 +189,7 @@ public class MissionService implements IMissionService {
         mission.setScheduledEndAt(request.getScheduledEndAt());
 
         Mission saved = missionRepository.save(mission);
+        checklistExecutionService.initialize(saved);
         return missionMapper.toResponse(saved);
     }
 
@@ -1223,6 +1226,7 @@ public class MissionService implements IMissionService {
         log.info("Mission {} post-flight completed – device {} status set to {}", missionId, device.getDeviceCode(),
                 newDeviceStatus);
         Mission saved = missionRepository.save(mission);
+        if (saved.getStatus() == MissionStatus.COMPLETED) missionResultService.ensureCompletedResult(saved);
         return missionMapper.toResponse(saved);
     }
 

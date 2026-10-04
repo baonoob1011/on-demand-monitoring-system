@@ -80,6 +80,32 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
     }
 
     @Override
+    public boolean canExecuteMonitoringChecklist(String identifier) {
+        User user = currentUser.getCurrentUser();
+        if (!hasRole(user, RoleCode.STAFF)) return false;
+        return resolveMission(identifier).filter(mission -> Set.of(MissionStatus.IN_FLIGHT,
+                MissionStatus.IN_PROGRESS, MissionStatus.RETURNING, MissionStatus.POSTFLIGHT_CHECKING,
+                MissionStatus.COMPLETED).contains(mission.getStatus())).map(mission -> {
+                    boolean completed = mission.getStatus() == MissionStatus.COMPLETED;
+                    // Operational completion releases current assignments. Only the final accepted crew
+                    // released by successful completion can finish the business report afterwards.
+                    List<MissionStaffAssignment> usable = assignments.findByMissionId(mission.getId()).stream()
+                            .filter(entry -> entry.getStaff() != null && hasRole(entry.getStaff(), RoleCode.STAFF))
+                            .filter(entry -> entry.getResponseStatus() == StaffResponseStatus.ACCEPTED)
+                            .filter(entry -> completed
+                                    ? entry.getReleasedAt() != null
+                                        && "MISSION_COMPLETE".equals(entry.getReleaseReason())
+                                    : Boolean.TRUE.equals(entry.getIsCurrent()) && entry.getReleasedAt() == null)
+                            .toList();
+                    MissionStaffRole required = usable.stream().anyMatch(entry ->
+                            entry.getAssignedRole() == MissionStaffRole.OPERATOR)
+                            ? MissionStaffRole.OPERATOR : MissionStaffRole.PILOT;
+                    return usable.stream().anyMatch(entry -> entry.getAssignedRole() == required
+                            && user.getId().equals(entry.getStaff().getId()));
+                }).orElse(false);
+    }
+
+    @Override
     public boolean canInspectDevice(String identifier) {
         return canPerform(identifier, MissionStaffRole.INSPECTOR, true);
     }

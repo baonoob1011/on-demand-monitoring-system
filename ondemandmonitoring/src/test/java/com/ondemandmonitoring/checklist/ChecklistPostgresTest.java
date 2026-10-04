@@ -85,6 +85,7 @@ class ChecklistPostgresTest {
     TransactionTemplate transaction;
 
     @BeforeEach void prepare() {
+        applyExecutionMigration();
         transaction = new TransactionTemplate(transactionManager);
         reset(resolver, times, deliverables, serviceDeliverables);
         transaction.executeWithoutResult(status -> {
@@ -93,6 +94,17 @@ class ChecklistPostgresTest {
             links.deleteAllInBatch(); definitions.deleteAllInBatch(); services.deleteAllInBatch();
         });
         new JdbcTemplate(dataSource).execute("TRUNCATE users, roles, preferred_times, deliverable_types CASCADE");
+    }
+
+    void applyExecutionMigration() {
+        try (var stream = new org.springframework.core.io.ClassPathResource(
+                "seeddata/migrations/add_mission_checklist_executions.sql").getInputStream()) {
+            String sql = new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                    .replace("public.", SCHEMA + ".");
+            new JdbcTemplate(dataSource).execute(sql);
+        } catch (java.io.IOException exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 
     @AfterAll void cleanup() {
@@ -445,7 +457,7 @@ class ChecklistPostgresTest {
         assertNull(legacy.getChecklistSnapshotAt());
         assertTrue(legacy.getChecklistItems().isEmpty());
     }
-    private List<Object> race(Callable<?> action) throws Exception {
+    List<Object> race(Callable<?> action) throws Exception {
         CountDownLatch ready = new CountDownLatch(2), start = new CountDownLatch(1);
         try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
             Callable<Object> call = () -> {

@@ -112,7 +112,7 @@ springdoc:
 
 mapillary:
   enabled: ${MAPILLARY_ENABLED:true}
-  base-url: ${MAPILLARY_BASE_URL}
+  base-url: ${MAPILLARY_BASE_URL:https://graph.mapillary.com}
   access-token: ${MAPILLARY_ACCESS_TOKEN}
   search-radius-meters: ${MAPILLARY_SEARCH_RADIUS_METERS:50}
 
