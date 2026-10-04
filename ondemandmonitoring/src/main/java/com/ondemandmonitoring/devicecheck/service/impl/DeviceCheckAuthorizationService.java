@@ -24,7 +24,7 @@ public class DeviceCheckAuthorizationService implements IDeviceCheckAuthorizatio
 
     @Override
     public boolean canInspectPreCheck(String id) {
-        return preChecks.findById(id).map(run -> missionAuthorization.canInspectDevice(run.getMission().getId()))
+        return preChecks.findById(id).map(run -> missionAuthorization.canOperatePayload(run.getMission().getId()))
                 .orElse(false);
     }
 
@@ -36,7 +36,7 @@ public class DeviceCheckAuthorizationService implements IDeviceCheckAuthorizatio
 
     @Override
     public boolean canInspectPostCheck(String id) {
-        return postChecks.findById(id).map(run -> missionAuthorization.canInspectDevice(run.getMission().getId()))
+        return postChecks.findById(id).map(run -> missionAuthorization.canMaintainDevice(run.getMission().getId()))
                 .orElse(false);
     }
 }

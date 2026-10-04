@@ -47,6 +47,8 @@ public enum MissionStatus {
 
     POSTFLIGHT_CHECKING,
 
+    PENDING_REVIEW,
+
     COMPLETED,
 
     FAILED,

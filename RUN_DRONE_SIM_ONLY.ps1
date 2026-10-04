@@ -18,5 +18,5 @@ if (-not (Test-Path $target)) {
     throw "Cannot find scripts\start-drone-stack.ps1. Run this from on-demand-monitoring-system or the repo parent folder."
 }
 
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $target -SimWorld compact @Arguments
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $target -SimWorld light -ShowGazeboGui -SkipBootstrap -NoTelemetry @Arguments
 exit $LASTEXITCODE

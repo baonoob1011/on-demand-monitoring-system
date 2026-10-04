@@ -1,5 +1,7 @@
 package com.ondemandmonitoring.mission.mapper;
 
+import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.device.domain.DeviceModel;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.domain.MissionStaffAssignment;
@@ -18,6 +20,7 @@ import org.springframework.stereotype.Component;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -124,11 +127,43 @@ public class MissionMapperHelper {
 
     @Named("missionDeviceName")
     public String getDeviceName(Mission mission) {
-        MissionDeviceAssignment assignment = getCurrentDeviceAssignment(mission).orElse(null);
-        if (assignment == null || assignment.getDevice() == null) {
-            return null;
-        }
-        return assignment.getDevice().getName();
+        return getMissionDevice(mission).map(Device::getName).orElse(null);
+    }
+
+    @Named("missionDeviceSerialNumber")
+    public String getDeviceSerialNumber(Mission mission) {
+        return getMissionDevice(mission).map(Device::getSerialNumber).orElse(null);
+    }
+
+    @Named("missionDeviceStatus")
+    public String getDeviceStatus(Mission mission) {
+        return getMissionDevice(mission)
+                .map(Device::getStatus)
+                .map(Enum::name)
+                .orElse(null);
+    }
+
+    @Named("missionDeviceModelCode")
+    public String getDeviceModelCode(Mission mission) {
+        return getMissionDeviceModel(mission).map(DeviceModel::getCode).orElse(null);
+    }
+
+    @Named("missionDeviceModelName")
+    public String getDeviceModelName(Mission mission) {
+        return getMissionDeviceModel(mission).map(DeviceModel::getModelName).orElse(null);
+    }
+
+    @Named("missionDeviceManufacturer")
+    public String getDeviceManufacturer(Mission mission) {
+        return getMissionDeviceModel(mission).map(DeviceModel::getManufacturer).orElse(null);
+    }
+
+    @Named("missionDevicePayload")
+    public String getDevicePayload(Mission mission) {
+        return getMissionDeviceModel(mission)
+                .map(DeviceModel::getSpecsMetadata)
+                .flatMap(this::firstPayloadValue)
+                .orElse(null);
     }
 
     @Named("missionStaffId")
@@ -176,6 +211,16 @@ public class MissionMapperHelper {
                 : missionDeviceAssignmentRepository.findFirstByMissionIdOrderByCreatedAtDesc(mission.getId());
     }
 
+    private Optional<Device> getMissionDevice(Mission mission) {
+        return getCurrentDeviceAssignment(mission)
+                .map(MissionDeviceAssignment::getDevice);
+    }
+
+    private Optional<DeviceModel> getMissionDeviceModel(Mission mission) {
+        return getMissionDevice(mission)
+                .map(Device::getDeviceModel);
+    }
+
     private Optional<MissionStaffAssignment> getCurrentStaffAssignment(Mission mission, MissionStaffRole role) {
         if (mission == null || mission.getId() == null) {
             return Optional.empty();
@@ -197,6 +242,38 @@ public class MissionMapperHelper {
             }
         }
         return null;
+    }
+
+    private Optional<String> firstPayloadValue(Map<String, Object> metadata) {
+        if (metadata == null || metadata.isEmpty()) {
+            return Optional.empty();
+        }
+        return List.of("payloadCapabilities", "payload", "payloads", "camera", "sensor")
+                .stream()
+                .map(metadata::get)
+                .map(this::metadataValue)
+                .filter(value -> !value.isBlank())
+                .findFirst();
+    }
+
+    private String metadataValue(Object value) {
+        if (value == null) {
+            return "";
+        }
+        if (value instanceof Iterable<?> iterable) {
+            StringBuilder builder = new StringBuilder();
+            for (Object item : iterable) {
+                String text = metadataValue(item);
+                if (!text.isBlank()) {
+                    if (!builder.isEmpty()) {
+                        builder.append(", ");
+                    }
+                    builder.append(text);
+                }
+            }
+            return builder.toString();
+        }
+        return String.valueOf(value).trim();
     }
 
     private String deliverableLabel(OrderDeliverable deliverable) {

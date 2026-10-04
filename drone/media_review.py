@@ -151,9 +151,15 @@ class LocalMediaLibrary:
             self._persist()
         return item.copy()
 
-    def list_items(self) -> list[dict]:
+    def list_items(self, mission_keys: set[str] | None = None) -> list[dict]:
         with self.lock:
-            return [item.copy() for item in self.items.values()]
+            items = [item.copy() for item in self.items.values()]
+        if not mission_keys:
+            return items
+        return [
+            item for item in items
+            if item.get("missionId") in mission_keys or item.get("missionCode") in mission_keys
+        ]
 
     def get(self, local_id: str) -> dict:
         with self.lock:

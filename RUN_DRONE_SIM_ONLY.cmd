@@ -18,5 +18,5 @@ if not exist "%DRONE_ROOT%scripts\start-drone-stack.ps1" (
     exit /b 1
 )
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%DRONE_ROOT%scripts\start-drone-stack.ps1" -SimWorld compact %*
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%DRONE_ROOT%scripts\start-drone-stack.ps1" -SimWorld light -ShowGazeboGui -SkipBootstrap -NoTelemetry %*
 endlocal

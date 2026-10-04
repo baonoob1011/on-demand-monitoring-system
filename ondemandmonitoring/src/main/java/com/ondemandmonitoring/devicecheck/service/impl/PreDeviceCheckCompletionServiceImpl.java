@@ -41,7 +41,7 @@ public class PreDeviceCheckCompletionServiceImpl implements IPreDeviceCheckCompl
 
     @Override
     @Transactional
-    @PreAuthorize("@missionAuthorizationService.canInspectDevice(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canOperatePayload(#missionId)")
     public PreDeviceCheckResponse complete(String missionId, String deviceId) {
         Mission mission = missionRepository.findById(missionId)
                 .orElseThrow(() -> new ApiException(
@@ -55,9 +55,9 @@ public class PreDeviceCheckCompletionServiceImpl implements IPreDeviceCheckCompl
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Device does not match the mission assignment");
         }
 
-        String staffId = getCurrentStaffId(mission.getId());
+        String staffId = getAcceptedPilotId(mission.getId());
         if (staffId == null || staffId.isBlank()) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Mission has no assigned staff");
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Mission chưa có pilot nhận nhiệm vụ để được cấp quyền bay.");
         }
 
         PersistedPreDeviceCheck persistedPreDeviceCheck = requirePassedPersistedPreDevice(mission.getId());
@@ -98,7 +98,7 @@ public class PreDeviceCheckCompletionServiceImpl implements IPreDeviceCheckCompl
                 .orElse(null);
     }
 
-    private String getCurrentStaffId(String missionId) {
+    private String getAcceptedPilotId(String missionId) {
         return missionStaffAssignmentRepository
                 .findAllByMissionIdAndAssignedRoleAndIsCurrentTrue(missionId,
                         MissionStaffRole.PILOT)

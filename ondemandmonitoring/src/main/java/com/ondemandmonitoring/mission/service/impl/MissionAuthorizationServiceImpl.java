@@ -71,22 +71,22 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
 
     @Override
     public boolean canControlFlight(String identifier) {
-        return canPerform(identifier, MissionStaffRole.PILOT, false);
+        return canPerform(identifier, MissionStaffRole.PILOT);
     }
 
     @Override
     public boolean canOperatePayload(String identifier) {
-        return canPerform(identifier, MissionStaffRole.OPERATOR, true);
+        return canPerform(identifier, MissionStaffRole.OPERATOR);
     }
 
     @Override
     public boolean canInspectDevice(String identifier) {
-        return canPerform(identifier, MissionStaffRole.INSPECTOR, true);
+        return canPerform(identifier, MissionStaffRole.INSPECTOR);
     }
 
     @Override
     public boolean canMaintainDevice(String identifier) {
-        return canPerform(identifier, MissionStaffRole.MAINTAINER, false);
+        return canPerform(identifier, MissionStaffRole.MAINTAINER);
     }
 
     @Override
@@ -96,37 +96,25 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
 
     @Override
     public boolean canUploadMissionMedia(String identifier) {
-        if (canOperatePayload(identifier)) return true;
         User user = currentUser.getCurrentUser();
         if (!hasRole(user, RoleCode.STAFF)) return false;
-        return resolveMission(identifier).filter(mission -> mission.getStatus() == MissionStatus.COMPLETED)
-                .map(mission -> {
-                    List<MissionStaffAssignment> crew = assignments.findByMissionId(mission.getId());
-                    MissionStaffRole required = crew.stream().anyMatch(entry ->
-                            entry.getAssignedRole() == MissionStaffRole.OPERATOR
-                                    && "MISSION_COMPLETE".equals(entry.getReleaseReason()))
-                            ? MissionStaffRole.OPERATOR : MissionStaffRole.PILOT;
-                    return crew.stream().anyMatch(entry -> entry.getStaff() != null
-                            && user.getId().equals(entry.getStaff().getId())
-                            && entry.getAssignedRole() == required
-                            && entry.getResponseStatus() == StaffResponseStatus.ACCEPTED
-                            && "MISSION_COMPLETE".equals(entry.getReleaseReason()));
-                }).orElse(false);
+        return resolveMission(identifier)
+                .filter(mission -> mission.getStatus() == MissionStatus.PENDING_REVIEW
+                        || mission.getStatus() == MissionStatus.COMPLETED)
+                .map(mission -> hasAcceptedAssignment(mission.getId(), user, MissionStaffRole.INSPECTOR))
+                .orElse(false);
     }
 
-    private boolean canPerform(String identifier, MissionStaffRole task, boolean pilotFallback) {
+    private boolean canPerform(String identifier, MissionStaffRole task) {
         User user = currentUser.getCurrentUser();
         if (!hasRole(user, RoleCode.STAFF)) return false;
         return resolveMission(identifier).filter(mission -> !TERMINAL_STATUSES.contains(mission.getStatus()))
                 .map(mission -> {
                     List<MissionStaffAssignment> crew = assignments.findAllByMissionIdAndIsCurrentTrue(mission.getId());
-                    // Only PILOT is mandatory. It covers an optional task only if nobody is assigned that task.
-                    MissionStaffRole required = pilotFallback && crew.stream()
-                            .noneMatch(entry -> entry.getAssignedRole() == task) ? MissionStaffRole.PILOT : task;
                     return crew.stream().anyMatch(entry -> entry.getStaff() != null
                             && user.getId().equals(entry.getStaff().getId())
                             && Boolean.TRUE.equals(entry.getIsCurrent()) && entry.getReleasedAt() == null
-                            && entry.getAssignedRole() == required
+                            && entry.getAssignedRole() == task
                             && entry.getResponseStatus() == StaffResponseStatus.ACCEPTED);
                 }).orElse(false);
     }
@@ -135,6 +123,14 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
         return assignments.findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc(missionId, user.getId())
                 .stream().filter(entry -> Boolean.TRUE.equals(entry.getIsCurrent()) && entry.getReleasedAt() == null)
                 .toList();
+    }
+
+    private boolean hasAcceptedAssignment(String missionId, User user, MissionStaffRole task) {
+        return assignments.findByMissionId(missionId).stream()
+                .anyMatch(entry -> entry.getStaff() != null
+                        && user.getId().equals(entry.getStaff().getId())
+                        && entry.getAssignedRole() == task
+                        && entry.getResponseStatus() == StaffResponseStatus.ACCEPTED);
     }
 
     private Optional<Mission> resolveMission(String identifier) {

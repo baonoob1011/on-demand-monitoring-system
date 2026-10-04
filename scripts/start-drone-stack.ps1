@@ -153,13 +153,14 @@ $forest3DPathWsl = if ($forest3DPath) { ConvertTo-WslPath $forest3DPath } else {
 $scriptRoot = "$repoRootWsl/scripts"
 $simArg = $SimWorld
 $webOnly = if ($ShowGazeboGui) { "0" } else { "1" }
-$baseWslEnv = "PROJECT_PATH='$repoRootWsl' CONTROL_YAW_STEP_DEG='$YawStepDeg' FAST_DEMO_MODE='1' CONTROL_MOVE_SPEED_M_S='220' CONTROL_VERTICAL_SPEED_M_S='80' PX4_SPEED_LIMIT_M_S='220' GPS_ROUTE_EXPECTED_SPEED_M_S='220'"
+$baseWslEnv = "PROJECT_PATH='$repoRootWsl' CONTROL_YAW_STEP_DEG='$YawStepDeg' FAST_DEMO_MODE='1' GPS_TARGET_REAL_FLIGHT='1' CONTROL_MOVE_SPEED_M_S='220' CONTROL_VERTICAL_SPEED_M_S='80' PX4_SPEED_LIMIT_M_S='220' GPS_ROUTE_EXPECTED_SPEED_M_S='220'"
 if ($forest3DPathWsl) { $baseWslEnv += " FOREST3D_PATH='$forest3DPathWsl'" }
 if ($hasHomeLatitude -or (-not $PSBoundParameters.ContainsKey("HomeLatitude") -and -not $PSBoundParameters.ContainsKey("HomeLongitude"))) {
     $culture = [System.Globalization.CultureInfo]::InvariantCulture
     $baseWslEnv += " PX4_HOME_LAT='$($HomeLatitude.ToString($culture))' PX4_HOME_LON='$($HomeLongitude.ToString($culture))' PX4_HOME_ALT='$($HomeAltitude.ToString($culture))'"
 }
 $simCommand = "$baseWslEnv FOREST3D_WEB_ONLY=${webOnly} SIM_WORLD=${simArg} exec ${scriptRoot}/wsl-sim-pane.sh ${simArg}"
+$gazeboGuiCommand = "$baseWslEnv SIM_WORLD=${simArg} exec ${scriptRoot}/wsl-gazebo-gui.sh ${simArg}"
 
 wsl.exe -d $ubuntuDistro -- bash -lc "$baseWslEnv exec ${scriptRoot}/wsl-clean-drone-stack.sh" | Out-Null
 
@@ -174,6 +175,12 @@ if (Get-Command wt.exe -ErrorAction SilentlyContinue) {
         $wtArgs += @(
             ";", "split-pane", "--vertical", "--size", "0.50", "--title", "MIDDLE - Telemetry BE",
             "wsl.exe", "-d", $ubuntuDistro, "--", "bash", "-lc", "$baseWslEnv exec ${scriptRoot}/wsl-telemetry.sh"
+        )
+    }
+    if ($ShowGazeboGui) {
+        $wtArgs += @(
+            ";", "new-tab", "--title", "GAZEBO - GUI",
+            "wsl.exe", "-d", $ubuntuDistro, "--", "bash", "-lc", $gazeboGuiCommand
         )
     }
     if ($WithCamera) {
@@ -198,6 +205,9 @@ if (Get-Command wt.exe -ErrorAction SilentlyContinue) {
 Start-Process wsl.exe -ArgumentList "-d", $ubuntuDistro, "--", "bash", "-lc", $simCommand
 Start-Sleep -Seconds 2
 Start-Process wsl.exe -ArgumentList "-d", $ubuntuDistro, "--", "bash", "-lc", "$baseWslEnv FOREST3D_WEB_ONLY=${webOnly} SIM_WORLD=${simArg} exec ${scriptRoot}/wsl-control.sh"
+if ($ShowGazeboGui) {
+    Start-WslWindow -Title "GAZEBO - GUI" -Command $gazeboGuiCommand
+}
 if ($WithTelemetry) {
     Start-Process wsl.exe -ArgumentList "-d", $ubuntuDistro, "--", "bash", "-lc", "$baseWslEnv exec ${scriptRoot}/wsl-telemetry.sh"
 }

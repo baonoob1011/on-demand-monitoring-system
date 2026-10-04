@@ -92,7 +92,7 @@ class DeviceConnectionServiceTest {
         MissionStaffAssignment msa = new MissionStaffAssignment();
         msa.setMission(mission);
         msa.setIsCurrent(true);
-        msa.setAssignedRole(MissionStaffRole.PILOT);
+        msa.setAssignedRole(MissionStaffRole.OPERATOR);
         msa.setResponseStatus(StaffResponseStatus.ACCEPTED);
 
         when(missionRepository.findById(missionId)).thenReturn(Optional.of(mission));

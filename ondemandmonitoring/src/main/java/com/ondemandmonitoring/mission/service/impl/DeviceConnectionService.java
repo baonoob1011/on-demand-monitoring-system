@@ -277,7 +277,7 @@ public class DeviceConnectionService implements IDeviceConnectionService {
         List<MissionStaffAssignment> assignments = missionStaffAssignmentRepository.findAllByMissionIdAndIsCurrentTrue(
                 missionId);
         return assignments.stream()
-                .filter(assignment -> assignment.getAssignedRole() == MissionStaffRole.PILOT
+                .filter(assignment -> assignment.getAssignedRole() == MissionStaffRole.OPERATOR
                         && assignment.getResponseStatus() == StaffResponseStatus.ACCEPTED
                         && assignment.getReleasedAt() == null)
                 .findFirst()

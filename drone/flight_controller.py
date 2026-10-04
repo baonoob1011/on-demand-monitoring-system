@@ -26,9 +26,10 @@ from mavsdk.action import ActionError
 from mavsdk.offboard import OffboardError, VelocityNedYaw
 from PIL import Image as PilImage
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 from dotenv import load_dotenv
 from video.video_recorder import RecordingResult, VideoRecorder
-from battery_simulator import BatterySimulator, preflight_battery_check
+from battery_simulator import BatterySimulator, battery_state, preflight_battery_check
 from media_uploader import BackendUrlResolver
 from media_review import LocalMediaLibrary
 from devicecheck_media_probe import verify_media_storage_probe
@@ -180,6 +181,10 @@ FAST_DEMO_MODE = (
     os.getenv("FAST_DEMO_MODE", "false").strip().lower()
     in {"1", "true", "yes", "on"}
 )
+GPS_TARGET_REAL_FLIGHT = (
+    os.getenv("GPS_TARGET_REAL_FLIGHT", "true").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
 
 MOVE_SPEED_M_S = float(
     os.getenv("CONTROL_MOVE_SPEED_M_S", "220.0")
@@ -200,6 +205,20 @@ AUTO_PLAN_VERTICAL_GAIN = float(os.getenv("AUTO_PLAN_VERTICAL_GAIN", "2.0" if FA
 AUTO_PLAN_SETPOINT_SMOOTHING = float(os.getenv("AUTO_PLAN_SETPOINT_SMOOTHING", "1.0" if FAST_DEMO_MODE else "0.35"))
 AUTO_PLAN_ALTITUDE_RAMP_M = float(os.getenv("AUTO_PLAN_ALTITUDE_RAMP_M", "80.0" if FAST_DEMO_MODE else "1.0"))
 GPS_ROUTE_EXPECTED_SPEED_M_S = float(os.getenv("GPS_ROUTE_EXPECTED_SPEED_M_S", "220.0" if FAST_DEMO_MODE else "6.0"))
+
+# Realistic flight dynamics for the real Gazebo/PX4 flight. The demo knobs above (220 m/s,
+# 80 m/s climb, 220 m/s^2 accel) made PX4 "teleport" on takeoff and jerk between setpoints.
+# These caps are applied to PX4 itself, so every command (takeoff, manual, GPS route) flies
+# like a real quadcopter: gentle takeoff, smooth acceleration, steady cruise.
+REALISTIC_FLIGHT = os.getenv("REALISTIC_FLIGHT", "true").strip().lower() in {"1", "true", "yes", "on"}
+REAL_TAKEOFF_SPEED_M_S = float(os.getenv("REAL_TAKEOFF_SPEED_M_S", "2.0"))
+REAL_CLIMB_SPEED_M_S = float(os.getenv("REAL_CLIMB_SPEED_M_S", "2.5"))
+REAL_DESCENT_SPEED_M_S = float(os.getenv("REAL_DESCENT_SPEED_M_S", "1.5"))
+REAL_MAX_XY_SPEED_M_S = float(os.getenv("REAL_MAX_XY_SPEED_M_S", "12.0"))
+REAL_ACC_HOR_M_S2 = float(os.getenv("REAL_ACC_HOR_M_S2", "2.5"))
+REAL_ACC_VERT_M_S2 = float(os.getenv("REAL_ACC_VERT_M_S2", "2.0"))
+GPS_FLIGHT_CRUISE_SPEED_M_S = float(os.getenv("GPS_FLIGHT_CRUISE_SPEED_M_S", "8.0"))
+GPS_FLIGHT_ACCEL_M_S2 = float(os.getenv("GPS_FLIGHT_ACCEL_M_S2", "1.5"))
 
 SPEED_ADJUST_STEP_M_S = float(
     os.getenv("CONTROL_SPEED_ADJUST_STEP_M_S", "200.0")
@@ -984,17 +1003,32 @@ async def configure_px4_speed_limits(
     horizontal = MOVE_SPEED_M_S if horizontal_speed_m_s is None else horizontal_speed_m_s
     vertical = VERTICAL_SPEED_M_S if vertical_speed_m_s is None else vertical_speed_m_s
     limit = max(PX4_SPEED_LIMIT_M_S, horizontal, vertical)
-    params = {
-        "MPC_XY_CRUISE": horizontal,
-        "MPC_XY_VEL_MAX": horizontal,
-        "MPC_XY_VEL_ALL": horizontal,
-        "MPC_Z_VEL_MAX_UP": vertical,
-        "MPC_Z_VEL_MAX_DN": vertical,
-        "MPC_TKO_SPEED": vertical,
-        "MPC_ACC_HOR_MAX": limit,
-        "MPC_ACC_UP_MAX": limit,
-        "MPC_ACC_DOWN_MAX": limit,
-    }
+    if REALISTIC_FLIGHT:
+        xy = min(horizontal, REAL_MAX_XY_SPEED_M_S)
+        params = {
+            "MPC_XY_CRUISE": min(xy, GPS_FLIGHT_CRUISE_SPEED_M_S),
+            "MPC_XY_VEL_MAX": xy,
+            "MPC_XY_VEL_ALL": xy,
+            "MPC_Z_VEL_MAX_UP": min(vertical, REAL_CLIMB_SPEED_M_S),
+            "MPC_Z_VEL_MAX_DN": min(vertical, REAL_DESCENT_SPEED_M_S),
+            "MPC_TKO_SPEED": REAL_TAKEOFF_SPEED_M_S,
+            "MPC_ACC_HOR_MAX": REAL_ACC_HOR_M_S2,
+            "MPC_ACC_HOR": REAL_ACC_HOR_M_S2,
+            "MPC_ACC_UP_MAX": REAL_ACC_VERT_M_S2,
+            "MPC_ACC_DOWN_MAX": REAL_ACC_VERT_M_S2,
+        }
+    else:
+        params = {
+            "MPC_XY_CRUISE": horizontal,
+            "MPC_XY_VEL_MAX": horizontal,
+            "MPC_XY_VEL_ALL": horizontal,
+            "MPC_Z_VEL_MAX_UP": vertical,
+            "MPC_Z_VEL_MAX_DN": vertical,
+            "MPC_TKO_SPEED": vertical,
+            "MPC_ACC_HOR_MAX": limit,
+            "MPC_ACC_UP_MAX": limit,
+            "MPC_ACC_DOWN_MAX": limit,
+        }
 
     applied = []
     skipped = []
@@ -1179,6 +1213,22 @@ def gps_distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * radius_m * math.asin(min(1.0, math.sqrt(a)))
 
 
+def gps_bearing_deg(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_lambda = math.radians(lon2 - lon1)
+    y = math.sin(delta_lambda) * math.cos(phi2)
+    x = math.cos(phi1) * math.sin(phi2) - math.sin(phi1) * math.cos(phi2) * math.cos(delta_lambda)
+    return (math.degrees(math.atan2(y, x)) + 360.0) % 360.0
+
+
+def gps_offset_m(origin_lat: float, origin_lon: float, latitude: float, longitude: float) -> tuple[float, float]:
+    radius_m = 6371000.0
+    north_m = math.radians(latitude - origin_lat) * radius_m
+    east_m = math.radians(longitude - origin_lon) * radius_m * math.cos(math.radians(origin_lat))
+    return north_m, east_m
+
+
 def normalize_gps_target(payload: dict, current_position: dict | None, in_air: bool) -> dict:
     if current_position is None:
         raise ValueError("Drone needs fresh PX4 GPS before GPS navigation")
@@ -1186,6 +1236,7 @@ def normalize_gps_target(payload: dict, current_position: dict | None, in_air: b
         latitude = float(payload["latitude"])
         longitude = float(payload["longitude"])
         relative_altitude_m = float(payload.get("relativeAltitudeM", 20.0))
+        requested_speed_m_s = float(payload.get("speedMps", 6.0))
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError("GPS target requires latitude, longitude and numeric altitude") from exc
     if not all(math.isfinite(value) for value in (latitude, longitude, relative_altitude_m)) \
@@ -1193,6 +1244,9 @@ def normalize_gps_target(payload: dict, current_position: dict | None, in_air: b
         raise ValueError("GPS target must contain valid WGS84 coordinates")
     if not 5.0 <= relative_altitude_m <= 50.0:
         raise ValueError("GPS target altitude must be between 5 and 50 metres")
+    if not math.isfinite(requested_speed_m_s) or requested_speed_m_s <= 0.0:
+        requested_speed_m_s = 6.0
+    requested_speed_m_s = min(45.0, max(3.0, requested_speed_m_s))
     distance_m = gps_distance_m(current_position["latitude"], current_position["longitude"], latitude, longitude)
     if distance_m > 120000.0:
         raise ValueError("GPS target is outside the configured Ho Chi Minh City flight range")
@@ -1245,6 +1299,7 @@ def normalize_gps_target(payload: dict, current_position: dict | None, in_air: b
         "longitude": longitude,
         "relativeAltitudeM": relative_altitude_m,
         "distanceM": distance_m,
+        "speedMps": requested_speed_m_s,
         "routeWaypoints": sorted(route_waypoints, key=lambda item: item["sequence"]),
     }
 
@@ -1414,11 +1469,18 @@ class FlightControlApi:
                 self.end_headers()
 
             def do_GET(self) -> None:
-                if self.path == "/api/media/local":
-                    self._write_json(200, {"media": owner.media_library.list_items() if owner.media_library else []})
+                parsed_path = urlparse(self.path)
+                if parsed_path.path == "/api/media/local":
+                    query = parse_qs(parsed_path.query)
+                    mission_keys = set(
+                        key.strip()
+                        for key in [*query.get("missionId", []), *query.get("missionAlias", [])]
+                        if key.strip()
+                    )
+                    self._write_json(200, {"media": owner.media_library.list_items(mission_keys or None) if owner.media_library else []})
                     return
-                if self.path.startswith("/api/media/local/") and self.path.endswith("/preview"):
-                    local_id = self.path.split("/")[4]
+                if parsed_path.path.startswith("/api/media/local/") and parsed_path.path.endswith("/preview"):
+                    local_id = parsed_path.path.split("/")[4]
                     try:
                         item = owner.media_library.get(local_id)
                         source = Path(item["localPath"])
@@ -1548,6 +1610,22 @@ class FlightControlApi:
                         self._write_json(200, {"ok": True, **result})
                     except (ValueError, json.JSONDecodeError) as exc:
                         self._write_json(400, {"error": str(exc)[:500]})
+                    return
+
+                if self.path == "/api/media/local/capture":
+                    try:
+                        if owner.media_library is None or not owner.media_library.mission_id:
+                            self._write_json(409, {"ok": False, "error": "Bind an assigned mission before capturing media"})
+                            return
+                        length = int(self.headers.get("Content-Length", "0"))
+                        if length <= 0 or length > 15_000_000:
+                            self._write_json(413, {"ok": False, "error": "Snapshot must be a JPEG under 15 MB"})
+                            return
+                        item = owner.media_library.capture_image(self.rfile.read(length))
+                        print(f"[CAMERA] Browser snapshot captured for operator review id={item['localMediaId']}", flush=True)
+                        self._write_json(201, {"ok": True, "media": item})
+                    except (ValueError, OSError) as exc:
+                        self._write_json(400, {"ok": False, "error": str(exc)[:500]})
                     return
 
                 if self.path.startswith("/api/media/local/"):
@@ -2751,6 +2829,7 @@ async def main() -> None:
 
     current_yaw_deg = 0.0
     media_tasks: set[asyncio.Task] = set()
+    gps_target_task: asyncio.Task | None = None
 
     def set_current_yaw(yaw_deg: float) -> None:
         nonlocal current_yaw_deg
@@ -2838,7 +2917,6 @@ async def main() -> None:
     def build_preflight_status(check_id: str, started_at_s: float | None) -> dict:
         nonlocal media_probe_check_id, media_probe_status, media_probe_message
         now_s = time.monotonic()
-        local_age_s = now_s - local_position_update_s if local_position_update_s is not None else None
         health_age_s = now_s - current_health_update_s if current_health_update_s is not None else None
         px4_battery_age_s = now_s - current_px4_battery_update_s if current_px4_battery_update_s is not None else None
         camera_age_s = None if FAST_DEMO_MODE else camera.latest_frame_age_s("DOWN")
@@ -2846,14 +2924,6 @@ async def main() -> None:
         connection_age_s = connection_manager.connection_age_s()
         px4_ready = connection_manager.px4_connected or connection_manager.recently_connected()
         grpc_ready = connection_manager.grpc_connected
-        local_values_ok = all(
-            math.isfinite(value)
-            for value in (
-                current_local_north_m,
-                current_local_east_m,
-                current_local_down_m,
-            )
-        )
         health_local_ok = bool(getattr(current_health, "is_local_position_ok", False))
         health_sensor_ok = all(
             bool(getattr(current_health, field, False))
@@ -2862,7 +2932,6 @@ async def main() -> None:
                 "is_gyrometer_calibration_ok",
             )
         ) if current_health is not None else False
-        module_ok = FAST_DEMO_MODE or (LIDAR_IMPORT_ERROR is None and Node is not None and GzImage is not None)
         backend_ok, backend_target = backend_urls.reachable()
         with media_probe_lock:
             if media_probe_check_id != check_id:
@@ -2870,7 +2939,7 @@ async def main() -> None:
                 if FAST_DEMO_MODE:
                     media_probe_status = "PASS"
                     media_probe_message = "Fast demo mode: media probe disabled"
-                elif module_ok and backend_ok and control_api.preflight_persistence is not None:
+                elif backend_ok and control_api.preflight_persistence is not None:
                     media_probe_status = "CHECKING"
                     media_probe_message = "Running isolated media storage round-trip probe"
                     media_ok, media_message = control_api.preflight_persistence.verify_media_upload_cycle(
@@ -2880,7 +2949,7 @@ async def main() -> None:
                     media_probe_message = media_message
                 else:
                     media_probe_status = "FAIL"
-                    media_probe_message = "Media probe needs loaded modules and reachable backend"
+                    media_probe_message = "Media probe needs a reachable backend"
             media_probe_status_snapshot = media_probe_status
             media_probe_message_snapshot = media_probe_message
 
@@ -2957,14 +3026,6 @@ async def main() -> None:
                 media_probe_message_snapshot,
                 False,
             ),
-            check_item(
-                "MODULES",
-                "Module Check",
-                "PASS" if module_ok else "WARN",
-                "Fast demo mode: optional sensor modules skipped" if FAST_DEMO_MODE
-                    else "Required components loaded" if module_ok else "Some optional Gazebo/LiDAR bindings are unavailable",
-                False,
-            ),
         ]
         completed = sum(1 for item in checks if item["status"] in {"PASS", "WARN", "FAIL"})
         critical_failures = [item for item in checks if item["critical"] and item["status"] == "FAIL"]
@@ -2983,7 +3044,12 @@ async def main() -> None:
 
     def api_status() -> dict:
         nonlocal demo_gps_route_points, demo_gps_route_schedule, demo_gps_started_s
+        now_s = time.monotonic()
         battery_snapshot = simulated_battery.snapshot()
+        px4_battery_age_s = now_s - current_px4_battery_update_s if current_px4_battery_update_s is not None else None
+        has_fresh_px4_battery = current_px4_battery_percent is not None and fresh(px4_battery_age_s, 10.0)
+        display_battery_percent = current_px4_battery_percent if has_fresh_px4_battery else battery_snapshot.battery_percent
+        display_battery_state = battery_state(display_battery_percent) if has_fresh_px4_battery else battery_snapshot.battery_state
         horizontal_speed = math.hypot(
             current_velocity_north_m_s,
             current_velocity_east_m_s,
@@ -3046,8 +3112,8 @@ async def main() -> None:
             "altitudeM": max(0.0, -current_local_down_m),
             "inAir": current_in_air or demo_active,
             "speedMps": GPS_ROUTE_EXPECTED_SPEED_M_S if demo_active else horizontal_speed,
-            "batteryPercent": round(battery_snapshot.battery_percent, 1),
-            "batteryState": battery_snapshot.battery_state,
+            "batteryPercent": round(display_battery_percent, 1),
+            "batteryState": display_battery_state,
             "batteryDrainMode": battery_snapshot.battery_drain_mode,
             "batteryCurrentA": round(battery_snapshot.current_draw_a, 2),
             "batteryCapacityMah": round(battery_snapshot.capacity_mAh, 1),
@@ -3060,8 +3126,9 @@ async def main() -> None:
                 "lastPx4SeenAgeS": connection_age_s,
             },
             "freshness": {
-                "localPositionAgeS": time.monotonic() - local_position_update_s if local_position_update_s is not None else None,
-                "healthAgeS": time.monotonic() - current_health_update_s if current_health_update_s is not None else None,
+                "localPositionAgeS": now_s - local_position_update_s if local_position_update_s is not None else None,
+                "healthAgeS": now_s - current_health_update_s if current_health_update_s is not None else None,
+                "px4BatteryAgeS": px4_battery_age_s,
                 "cameraFrameAgeS": camera.latest_frame_age_s("DOWN"),
                 "lidarScanAgeS": lidar.latest_scan_age_s() if lidar is not None and hasattr(lidar, "latest_scan_age_s") else None,
             },
@@ -3128,7 +3195,10 @@ async def main() -> None:
             raise ValueError("deviceId is required")
         if not access_token or len(access_token) > 4096 or any(char.isspace() for char in access_token):
             raise ValueError("A valid operator access token is required")
-        if video_recorder.is_recording() or current_in_air:
+        # Switching from one mission to ANOTHER mid-air is still blocked. But a drone that is
+        # airborne with no session yet (e.g. operator pressed Take off before Fly to point)
+        # may be claimed, otherwise "Fly to point" could never start after takeoff.
+        if (video_recorder.is_recording() or current_in_air) and active_mission_id is not None:
             if mission_id != active_mission_id or device_id != active_device_id:
                 raise ValueError("Cannot switch control session while recording or in flight")
 
@@ -3577,8 +3647,9 @@ async def main() -> None:
         nonlocal current_armed
         nonlocal current_forward_m_s, current_right_m_s
         nonlocal current_north_m_s, current_east_m_s, current_down_m_s
+        nonlocal current_yaw_deg
         nonlocal demo_gps_route_points, demo_gps_route_schedule, demo_gps_started_s
-        if FAST_DEMO_MODE:
+        if FAST_DEMO_MODE and not GPS_TARGET_REAL_FLIGHT:
             start_position = current_global_position or {
                 "latitude": float(target.get("latitude", 0.0)),
                 "longitude": float(target.get("longitude", 0.0)),
@@ -3644,25 +3715,13 @@ async def main() -> None:
             print("[GPS] MAVSDK control bridge unavailable", flush=True)
             return
 
-        if not current_in_air:
-            print("[GPS] Drone is on ground - taking off before GPS navigation", flush=True)
-            active_drone = await safe_arm(connection_manager)
-            if active_drone is None:
-                print("[GPS] Target navigation cancelled: cannot arm drone", flush=True)
-                return
-            current_armed = True
-            if avoidance is not None:
-                avoidance.set_drone(active_drone)
-            try:
-                await active_drone.action.takeoff()
-                print("[GPS] Takeoff command sent for GPS target flight", flush=True)
-                await wait_for_takeoff_confirm(active_drone)
-            except (ActionError, OffboardError) as exc:
-                print_command_denied("gps target takeoff", exc)
-                return
-            except grpc.aio.AioRpcError as exc:
-                print_mavsdk_unavailable("gps target takeoff", exc)
-                return
+        active_drone = await safe_arm(connection_manager)
+        if active_drone is None:
+            print("[GPS] Target navigation cancelled: cannot arm drone", flush=True)
+            return
+        current_armed = True
+        if avoidance is not None:
+            avoidance.set_drone(active_drone)
 
         gps_deadline_s = time.monotonic() + 10.0
         while (
@@ -3691,50 +3750,197 @@ async def main() -> None:
         set_motion_owner(MotionOwner.MANUAL)
 
         try:
-            await connection_manager.stop_offboard_sender()
-            try:
-                await active_drone.offboard.stop()
-            except OffboardError:
-                pass
-            current_absolute_m = float(current_global_position["absoluteAltitudeM"])
-            current_relative_m = float(current_global_position["relativeAltitudeM"])
-            home_absolute_m = current_absolute_m - current_relative_m
-            for index, waypoint in enumerate(normalized["routeWaypoints"]):
-                target_absolute_m = home_absolute_m + waypoint["relativeAltitudeM"]
-                await active_drone.action.goto_location(
-                    waypoint["latitude"],
-                    waypoint["longitude"],
-                    target_absolute_m,
-                    current_yaw_deg,
+            def stream_motion(
+                    north_m_s: float,
+                    east_m_s: float,
+                    down_m_s: float,
+                    yaw_deg: float,
+            ) -> None:
+                connection_manager.update_desired_motion(north_m_s, east_m_s, down_m_s, yaw_deg)
+
+            cruise_speed_m_s = max(
+                3.0,
+                min(float(normalized.get("speedMps", 6.0)), GPS_ROUTE_EXPECTED_SPEED_M_S, control_speed_m_s, 45.0),
+            )
+            if REALISTIC_FLIGHT:
+                cruise_speed_m_s = max(2.0, min(cruise_speed_m_s, GPS_FLIGHT_CRUISE_SPEED_M_S, REAL_MAX_XY_SPEED_M_S))
+            climb_altitude_m = max(8.0, min(50.0, normalized["relativeAltitudeM"]))
+            print(
+                f"[GPS] Real Gazebo flight: climb to {climb_altitude_m:.1f}m, "
+                f"speed={cruise_speed_m_s:.1f}m/s, waypoints={len(normalized['routeWaypoints'])}",
+                flush=True,
+            )
+
+            climb_started_s = time.monotonic()
+            while True:
+                current_altitude_m = float((current_global_position or {}).get("relativeAltitudeM", 0.0) or 0.0)
+                if current_altitude_m >= climb_altitude_m - 0.8:
+                    break
+                if time.monotonic() - climb_started_s >= (45.0 if REALISTIC_FLIGHT else 18.0):
+                    print("[GPS] Climb timeout; continuing toward target", flush=True)
+                    break
+                altitude_error_m = climb_altitude_m - current_altitude_m
+                climb_speed_m_s = min(REAL_CLIMB_SPEED_M_S if REALISTIC_FLIGHT else 4.0, max(0.8, altitude_error_m * 0.5))
+                first_waypoint = normalized["routeWaypoints"][0]
+                current_yaw_deg = gps_bearing_deg(
+                    float(current_global_position["latitude"]),
+                    float(current_global_position["longitude"]),
+                    first_waypoint["latitude"],
+                    first_waypoint["longitude"],
                 )
-                print(
-                    f"[GPS] Flying route point {index + 1}/{len(normalized['routeWaypoints'])} "
-                    f"lat={waypoint['latitude']:.7f} "
-                    f"lon={waypoint['longitude']:.7f} "
-                    f"rel_alt={waypoint['relativeAltitudeM']:.1f}m "
-                    f"leg={waypoint['distanceM']:.1f}m",
-                    flush=True,
+                current_forward_m_s = 0.0
+                current_right_m_s = 0.0
+                current_north_m_s = 0.0
+                current_east_m_s = 0.0
+                current_down_m_s = -climb_speed_m_s
+                if time.monotonic() - climb_started_s < 0.25:
+                    await set_motion(connection_manager, 0.0, 0.0, current_down_m_s, current_yaw_deg)
+                else:
+                    stream_motion(0.0, 0.0, current_down_m_s, current_yaw_deg)
+                await asyncio.sleep(0.05)
+
+            route_waypoints = normalized["routeWaypoints"]
+            route_points = [dict(current_global_position), *route_waypoints]
+            origin_lat = float(route_points[0]["latitude"])
+            origin_lon = float(route_points[0]["longitude"])
+            path_xy: list[tuple[float, float, float]] = [
+                (*gps_offset_m(origin_lat, origin_lon, point["latitude"], point["longitude"]),
+                 float(point.get("relativeAltitudeM", climb_altitude_m)))
+                for point in route_points
+            ]
+            cumulative_m = [0.0]
+            for previous, current in zip(path_xy, path_xy[1:]):
+                cumulative_m.append(
+                    cumulative_m[-1] + math.hypot(current[0] - previous[0], current[1] - previous[1])
                 )
-                timeout_s = max(0.8, min(3.0, waypoint["distanceM"] / max(1.0, GPS_ROUTE_EXPECTED_SPEED_M_S) + 0.8))
-                started_s = time.monotonic()
-                while index < len(normalized["routeWaypoints"]) - 1:
-                    if current_global_position is not None:
-                        remaining_m = gps_distance_m(
-                            current_global_position["latitude"],
-                            current_global_position["longitude"],
-                            waypoint["latitude"],
-                            waypoint["longitude"],
-                        )
-                        if remaining_m <= 18.0:
-                            break
-                    if time.monotonic() - started_s >= timeout_s:
-                        print("[GPS] Waypoint wait timeout; continuing to next GPS route point", flush=True)
-                        break
-                    await asyncio.sleep(1.0)
-        except ActionError as exc:
-            print_command_denied("gps target", exc)
+            total_path_m = cumulative_m[-1]
+            lookahead_m = max(25.0, min(180.0, cruise_speed_m_s * 4.0)) if REALISTIC_FLIGHT else max(80.0, min(180.0, cruise_speed_m_s * 4.0))
+            commanded_speed_m_s = 0.0
+            last_tick_s = time.monotonic()
+            last_log_s = 0.0
+            started_s = time.monotonic()
+            max_flight_s = max(90.0, total_path_m / max(1.0, cruise_speed_m_s) * 3.0 + 60.0)
+
+            await set_motion(connection_manager, 0.0, 0.0, 0.0, current_yaw_deg)
+            print(
+                f"[GPS] Smooth route tracking path={total_path_m:.1f}m "
+                f"lookahead={lookahead_m:.1f}m",
+                flush=True,
+            )
+
+            def point_at_distance(distance_m: float) -> tuple[float, float, float]:
+                if distance_m <= 0.0:
+                    return path_xy[0]
+                if distance_m >= total_path_m:
+                    return path_xy[-1]
+                for segment_index in range(len(cumulative_m) - 1):
+                    start_m = cumulative_m[segment_index]
+                    end_m = cumulative_m[segment_index + 1]
+                    if distance_m > end_m:
+                        continue
+                    span_m = max(0.001, end_m - start_m)
+                    ratio = (distance_m - start_m) / span_m
+                    start = path_xy[segment_index]
+                    end = path_xy[segment_index + 1]
+                    return (
+                        start[0] + (end[0] - start[0]) * ratio,
+                        start[1] + (end[1] - start[1]) * ratio,
+                        start[2] + (end[2] - start[2]) * ratio,
+                    )
+                return path_xy[-1]
+
+            while True:
+                if current_global_position is None:
+                    await asyncio.sleep(0.05)
+                    continue
+
+                current_x_m, current_y_m = gps_offset_m(
+                    origin_lat,
+                    origin_lon,
+                    float(current_global_position["latitude"]),
+                    float(current_global_position["longitude"]),
+                )
+                best_progress_m = 0.0
+                best_distance_m = float("inf")
+                for segment_index in range(len(path_xy) - 1):
+                    start = path_xy[segment_index]
+                    end = path_xy[segment_index + 1]
+                    vx = end[0] - start[0]
+                    vy = end[1] - start[1]
+                    span_sq = max(0.001, vx * vx + vy * vy)
+                    ratio = max(
+                        0.0,
+                        min(1.0, ((current_x_m - start[0]) * vx + (current_y_m - start[1]) * vy) / span_sq),
+                    )
+                    projected_x = start[0] + vx * ratio
+                    projected_y = start[1] + vy * ratio
+                    distance_m = math.hypot(current_x_m - projected_x, current_y_m - projected_y)
+                    if distance_m < best_distance_m:
+                        best_distance_m = distance_m
+                        best_progress_m = cumulative_m[segment_index] + math.sqrt(span_sq) * ratio
+
+                final_x_m, final_y_m, final_altitude_m = path_xy[-1]
+                remaining_final_m = math.hypot(final_x_m - current_x_m, final_y_m - current_y_m)
+                if remaining_final_m <= 30.0:
+                    print(f"[GPS] Smooth target reached ({remaining_final_m:.1f}m)", flush=True)
+                    break
+                if time.monotonic() - started_s >= max_flight_s:
+                    print(f"[GPS] Smooth route timeout ({remaining_final_m:.1f}m left)", flush=True)
+                    break
+
+                target_x_m, target_y_m, target_altitude_m = point_at_distance(best_progress_m + lookahead_m)
+                dx_m = target_x_m - current_x_m
+                dy_m = target_y_m - current_y_m
+                vector_distance_m = max(0.001, math.hypot(dx_m, dy_m))
+                current_yaw_deg = (math.degrees(math.atan2(dy_m, dx_m)) + 360.0) % 360.0
+
+                if remaining_final_m > 120.0:
+                    speed_m_s = cruise_speed_m_s
+                else:
+                    speed_m_s = min(cruise_speed_m_s, max(2.0, remaining_final_m * 0.35))
+                if REALISTIC_FLIGHT:
+                    # accelerate/decelerate gradually instead of jumping straight to cruise speed
+                    tick_s = time.monotonic()
+                    dt_s = max(0.0, min(0.5, tick_s - last_tick_s))
+                    last_tick_s = tick_s
+                    max_step = GPS_FLIGHT_ACCEL_M_S2 * dt_s
+                    commanded_speed_m_s += max(-max_step * 2.0, min(max_step, speed_m_s - commanded_speed_m_s))
+                    speed_m_s = max(0.0, commanded_speed_m_s)
+                current_north_m_s = (dx_m / vector_distance_m) * speed_m_s
+                current_east_m_s = (dy_m / vector_distance_m) * speed_m_s
+
+                altitude_error_m = target_altitude_m - float(
+                    current_global_position.get("relativeAltitudeM", climb_altitude_m) or climb_altitude_m
+                )
+                if abs(altitude_error_m) <= 0.8:
+                    current_down_m_s = 0.0
+                else:
+                    vertical_m_s = min(2.0, max(0.4, abs(altitude_error_m) * 0.35))
+                    current_down_m_s = -vertical_m_s if altitude_error_m > 0.0 else vertical_m_s
+
+                current_forward_m_s = math.hypot(current_north_m_s, current_east_m_s)
+                current_right_m_s = 0.0
+                stream_motion(current_north_m_s, current_east_m_s, current_down_m_s, current_yaw_deg)
+                if time.monotonic() - last_log_s >= 4.0:
+                    print(
+                        f"[GPS] Smooth tracking remaining={remaining_final_m:.1f}m "
+                        f"cross_track={best_distance_m:.1f}m speed={speed_m_s:.1f}m/s",
+                        flush=True,
+                    )
+                    last_log_s = time.monotonic()
+                await asyncio.sleep(0.05)
+
+            current_forward_m_s = 0.0
+            current_right_m_s = 0.0
+            current_north_m_s = 0.0
+            current_east_m_s = 0.0
+            current_down_m_s = 0.0
+            stream_motion(0.0, 0.0, 0.0, current_yaw_deg)
+            print("[GPS] Target flight complete - hovering", flush=True)
+        except (ActionError, OffboardError) as exc:
+            print_command_denied("gps target offboard", exc)
         except grpc.aio.AioRpcError as exc:
-            print_mavsdk_unavailable("gps target", exc)
+            print_mavsdk_unavailable("gps target offboard", exc)
 
     def current_saved_motion():
         if not has_manual_motion():
@@ -3911,7 +4117,13 @@ async def main() -> None:
                 start_auto_plan(command_message.get("waypoints", []))
                 continue
             if command_message.get("type") == "gps_target_start":
-                await start_gps_target(command_message.get("target", {}))
+                if gps_target_task is not None and not gps_target_task.done():
+                    gps_target_task.cancel()
+                gps_target_task = asyncio.create_task(
+                    start_gps_target(command_message.get("target", {})),
+                    name="gps-target-flight",
+                )
+                track_background_task(gps_target_task, "GPS")
                 continue
             key = str(command_message.get("key", ""))
         else:

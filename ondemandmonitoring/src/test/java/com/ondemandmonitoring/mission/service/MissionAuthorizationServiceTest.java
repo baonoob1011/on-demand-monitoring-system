@@ -62,18 +62,25 @@ class MissionAuthorizationServiceTest {
     }
 
     @Test
-    void pilotCoversOptionalTasksOnlyUntilASpecialistIsAssigned() {
+    void crewPermissionsStayScopedToAssignedMissionRole() {
         var pilot = assign(MissionStaffRole.PILOT, StaffResponseStatus.ACCEPTED);
-        assertThat(policy.canInspectDevice("mission-1")).isTrue();
-        assertThat(policy.canOperatePayload("mission-1")).isTrue();
-        var inspector = MissionStaffAssignment.builder().staff(otherStaff()).assignedRole(MissionStaffRole.INSPECTOR)
-                .responseStatus(StaffResponseStatus.PENDING).isCurrent(true).build();
-        var operator = MissionStaffAssignment.builder().staff(otherStaff()).assignedRole(MissionStaffRole.OPERATOR)
-                .responseStatus(StaffResponseStatus.ACCEPTED).isCurrent(true).build();
-        when(assignments.findAllByMissionIdAndIsCurrentTrue("mission-1")).thenReturn(List.of(pilot, inspector, operator));
+        assertThat(policy.canControlFlight("mission-1")).isTrue();
         assertThat(policy.canInspectDevice("mission-1")).isFalse();
         assertThat(policy.canOperatePayload("mission-1")).isFalse();
-        assertThat(policy.canControlFlight("mission-1")).isTrue();
+
+        var inspector = MissionStaffAssignment.builder().staff(staff).assignedRole(MissionStaffRole.INSPECTOR)
+                .responseStatus(StaffResponseStatus.ACCEPTED).isCurrent(true).build();
+        when(assignments.findAllByMissionIdAndIsCurrentTrue("mission-1")).thenReturn(List.of(inspector));
+        assertThat(policy.canControlFlight("mission-1")).isFalse();
+        assertThat(policy.canInspectDevice("mission-1")).isTrue();
+        assertThat(policy.canOperatePayload("mission-1")).isFalse();
+
+        var operator = MissionStaffAssignment.builder().staff(staff).assignedRole(MissionStaffRole.OPERATOR)
+                .responseStatus(StaffResponseStatus.ACCEPTED).isCurrent(true).build();
+        when(assignments.findAllByMissionIdAndIsCurrentTrue("mission-1")).thenReturn(List.of(operator));
+        assertThat(policy.canControlFlight("mission-1")).isFalse();
+        assertThat(policy.canInspectDevice("mission-1")).isFalse();
+        assertThat(policy.canOperatePayload("mission-1")).isTrue();
     }
 
     @ParameterizedTest
@@ -106,16 +113,16 @@ class MissionAuthorizationServiceTest {
     }
 
     @Test
-    void historicalCrewCanReadButCannotControlAndOnlyFinalCaptureCrewCanFinishUploads() {
+    void historicalCrewCanReadButCannotControlAndOnlyInspectorCanFinishUploads() {
         mission.setStatus(MissionStatus.COMPLETED);
-        var entry = MissionStaffAssignment.builder().staff(staff).assignedRole(MissionStaffRole.OPERATOR)
+        var entry = MissionStaffAssignment.builder().staff(staff).assignedRole(MissionStaffRole.INSPECTOR)
                 .responseStatus(StaffResponseStatus.ACCEPTED).isCurrent(false).releaseReason("MISSION_COMPLETE").build();
         when(assignments.existsByMissionIdAndStaffId("mission-1", "staff-1")).thenReturn(true);
         when(assignments.findByMissionId("mission-1")).thenReturn(List.of(entry));
         assertThat(policy.canViewMission("mission-1")).isTrue();
         assertThat(policy.canUploadMissionMedia("mission-1")).isTrue();
         assertThat(policy.canControlFlight("mission-1")).isFalse();
-        entry.setReleaseReason("REPLACED");
+        entry.setAssignedRole(MissionStaffRole.OPERATOR);
         assertThat(policy.canUploadMissionMedia("mission-1")).isFalse();
     }
 
@@ -133,11 +140,5 @@ class MissionAuthorizationServiceTest {
         when(assignments.findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc("mission-1", "staff-1"))
                 .thenReturn(List.of(entry));
         return entry;
-    }
-
-    private User otherStaff() {
-        User other = new User();
-        other.setId("staff-2");
-        return other;
     }
 }
