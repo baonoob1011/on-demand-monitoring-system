@@ -68,7 +68,7 @@ public class ServiceServiceImpl implements IServiceService {
     @Override
     @Transactional
     public ServiceResponse update(String id, ServiceRequest request) {
-        Service entity = getEntityById(id);
+        Service entity = getEntityForUpdate(id);
         serviceMapper.updateEntityFromRequest(request, entity);
         Service saved = serviceRepository.save(entity);
         return toResponse(saved);
@@ -77,7 +77,7 @@ public class ServiceServiceImpl implements IServiceService {
     @Override
     @Transactional
     public void delete(String id) {
-        Service entity = getEntityById(id);
+        Service entity = getEntityForUpdate(id);
         entity.setIsActive(false);
         serviceRepository.save(entity);
     }
@@ -94,5 +94,10 @@ public class ServiceServiceImpl implements IServiceService {
         ServiceResponse response = serviceMapper.toResponse(service);
         response.setImageUrl(serviceImageService.getImageUrl(service));
         return response;
+    }
+
+    private Service getEntityForUpdate(String id) {
+        return serviceRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ApiException(ErrorCode.SERVICE_NOT_FOUND));
     }
 }

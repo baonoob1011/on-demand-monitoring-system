@@ -22,6 +22,7 @@ import lombok.experimental.FieldDefaults;
 import lombok.experimental.NonFinal;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -53,6 +54,7 @@ public class ServiceController {
 
     @Operation(summary = "Create service", description = "Creates a new monitoring service")
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<ServiceResponse>> create(
             @Valid @RequestBody ServiceRequest request) {
         ServiceResponse response = serviceService.create(request);
@@ -130,6 +132,7 @@ public class ServiceController {
 
     @Operation(summary = "Update service", description = "Updates an existing service by its ID")
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<ServiceResponse>> update(
             @PathVariable String id,
             @Valid @RequestBody ServiceRequest request) {
@@ -139,6 +142,7 @@ public class ServiceController {
 
     @Operation(summary = "Delete service", description = "Soft-deletes a service by setting isActive to false")
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable String id) {
         serviceService.delete(id);
         return ResponseEntity.ok(ApiResponse.ok("Service deleted successfully", null));

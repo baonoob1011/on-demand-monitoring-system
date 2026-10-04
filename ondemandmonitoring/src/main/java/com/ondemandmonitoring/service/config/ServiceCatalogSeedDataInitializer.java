@@ -36,8 +36,14 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
+        // Bootstrap only an empty catalog. Existing rows belong to administrators,
+        // including renamed, inactive and newly created services.
+        if (serviceRepository.count() > 0) {
+            log.info("Skipping service catalog bootstrap: catalog already exists");
+            return;
+        }
         int servicesUpserted = seedServices();
-        int legacyServicesCleaned = cleanupLegacyEnglishServices();
+        int legacyServicesCleaned = 0;
         int deliverablesUpserted = seedDeliverableTypes();
         int linksCreated = seedServiceDeliverables();
         int suggestionsUpserted = seedRequirementSuggestions();
@@ -123,7 +129,6 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
                 count++;
             }
         }
-        deactivateServicesOutsideMapCatalog(seeds);
 
         return count;
     }
