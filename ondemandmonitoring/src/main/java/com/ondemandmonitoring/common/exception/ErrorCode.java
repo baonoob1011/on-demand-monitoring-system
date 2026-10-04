@@ -65,6 +65,12 @@ public enum ErrorCode {
      * Service & DeliverableType Error Codes
      */
     SERVICE_NOT_FOUND("Service not found", HttpStatus.NOT_FOUND),
+    SERVICE_INACTIVE("Service is inactive", HttpStatus.CONFLICT),
+    CHECKLIST_NOT_FOUND("Checklist not found", HttpStatus.NOT_FOUND),
+    CHECKLIST_ALREADY_EXISTS("Checklist content already exists", HttpStatus.CONFLICT),
+    CHECKLIST_INACTIVE("Checklist is inactive", HttpStatus.CONFLICT),
+    SERVICE_CHECKLIST_NOT_FOUND("Service checklist assignment not found", HttpStatus.NOT_FOUND),
+    SERVICE_CHECKLIST_ALREADY_EXISTS("Checklist is already assigned to this service", HttpStatus.CONFLICT),
     SERVICE_IMAGE_STORAGE_ERROR("Unable to store service illustration", HttpStatus.BAD_GATEWAY),
     SERVICE_ALREADY_EXISTS("Service already exists", HttpStatus.CONFLICT),
     DELIVERABLE_TYPE_NOT_FOUND("Deliverable type not found", HttpStatus.NOT_FOUND),
