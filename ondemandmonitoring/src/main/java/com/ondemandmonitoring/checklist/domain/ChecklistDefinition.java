@@ -13,7 +13,7 @@ import lombok.*;
 public class ChecklistDefinition extends BaseEntity {
     @Column(nullable = false, length = 500)
     private String content;
-    @Column(name = "normalized_content", nullable = false, length = 500)
+    @Column(name = "normalized_content", nullable = false, length = 1000)
     private String normalizedContent;
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;

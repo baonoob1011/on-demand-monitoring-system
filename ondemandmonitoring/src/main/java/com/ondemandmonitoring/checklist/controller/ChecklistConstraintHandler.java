@@ -7,9 +7,11 @@ import org.springframework.core.annotation.Order;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import lombok.extern.slf4j.Slf4j;
 
 @RestControllerAdvice(basePackages = "com.ondemandmonitoring.checklist.controller")
 @Order(-1)
+@Slf4j
 public class ChecklistConstraintHandler {
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handle(DataIntegrityViolationException exception) {
@@ -23,6 +25,9 @@ public class ChecklistConstraintHandler {
                 }
                 break;
             }
+        }
+        if (code == ErrorCode.INTERNAL_SERVER_ERROR) {
+            log.error("Unexpected checklist integrity violation", exception);
         }
         return ResponseEntity.status(code.getStatus()).body(ApiResponse.error(code.name(), code.getMessage()));
     }

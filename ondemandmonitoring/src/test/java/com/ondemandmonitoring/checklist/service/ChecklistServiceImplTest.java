@@ -41,6 +41,10 @@ class ChecklistServiceImplTest {
         }
         verify(repository, never()).saveAndFlush(any());
     }
+    @Test void unicodeNormalizationIsCanonicalAndLowercaseCanExpand() {
+        assertEquals("Kiểm tra", service.create(request("Kie\u0302\u0309m tra")).getContent());
+        assertEquals(500, service.create(request("\u0130".repeat(500))).getContent().length());
+    }
     @Test void duplicateIncludesInactiveCatalog() {
         when(repository.existsByNormalizedContent("check exits")).thenReturn(true);
         assertEquals(ErrorCode.CHECKLIST_ALREADY_EXISTS,

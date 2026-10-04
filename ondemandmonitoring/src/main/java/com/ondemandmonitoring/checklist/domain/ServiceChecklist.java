@@ -15,6 +15,7 @@ import lombok.*;
 @Getter
 @Setter
 @NoArgsConstructor
+@org.hibernate.annotations.Check(constraints = "display_order >= 0")
 public class ServiceChecklist extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "service_id", nullable = false, foreignKey = @ForeignKey(name = "fk_service_checklist_service"))
