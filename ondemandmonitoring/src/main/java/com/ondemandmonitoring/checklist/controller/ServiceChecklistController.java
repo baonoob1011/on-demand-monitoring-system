@@ -35,6 +35,12 @@ public class ServiceChecklistController {
         return ApiResponse.ok(service.updateOrder(serviceId, checklistId, request.getDisplayOrder()));
     }
 
+    @PutMapping("/order")
+    public ApiResponse<List<ServiceChecklistResponse>> reorder(@PathVariable String serviceId,
+            @Valid @RequestBody ChecklistReorderRequest request) {
+        return ApiResponse.ok(service.reorder(serviceId, request));
+    }
+
     @DeleteMapping("/{checklistId}")
     public ApiResponse<Void> unassign(@PathVariable String serviceId, @PathVariable String checklistId) {
         service.unassign(serviceId, checklistId);

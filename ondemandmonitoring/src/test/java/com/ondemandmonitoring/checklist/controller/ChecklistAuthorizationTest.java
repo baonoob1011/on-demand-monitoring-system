@@ -74,6 +74,7 @@ class ChecklistAuthorizationTest {
             post("/api/admin/services/s1/checklists").content("{\"checklistId\":\"c1\",\"displayOrder\":0}"),
             patch("/api/admin/services/s1/checklists/c1").content("{\"displayOrder\":2}"),
             delete("/api/admin/services/s1/checklists/c1"),
+            put("/api/admin/services/s1/checklists/order").content("{\"items\":[]}"),
             get("/api/admin/services/s1/checklists"), get("/api/admin/checklists/c1/services"),
             post("/api/services").content("{\"name\":\"Service\"}"),
             put("/api/services/s1").content("{\"name\":\"Service\"}"),
@@ -129,7 +130,8 @@ class ChecklistAuthorizationTest {
                 post("/api/admin/checklists").content("{\"content\":\"" + "x".repeat(501) + "\"}"),
                 patch("/api/admin/checklists/c1/status").content("{}"),
                 post("/api/admin/services/s1/checklists").content("{\"checklistId\":\"c1\",\"displayOrder\":-1}"),
-                patch("/api/admin/services/s1/checklists/c1").content("{}"))) {
+                patch("/api/admin/services/s1/checklists/c1").content("{}"),
+                put("/api/admin/services/s1/checklists/order").content("{\"items\":[{\"checklistId\":\"c1\"}]}"))) {
             mvc.perform(request.contentType(MediaType.APPLICATION_JSON).with(jwt().authorities(() -> "ROLE_ADMIN")))
                     .andExpect(status().isBadRequest());
         }

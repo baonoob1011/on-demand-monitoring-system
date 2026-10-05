@@ -11,6 +11,9 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 public class ChecklistDefinition extends BaseEntity {
+    // Bootstrap identity survives administrator content edits; not an evidence policy.
+    @Column(name = "seed_code", unique = true, length = 20)
+    private String seedCode;
     @Column(nullable = false, length = 500)
     private String content;
     @Column(name = "normalized_content", nullable = false, length = 1000)

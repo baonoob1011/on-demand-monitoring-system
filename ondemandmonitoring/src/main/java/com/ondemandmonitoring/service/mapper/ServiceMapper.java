@@ -19,6 +19,7 @@ public interface ServiceMapper {
     @Mapping(target = "version", ignore = true)
     @Mapping(target = "imageS3Key", ignore = true)
     @Mapping(target = "imageS3Bucket", ignore = true)
+    @Mapping(target = "checklistDefaultsInitialized", ignore = true)
     Service toEntity(ServiceRequest request);
 
     @Mapping(target = "imageUrl", ignore = true)
@@ -31,5 +32,6 @@ public interface ServiceMapper {
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "imageS3Key", ignore = true)
     @Mapping(target = "imageS3Bucket", ignore = true)
+    @Mapping(target = "checklistDefaultsInitialized", ignore = true)
     void updateEntityFromRequest(ServiceRequest request, @MappingTarget Service entity);
 }

@@ -37,6 +37,11 @@ public class Service extends BaseEntity {
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 
+    @Builder.Default
+    @Column(name = "checklist_defaults_initialized", nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private Boolean checklistDefaultsInitialized = false;
+
 
     @Builder.Default
     @OneToMany(mappedBy = "recommendedService", fetch = FetchType.LAZY)

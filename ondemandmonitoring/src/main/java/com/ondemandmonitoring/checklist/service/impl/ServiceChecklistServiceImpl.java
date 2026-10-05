@@ -11,6 +11,11 @@ import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.service.repository.ServiceRepository;
 import lombok.RequiredArgsConstructor;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import com.ondemandmonitoring.checklist.dto.request.ChecklistReorderRequest;
 import org.springframework.transaction.annotation.Transactional;
 
 @org.springframework.stereotype.Service
@@ -36,24 +41,60 @@ public class ServiceChecklistServiceImpl implements IServiceChecklistService {
         ServiceChecklist entity = new ServiceChecklist();
         entity.setService(service);
         entity.setChecklist(checklist);
-        entity.setDisplayOrder(request.getDisplayOrder());
+        var rows = new ArrayList<>(assignments.findAllByServiceIdOrderByDisplayOrderAscIdAsc(serviceId));
+        if (rows.size() >= 100) throw new ApiException(ErrorCode.INVALID_REQUEST, "At most 100 template items are allowed");
+        rows.add(Math.min(request.getDisplayOrder(), rows.size()), entity);
+        normalize(rows);
+        service.setChecklistDefaultsInitialized(true);
         return mapper.toResponse(assignments.saveAndFlush(entity));
     }
 
     @Override
     public ServiceChecklistResponse updateOrder(String serviceId, String checklistId, int displayOrder) {
         validateOrder(displayOrder);
-        lockService(serviceId);
+        Service service = lockService(serviceId);
         ServiceChecklist entity = assignment(serviceId, checklistId);
-        entity.setDisplayOrder(displayOrder);
+        var rows = new ArrayList<>(assignments.findAllByServiceIdOrderByDisplayOrderAscIdAsc(serviceId));
+        rows.removeIf(row -> checklistId.equals(row.getChecklist().getId()));
+        rows.add(Math.min(displayOrder, rows.size()), entity);
+        normalize(rows);
+        service.setChecklistDefaultsInitialized(true);
         return mapper.toResponse(assignments.saveAndFlush(entity));
     }
 
     @Override
     public void unassign(String serviceId, String checklistId) {
-        lockService(serviceId);
+        Service service = lockService(serviceId);
         assignments.delete(assignment(serviceId, checklistId));
         assignments.flush();
+        normalize(assignments.findAllByServiceIdOrderByDisplayOrderAscIdAsc(serviceId));
+        service.setChecklistDefaultsInitialized(true);
+    }
+
+    @Override
+    public List<ServiceChecklistResponse> reorder(String serviceId, ChecklistReorderRequest request) {
+        Service service = lockService(serviceId);
+        var rows = assignments.findAllByServiceIdOrderByDisplayOrderAscIdAsc(serviceId);
+        if (request == null || request.items() == null || request.items().size() != rows.size()
+                || rows.size() > 100 || request.items().stream().anyMatch(item -> item == null || item.checklistId() == null))
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Reorder must include every assigned checklist once");
+        var byId = rows.stream().collect(Collectors.toMap(row -> row.getChecklist().getId(), Function.identity()));
+        var ordered = new ArrayList<ServiceChecklist>();
+        for (var item : request.items()) {
+            var row = byId.remove(item.checklistId());
+            if (row == null) throw new ApiException(ErrorCode.INVALID_REQUEST, "Duplicate or unknown checklist");
+            if (!Objects.equals(row.getVersion(), item.expectedVersion()) || item.expectedVersion() == null)
+                throw new ApiException(ErrorCode.CONCURRENT_UPDATE);
+            ordered.add(row);
+        }
+        normalize(ordered);
+        service.setChecklistDefaultsInitialized(true);
+        return ordered.stream().map(mapper::toResponse).toList();
+    }
+
+    private void normalize(List<ServiceChecklist> rows) {
+        for (int i = 0; i < rows.size(); i++) rows.get(i).setDisplayOrder(i);
+        assignments.saveAllAndFlush(rows);
     }
 
     private Service lockService(String id) {

@@ -95,8 +95,33 @@ class ServiceChecklistServiceImplTest {
     @Test void orderCanChangeAndCannotBeNegative() {
         var link = link();
         when(assignments.findByServiceIdAndChecklistId("s1", "c1")).thenReturn(Optional.of(link));
-        assertEquals(3, useCase.updateOrder("s1", "c1", 3).getDisplayOrder());
+        // Positions are clamped and normalized to 0..N-1, rather than creating gaps.
+        assertEquals(0, useCase.updateOrder("s1", "c1", 3).getDisplayOrder());
         assertThrows(ApiException.class, () -> useCase.updateOrder("s1", "c1", -1));
+    }
+
+    @Test void atomicReorderChecksMembershipVersionsAndNormalizes() {
+        var one = link(); one.setVersion(2L);
+        var definition = new ChecklistDefinition(); definition.setId("c2");
+        var two = link(); two.setChecklist(definition); two.setVersion(4L);
+        when(assignments.findAllByServiceIdOrderByDisplayOrderAscIdAsc("s1")).thenReturn(List.of(one, two));
+        var request = new com.ondemandmonitoring.checklist.dto.request.ChecklistReorderRequest(List.of(
+                new com.ondemandmonitoring.checklist.dto.request.ChecklistReorderRequest.Item("c2", 4L),
+                new com.ondemandmonitoring.checklist.dto.request.ChecklistReorderRequest.Item("c1", 2L)));
+        assertEquals(List.of("c2", "c1"), useCase.reorder("s1", request).stream().map(row -> row.getChecklistId()).toList());
+        assertEquals(0, two.getDisplayOrder()); assertEquals(1, one.getDisplayOrder());
+        assertTrue(service.getChecklistDefaultsInitialized());
+        var stale = new com.ondemandmonitoring.checklist.dto.request.ChecklistReorderRequest(List.of(
+                new com.ondemandmonitoring.checklist.dto.request.ChecklistReorderRequest.Item("c2", 3L),
+                new com.ondemandmonitoring.checklist.dto.request.ChecklistReorderRequest.Item("c1", 2L)));
+        assertEquals(ErrorCode.CONCURRENT_UPDATE, assertThrows(ApiException.class, () -> useCase.reorder("s1", stale)).getErrorCode());
+        assertThrows(ApiException.class, () -> useCase.reorder("s1", new com.ondemandmonitoring.checklist.dto.request.ChecklistReorderRequest(List.of())));
+        assertThrows(ApiException.class, () -> useCase.reorder("s1", new com.ondemandmonitoring.checklist.dto.request.ChecklistReorderRequest(List.of(request.items().getFirst(), request.items().getFirst()))));
+    }
+
+    @Test void removalKeepsBootstrapMarkerEvenWhenLastItemRemoved() {
+        when(assignments.findByServiceIdAndChecklistId("s1", "c1")).thenReturn(Optional.of(link()));
+        useCase.unassign("s1", "c1"); assertTrue(service.getChecklistDefaultsInitialized());
     }
 
     @Test void customerReadsOnlyActiveTemplateWhileAdminSeesInactive() {

@@ -144,7 +144,7 @@ class ChecklistPostgresTest {
         String s1 = service("A"), s2 = service("B"), c1 = checklist("One"), c2 = checklist("Two");
         assignments.assign(s1, assignment(c1, 3));
         assignments.assign(s2, assignment(c1, 0));
-        assignments.assign(s1, assignment(c2, 1));
+        assignments.assign(s1, assignment(c2, 0));
         assertEquals(List.of(c2, c1), assignments.getByService(s1, true).stream().map(r -> r.getChecklistId()).toList());
         assertEquals(2, assignments.getByChecklist(c1).size());
         assignments.unassign(s1, c1);

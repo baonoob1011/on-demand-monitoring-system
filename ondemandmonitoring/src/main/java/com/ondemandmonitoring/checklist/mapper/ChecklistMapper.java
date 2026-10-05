@@ -12,6 +12,7 @@ public interface ChecklistMapper {
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "version", ignore = true)
     @Mapping(target = "normalizedContent", ignore = true)
+    @Mapping(target = "seedCode", ignore = true)
     @Mapping(target = "isActive", constant = "true")
     ChecklistDefinition toEntity(ChecklistRequest request);
     ChecklistResponse toResponse(ChecklistDefinition entity);
