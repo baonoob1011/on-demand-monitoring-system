@@ -13,6 +13,10 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface MediaAssetRepository extends JpaRepository<MediaAsset, String> {
+        @Query("select m from MediaAsset m where m.mission.id = :missionId order by m.capturedAt desc, m.id")
+        Page<MediaAsset> findMissionCandidates(String missionId, Pageable pageable);
+        @Query("select m.mission.id from MediaAsset m where m.id = :id")
+        Optional<String> findMissionId(String id);
 
         @Query("select count(m) from MediaAsset m where m.mission.id = :missionId and m.mediaStatus = :status")
         long countByMissionIdAndMediaStatus(String missionId, MediaStatus status);

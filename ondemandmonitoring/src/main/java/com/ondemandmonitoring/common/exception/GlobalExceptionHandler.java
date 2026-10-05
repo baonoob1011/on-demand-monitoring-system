@@ -130,6 +130,15 @@ public class GlobalExceptionHandler {
                 ));
     }
 
+    @ExceptionHandler(jakarta.validation.ConstraintViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleParameterValidation(jakarta.validation.ConstraintViolationException exception) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        exception.getConstraintViolations().forEach(violation ->
+                errors.put(violation.getPropertyPath().toString(), violation.getMessage()));
+        return ResponseEntity.badRequest().body(ApiResponse.error(
+                ErrorCode.VALIDATION_ERROR.name(), "Invalid request parameters", errors));
+    }
+
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(
             NoResourceFoundException exception

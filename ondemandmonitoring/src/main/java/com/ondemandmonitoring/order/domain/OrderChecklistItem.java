@@ -43,4 +43,9 @@ public class OrderChecklistItem extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "source_type", nullable = false, length = 30, updatable = false)
     private OrderChecklistSourceType sourceType;
+
+    @Column(name = "evidence_policy_version", nullable = false, updatable = false)
+    private int evidencePolicyVersion;
+    @Column(name = "minimum_evidence_count", nullable = false, updatable = false)
+    private int minimumEvidenceCount;
 }

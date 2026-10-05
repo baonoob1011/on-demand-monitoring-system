@@ -50,6 +50,9 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
         cachedRequest.setChecklistItems(java.util.stream.IntStream.range(0, count)
                 .mapToObj(i -> selected(null, "Historical requirement " + i)).toList());
         String id = orderService.createOrder(cachedRequest).getId();
+        // These Phase 5 regressions explicitly exercise historical policy-0 packages.
+        // Phase 6 service integration tests separately exercise new policy-1 snapshots.
+        new JdbcTemplate(dataSource).update("update order_checklist_items set evidence_policy_version=0, minimum_evidence_count=0 where order_id=?", id);
         transaction.executeWithoutResult(tx -> orders.findById(id).orElseThrow().setOrderStatus(OrderStatus.APPROVED));
         return id;
     }
@@ -292,6 +295,7 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
     @Test void migrationCreatesConstraintsWithoutBackfillAndIsRerunnable() {
         String mission = mission(1); var row = executionService.getByMissionId(mission).executions().getFirst();
         var jdbc = new JdbcTemplate(dataSource);
+        jdbc.execute("drop table mission_checklist_evidence");
         jdbc.execute("drop table mission_checklist_executions");
         applyExecutionMigration(); applyExecutionMigration();
         assertEquals(0, executions.count()); assertEquals(1, missions.count()); assertEquals(1, snapshots.count());

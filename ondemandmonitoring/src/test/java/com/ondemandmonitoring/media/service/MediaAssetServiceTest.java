@@ -31,7 +31,7 @@ class MediaAssetServiceTest {
                 mock(Environment.class),
                 mock(IDeviceService.class),
                 mock(MediaAssetRepository.class),
-                mock(IMissionMediaAccessService.class));
+                mock(IMissionMediaAccessService.class), mock(com.ondemandmonitoring.mission.service.IMissionMediaEvidenceGuard.class));
 
         assertThatThrownBy(() -> service.upload("DEVICE-01", null))
                 .isInstanceOf(ApiException.class)
@@ -45,7 +45,7 @@ class MediaAssetServiceTest {
                 mock(Environment.class),
                 mock(IDeviceService.class),
                 mock(MediaAssetRepository.class),
-                mock(IMissionMediaAccessService.class));
+                mock(IMissionMediaAccessService.class), mock(com.ondemandmonitoring.mission.service.IMissionMediaEvidenceGuard.class));
         MultipartFile file = new org.springframework.mock.web.MockMultipartFile(
                 "file", "capture.txt", "text/plain", "not-an-image".getBytes());
 
@@ -61,7 +61,7 @@ class MediaAssetServiceTest {
                 mock(Environment.class),
                 mock(IDeviceService.class),
                 mock(MediaAssetRepository.class),
-                mock(IMissionMediaAccessService.class));
+                mock(IMissionMediaAccessService.class), mock(com.ondemandmonitoring.mission.service.IMissionMediaEvidenceGuard.class));
         MultipartFile file = new org.springframework.mock.web.MockMultipartFile(
                 "file", "clip.mp4", "video/mp4", "fake-mp4".getBytes());
 
@@ -91,7 +91,7 @@ class MediaAssetServiceTest {
                 environment,
                 deviceService,
                 mediaAssetRepository,
-                assignmentRepository);
+                assignmentRepository, mock(com.ondemandmonitoring.mission.service.IMissionMediaEvidenceGuard.class));
         MultipartFile file = new org.springframework.mock.web.MockMultipartFile(
                 "file", "clip.mp4", "video/mp4", "fake-mp4".getBytes());
 
@@ -130,7 +130,7 @@ class MediaAssetServiceTest {
                 environment,
                 deviceService,
                 mediaAssetRepository,
-                assignmentRepository);
+                assignmentRepository, mock(com.ondemandmonitoring.mission.service.IMissionMediaEvidenceGuard.class));
         MultipartFile imageFile = new org.springframework.mock.web.MockMultipartFile(
                 "file", "capture.jpg", "image/jpeg", "fake-jpg".getBytes());
         MultipartFile videoFile = new org.springframework.mock.web.MockMultipartFile(

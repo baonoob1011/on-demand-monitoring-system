@@ -140,7 +140,7 @@ class MissionChecklistExecutionHttpTest {
                 OrderChecklistItemRepository items, MissionChecklistExecutionRepository executions,
                 MissionResultRepository results, IMissionAuthorizationService auth, AuthenticatedUserResolver resolver) {
             return new MissionChecklistExecutionServiceImpl(missions, items, executions, results, auth, resolver,
-                    org.mapstruct.factory.Mappers.getMapper(MissionChecklistExecutionMapper.class));
+                    org.mapstruct.factory.Mappers.getMapper(MissionChecklistExecutionMapper.class), com.ondemandmonitoring.mission.service.EvidenceTestFixture.emptyService());
         }
     }
 }

@@ -269,10 +269,32 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
                 com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository executions,
                 com.ondemandmonitoring.mission.repository.MissionResultRepository results,
                 com.ondemandmonitoring.mission.service.IMissionAuthorizationService auth,
-                com.ondemandmonitoring.user.service.AuthenticatedUserResolver resolver) {
+                com.ondemandmonitoring.user.service.AuthenticatedUserResolver resolver,
+                com.ondemandmonitoring.mission.service.IChecklistEvidenceService evidenceService) {
             return new com.ondemandmonitoring.mission.service.impl.MissionChecklistExecutionServiceImpl(
                     missions, items, executions, results, auth, resolver,
-                    org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.mission.mapper.MissionChecklistExecutionMapper.class));
+                    org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.mission.mapper.MissionChecklistExecutionMapper.class), evidenceService);
+        }
+        @Bean com.ondemandmonitoring.mission.repository.MissionChecklistEvidenceRepository evidenceRepository(EntityManagerFactory factory) {
+            return new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory)).getRepository(com.ondemandmonitoring.mission.repository.MissionChecklistEvidenceRepository.class);
+        }
+        @Bean com.ondemandmonitoring.media.repository.MediaAssetRepository mediaRepository(EntityManagerFactory factory) {
+            return new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory)).getRepository(com.ondemandmonitoring.media.repository.MediaAssetRepository.class);
+        }
+        @Bean com.ondemandmonitoring.media.service.IMediaObjectStorage evidenceStorage() {
+            return mock(com.ondemandmonitoring.media.service.IMediaObjectStorage.class);
+        }
+        @Bean com.ondemandmonitoring.mission.service.IChecklistEvidenceService evidenceService(MissionRepository missions,
+                com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository executions,
+                com.ondemandmonitoring.mission.repository.MissionChecklistEvidenceRepository evidence,
+                com.ondemandmonitoring.media.repository.MediaAssetRepository media,
+                com.ondemandmonitoring.mission.repository.MissionResultRepository results,
+                com.ondemandmonitoring.mission.service.IMissionAuthorizationService auth,
+                com.ondemandmonitoring.user.service.AuthenticatedUserResolver resolver,
+                com.ondemandmonitoring.media.service.IMediaObjectStorage storage) {
+            return new com.ondemandmonitoring.mission.service.impl.ChecklistEvidenceServiceImpl(missions, executions, evidence, media, results,
+                    auth, resolver, new com.ondemandmonitoring.mission.service.impl.ChecklistEvidencePolicy(),
+                    org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.mission.mapper.ChecklistEvidenceMapper.class), storage);
         }
     }
 }

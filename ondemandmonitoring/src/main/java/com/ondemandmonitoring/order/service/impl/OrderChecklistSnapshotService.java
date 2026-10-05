@@ -96,6 +96,8 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
             if (source != null && !defaults && !Objects.equals(source.getVersion(), item.getExpectedChecklistVersion()))
                 throw new ApiException(ErrorCode.ORDER_CHECKLIST_TEMPLATE_CHANGED);
             var entity = new OrderChecklistItem();
+            entity.setEvidencePolicyVersion(1);
+            entity.setMinimumEvidenceCount(1);
             entity.setOrder(order);
             entity.setSourceChecklist(source);
             entity.setSourceType(source == null ? OrderChecklistSourceType.CUSTOMER_CUSTOM : OrderChecklistSourceType.SERVICE_TEMPLATE);

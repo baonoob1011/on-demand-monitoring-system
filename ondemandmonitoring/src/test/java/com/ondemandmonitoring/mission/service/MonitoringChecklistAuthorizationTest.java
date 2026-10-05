@@ -19,9 +19,31 @@ class MonitoringChecklistAuthorizationTest {
     MissionRepository missions = mock(MissionRepository.class);
     MissionStaffAssignmentRepository assignments = mock(MissionStaffAssignmentRepository.class);
     AuthenticatedUserResolver resolver = mock(AuthenticatedUserResolver.class);
-    IMissionAuthorizationService policy = new MissionAuthorizationServiceImpl(assignments, missions, resolver);
+    MissionResultRepository results = mock(MissionResultRepository.class);
+    IMissionAuthorizationService policy = new MissionAuthorizationServiceImpl(assignments, missions, resolver, results);
     Mission mission;
     User actor;
+
+    @ParameterizedTest @EnumSource(MissionStaffRole.class)
+    void evidenceCapabilityUsesAssignmentsNotUploadOrGlobalRoleStrings(MissionStaffRole role) {
+        mission.setStatus(MissionStatus.PENDING_REVIEW);
+        when(assignments.findByMissionId("m")).thenReturn(List.of(crew(actor, role)));
+        assertEquals(role == MissionStaffRole.OPERATOR || role == MissionStaffRole.PILOT || role == MissionStaffRole.INSPECTOR,
+                policy.canAttachChecklistEvidence("m"));
+        assertEquals(policy.canAttachChecklistEvidence("m"), policy.canDetachChecklistEvidence("m"));
+        mission.setStatus(MissionStatus.IN_FLIGHT); assertFalse(policy.canAttachChecklistEvidence("m"));
+    }
+
+    @Test void evidenceResultLocksAndFinalReportingCrewArePreserved() {
+        mission.setStatus(MissionStatus.COMPLETED); var inspector = crew(actor, MissionStaffRole.INSPECTOR);
+        inspector.setReleasedAt(Instant.now()); inspector.setReleaseReason("MISSION_COMPLETE");
+        when(assignments.findByMissionId("m")).thenReturn(List.of(inspector)); assertTrue(policy.canAttachChecklistEvidence("m"));
+        var result = new MissionResult(); when(results.findByMissionId("m")).thenReturn(Optional.of(result));
+        result.setApprovalStatus(MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL); assertFalse(policy.canAttachChecklistEvidence("m"));
+        result.setApprovalStatus(MissionResultApprovalStatus.APPROVED); assertFalse(policy.canDetachChecklistEvidence("m"));
+        result.setApprovalStatus(MissionResultApprovalStatus.REJECTED); assertTrue(policy.canAttachChecklistEvidence("m"));
+        inspector.setReleaseReason("REPLACED"); assertFalse(policy.canAttachChecklistEvidence("m"));
+    }
 
     @BeforeEach void prepare() {
         mission = new Mission(); mission.setId("m"); mission.setStatus(MissionStatus.IN_FLIGHT);

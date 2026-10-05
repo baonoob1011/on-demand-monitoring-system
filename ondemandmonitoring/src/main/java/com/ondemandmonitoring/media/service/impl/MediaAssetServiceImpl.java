@@ -1,4 +1,5 @@
 package com.ondemandmonitoring.media.service.impl;
+import com.ondemandmonitoring.mission.service.IMissionMediaEvidenceGuard;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
@@ -48,6 +49,7 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
     IDeviceService deviceService;
     MediaAssetRepository mediaAssetRepository;
     IMissionMediaAccessService missionAccess;
+    IMissionMediaEvidenceGuard missionLock;
 
     @Transactional
     @Override
@@ -215,9 +217,19 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
     @Transactional
     @Override
     public void deleteByDeviceAndId(String deviceId, String mediaId) {
+        missionLock.lock(mediaId);
         MediaAsset mediaAsset = getByDeviceAndId(deviceId, mediaId);
-        deleteStoredObject(mediaAsset);
+        missionLock.requireDeletable(mediaId);
         mediaAssetRepository.delete(mediaAsset);
+        mediaAssetRepository.flush();
+        // FK failure or rollback must never remove the stored object.
+        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override public void afterCommit() {
+                        try { deleteStoredObject(mediaAsset); }
+                        catch (RuntimeException exception) { log.error("Storage cleanup needs retry for deleted media {}", mediaId, exception); }
+                    }
+                });
     }
 
     @Override

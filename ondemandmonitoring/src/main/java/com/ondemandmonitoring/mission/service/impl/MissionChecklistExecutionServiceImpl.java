@@ -36,6 +36,7 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
     private final IMissionAuthorizationService authorization;
     private final AuthenticatedUserResolver currentUser;
     private final MissionChecklistExecutionMapper mapper;
+    private final com.ondemandmonitoring.mission.service.IChecklistEvidenceService evidenceService;
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -62,9 +63,19 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
     public MissionChecklistResponse getByMissionId(String missionId) {
         Mission mission = requireMission(missionId, false);
         if (!authorization.canViewMission(missionId)) throw new ApiException(ErrorCode.ACCESS_DENIED);
+        var links = evidenceService.active(missionId);
+        var rows = executions.findOrderedByMissionId(missionId).stream()
+                .map(e -> evidenceService.enrich(mapper.toResponse(e), e, links)).toList();
+        boolean operational = isReadyForSubmission(mission);
+        boolean finalReady = operational && executions.findOrderedByMissionId(missionId).stream().allMatch(e -> evidenceService.ready(e, links, true));
+        var blockers = new java.util.LinkedHashSet<String>();
+        rows.forEach(r -> blockers.addAll(r.getBlockingReasons()));
+        if (!operational && blockers.isEmpty()) blockers.add("CHECKLIST_INTEGRITY_INVALID");
+        // Preserve Phase 5 readyForSubmission as package readiness; actor/status/result locks are independent.
         return new MissionChecklistResponse(missionId, mission.getOrder().getChecklistSnapshotAt() == null,
-                isReadyForSubmission(mission), executions.findOrderedByMissionId(missionId).stream()
-                        .map(mapper::toResponse).toList());
+                operational, rows,
+                operational, operational && mission.getStatus() == com.ondemandmonitoring.mission.enums.MissionStatus.PENDING_REVIEW,
+                finalReady, List.copyOf(blockers));
     }
 
     @Override
@@ -114,7 +125,8 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
         // A repeated command still records an audit event and consumes its expected version.
         execution.setUpdatedAt(now);
         try {
-            return mapper.toResponse(executions.saveAndFlush(execution));
+            var saved = executions.saveAndFlush(execution);
+            return evidenceService.enrich(mapper.toResponse(saved), saved, evidenceService.active(missionId));
         } catch (org.springframework.dao.DataIntegrityViolationException | org.hibernate.exception.ConstraintViolationException exception) {
             throw new ApiException(ErrorCode.CHECKLIST_EXECUTION_INTEGRITY_INVALID);
         }
@@ -136,9 +148,13 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
         Set<String> expectedIds = expected.stream().map(OrderChecklistItem::getId).collect(Collectors.toSet());
         if (expectedIds.size() != expected.size() || actual.size() != expected.size()) return false;
         Set<String> actualIds = actual.stream().map(MissionChecklistExecution::getOrderChecklistItemId).collect(Collectors.toSet());
+        var links = evidenceService.active(mission.getId());
         return actualIds.equals(expectedIds) && actual.stream().allMatch(execution ->
                 mission.getOrder().getId().equals(execution.getOrderId())
                 && execution.getExecutionStatus().isTerminal()
+                && execution.getOrderChecklistItem() != null
+                && mission.getOrder().getId().equals(execution.getOrderChecklistItem().getOrder().getId())
+                && evidenceService.ready(execution, links, false)
                 && (execution.getExecutionStatus() != ChecklistExecutionStatus.UNABLE_TO_VERIFY
                     || execution.getUnableToVerifyReason() != null && !execution.getUnableToVerifyReason().isBlank()));
         // Empty historical snapshot is satisfied, including legacy orders; never infer current templates.
@@ -148,6 +164,15 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
     @Transactional(readOnly = true)
     public void requireReadyForSubmission(Mission mission) {
         if (!isReadyForSubmission(mission)) throw new ApiException(ErrorCode.CHECKLIST_NOT_READY);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void requireReadyForFinalApproval(Mission mission) {
+        requireReadyForSubmission(mission);
+        var links = evidenceService.active(mission.getId());
+        if (!executions.findOrderedByMissionId(mission.getId()).stream().allMatch(e -> evidenceService.ready(e, links, true)))
+            throw new ApiException(ErrorCode.CHECKLIST_NOT_READY, "Approve required evidence media first; remove rejected/pending evidence from required items");
     }
 
     private List<OrderChecklistItem> snapshotItems(Mission mission) {

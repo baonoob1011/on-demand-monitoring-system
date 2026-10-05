@@ -11,4 +11,5 @@ public interface IMissionChecklistExecutionService {
     ChecklistExecutionResponse update(String missionId, String executionId, ChecklistExecutionUpdateRequest request);
     boolean isReadyForSubmission(Mission mission);
     void requireReadyForSubmission(Mission mission);
+    void requireReadyForFinalApproval(Mission mission);
 }

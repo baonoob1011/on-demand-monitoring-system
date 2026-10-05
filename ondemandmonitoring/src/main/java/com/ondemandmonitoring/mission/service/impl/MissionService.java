@@ -1083,7 +1083,8 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canUploadMissionMedia(#missionId)")
     public MissionResponse completeMission(String missionId) {
-        Mission mission = getOrThrow(missionId);
+        Mission resolved = getOrThrow(missionId);
+        Mission mission = missionRepository.findByIdForUpdate(resolved.getId()).orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
         String resolvedMissionId = mission.getId();
         if (mission.getStatus() == MissionStatus.COMPLETED
                 && postDeviceCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(resolvedMissionId).isPresent()) {
@@ -1098,6 +1099,7 @@ public class MissionService implements IMissionService {
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID,
                     "A recorded post-flight inspection is required before mission completion");
         }
+        checklistExecutionService.requireReadyForSubmission(mission);
         mission.setStatus(MissionStatus.COMPLETED);
         Instant completedAt = Instant.now();
         if (mission.getActualEndAt() == null) {
@@ -1218,6 +1220,9 @@ public class MissionService implements IMissionService {
         persistedPostDeviceCheckService.recordInspection(mission.getId(), results, telemetrySnapshot);
         if (mission.getStatus() == MissionStatus.POSTFLIGHT_CHECKING) {
             mission.setStatus(MissionStatus.PENDING_REVIEW);
+            if (mission.getActualEndAt() == null) mission.setActualEndAt(Instant.now());
+            // End physical reservations while retaining final crew context for reporting.
+            releaseOperationalReservations(mission);
         }
 
         if (notes != null && !notes.isBlank()) {
@@ -1399,7 +1404,7 @@ public class MissionService implements IMissionService {
         String missionId = mission.getId();
 
         Device device = getCurrentDevice(mission.getId());
-        if (device != null) {
+        if (device != null && !"MISSION_COMPLETE".equals(reason)) {
             if (device.getStatus() != DeviceStatus.MAINTENANCE) {
                 device.setStatus(DeviceStatus.AVAILABLE);
             }
@@ -1461,6 +1466,27 @@ public class MissionService implements IMissionService {
         if (!schedules.isEmpty()) {
             userScheduleRepository.saveAll(schedules);
         }
+    }
+
+    private void releaseOperationalReservations(Mission mission) {
+        String missionId = mission.getId();
+        // Do not change isCurrent/releasedAt: final assignments still authorize evidence/report work.
+        for (var assignment : missionDeviceAssignmentRepository.findByMissionId(missionId)) {
+            if (Boolean.TRUE.equals(assignment.getIsCurrent()) && assignment.getReleasedAt() == null && assignment.getDevice() != null)
+                resourceTimeLockRepository.deleteAll(resourceTimeLockRepository.findAllByResourceIdAndMissionId(assignment.getDevice().getId(), missionId));
+        }
+        for (var assignment : missionStaffAssignmentRepository.findByMissionId(missionId)) {
+            if (Boolean.TRUE.equals(assignment.getIsCurrent()) && assignment.getReleasedAt() == null && assignment.getStaff() != null)
+                resourceTimeLockRepository.deleteAll(resourceTimeLockRepository.findAllByResourceIdAndMissionId(assignment.getStaff().getId(), missionId));
+        }
+        var schedules = userScheduleRepository.findByReferenceId(missionId);
+        for (var schedule : schedules) {
+            if (schedule.getScheduleType() == UserScheduleType.MISSION && schedule.getStatus() != UserScheduleStatus.CANCELLED) {
+                schedule.setStatus(UserScheduleStatus.COMPLETED);
+                schedule.setNotes(appendReleaseNote(schedule.getNotes(), "POSTFLIGHT_COMPLETE"));
+            }
+        }
+        userScheduleRepository.saveAll(schedules);
     }
 
     private String appendReleaseNote(String notes, String reason) {

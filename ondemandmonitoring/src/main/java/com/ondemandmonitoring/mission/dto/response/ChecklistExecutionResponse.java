@@ -23,4 +23,11 @@ public class ChecklistExecutionResponse {
     private Instant createdAt;
     private Instant updatedAt;
     private Long version;
+    private int evidencePolicyVersion;
+    private int minimumEvidenceCount;
+    private int eligibleEvidenceCount;
+    private boolean evidenceRequirementSatisfied;
+    private boolean evidenceReady;
+    private java.util.List<String> blockingReasons = java.util.List.of();
+    private java.util.List<ChecklistEvidenceResponse> evidence = java.util.List.of();
 }

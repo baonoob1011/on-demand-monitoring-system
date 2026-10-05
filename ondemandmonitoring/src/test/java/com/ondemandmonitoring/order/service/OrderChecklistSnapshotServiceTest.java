@@ -41,6 +41,7 @@ class OrderChecklistSnapshotServiceTest {
         when(definitions.findByIdForUpdate("c2")).thenReturn(Optional.of(c2));
         when(snapshots.saveAllAndFlush(any())).thenAnswer(invocation -> {
             List<OrderChecklistItem> items = invocation.getArgument(0);
+            items.forEach(item -> { assertEquals(1, item.getEvidencePolicyVersion()); assertEquals(1, item.getMinimumEvidenceCount()); });
             items.forEach(item -> item.setId(UUID.randomUUID().toString())); return items;
         });
         useCase = new OrderChecklistSnapshotService(services, definitions, assignments, snapshots,

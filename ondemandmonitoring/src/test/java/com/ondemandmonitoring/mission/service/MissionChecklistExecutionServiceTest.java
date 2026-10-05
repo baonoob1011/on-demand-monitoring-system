@@ -24,7 +24,7 @@ class MissionChecklistExecutionServiceTest {
     IMissionAuthorizationService auth = mock(IMissionAuthorizationService.class);
     AuthenticatedUserResolver resolver = mock(AuthenticatedUserResolver.class);
     MissionChecklistExecutionServiceImpl service = new MissionChecklistExecutionServiceImpl(missions, items,
-            executions, results, auth, resolver, org.mapstruct.factory.Mappers.getMapper(MissionChecklistExecutionMapper.class));
+            executions, results, auth, resolver, org.mapstruct.factory.Mappers.getMapper(MissionChecklistExecutionMapper.class), com.ondemandmonitoring.mission.service.EvidenceTestFixture.emptyService());
     Mission mission; Order order; OrderChecklistItem item; MissionChecklistExecution execution;
 
     @BeforeEach void prepare() {

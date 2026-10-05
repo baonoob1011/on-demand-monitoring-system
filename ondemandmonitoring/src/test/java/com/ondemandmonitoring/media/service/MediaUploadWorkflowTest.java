@@ -46,7 +46,7 @@ class MediaUploadWorkflowTest {
     private final MissionMediaAccessServiceImpl missionAccess = new MissionMediaAccessServiceImpl(
             missions, deviceAssignments, userResolver, authorization);
     private final MediaUploadServiceImpl service = new MediaUploadServiceImpl(missionAccess, devices,
-            media, attempts, manualTasks, audit, storage, userResolver);
+            media, attempts, manualTasks, audit, storage, userResolver, mock(com.ondemandmonitoring.mission.service.IMissionMediaEvidenceGuard.class));
 
     @BeforeEach
     void setUp() {

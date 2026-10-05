@@ -101,7 +101,7 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public MissionResultResponse approve(String resultId, MissionResultReviewRequest request) {
         MissionResult result = requirePendingResult(resultId);
-        checklistExecutionService.requireReadyForSubmission(result.getMission());
+        checklistExecutionService.requireReadyForFinalApproval(result.getMission());
         if (result.getMission().getStatus() != MissionStatus.COMPLETED)
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID);
         Instant now = Instant.now();

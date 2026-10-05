@@ -10,5 +10,7 @@ public record MissionPermissionsResponse(
         boolean canUploadMedia,
         boolean canCompleteMission,
         boolean canSubmitMissionResult,
-        boolean canExecuteMonitoringChecklist) {
+        boolean canExecuteMonitoringChecklist,
+        boolean canAttachChecklistEvidence,
+        boolean canDetachChecklistEvidence) {
 }

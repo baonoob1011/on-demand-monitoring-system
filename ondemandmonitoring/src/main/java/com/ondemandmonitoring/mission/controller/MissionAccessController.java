@@ -28,6 +28,8 @@ public class MissionAccessController {
                 authorization.canUploadMissionMedia(id),
                 authorization.canCompleteMission(id),
                 authorization.canSubmitMissionResult(id),
-                authorization.canExecuteMonitoringChecklist(id)));
+                authorization.canExecuteMonitoringChecklist(id),
+                authorization.canAttachChecklistEvidence(id),
+                authorization.canDetachChecklistEvidence(id)));
     }
 }

@@ -102,6 +102,9 @@ class ChecklistPostgresTest {
             String sql = new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
                     .replace("public.", SCHEMA + ".");
             new JdbcTemplate(dataSource).execute(sql);
+            try (var evidenceMigration = new org.springframework.core.io.ClassPathResource("seeddata/migrations/add_mission_checklist_evidence.sql").getInputStream()) {
+                new JdbcTemplate(dataSource).execute(new String(evidenceMigration.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).replace("public.", SCHEMA + "."));
+            }
         } catch (java.io.IOException exception) {
             throw new IllegalStateException(exception);
         }

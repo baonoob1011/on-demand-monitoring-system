@@ -26,7 +26,7 @@ class MissionAuthorizationServiceTest {
     private final MissionStaffAssignmentRepository assignments = mock(MissionStaffAssignmentRepository.class);
     private final MissionRepository missions = mock(MissionRepository.class);
     private final AuthenticatedUserResolver resolver = mock(AuthenticatedUserResolver.class);
-    private final IMissionAuthorizationService policy = new MissionAuthorizationServiceImpl(assignments, missions, resolver);
+    private final IMissionAuthorizationService policy = new MissionAuthorizationServiceImpl(assignments, missions, resolver, mock(com.ondemandmonitoring.mission.repository.MissionResultRepository.class));
     private User staff;
     private Mission mission;
 

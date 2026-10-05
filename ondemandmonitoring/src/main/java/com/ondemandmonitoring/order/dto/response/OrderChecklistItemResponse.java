@@ -14,4 +14,6 @@ public class OrderChecklistItemResponse {
     private String content;
     private int displayOrder;
     private OrderChecklistSourceType sourceType;
+    private int evidencePolicyVersion;
+    private int minimumEvidenceCount;
 }

@@ -218,7 +218,7 @@ class MissionAuthorizationHttpTest {
         @Bean("missionAuthorizationService")
         IMissionAuthorizationService policy(MissionRepository missions,
                 MissionStaffAssignmentRepository assignments, AuthenticatedUserResolver resolver) {
-            return new MissionAuthorizationServiceImpl(assignments, missions, resolver);
+            return new MissionAuthorizationServiceImpl(assignments, missions, resolver, mock(com.ondemandmonitoring.mission.repository.MissionResultRepository.class));
         }
     }
 }

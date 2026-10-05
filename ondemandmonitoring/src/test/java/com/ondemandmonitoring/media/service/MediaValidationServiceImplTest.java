@@ -48,7 +48,7 @@ class MediaValidationServiceImplTest {
     void setUp() {
         service = new MediaValidationServiceImpl(attempts, media, inbox, manualTasks,
                 auditService, policy, outbox, storage,
-                new com.ondemandmonitoring.media.service.impl.MediaObjectVerificationServiceImpl(storage));
+                new com.ondemandmonitoring.media.service.impl.MediaObjectVerificationServiceImpl(storage), org.mockito.Mockito.mock(com.ondemandmonitoring.mission.service.IMissionMediaEvidenceGuard.class));
     }
 
     @Test

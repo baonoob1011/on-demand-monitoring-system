@@ -15,4 +15,6 @@ public interface IMissionAuthorizationService {
     boolean canUploadMissionMedia(String identifier);
     boolean canCompleteMission(String identifier);
     boolean canSubmitMissionResult(String identifier);
+    boolean canAttachChecklistEvidence(String identifier);
+    boolean canDetachChecklistEvidence(String identifier);
 }

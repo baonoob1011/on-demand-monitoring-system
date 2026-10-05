@@ -1,4 +1,5 @@
 package com.ondemandmonitoring.media.service.impl;
+import com.ondemandmonitoring.mission.service.IMissionMediaEvidenceGuard;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
@@ -40,6 +41,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     private final MediaAuditLogRepository auditLogs;
     private final IMediaObjectStorage storage;
     private final AuthenticatedUserResolver currentUser;
+    private final IMissionMediaEvidenceGuard missionLock;
 
     @Value("${app.media.max-image-bytes:26214400}")
     private long maxImageBytes;
@@ -58,6 +60,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     @Override
     @Transactional
     public MediaUploadResponse prepareManualFile(String mediaId, ManualMediaFileRequest request) {
+        missionLock.lock(mediaId);
         MediaAsset asset = media.findByIdForUpdate(mediaId)
                 .orElseThrow(() -> new ApiException(ErrorCode.MEDIA_NOT_FOUND));
         missionAccess.requireUploadPermission(asset.getMissionId());
@@ -79,6 +82,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     @Transactional
     public MediaUploadResponse prepare(String missionId, PrepareMediaUploadRequest request) {
         MissionMediaContext mission = missionAccess.authorizeOperator(missionId);
+        missionLock.lockMission(mission.getId());
         if (!mission.isCaptureAllowed()) {
             throw new ApiException(ErrorCode.MEDIA_UPLOAD_NOT_ALLOWED,
                     "Mission is not in a capture state (status=" + mission.getStatus()
@@ -129,6 +133,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     @Override
     @Transactional
     public MediaUploadResponse retry(String mediaId, boolean manual) {
+        missionLock.lock(mediaId);
         MediaAsset captured = requireMedia(mediaId);
         missionAccess.requireUploadPermission(captured.getMissionId());
 
@@ -159,6 +164,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     public MediaUploadResponse reportFailure(String mediaId,
             String attemptId,
             ReportUploadFailureRequest request) {
+        missionLock.lock(mediaId);
 
         MediaAsset captured = requireMedia(mediaId);
         missionAccess.requireUploadPermission(captured.getMissionId());
@@ -245,6 +251,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     @Transactional
     public void completeMultipart(String mediaId, String attemptId,
             CompleteMultipartRequest request) {
+        missionLock.lock(mediaId);
 
         MediaAsset captured = requireMedia(mediaId);
         missionAccess.requireUploadPermission(captured.getMissionId());
@@ -294,6 +301,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     @Override
     @Transactional
     public void markUploaded(String mediaId, String attemptId) {
+        missionLock.lock(mediaId);
         MediaAsset captured = requireMedia(mediaId);
         missionAccess.requireUploadPermission(captured.getMissionId());
         MediaUploadAttempt attempt = requireAttempt(mediaId, attemptId);

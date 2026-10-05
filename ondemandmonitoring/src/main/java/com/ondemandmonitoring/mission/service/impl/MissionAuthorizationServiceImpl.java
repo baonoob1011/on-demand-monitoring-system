@@ -27,6 +27,18 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
     private final MissionStaffAssignmentRepository assignments;
     private final MissionRepository missions;
     private final AuthenticatedUserResolver currentUser;
+    private final com.ondemandmonitoring.mission.repository.MissionResultRepository results;
+
+    @Override
+    public boolean canAttachChecklistEvidence(String identifier) {
+        return resolveMission(identifier).filter(m -> m.getStatus() == MissionStatus.PENDING_REVIEW || m.getStatus() == MissionStatus.COMPLETED)
+                .filter(m -> results.findByMissionId(m.getId()).map(r -> r.getApprovalStatus() != com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus.APPROVED
+                        && r.getApprovalStatus() != com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL).orElse(true))
+                .map(m -> canExecuteMonitoringChecklist(m.getId()) || canUploadMissionMedia(m.getId())).orElse(false);
+    }
+
+    @Override
+    public boolean canDetachChecklistEvidence(String identifier) { return canAttachChecklistEvidence(identifier); }
 
     @Override
     public boolean canManageMissions() {
