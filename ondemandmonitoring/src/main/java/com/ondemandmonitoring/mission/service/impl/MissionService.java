@@ -84,8 +84,10 @@ import com.ondemandmonitoring.mission.repository.*;
 public class MissionService implements IMissionService {
 
     static final long TOKEN_TTL_SECONDS = 900L; // 15 minutes
-    // Only the pilot is mandatory; missing OPERATOR/MAINTAINER/INSPECTOR roles make the matching flow step skipped.
-    static final Set<MissionStaffRole> REQUIRED_CREW_ROLES = Set.of(MissionStaffRole.PILOT);
+    // Each operational step has a distinct actor and no role fallback.
+    static final Set<MissionStaffRole> REQUIRED_CREW_ROLES = Set.of(
+            MissionStaffRole.PILOT, MissionStaffRole.OPERATOR,
+            MissionStaffRole.MAINTAINER, MissionStaffRole.INSPECTOR);
 
     MissionRescheduleHistoryRepository missionRescheduleHistoryRepository;
     MissionRepository missionRepository;
@@ -1406,6 +1408,7 @@ public class MissionService implements IMissionService {
 
         List<MissionDeviceAssignment> deviceAssignments = missionDeviceAssignmentRepository.findByMissionId(missionId);
         for (MissionDeviceAssignment assignment : deviceAssignments) {
+            if (!Boolean.TRUE.equals(assignment.getIsCurrent()) || assignment.getReleasedAt() != null) continue;
             if (assignment.getReleasedAt() == null) {
                 assignment.setReleasedAt(releasedAt);
             }
@@ -1423,6 +1426,8 @@ public class MissionService implements IMissionService {
 
         List<MissionStaffAssignment> staffAssignments = missionStaffAssignmentRepository.findByMissionId(missionId);
         for (MissionStaffAssignment assignment : staffAssignments) {
+            // Preserve replaced/released history; only the final current crew receives MISSION_COMPLETE.
+            if (!Boolean.TRUE.equals(assignment.getIsCurrent()) || assignment.getReleasedAt() != null) continue;
             if (assignment.getRespondedAt() == null) {
                 assignment.setRespondedAt(releasedAt);
             }

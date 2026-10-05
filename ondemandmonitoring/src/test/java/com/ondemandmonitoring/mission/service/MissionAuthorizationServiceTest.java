@@ -116,7 +116,8 @@ class MissionAuthorizationServiceTest {
     void historicalCrewCanReadButCannotControlAndOnlyInspectorCanFinishUploads() {
         mission.setStatus(MissionStatus.COMPLETED);
         var entry = MissionStaffAssignment.builder().staff(staff).assignedRole(MissionStaffRole.INSPECTOR)
-                .responseStatus(StaffResponseStatus.ACCEPTED).isCurrent(false).releaseReason("MISSION_COMPLETE").build();
+                .responseStatus(StaffResponseStatus.ACCEPTED).isCurrent(true)
+                .releasedAt(Instant.now()).releaseReason("MISSION_COMPLETE").build();
         when(assignments.existsByMissionIdAndStaffId("mission-1", "staff-1")).thenReturn(true);
         when(assignments.findByMissionId("mission-1")).thenReturn(List.of(entry));
         assertThat(policy.canViewMission("mission-1")).isTrue();
@@ -137,8 +138,34 @@ class MissionAuthorizationServiceTest {
         var entry = MissionStaffAssignment.builder().staff(staff).mission(mission).assignedRole(role)
                 .responseStatus(response).isCurrent(true).build();
         when(assignments.findAllByMissionIdAndIsCurrentTrue("mission-1")).thenReturn(List.of(entry));
+        when(assignments.findByMissionId("mission-1")).thenReturn(List.of(entry));
         when(assignments.findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc("mission-1", "staff-1"))
                 .thenReturn(List.of(entry));
         return entry;
+    }
+
+    @Test
+    void inspectorUploadAndCompletionRequireCurrentOrSuccessfulFinalAssignment() {
+        mission.setStatus(MissionStatus.PENDING_REVIEW);
+        var entry = assign(MissionStaffRole.INSPECTOR, StaffResponseStatus.ACCEPTED);
+        assertThat(policy.canUploadMissionMedia("mission-1")).isTrue();
+        assertThat(policy.canCompleteMission("mission-1")).isTrue();
+        assertThat(policy.canSubmitMissionResult("mission-1")).isFalse();
+        assertThat(policy.canUploadMissionMedia("another-mission")).isFalse();
+        entry.setIsCurrent(false);
+        assertThat(policy.canUploadMissionMedia("mission-1")).isFalse();
+        assertThat(policy.canCompleteMission("mission-1")).isFalse();
+        entry.setIsCurrent(true); entry.setReleasedAt(Instant.now()); entry.setReleaseReason("REPLACED");
+        assertThat(policy.canUploadMissionMedia("mission-1")).isFalse();
+        mission.setStatus(MissionStatus.COMPLETED);
+        assertThat(policy.canUploadMissionMedia("mission-1")).isFalse();
+        entry.setReleaseReason("MISSION_COMPLETE");
+        assertThat(policy.canUploadMissionMedia("mission-1")).isTrue();
+        assertThat(policy.canCompleteMission("mission-1")).isFalse();
+        assertThat(policy.canSubmitMissionResult("mission-1")).isFalse();
+        entry.setIsCurrent(false);
+        assertThat(policy.canUploadMissionMedia("mission-1")).isFalse();
+        entry.setIsCurrent(true); staff.setIsActive(false);
+        assertThat(policy.canUploadMissionMedia("mission-1")).isFalse();
     }
 }

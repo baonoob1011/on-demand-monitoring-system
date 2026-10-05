@@ -63,7 +63,7 @@ class MediaUploadWorkflowTest {
         when(userResolver.getCurrentUserId()).thenReturn(user.getId());
         Mission mission = new Mission();
         mission.setId("mission-id");
-        mission.setStatus(MissionStatus.IN_FLIGHT);
+        mission.setStatus(MissionStatus.PENDING_REVIEW);
         when(missions.findById("mission-id")).thenReturn(Optional.of(mission));
         MissionStaffAssignment staff = new MissionStaffAssignment();
         staff.setStaff(user);
@@ -166,5 +166,30 @@ class MediaUploadWorkflowTest {
     private PrepareMediaUploadRequest request(String type, String contentType) {
         return new PrepareMediaUploadRequest("device-id", "capture-1", type, "capture.jpg",
                 contentType, 100L, "a".repeat(64), Instant.now());
+    }
+
+    @Test
+    void preparePersistsDeclaredProvenanceWithoutInventingCaptureActor() {
+        var request = request("IMAGE", "image/jpeg"); request.setSourceType("SATELLITE_SNAPSHOT");
+        when(media.saveAndFlush(any())).thenAnswer(call -> {
+            MediaAsset saved = call.getArgument(0); saved.setId("media-id"); return saved;
+        });
+        when(storage.createPresignedPutUrl(any(), any(), anyLong(), any()))
+                .thenReturn(new IMediaObjectStorage.PresignedUpload("https://test/upload", Map.of(), 300));
+        service.prepare("mission-id", request);
+        var captured = org.mockito.ArgumentCaptor.forClass(MediaAsset.class);
+        verify(media).saveAndFlush(captured.capture());
+        assertThat(captured.getValue().getSourceType()).isEqualTo("SATELLITE_SNAPSHOT");
+        assertThat(captured.getValue().getOperatorId()).isEqualTo(userResolver.getCurrentUserId());
+    }
+
+    @Test
+    void provenanceCannotBeChangedThroughIdempotentPrepare() {
+        var request = request("IMAGE", "image/jpeg"); request.setSourceType("SATELLITE_SNAPSHOT");
+        var saved = new MediaAsset(); saved.setSourceType("DRONE_CAMERA");
+        when(media.findByMissionIdAndDeviceIdAndLocalMediaId("mission-id", "device-id", "capture-1"))
+                .thenReturn(Optional.of(saved));
+        assertThatThrownBy(() -> service.prepare("mission-id", request)).isInstanceOf(ApiException.class);
+        verify(media, never()).saveAndFlush(any());
     }
 }

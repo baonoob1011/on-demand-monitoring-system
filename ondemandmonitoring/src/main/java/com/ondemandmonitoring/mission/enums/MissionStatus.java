@@ -47,8 +47,10 @@ public enum MissionStatus {
 
     POSTFLIGHT_CHECKING,
 
+    /** Technical postflight finished; awaiting Inspector operational acceptance. */
     PENDING_REVIEW,
 
+    /** Operationally accepted, not business-final (MissionResult approval completes the Order). */
     COMPLETED,
 
     FAILED,

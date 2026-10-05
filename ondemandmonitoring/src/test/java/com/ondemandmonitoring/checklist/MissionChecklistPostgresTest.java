@@ -239,7 +239,11 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
     }
 
     @Test void resultDraftSubmissionRejectionReopenAndApprovalPreserveExistingWorkflow() {
-        String mission = mission(2); setStatus(mission, MissionStatus.COMPLETED);
+        String mission = mission(2); setStatus(mission, MissionStatus.PENDING_REVIEW);
+        var reviewRows = executionService.getByMissionId(mission).executions();
+        change(mission, reviewRows.getFirst(), ChecklistExecutionStatus.IN_PROGRESS);
+        error(ErrorCode.MISSION_STATUS_INVALID, () -> resultService.upsert(mission, new MissionResultRequest()));
+        setStatus(mission, MissionStatus.COMPLETED);
         transaction.executeWithoutResult(tx -> resultService.ensureCompletedResult(missions.findById(mission).orElseThrow()));
         var draft = resultService.getByMissionId(mission);
         assertEquals(MissionResultApprovalStatus.DRAFT, draft.getApprovalStatus()); assertNull(draft.getSubmittedAt());

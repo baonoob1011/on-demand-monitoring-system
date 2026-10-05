@@ -28,6 +28,7 @@ class OperatorMissionMediaServiceTest {
     void listsOnlyAvailableForAuthorizedCanonicalMissionWithPagination() {
         when(access.authorizeOperator("MS-1")).thenReturn(new MissionMediaContext("mission", false));
         MediaAsset asset = asset("mission", MediaStatus.AVAILABLE);
+        asset.setSourceType("SATELLITE_SNAPSHOT");
         when(media.findByMissionIdAndMediaStatus(eq("mission"), eq(MediaStatus.AVAILABLE), any(Pageable.class)))
                 .thenAnswer(call -> new PageImpl<>(List.of(asset), call.getArgument(2), 1));
         when(storage.createPresignedGetUrl("bucket", "final/key")).thenReturn("signed-url");
@@ -38,6 +39,7 @@ class OperatorMissionMediaServiceTest {
         assertThat(response.getTotalItems()).isEqualTo(1);
         assertThat(response.getItems().getFirst().getDownloadUrl()).isEqualTo("signed-url");
         assertThat(response.getItems().getFirst().getMediaType()).isEqualTo("IMAGE");
+        assertThat(response.getItems().getFirst().getSourceType()).isEqualTo("SATELLITE_SNAPSHOT");
         assertThat(response.getItems().getFirst().getUrlExpiresAt()).isAfter(java.time.Instant.now());
     }
 

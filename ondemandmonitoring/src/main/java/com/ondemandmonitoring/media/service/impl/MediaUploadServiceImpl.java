@@ -91,7 +91,8 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
                 mission.getId(), device.getId(), request.getLocalMediaId());
         if (existing.isPresent()) {
             MediaAsset captured = existing.get();
-            if (!captured.getType().equals(request.getMediaType())
+            if (!java.util.Objects.equals(captured.getSourceType(), request.getSourceType())
+                    || !captured.getType().equals(request.getMediaType())
                     || !captured.getContentType().equals(request.getContentType())
                     || !captured.getFileSize().equals(request.getFileSize())
                     || !captured.getChecksumSha256().equalsIgnoreCase(request.getChecksumSha256())) {
@@ -107,6 +108,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
         captured.setMission(deviceAssignment.getMission());
         captured.setLocalMediaId(request.getLocalMediaId());
         captured.setOperatorId(actor());
+        captured.setSourceType(request.getSourceType());
         captured.setType(request.getMediaType());
         captured.setStorageProvider("S3");
         captured.setOriginalFileName(request.getFileName().replaceAll("[^A-Za-z0-9._-]", "_"));
@@ -453,6 +455,10 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
     }
 
     private void validateMetadata(PrepareMediaUploadRequest request) {
+        if (request.getSourceType() != null && !java.util.Set.of(
+                "DRONE_CAMERA", "SATELLITE_SNAPSHOT", "MANUAL_UPLOAD").contains(request.getSourceType())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Unsupported media source type");
+        }
         if ((request.getMediaType().equals("IMAGE") && request.getContentType().equals("video/mp4"))
                 || (request.getMediaType().equals("VIDEO")
                         && !request.getContentType().equals("video/mp4"))) {

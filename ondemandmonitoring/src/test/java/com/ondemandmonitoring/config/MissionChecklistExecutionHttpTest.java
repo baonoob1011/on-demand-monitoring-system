@@ -83,6 +83,16 @@ class MissionChecklistExecutionHttpTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.lastModifiedBy").value("actor"));
     }
 
+    @Test void pendingReviewAllowsOperatorMutationButLocksSubmittedResults() throws Exception {
+        mission.setStatus(MissionStatus.PENDING_REVIEW);
+        mvc.perform(patch(URL + "/e").with(jwt().authorities(() -> "ROLE_STAFF")).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(BODY)).andExpect(status().isOk());
+        var submitted = new MissionResult(); submitted.setApprovalStatus(MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL);
+        when(results.findByMissionId("m")).thenReturn(Optional.of(submitted));
+        mvc.perform(patch(URL + "/e").with(jwt().authorities(() -> "ROLE_STAFF")).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(BODY)).andExpect(status().isConflict());
+    }
+
     @Test void customerManagerAdminAndInspectorCannotMutate() throws Exception {
         for (RoleCode role : List.of(RoleCode.CUSTOMER, RoleCode.MANAGER, RoleCode.ADMIN, RoleCode.STAFF)) {
             actor.getRole().setCode(role); crew(MissionStaffRole.INSPECTOR);

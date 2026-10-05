@@ -85,7 +85,7 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
         if (!hasRole(user, RoleCode.STAFF)) return false;
         return resolveMission(identifier).filter(mission -> Set.of(MissionStatus.IN_FLIGHT,
                 MissionStatus.IN_PROGRESS, MissionStatus.RETURNING, MissionStatus.POSTFLIGHT_CHECKING,
-                MissionStatus.COMPLETED).contains(mission.getStatus())).map(mission -> {
+                MissionStatus.PENDING_REVIEW, MissionStatus.COMPLETED).contains(mission.getStatus())).map(mission -> {
                     boolean completed = mission.getStatus() == MissionStatus.COMPLETED;
                     // Operational completion releases current assignments. Only the final accepted crew
                     // released by successful completion can finish the business report afterwards.
@@ -127,8 +127,23 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
         return resolveMission(identifier)
                 .filter(mission -> mission.getStatus() == MissionStatus.PENDING_REVIEW
                         || mission.getStatus() == MissionStatus.COMPLETED)
-                .map(mission -> hasAcceptedAssignment(mission.getId(), user, MissionStaffRole.INSPECTOR))
+                .map(mission -> hasEligibleInspectorAssignment(mission, user))
                 .orElse(false);
+    }
+
+    @Override
+    public boolean canCompleteMission(String identifier) {
+        return resolveMission(identifier)
+                .filter(mission -> mission.getStatus() == MissionStatus.PENDING_REVIEW)
+                .map(mission -> canUploadMissionMedia(mission.getId())).orElse(false);
+    }
+
+    @Override
+    public boolean canSubmitMissionResult(String identifier) {
+        // Actor/status capability only; submission also validates readiness and result locks.
+        return resolveMission(identifier)
+                .filter(mission -> mission.getStatus() == MissionStatus.COMPLETED)
+                .map(mission -> canExecuteMonitoringChecklist(mission.getId())).orElse(false);
     }
 
     private boolean canPerform(String identifier, MissionStaffRole task) {
@@ -151,12 +166,17 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
                 .toList();
     }
 
-    private boolean hasAcceptedAssignment(String missionId, User user, MissionStaffRole task) {
-        return assignments.findByMissionId(missionId).stream()
+    private boolean hasEligibleInspectorAssignment(Mission mission, User user) {
+        return assignments.findByMissionId(mission.getId()).stream()
                 .anyMatch(entry -> entry.getStaff() != null
                         && user.getId().equals(entry.getStaff().getId())
-                        && entry.getAssignedRole() == task
-                        && entry.getResponseStatus() == StaffResponseStatus.ACCEPTED);
+                        && hasRole(entry.getStaff(), RoleCode.STAFF)
+                        && entry.getAssignedRole() == MissionStaffRole.INSPECTOR
+                        && entry.getResponseStatus() == StaffResponseStatus.ACCEPTED
+                        && Boolean.TRUE.equals(entry.getIsCurrent())
+                        && (mission.getStatus() == MissionStatus.COMPLETED
+                            ? entry.getReleasedAt() != null && "MISSION_COMPLETE".equals(entry.getReleaseReason())
+                            : entry.getReleasedAt() == null));
     }
 
     private Optional<Mission> resolveMission(String identifier) {

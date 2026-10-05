@@ -91,7 +91,7 @@ class MonitoringChecklistAuthorizationTest {
         mission.setStatus(status);
         when(assignments.findByMissionId("m")).thenReturn(List.of(crew(actor, MissionStaffRole.OPERATOR)));
         assertEquals(Set.of(MissionStatus.IN_FLIGHT, MissionStatus.IN_PROGRESS, MissionStatus.RETURNING,
-                MissionStatus.POSTFLIGHT_CHECKING).contains(status), policy.canExecuteMonitoringChecklist("m"));
+                MissionStatus.POSTFLIGHT_CHECKING, MissionStatus.PENDING_REVIEW).contains(status), policy.canExecuteMonitoringChecklist("m"));
     }
 
     @Test void successfulFinalCrewCanFinishAfterOperationalRelease() {
@@ -103,5 +103,20 @@ class MonitoringChecklistAuthorizationTest {
         assertTrue(policy.canExecuteMonitoringChecklist("m"));
         operator.setIsCurrent(true); assertTrue(policy.canExecuteMonitoringChecklist("m"));
         operator.setReleaseReason("REPLACED"); assertFalse(policy.canExecuteMonitoringChecklist("m"));
+    }
+
+    @Test void pendingReviewKeepsOperatorPrimaryAndPilotFallbackButDeniesInspector() {
+        mission.setStatus(MissionStatus.PENDING_REVIEW);
+        var pilot = crew(actor, MissionStaffRole.PILOT);
+        var operator = crew(user("operator"), MissionStaffRole.OPERATOR);
+        when(assignments.findByMissionId("m")).thenReturn(List.of(pilot, operator));
+        assertFalse(policy.canExecuteMonitoringChecklist("m"));
+        operator.setReleasedAt(Instant.now());
+        assertTrue(policy.canExecuteMonitoringChecklist("m"));
+        when(assignments.findByMissionId("m")).thenReturn(List.of(crew(actor, MissionStaffRole.OPERATOR)));
+        assertTrue(policy.canExecuteMonitoringChecklist("m"));
+        when(assignments.findByMissionId("m")).thenReturn(List.of(crew(actor, MissionStaffRole.INSPECTOR)));
+        assertFalse(policy.canExecuteMonitoringChecklist("m"));
+        assertFalse(policy.canSubmitMissionResult("m"));
     }
 }

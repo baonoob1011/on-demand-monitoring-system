@@ -13,4 +13,6 @@ public interface IMissionAuthorizationService {
     boolean canMaintainDevice(String identifier);
     boolean canViewMissionMedia(String identifier);
     boolean canUploadMissionMedia(String identifier);
+    boolean canCompleteMission(String identifier);
+    boolean canSubmitMissionResult(String identifier);
 }

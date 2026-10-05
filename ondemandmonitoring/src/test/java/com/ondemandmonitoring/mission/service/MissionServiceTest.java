@@ -259,7 +259,7 @@ class MissionServiceTest {
 
             AssignStaffRequest request = AssignStaffRequest.builder().staffId("op-01").build();
             assertThat(missionService.assignStaff("m-assign", request).getStatus())
-                    .isEqualTo(MissionStatus.WAITING_CREW_CONFIRMATION);
+                    .isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
             verifyNoInteractions(missionPlanningService);
         }
 
@@ -272,7 +272,10 @@ class MissionServiceTest {
             when(missionStaffAssignmentRepository.findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc("m-1", "op-01"))
                     .thenReturn(List.of(assignment));
             when(missionStaffAssignmentRepository.findAllByMissionIdAndIsCurrentTrue("m-1"))
-                    .thenReturn(List.of(assignment));
+                    .thenReturn(List.of(assignment,
+                            staffAssignment(mission, "payload", MissionStaffRole.OPERATOR, "ACCEPTED"),
+                            staffAssignment(mission, "maintainer", MissionStaffRole.MAINTAINER, "ACCEPTED"),
+                            staffAssignment(mission, "inspector", MissionStaffRole.INSPECTOR, "ACCEPTED")));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             MissionResponse result = missionService.acceptMission("m-1", "op-01");
@@ -690,11 +693,13 @@ class MissionServiceTest {
 
         @Test
         void incompleteBusinessChecklistDoesNotBlockCompletionOrResourceReleaseAndProducesDraft() {
-            Mission mission = buildMission("m-business", MissionStatus.POSTFLIGHT_CHECKING);
+            Mission mission = buildMission("m-business", MissionStatus.PENDING_REVIEW);
             var order = new com.ondemandmonitoring.order.domain.Order(); order.setId("o"); mission.setOrder(order);
             Device device = buildDevice("DEV-01", DeviceStatus.RETURNING);
             var deviceAssignment = new MissionDeviceAssignment(); deviceAssignment.setDevice(device);
             var staffAssignment = new MissionStaffAssignment();
+            deviceAssignment.setIsCurrent(true);
+            staffAssignment.setIsCurrent(true);
             when(missionRepository.findById(mission.getId())).thenReturn(Optional.of(mission));
             when(missionRepository.findByIdForUpdate(mission.getId())).thenReturn(Optional.of(mission));
             when(missionRepository.save(any())).thenAnswer(call -> call.getArgument(0));
@@ -853,6 +858,124 @@ class MissionServiceTest {
         m.setMissionCode("MC-" + id);
         m.setStatus(status);
         return m;
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(MissionStaffRole.class)
+    void missingAnyOperationalRolePreventsScheduling(MissionStaffRole missing) {
+        var mission = buildMission("crew", MissionStatus.WAITING_CREW_CONFIRMATION);
+        var crew = java.util.Arrays.stream(MissionStaffRole.values())
+                .filter(role -> role != missing)
+                .map(role -> staffAssignment(mission, role.name(), role, "ACCEPTED")).toList();
+        when(missionStaffAssignmentRepository.findAllByMissionIdAndIsCurrentTrue("crew")).thenReturn(crew);
+        assertThat((Boolean) org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                missionService, "hasRequiredCrewAssigned", "crew")).isFalse();
+        assertThat((Boolean) org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                missionService, "isRequiredCrewAccepted", "crew")).isFalse();
+    }
+
+    @Test
+    void allFourRolesMustAcceptBeforeScheduling() {
+        var mission = buildMission("crew", MissionStatus.WAITING_CREW_CONFIRMATION);
+        var crew = java.util.Arrays.stream(MissionStaffRole.values())
+                .map(role -> staffAssignment(mission, role.name(), role, "ACCEPTED")).toList();
+        when(missionStaffAssignmentRepository.findAllByMissionIdAndIsCurrentTrue("crew")).thenReturn(crew);
+        assertThat((Boolean) org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                missionService, "hasRequiredCrewAssigned", "crew")).isTrue();
+        assertThat((Boolean) org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                missionService, "isRequiredCrewAccepted", "crew")).isTrue();
+        crew.getFirst().setResponseStatus(StaffResponseStatus.PENDING);
+        assertThat((Boolean) org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                missionService, "isRequiredCrewAccepted", "crew")).isFalse();
+    }
+
+    @Test
+    void postflightAcceptanceReleaseAndNonCompliantBusinessReportRemainSeparate() {
+        var mission = buildMission("integrated", MissionStatus.POSTFLIGHT_CHECKING);
+        var order = new com.ondemandmonitoring.order.domain.Order(); order.setId("order");
+        order.setOrderStatus(com.ondemandmonitoring.order.enums.OrderStatus.APPROVED); mission.setOrder(order);
+        var device = buildDevice("device", DeviceStatus.RETURNING);
+        var deviceAssignment = new MissionDeviceAssignment(); deviceAssignment.setDevice(device); deviceAssignment.setIsCurrent(true);
+        var crew = java.util.Arrays.stream(MissionStaffRole.values()).map(role -> {
+            var entry = staffAssignment(mission, role.name(), role, "ACCEPTED");
+            entry.getStaff().setIsActive(true);
+            entry.getStaff().setRole(Role.builder().code(RoleCode.STAFF).active(true).build()); return entry;
+        }).toList();
+        var replaced = staffAssignment(mission, "old-inspector", MissionStaffRole.INSPECTOR, "ACCEPTED");
+        replaced.setIsCurrent(false); replaced.setReleasedAt(Instant.now()); replaced.setReleaseReason("REPLACED");
+        var history = new java.util.ArrayList<>(crew); history.add(replaced);
+        when(missionRepository.findById("integrated")).thenReturn(Optional.of(mission));
+        when(missionRepository.findByIdForUpdate("integrated")).thenReturn(Optional.of(mission));
+        when(missionRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(missionDeviceAssignmentRepository.findFirstByMissionIdOrderByCreatedAtDesc("integrated"))
+                .thenReturn(Optional.of(deviceAssignment));
+        when(missionDeviceAssignmentRepository.findByMissionId("integrated")).thenReturn(List.of(deviceAssignment));
+        when(missionStaffAssignmentRepository.findByMissionId("integrated")).thenReturn(history);
+        when(postDeviceCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc("integrated"))
+                .thenReturn(Optional.of(new PersistedPostDeviceCheck()));
+        var policy = new com.ondemandmonitoring.mission.service.impl.MissionAuthorizationServiceImpl(
+                missionStaffAssignmentRepository, missionRepository, authenticatedUserResolver);
+        var items = mock(com.ondemandmonitoring.order.repository.OrderChecklistItemRepository.class);
+        var executions = mock(com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository.class);
+        var resultRepo = mock(com.ondemandmonitoring.mission.repository.MissionResultRepository.class);
+        var item = new com.ondemandmonitoring.order.domain.OrderChecklistItem(); item.setId("item"); item.setOrder(order);
+        var execution = new com.ondemandmonitoring.mission.domain.MissionChecklistExecution();
+        execution.setId("execution"); execution.setVersion(0L); execution.setMissionId(mission.getId());
+        execution.setMission(mission); execution.setOrderId(order.getId()); execution.setOrderChecklistItemId(item.getId());
+        execution.setOrderChecklistItem(item); execution.setExecutionStatus(com.ondemandmonitoring.mission.enums.ChecklistExecutionStatus.PENDING);
+        when(items.findAllByOrderIdInOrderByDisplayOrderAscIdAsc(List.of("order"))).thenReturn(List.of(item));
+        when(executions.findOrderedByMissionId(mission.getId())).thenReturn(List.of(execution));
+        when(executions.findById(execution.getId())).thenReturn(Optional.of(execution));
+        when(executions.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
+        var checklist = new com.ondemandmonitoring.mission.service.impl.MissionChecklistExecutionServiceImpl(
+                missionRepository, items, executions, resultRepo, policy, authenticatedUserResolver,
+                org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.mission.mapper.MissionChecklistExecutionMapper.class));
+        var resultMapper = mock(com.ondemandmonitoring.mission.mapper.MissionResultMapper.class);
+        var results = new com.ondemandmonitoring.mission.service.impl.MissionResultService(
+                resultRepo, missionRepository, mock(com.ondemandmonitoring.media.repository.MediaAssetRepository.class),
+                mock(com.ondemandmonitoring.media.service.IMediaAssetService.class), resultMapper, orderRepository,
+                checklist, authenticatedUserResolver, policy);
+        when(resultRepo.save(any())).thenAnswer(call -> {
+            com.ondemandmonitoring.mission.domain.MissionResult result = call.getArgument(0); result.setId("result");
+            when(resultRepo.findByMissionId(mission.getId())).thenReturn(Optional.of(result));
+            when(resultRepo.findById("result")).thenReturn(Optional.of(result));
+            when(resultRepo.findMissionIdByResultId("result")).thenReturn(Optional.of(mission.getId())); return result;
+        });
+        org.springframework.test.util.ReflectionTestUtils.setField(missionService, "missionResultService", results);
+        var maintainer = crew.stream().filter(entry -> entry.getAssignedRole() == MissionStaffRole.MAINTAINER).findFirst().orElseThrow();
+        when(authenticatedUserResolver.getCurrentUser()).thenReturn(maintainer.getStaff());
+        // Actual postflight service path; result must not exist before Inspector acceptance.
+        missionService.updatePostFlightStatus(mission.getId(), DeviceStatus.AVAILABLE, "Inspection passed");
+        assertThat(mission.getStatus()).isEqualTo(MissionStatus.PENDING_REVIEW);
+        assertThat(deviceAssignment.getReleasedAt()).isNull(); verify(resultRepo, never()).save(any());
+        var operator = crew.stream().filter(entry -> entry.getAssignedRole() == MissionStaffRole.OPERATOR).findFirst().orElseThrow();
+        when(authenticatedUserResolver.getCurrentUser()).thenReturn(operator.getStaff());
+        when(authenticatedUserResolver.getCurrentUserId()).thenReturn(operator.getStaff().getId());
+        var update = new com.ondemandmonitoring.mission.dto.request.ChecklistExecutionUpdateRequest(); update.setExpectedVersion(0L);
+        update.setExecutionStatus(com.ondemandmonitoring.mission.enums.ChecklistExecutionStatus.COMPLETED);
+        update.setAssessmentStatus(com.ondemandmonitoring.mission.enums.ChecklistAssessmentStatus.NON_COMPLIANT);
+        checklist.update(mission.getId(), execution.getId(), update);
+        assertThat(mission.getStatus()).isEqualTo(MissionStatus.PENDING_REVIEW);
+        var inspector = crew.stream().filter(entry -> entry.getAssignedRole() == MissionStaffRole.INSPECTOR).findFirst().orElseThrow();
+        when(authenticatedUserResolver.getCurrentUser()).thenReturn(inspector.getStaff());
+        assertThat(policy.canCompleteMission(mission.getId())).isTrue(); missionService.completeMission(mission.getId());
+        var result = resultRepo.findByMissionId(mission.getId()).orElseThrow();
+        assertThat(result.getApprovalStatus()).isEqualTo(com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus.DRAFT);
+        assertThat(result.getSubmittedAt()).isNull(); assertThat(deviceAssignment.getReleasedAt()).isNotNull();
+        assertThat(crew).allMatch(entry -> "MISSION_COMPLETE".equals(entry.getReleaseReason()));
+        assertThat(replaced.getReleaseReason()).isEqualTo("REPLACED");
+        assertThatThrownBy(() -> results.upsert(mission.getId(), new com.ondemandmonitoring.mission.dto.request.MissionResultRequest()))
+                .isInstanceOf(ApiException.class);
+        when(authenticatedUserResolver.getCurrentUser()).thenReturn(operator.getStaff());
+        results.upsert(mission.getId(), new com.ondemandmonitoring.mission.dto.request.MissionResultRequest());
+        assertThat(result.getApprovalStatus()).isEqualTo(com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL);
+        assertThat(order.getOrderStatus()).isEqualTo(com.ondemandmonitoring.order.enums.OrderStatus.APPROVED);
+        var manager = User.builder().isActive(true).role(Role.builder().code(RoleCode.MANAGER).active(true).build()).build();
+        manager.setId("manager"); when(authenticatedUserResolver.getCurrentUser()).thenReturn(manager);
+        when(authenticatedUserResolver.getCurrentUserId()).thenReturn(manager.getId());
+        results.approve(result.getId(), new com.ondemandmonitoring.mission.dto.request.MissionResultReviewRequest());
+        assertThat(order.getOrderStatus()).isEqualTo(com.ondemandmonitoring.order.enums.OrderStatus.COMPLETED);
+        assertThat(mission.getStatus()).isEqualTo(MissionStatus.COMPLETED);
     }
 
     private MissionStaffAssignment staffAssignment(Mission mission, String staffId, String status) {
