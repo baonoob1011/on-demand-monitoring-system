@@ -19,6 +19,7 @@ import org.mapstruct.NullValuePropertyMappingStrategy;
 public interface OrderMapper {
 
     @Mapping(target = "id", ignore = true)
+    @Mapping(target = "checklistSnapshotAt", ignore = true)
     @Mapping(target = "orderCode", ignore = true)
     @Mapping(target = "customer", ignore = true)
     @Mapping(target = "service", ignore = true)
@@ -48,6 +49,7 @@ public interface OrderMapper {
     @Mapping(target = "radiusM", expression = "java(toRadiusM(order))")
     @Mapping(target = "coverageArea", expression = "java(toCoverageArea(order.getTargetArea()))")
     @Mapping(source = "deliverables", target = "deliverables")
+    @Mapping(target = "checklistItems", ignore = true)
     OrderCreateResponse toResponse(Order order);
 
     @Mapping(source = "deliverableType.id", target = "deliverableTypeId")

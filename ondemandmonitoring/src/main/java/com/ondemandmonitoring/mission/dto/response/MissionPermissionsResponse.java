@@ -7,5 +7,10 @@ public record MissionPermissionsResponse(
         boolean canOperatePayload,
         boolean canInspectDevice,
         boolean canMaintainDevice,
-        boolean canUploadMedia) {
+        boolean canUploadMedia,
+        boolean canCompleteMission,
+        boolean canSubmitMissionResult,
+        boolean canExecuteMonitoringChecklist,
+        boolean canAttachChecklistEvidence,
+        boolean canDetachChecklistEvidence) {
 }

@@ -40,6 +40,7 @@ public class MediaController {
 
     IMediaAssetService mediaAssetService;
     MediaAssetMapper mediaAssetMapper;
+    com.ondemandmonitoring.mission.service.IMissionMediaAccessService missionAccess;
 
     @Operation(summary = "Upload image for mission",
             description = "Uploads a photo captured during a specific mission to S3 storage")
@@ -63,6 +64,7 @@ public class MediaController {
     @GetMapping("/api/media/{mediaId}")
     public ResponseEntity<ApiResponse<MediaResponse>> getMedia(@PathVariable String mediaId) {
         MediaAsset image = mediaAssetService.getById(mediaId);
+        missionAccess.authorizeOperator(image.getMissionId());
         requireLegacyMedia(image);
         String presignedUrl = mediaAssetService.createPresignedGetUrl(image);
 
@@ -78,9 +80,14 @@ public class MediaController {
     public ResponseEntity<ApiResponse<List<MediaResponse>>> listMissionMedia(
             @PathVariable String missionId,
             @RequestParam(required = false) String mediaType) {
+        String canonicalId = missionAccess.authorizeOperator(missionId).getId();
         List<MediaResponse> media = mediaAssetService
-                .listByMission(missionId, mediaType)
+                .listByMission(canonicalId, mediaType)
                 .stream()
+                .filter(asset -> asset.getMediaStatus() == null || asset.getValidatedAt() != null
+                        && java.util.Set.of(com.ondemandmonitoring.media.domain.MediaStatus.PENDING_MANAGER_APPROVAL,
+                                com.ondemandmonitoring.media.domain.MediaStatus.AVAILABLE,
+                                com.ondemandmonitoring.media.domain.MediaStatus.REJECTED).contains(asset.getMediaStatus()))
                 .map(asset -> mediaAssetMapper.toMediaResponse(
                         asset,
                         mediaAssetService.createPresignedGetUrl(asset),
@@ -95,6 +102,7 @@ public class MediaController {
     @GetMapping("/api/media/{mediaId}/file")
     public ResponseEntity<InputStreamResource> getMediaFile(@PathVariable String mediaId) {
         MediaAsset image = mediaAssetService.getById(mediaId);
+        missionAccess.authorizeOperator(image.getMissionId());
         requireLegacyMedia(image);
         MediaContent mediaContent = mediaAssetService.openMedia(image);
         MediaType contentType = MediaType.parseMediaType(mediaContent.contentType());

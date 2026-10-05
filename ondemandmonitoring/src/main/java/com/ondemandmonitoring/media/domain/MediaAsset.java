@@ -81,7 +81,7 @@ public class MediaAsset extends BaseEntity {
     @Column(name = "available_at")
     Instant availableAt;
 
-    /** DRONE_CAMERA / MANUAL_UPLOAD / MAPILLARY_REFERENCE. Null on legacy rows (treated as drone/manual media). */
+    /** DRONE_CAMERA / SATELLITE_SNAPSHOT / MANUAL_UPLOAD / MAPILLARY_REFERENCE. Null means unknown legacy provenance. */
     @Column(name = "source_type", length = 40)
     String sourceType;
 

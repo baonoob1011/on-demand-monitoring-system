@@ -1,4 +1,5 @@
 package com.ondemandmonitoring.media.service.impl;
+import com.ondemandmonitoring.mission.service.IMissionMediaEvidenceGuard;
 
 import com.ondemandmonitoring.media.domain.*;
 import com.ondemandmonitoring.media.repository.*;
@@ -40,6 +41,7 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
     MediaNotificationOutboxRepository outbox;
     IMediaObjectStorage storage;
     IMediaObjectVerificationService verification;
+    IMissionMediaEvidenceGuard missionLock;
 
     @Override
     @Transactional
@@ -59,6 +61,7 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
             return;
         }
         // Lock aggregate first, then attempt; upload callbacks use the same order.
+        missionLock.lock(mediaId.get());
         MediaAsset captured = media.findByIdForUpdate(mediaId.get()).orElseThrow();
         Optional<MediaUploadAttempt> found = attempts.findByStorageKeyForUpdate(key);
 

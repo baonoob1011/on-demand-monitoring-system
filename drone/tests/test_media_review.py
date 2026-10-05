@@ -10,6 +10,20 @@ from media_review import LocalMediaLibrary
 
 
 class LocalMediaLibraryTest(unittest.TestCase):
+    def test_provenance_survives_restart_without_faking_legacy_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            library = LocalMediaLibrary(root, "mission-1", "DRONE-01")
+            camera = library.capture_image(b"\xff\xd8\xffcamera")
+            satellite = library.capture_image(b"\xff\xd8\xffsatellite", "SATELLITE_SNAPSHOT")
+            legacy = library._register("legacy", Path(camera["localPath"]), "IMAGE", "image/jpeg")
+            restarted = LocalMediaLibrary(root, "mission-1", "DRONE-01")
+            self.assertEqual("DRONE_CAMERA", restarted.get(camera["localMediaId"])["sourceType"])
+            self.assertEqual("SATELLITE_SNAPSHOT", restarted.get(satellite["localMediaId"])["sourceType"])
+            self.assertIsNone(restarted.get(legacy["localMediaId"])["sourceType"])
+            with self.assertRaisesRegex(ValueError, "Unsupported media source"):
+                library.capture_image(b"\xff\xd8\xffbad", "FAKE_SOURCE")
+
     def test_capture_requires_bound_mission(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -1,4 +1,5 @@
 package com.ondemandmonitoring.media.service.impl;
+import com.ondemandmonitoring.mission.service.IMissionMediaEvidenceGuard;
 
 import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.common.exception.ApiException;
@@ -32,6 +33,7 @@ public class ManagerMediaApprovalServiceImpl implements IManagerMediaApprovalSer
     MediaNotificationOutboxRepository outbox;
     IMediaObjectStorage storage;
     MediaWorkflowMapper mapper;
+    IMissionMediaEvidenceGuard missionLock;
 
     @Override
     @Transactional(readOnly = true)
@@ -73,6 +75,8 @@ public class ManagerMediaApprovalServiceImpl implements IManagerMediaApprovalSer
     }
 
     private MediaAsset pendingAsset(String missionId, String mediaId) {
+        missionLock.lock(mediaId);
+        missionLock.requireMutable(missionId, mediaId);
         return media.findByIdForUpdate(mediaId)
                 .filter(asset -> missionId.equals(asset.getMissionId()))
                 .filter(asset -> asset.getMediaStatus() == MediaStatus.PENDING_MANAGER_APPROVAL)

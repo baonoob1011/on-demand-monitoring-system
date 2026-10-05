@@ -10,6 +10,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface MissionResultRepository extends JpaRepository<MissionResult, String> {
+    @Query("select r.mission.id from MissionResult r where r.id = :resultId")
+    Optional<String> findMissionIdByResultId(@Param("resultId") String resultId);
 
     @Query("select r from MissionResult r where r.mission.id = :missionId")
     Optional<MissionResult> findByMissionId(@Param("missionId") String missionId);

@@ -13,7 +13,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,16 +35,20 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
+        // Bootstrap only an empty catalog. Existing rows belong to administrators,
+        // including renamed, inactive and newly created services.
+        if (serviceRepository.count() > 0) {
+            log.info("Skipping service catalog bootstrap: catalog already exists");
+            return;
+        }
         int servicesUpserted = seedServices();
-        int legacyServicesCleaned = cleanupLegacyEnglishServices();
         int deliverablesUpserted = seedDeliverableTypes();
         int linksCreated = seedServiceDeliverables();
         int suggestionsUpserted = seedRequirementSuggestions();
 
         log.info(
-                "Service catalog seed completed: services={}, legacyServicesCleaned={}, deliverableTypes={}, serviceDeliverables={}, requirementSuggestions={}",
+                "Service catalog seed completed: services={}, deliverableTypes={}, serviceDeliverables={}, requirementSuggestions={}",
                 servicesUpserted,
-                legacyServicesCleaned,
                 deliverablesUpserted,
                 linksCreated,
                 suggestionsUpserted
@@ -123,110 +126,10 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
                 count++;
             }
         }
-        deactivateServicesOutsideMapCatalog(seeds);
 
         return count;
     }
 
-    private void deactivateServicesOutsideMapCatalog(List<ServiceSeed> activeSeeds) {
-        List<String> activeNames = activeSeeds.stream()
-                .map(ServiceSeed::name)
-                .toList();
-
-        for (Service service : serviceRepository.findAll()) {
-            if (activeNames.stream().anyMatch(name -> name.equalsIgnoreCase(service.getName()))) {
-                continue;
-            }
-            if (Boolean.TRUE.equals(service.getIsActive())) {
-                service.setIsActive(false);
-                serviceRepository.save(service);
-            }
-        }
-    }
-
-    private int cleanupLegacyEnglishServices() {
-        int count = 0;
-
-        List<LegacyServiceName> legacyNames = List.of(
-                new LegacyServiceName("Construction Progress Monitoring", "Giám sát Tiến độ Xây dựng"),
-                new LegacyServiceName("Thermal Hotspot Monitoring", "Đo nhiệt độ / Điểm nhiệt"),
-                new LegacyServiceName("Water Surface Monitoring", "Giám sát Mặt nước / Dòng chảy"),
-                new LegacyServiceName("Warehouse / Logistics Monitoring", "Giám sát Kho bãi / Logistics"),
-                new LegacyServiceName("Telecom Tower Inspection", "Kiểm tra Tháp viễn thông"),
-                new LegacyServiceName("Agricultural / Crop Monitoring", "Giám sát Nông nghiệp / Cây trồng"),
-                new LegacyServiceName("Forest Fire / Thermal Hotspot Monitoring", "Giám sát Rừng / Điểm nhiệt"),
-                new LegacyServiceName("Landslide / Flood Monitoring", "Giám sát Sạt lở / Ngập lụt"),
-                new LegacyServiceName("Industrial Site / Factory Monitoring", "Giám sát Kho công nghiệp / Nhà xưởng")
-        );
-
-        for (LegacyServiceName legacyName : legacyNames) {
-            Service legacy = serviceRepository.findByNameIgnoreCase(legacyName.englishName()).orElse(null);
-
-            if (legacy == null) {
-                continue;
-            }
-
-            Service vietnamese = serviceRepository.findByNameIgnoreCase(legacyName.vietnameseName()).orElse(null);
-
-            if (vietnamese == null) {
-                legacy.setName(legacyName.vietnameseName());
-                legacy.setIsActive(true);
-                serviceRepository.save(legacy);
-            } else if (!Boolean.FALSE.equals(legacy.getIsActive())) {
-                deleteOrDeactivateLegacyService(legacy);
-            } else {
-                continue;
-            }
-
-            count++;
-        }
-
-        for (Service service : serviceRepository.findAll()) {
-            if (!isLegacyEnglishService(service)) {
-                continue;
-            }
-
-            deleteOrDeactivateLegacyService(service);
-            count++;
-        }
-
-        return count;
-    }
-
-    private void deleteOrDeactivateLegacyService(Service service) {
-        List<ServiceDeliverable> links = serviceDeliverableRepository.findAllByServiceId(service.getId());
-        serviceDeliverableRepository.deleteAll(links);
-
-        try {
-            serviceRepository.delete(service);
-            serviceRepository.flush();
-        } catch (DataIntegrityViolationException ex) {
-            service.setIsActive(false);
-            serviceRepository.save(service);
-        }
-    }
-
-    private boolean isLegacyEnglishService(Service service) {
-        if (!Boolean.TRUE.equals(service.getIsActive())) {
-            return false;
-        }
-
-        String name = service.getName() == null ? "" : service.getName();
-        String description = service.getDescription() == null ? "" : service.getDescription();
-        String text = (name + " " + description).toLowerCase();
-
-        return text.contains("monitoring")
-                || text.contains("inspection")
-                || text.contains("infrastructure")
-                || text.contains("agricultural")
-                || text.contains("environmental")
-                || text.contains("construction")
-                || text.contains("solar panel")
-                || text.contains("thermal anomaly")
-                || text.contains("facade")
-                || text.contains("alignment with plans")
-                || text.contains("crop health");
-    }
 
     private int seedDeliverableTypes() {
         int count = 0;
@@ -499,9 +402,6 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
     }
 
     private record ServiceSeed(String name, String description) {
-    }
-
-    private record LegacyServiceName(String englishName, String vietnameseName) {
     }
 
     private record DeliverableTypeSeed(String name, String defaultFormat) {

@@ -40,7 +40,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 @SpringJUnitConfig(classes = {SecurityConfig.class, ActiveAccountFilter.class,
-        MissionController.class, MissionAccessController.class, MissionAuthorizationHttpTest.Beans.class})
+        MissionController.class, MissionAccessController.class,
+        com.ondemandmonitoring.mission.controller.MissionResultController.class, MissionAuthorizationHttpTest.Beans.class})
 @WebAppConfiguration
 class MissionAuthorizationHttpTest {
     @Autowired WebApplicationContext context;
@@ -123,7 +124,7 @@ class MissionAuthorizationHttpTest {
                 .andExpect(jsonPath("$.data.canControlFlight").value(true))
                 .andExpect(jsonPath("$.data.canInspectDevice").value(false))
                 .andExpect(jsonPath("$.data.canOperatePayload").value(false))
-                .andExpect(jsonPath("$.data.canUploadMedia").value(true))
+                .andExpect(jsonPath("$.data.canUploadMedia").value(false))
                 .andExpect(jsonPath("$.data.canMaintainDevice").value(false));
         crew(MissionStaffRole.OPERATOR, StaffResponseStatus.ACCEPTED);
         mvc.perform(get("/api/missions/mission-1/permissions")
@@ -132,7 +133,7 @@ class MissionAuthorizationHttpTest {
                 .andExpect(jsonPath("$.data.canControlFlight").value(false))
                 .andExpect(jsonPath("$.data.canOperatePayload").value(true))
                 .andExpect(jsonPath("$.data.canInspectDevice").value(false))
-                .andExpect(jsonPath("$.data.canUploadMedia").value(true));
+                .andExpect(jsonPath("$.data.canUploadMedia").value(false));
         crew(MissionStaffRole.INSPECTOR, StaffResponseStatus.ACCEPTED);
         mvc.perform(get("/api/missions/mission-1/permissions")
                         .with(jwt().authorities(() -> "ROLE_STAFF")))
@@ -158,13 +159,55 @@ class MissionAuthorizationHttpTest {
         var crew = List.of(MissionStaffAssignment.builder().staff(user).mission(mission)
                 .assignedRole(role).responseStatus(response).isCurrent(true).build());
         when(assignments.findAllByMissionIdAndIsCurrentTrue("mission-1")).thenReturn(crew);
+        when(assignments.findByMissionId("mission-1")).thenReturn(crew);
+        when(assignments.existsByMissionIdAndStaffId("mission-1", "staff-1")).thenReturn(true);
         when(assignments.findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc("mission-1", "staff-1"))
                 .thenReturn(crew);
+    }
+
+    @Test
+    void inspectorCompletesButOnlyFinalMonitoringActorCanSubmit() throws Exception {
+        mission.setStatus(MissionStatus.PENDING_REVIEW);
+        crew(MissionStaffRole.INSPECTOR, StaffResponseStatus.ACCEPTED);
+        mvc.perform(get("/api/missions/mission-1/permissions").with(jwt().authorities(() -> "ROLE_STAFF")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.canCompleteMission").value(true))
+                .andExpect(jsonPath("$.data.canSubmitMissionResult").value(false));
+        mvc.perform(post("/api/missions/mission-1/complete").with(jwt().authorities(() -> "ROLE_STAFF")).with(csrf()))
+                .andExpect(status().isOk());
+        verify(service).completeMission("mission-1");
+        mission.setStatus(MissionStatus.COMPLETED);
+        var inspector = assignments.findByMissionId("mission-1").getFirst();
+        inspector.setReleasedAt(java.time.Instant.now()); inspector.setReleaseReason("MISSION_COMPLETE");
+        submitResult(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
+        crew(MissionStaffRole.OPERATOR, StaffResponseStatus.ACCEPTED);
+        var operator = assignments.findByMissionId("mission-1").getFirst();
+        operator.setReleasedAt(java.time.Instant.now()); operator.setReleaseReason("MISSION_COMPLETE");
+        mvc.perform(get("/api/missions/mission-1/permissions").with(jwt().authorities(() -> "ROLE_STAFF")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.canCompleteMission").value(false))
+                .andExpect(jsonPath("$.data.canSubmitMissionResult").value(true));
+        submitResult(status().isCreated());
+        crew(MissionStaffRole.PILOT, StaffResponseStatus.ACCEPTED);
+        var pilot = assignments.findByMissionId("mission-1").getFirst();
+        pilot.setReleasedAt(java.time.Instant.now()); pilot.setReleaseReason("MISSION_COMPLETE");
+        when(assignments.findByMissionId("mission-1")).thenReturn(List.of(pilot, operator));
+        var otherOperator = User.builder().isActive(true).role(user.getRole()).build();
+        otherOperator.setId("another-operator"); operator.setStaff(otherOperator);
+        submitResult(status().isForbidden());
+        when(assignments.findByMissionId("mission-1")).thenReturn(List.of(pilot));
+        submitResult(status().isCreated());
+    }
+
+    private void submitResult(org.springframework.test.web.servlet.ResultMatcher expected) throws Exception {
+        mvc.perform(post("/api/missions/mission-1/result").with(jwt().authorities(() -> "ROLE_STAFF")).with(csrf())
+                .contentType("application/json").content("{}")).andExpect(expected);
     }
 
     @Configuration
     @EnableWebMvc
     static class Beans {
+        @Bean com.ondemandmonitoring.mission.service.IMissionResultService missionResultService() {
+            return mock(com.ondemandmonitoring.mission.service.IMissionResultService.class);
+        }
         @Bean IMissionService missionService() { return mock(IMissionService.class); }
         @Bean IMissionMediaUploadService missionMediaUploadService() { return mock(IMissionMediaUploadService.class); }
         @Bean MediaAssetMapper mediaAssetMapper() { return mock(MediaAssetMapper.class); }
@@ -175,7 +218,7 @@ class MissionAuthorizationHttpTest {
         @Bean("missionAuthorizationService")
         IMissionAuthorizationService policy(MissionRepository missions,
                 MissionStaffAssignmentRepository assignments, AuthenticatedUserResolver resolver) {
-            return new MissionAuthorizationServiceImpl(assignments, missions, resolver);
+            return new MissionAuthorizationServiceImpl(assignments, missions, resolver, mock(com.ondemandmonitoring.mission.repository.MissionResultRepository.class));
         }
     }
 }

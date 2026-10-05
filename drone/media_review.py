@@ -40,14 +40,16 @@ class LocalMediaLibrary:
             json.dump(list(self.items.values()), output, indent=2)
         os.replace(temp, self.manifest)
 
-    def capture_image(self, jpeg: bytes) -> dict:
+    def capture_image(self, jpeg: bytes, source_type: str = "DRONE_CAMERA") -> dict:
         self._require_capture_session()
+        if source_type not in {"DRONE_CAMERA", "SATELLITE_SNAPSHOT", "MANUAL_UPLOAD"}:
+            raise ValueError("Unsupported media source type")
         if not jpeg.startswith(b"\xff\xd8\xff"):
             raise ValueError("Camera did not return a JPEG")
         local_id = str(uuid.uuid4())
         path = self.root / f"{local_id}.jpg"
         path.write_bytes(jpeg)
-        return self._register(local_id, path, "IMAGE", "image/jpeg")
+        return self._register(local_id, path, "IMAGE", "image/jpeg", source_type=source_type)
 
     def register_video(self, path: Path) -> dict:
         self._require_capture_session()
@@ -57,6 +59,7 @@ class LocalMediaLibrary:
         return self._register(
             str(uuid.uuid4()), browser_path, "VIDEO", "video/mp4",
             original_path=path if browser_path != path else None,
+            source_type="DRONE_CAMERA",
         )
 
     def _require_capture_session(self) -> None:
@@ -132,7 +135,7 @@ class LocalMediaLibrary:
         return digest.hexdigest()
 
     def _register(self, local_id: str, path: Path, media_type: str, content_type: str,
-                  original_path: Path | None = None) -> dict:
+                  original_path: Path | None = None, source_type: str | None = None) -> dict:
         item = {
             "localMediaId": local_id, "missionId": self.mission_id,
             "deviceId": self.device_id, "mediaType": media_type,
@@ -141,6 +144,7 @@ class LocalMediaLibrary:
             "checksumSha256": self._sha256(path),
             "capturedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "status": "REVIEW_PENDING",
+            "sourceType": source_type,
         }
         if self.mission_code:
             item["missionCode"] = self.mission_code

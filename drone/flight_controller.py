@@ -1450,7 +1450,7 @@ class FlightControlApi:
             def _cors(self) -> None:
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-                self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Media-Source-Type")
 
             def _write_json(self, status_code: int, payload: dict) -> bool:
                 try:
@@ -1621,7 +1621,11 @@ class FlightControlApi:
                         if length <= 0 or length > 15_000_000:
                             self._write_json(413, {"ok": False, "error": "Snapshot must be a JPEG under 15 MB"})
                             return
-                        item = owner.media_library.capture_image(self.rfile.read(length))
+                        # Raw browser capture is not implicitly a drone camera frame.
+                        source_type = self.headers.get("X-Media-Source-Type")
+                        if source_type is None:
+                            raise ValueError("Media source type is required for browser capture")
+                        item = owner.media_library.capture_image(self.rfile.read(length), source_type)
                         print(f"[CAMERA] Browser snapshot captured for operator review id={item['localMediaId']}", flush=True)
                         self._write_json(201, {"ok": True, "media": item})
                     except (ValueError, OSError) as exc:

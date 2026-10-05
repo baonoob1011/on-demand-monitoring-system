@@ -23,6 +23,7 @@ public interface MediaWorkflowMapper {
     @Mapping(target = "missionId", expression = "java(task.getMedia().getMissionId())")
     @Mapping(target = "deviceId", expression = "java(task.getMedia().getDeviceId())")
     @Mapping(target = "mediaType", source = "media.type")
+    @Mapping(target = "sourceType", source = "media.sourceType")
     @Mapping(target = "fileName", source = "media.originalFileName")
     @Mapping(target = "contentType", source = "media.contentType")
     @Mapping(target = "fileSize", source = "media.fileSize")

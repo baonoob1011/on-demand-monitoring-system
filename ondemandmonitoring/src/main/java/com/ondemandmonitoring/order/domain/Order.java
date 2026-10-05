@@ -40,6 +40,9 @@ public class Order extends BaseEntity {
     @Column(name = "order_code", unique = true, length = 40)
     private String orderCode;
 
+    @Column(name = "checklist_snapshot_at")
+    private Instant checklistSnapshotAt;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User customer;

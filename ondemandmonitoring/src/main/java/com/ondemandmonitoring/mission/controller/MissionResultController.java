@@ -34,7 +34,7 @@ public class MissionResultController {
     }
 
     @PostMapping
-    @PreAuthorize("@missionAuthorizationService.canUploadMissionMedia(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canExecuteMonitoringChecklist(#missionId)")
     public ResponseEntity<ApiResponse<MissionResultResponse>> createOrUpdate(
             @PathVariable String missionId,
             @Valid @RequestBody MissionResultRequest request) {
@@ -43,7 +43,7 @@ public class MissionResultController {
     }
 
     @PutMapping
-    @PreAuthorize("@missionAuthorizationService.canUploadMissionMedia(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canExecuteMonitoringChecklist(#missionId)")
     public ResponseEntity<ApiResponse<MissionResultResponse>> update(
             @PathVariable String missionId,
             @Valid @RequestBody MissionResultRequest request) {

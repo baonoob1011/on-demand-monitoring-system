@@ -25,6 +25,11 @@ public class MissionAccessController {
                 authorization.canOperatePayload(id),
                 authorization.canInspectDevice(id),
                 authorization.canMaintainDevice(id),
-                authorization.canUploadMissionMedia(id)));
+                authorization.canUploadMissionMedia(id),
+                authorization.canCompleteMission(id),
+                authorization.canSubmitMissionResult(id),
+                authorization.canExecuteMonitoringChecklist(id),
+                authorization.canAttachChecklistEvidence(id),
+                authorization.canDetachChecklistEvidence(id)));
     }
 }

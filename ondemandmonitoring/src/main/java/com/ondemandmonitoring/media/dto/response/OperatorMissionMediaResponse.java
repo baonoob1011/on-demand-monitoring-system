@@ -20,6 +20,7 @@ public class OperatorMissionMediaResponse {
     String missionId;
     String deviceId;
     String mediaType;
+    String sourceType;
     String fileName;
     String contentType;
     long fileSize;

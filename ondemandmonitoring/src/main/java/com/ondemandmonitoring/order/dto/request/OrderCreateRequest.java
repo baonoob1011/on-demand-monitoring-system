@@ -68,4 +68,7 @@ public class OrderCreateRequest {
     @NotEmpty(message = "At least one deliverable is required")
     @Schema(description = "List of deliverable types with requirements for the service")
     List<@Valid OrderDeliverableRequest> deliverables;
+
+    @Size(max = 100)
+    List<@NotNull @Valid OrderChecklistItemRequest> checklistItems;
 }
