@@ -105,6 +105,12 @@ class ChecklistPostgresTest {
             try (var evidenceMigration = new org.springframework.core.io.ClassPathResource("seeddata/migrations/add_mission_checklist_evidence.sql").getInputStream()) {
                 new JdbcTemplate(dataSource).execute(new String(evidenceMigration.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).replace("public.", SCHEMA + "."));
             }
+            // Recreated legacy execution tables also need the additive columns known to current JPA.
+            try (var foundationMigration = new org.springframework.core.io.ClassPathResource(
+                    "seeddata/migrations/add_order_multi_mission_foundation.sql").getInputStream()) {
+                new JdbcTemplate(dataSource).execute(new String(foundationMigration.readAllBytes(),
+                        java.nio.charset.StandardCharsets.UTF_8).replace("public.", SCHEMA + "."));
+            }
         } catch (java.io.IOException exception) {
             throw new IllegalStateException(exception);
         }

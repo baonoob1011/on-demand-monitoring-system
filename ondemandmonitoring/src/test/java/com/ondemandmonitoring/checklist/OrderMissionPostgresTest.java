@@ -103,23 +103,21 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
         assertEquals(1, count(id));
     }
 
-    @Test void activeMappingIsMandatoryLazyUnidirectionalOneToOne() throws Exception {
+    @Test void foundationMappingIsMandatoryLazyManyToOneButDatabaseStillGatesOneMission() throws Exception {
         var field = com.ondemandmonitoring.mission.domain.Mission.class.getDeclaredField("order");
-        var mapping = field.getAnnotation(jakarta.persistence.OneToOne.class);
+        var mapping = field.getAnnotation(jakarta.persistence.ManyToOne.class);
         assertNotNull(mapping);
-        assertNull(field.getAnnotation(jakarta.persistence.ManyToOne.class));
+        assertNull(field.getAnnotation(jakarta.persistence.OneToOne.class));
         assertEquals(jakarta.persistence.FetchType.LAZY, mapping.fetch());
         assertFalse(mapping.optional());
         assertEquals(0, mapping.cascade().length);
-        assertFalse(mapping.orphanRemoval());
-        assertEquals("", mapping.mappedBy());
         var join = field.getAnnotation(jakarta.persistence.JoinColumn.class);
-        assertFalse(join.nullable()); assertTrue(join.unique());
+        assertFalse(join.nullable()); assertFalse(join.unique());
         assertTrue(java.util.Arrays.stream(com.ondemandmonitoring.order.domain.Order.class.getDeclaredFields())
                 .noneMatch(f -> f.getType() == com.ondemandmonitoring.mission.domain.Mission.class));
         var attribute = entityManagerFactory.getMetamodel().entity(com.ondemandmonitoring.mission.domain.Mission.class)
                 .getSingularAttribute("order");
-        assertEquals(jakarta.persistence.metamodel.Attribute.PersistentAttributeType.ONE_TO_ONE,
+        assertEquals(jakarta.persistence.metamodel.Attribute.PersistentAttributeType.MANY_TO_ONE,
                 attribute.getPersistentAttributeType());
         assertFalse(attribute.isOptional());
         String id = order(OrderStatus.APPROVED);

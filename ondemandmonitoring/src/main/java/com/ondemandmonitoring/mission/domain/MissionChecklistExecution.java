@@ -26,6 +26,15 @@ public class MissionChecklistExecution extends BaseEntity {
     @Column(name = "order_id", nullable = false, updatable = false)
     private String orderId;
 
+    // Nullable until assignment-based materialization replaces the current Phase 5 initializer.
+    @Column(name = "mission_checklist_assignment_id")
+    private String missionChecklistAssignmentId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "mission_checklist_assignment_id", insertable = false, updatable = false,
+            foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    private MissionChecklistAssignment missionChecklistAssignment;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "mission_id", insertable = false, updatable = false,
             foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
