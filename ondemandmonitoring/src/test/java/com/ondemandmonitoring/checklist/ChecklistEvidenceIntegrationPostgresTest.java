@@ -46,7 +46,7 @@ class ChecklistEvidenceIntegrationPostgresTest extends OrderMissionPostgresTest 
         String actorId = resolver.getCurrentUser().getId();
         when(resolver.getCurrentUserId()).thenReturn(actorId);
         transaction.executeWithoutResult(tx->orders.findById(order).orElseThrow().setOrderStatus(OrderStatus.APPROVED));
-        String mission=missionService.createMission(request(order)).getId(); setStatus(mission,MissionStatus.PENDING_REVIEW);return mission;
+        String mission=legacyMission(request(order)).getId(); setStatus(mission,MissionStatus.PENDING_REVIEW);return mission;
     }
     void setStatus(String mission,MissionStatus status) { transaction.executeWithoutResult(tx->{Mission entity=missions.findByIdForUpdate(mission).orElseThrow();entity.setStatus(status);if(status==MissionStatus.COMPLETED)entity.setCompletedAt(java.time.Instant.now());}); }
     String asset(String mission,MediaStatus status) {

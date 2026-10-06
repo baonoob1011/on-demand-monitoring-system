@@ -19,6 +19,10 @@ import com.ondemandmonitoring.mission.dto.request.*;
 import com.ondemandmonitoring.mission.dto.response.FlightTokenResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
+import com.ondemandmonitoring.mission.dto.response.MissionCreationResult;
+import com.ondemandmonitoring.order.enums.ExecutionPlanStatus;
+import org.locationtech.jts.geom.Point;
+import org.locationtech.jts.geom.Polygon;
 import com.ondemandmonitoring.mission.dto.response.MissionTelemetryReadinessResponse;
 import com.ondemandmonitoring.mission.enums.*;
 import com.ondemandmonitoring.order.domain.Order;
@@ -168,36 +172,65 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canManageMissions()")
     public MissionResponse createMission(MissionCreateRequest request) {
-        Order order = orderRepository.findByIdForUpdate(request.getOrderId())
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
-                        "Order not found with id: " + request.getOrderId()));
-        // Temporary rollout gate ONLY for creation. Preserve legacy retry behavior while
-        // the locked Order and DB unique still prohibit a second Mission until Phase 4.
-        var existingMissions = missionRepository.findAllByOrderIdOrderByScheduledStartAtAscIdAsc(order.getId());
-        if (existingMissions.size() > 1) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Multi-Mission creation is not enabled");
-        }
-        if (existingMissions.size() == 1) {
-            return missionMapper.toResponse(existingMissions.getFirst());
-        }
+        return createMissionWithOutcome(request).mission();
+    }
 
-        if (order.getOrderStatus() != OrderStatus.APPROVED) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST,
-                    "Order status must be APPROVED to create a mission");
+    @Override
+    @Transactional
+    @PreAuthorize("@missionAuthorizationService.canManageMissions()")
+    public MissionCreationResult createMissionWithOutcome(MissionCreateRequest request) {
+        var intent = MissionCreationIntent.from(request);
+        Order order = orderRepository.findByIdForUpdate(intent.orderId())
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + intent.orderId()));
+        var replay = missionRepository.findByOrderIdAndCreationIdempotencyKey(order.getId(), intent.key());
+        if (replay.isPresent()) {
+            Mission original = replay.get();
+            // Compare using the original copied scope, not mutable Order state or current plan revision.
+            if (!intent.hash(original.getTargetPoint(), original.getTargetArea()).equals(original.getCreationRequestHash()))
+                throw new ApiException(ErrorCode.IDEMPOTENCY_KEY_REUSED);
+            return new MissionCreationResult(missionMapper.toResponse(original), false);
         }
-
-        validateScheduledDates(request.getScheduledStartAt(), request.getScheduledEndAt(), order);
-
+        if (order.getExecutionPlanStatus() != ExecutionPlanStatus.DRAFT)
+            throw new ApiException(ErrorCode.EXECUTION_PLAN_NOT_DRAFT);
+        if (order.getOrderStatus() != OrderStatus.APPROVED)
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Only APPROVED Orders allow new planning Missions in this phase");
+        if (missionRepository.findAllByOrderIdOrderByScheduledStartAtAscIdAsc(order.getId()).stream()
+                .anyMatch(MissionRuntimeGate::allowsLegacyRuntime))
+            throw new ApiException(ErrorCode.MULTI_MISSION_LEGACY_ORDER_NOT_MIGRATED);
+        if (request.getExpectedPlanRevision() != order.getExecutionPlanRevision())
+            throw new ApiException(ErrorCode.EXECUTION_PLAN_REVISION_CONFLICT);
+        validatePlanningSchedule(intent, order);
+        if (order.getPoint() == null || order.getPoint().getSRID() != 4326 || !order.getPoint().isValid()
+                || order.getPoint().isEmpty() || !Double.isFinite(order.getPoint().getX())
+                || !Double.isFinite(order.getPoint().getY()) || Math.abs(order.getPoint().getX()) > 180
+                || Math.abs(order.getPoint().getY()) > 90
+                || (order.getTargetArea() != null && (order.getTargetArea().getSRID() != 4326
+                    || !order.getTargetArea().isValid() || order.getTargetArea().isEmpty()
+                    || !order.getTargetArea().covers(order.getPoint()))))
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Order scope must be valid WGS84 geometry");
         Mission mission = new Mission();
         mission.setMissionCode(generateMissionCode());
         mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
         mission.setOrder(order);
-        mission.setScheduledStartAt(request.getScheduledStartAt());
-        mission.setScheduledEndAt(request.getScheduledEndAt());
+        mission.setScheduledStartAt(intent.start()); mission.setScheduledEndAt(intent.end());
+        mission.setScopeLabel(intent.label());
+        mission.setTargetPoint((Point) order.getPoint().copy());
+        mission.setTargetArea(order.getTargetArea() == null ? null : (Polygon) order.getTargetArea().copy());
+        mission.setCreationIdempotencyKey(intent.key());
+        mission.setCreationRequestHash(intent.hash(mission.getTargetPoint(), mission.getTargetArea()));
+        if (order.getExecutionPlanRevision() == Long.MAX_VALUE) throw new ApiException(ErrorCode.EXECUTION_PLAN_REVISION_CONFLICT);
+        order.setExecutionPlanRevision(order.getExecutionPlanRevision() + 1);
+        Mission saved = missionRepository.saveAndFlush(mission);
+        // No execution initialization: finalize and Assignment materialization are a later cutover.
+        return new MissionCreationResult(missionMapper.toResponse(saved), true);
+    }
 
-        Mission saved = missionRepository.save(mission);
-        checklistExecutionService.initialize(saved);
-        return missionMapper.toResponse(saved);
+    private void validatePlanningSchedule(MissionCreationIntent intent, Order order) {
+        var businessZone = ZoneId.of("Asia/Ho_Chi_Minh");
+        if (!intent.start().isBefore(intent.end()) || order.getPreferredDateFrom() == null || order.getPreferredDateTo() == null
+                || intent.start().isBefore(order.getPreferredDateFrom().atStartOfDay(businessZone).toInstant())
+                || intent.end().isAfter(order.getPreferredDateTo().plusDays(1).atStartOfDay(businessZone).toInstant()))
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Schedule must fit approved Order dates (Asia/Ho_Chi_Minh)");
     }
 
     @Override
@@ -289,7 +322,7 @@ public class MissionService implements IMissionService {
     public MissionResponse assignDevice(String missionId, AssignDeviceRequest request) {
         String deviceId = request.getDeviceId();
         DeviceRole deviceRole = request.getDeviceRole();
-        Mission mission = getMissionByIdOrThrow(missionId);
+        Mission mission = getLegacyMissionForRuntimeOrThrow(missionId);
         String resolvedMissionId = mission.getId();
         if (mission.getStatus() != MissionStatus.RESOURCE_ASSIGNING
                 && mission.getStatus() != MissionStatus.WAITING_CREW_CONFIRMATION) {
@@ -405,7 +438,7 @@ public class MissionService implements IMissionService {
         String staffId = request.getStaffId();
         MissionStaffRole assignedRole = resolveStaffRole(request.getAssignedRole());
 
-        Mission mission = getMissionByIdOrThrow(missionId);
+        Mission mission = getLegacyMissionForRuntimeOrThrow(missionId);
         String resolvedMissionId = mission.getId();
         if (mission.getStatus() != MissionStatus.RESOURCE_ASSIGNING
                 && mission.getStatus() != MissionStatus.WAITING_CREW_CONFIRMATION) {
@@ -506,7 +539,7 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canManageMissions()")
     public MissionResponse updateMission(String missionId, MissionUpdateRequest request) {
-        Mission mission = getMissionByIdOrThrow(missionId);
+        Mission mission = getLegacyMissionForRuntimeOrThrow(missionId);
 
         Instant previousStart = mission.getScheduledStartAt();
         Instant previousEnd = mission.getScheduledEndAt();
@@ -552,7 +585,7 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canRespondToMission(#missionId,#staffId)")
     public MissionResponse rejectMission(String missionId, String staffId, String reason) {
-        Mission mission = getMissionByIdOrThrow(missionId);
+        Mission mission = getLegacyMissionForRuntimeOrThrow(missionId);
         String resolvedMissionId = mission.getId();
         requireCrewConfirmationStatus(mission);
         List<MissionStaffAssignment> assignments =
@@ -576,7 +609,7 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canRespondToMission(#missionId,#staffId)")
     public MissionResponse acceptMission(String missionId, String staffId) {
-        Mission mission = getMissionByIdOrThrow(missionId);
+        Mission mission = getLegacyMissionForRuntimeOrThrow(missionId);
         String resolvedMissionId = mission.getId();
         requireCrewConfirmationStatus(mission);
         List<MissionStaffAssignment> assignments =
@@ -607,14 +640,14 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canOperatePayload(#missionId)")
     public MissionResponse connectGcs(String missionId) {
-        return deviceConnectionService.connectGcs(getMissionByIdOrThrow(missionId).getId());
+        return deviceConnectionService.connectGcs(getLegacyMissionForRuntimeOrThrow(missionId).getId());
     }
 
     @Override
     @Transactional(readOnly = true)
     @PreAuthorize("@missionAuthorizationService.canViewMission(#missionId)")
     public MissionTelemetryReadinessResponse getTelemetryReadiness(String missionId) {
-        Mission mission = getMissionByIdOrThrow(missionId);
+        Mission mission = getLegacyMissionForRuntimeOrThrow(missionId);
         Device assignedDevice = getCurrentDevice(mission.getId());
         if (assignedDevice == null) {
             throw new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission has no assigned device");
@@ -627,14 +660,14 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canOperatePayload(#missionId)")
     public MissionResponse disconnectGcs(String missionId, String disconnectReason) {
-        return deviceConnectionService.disconnectGcs(getMissionByIdOrThrow(missionId).getId(), disconnectReason);
+        return deviceConnectionService.disconnectGcs(getLegacyMissionForRuntimeOrThrow(missionId).getId(), disconnectReason);
     }
 
     @Override
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canOperatePayload(#missionId)")
     public MissionResponse handleGcsSessionLost(String missionId, String reason) {
-        return deviceConnectionService.handleGcsSessionLost(getMissionByIdOrThrow(missionId).getId(), reason);
+        return deviceConnectionService.handleGcsSessionLost(getLegacyMissionForRuntimeOrThrow(missionId).getId(), reason);
     }
 
     @Override
@@ -964,7 +997,7 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("(@missionAuthorizationService.canOperatePayload(#missionId) or @missionAuthorizationService.canControlFlight(#missionId)) and @missionAuthorizationService.canViewStaffMissions(#staffId)")
     public MissionResponse handoverControl(String missionId, String staffId) {
-        Mission mission = getMissionByIdOrThrow(missionId);
+        Mission mission = getLegacyMissionForRuntimeOrThrow(missionId);
         String resolvedMissionId = mission.getId();
         requireStatus(mission, MissionStatus.READY_TO_FLY);
 
@@ -994,7 +1027,7 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse startMission(String missionId, String tokenValue) {
-        Mission mission = getMissionByIdOrThrow(missionId);
+        Mission mission = getLegacyMissionForRuntimeOrThrow(missionId);
         String resolvedMissionId = mission.getId();
         requireStatus(mission, MissionStatus.READY_TO_FLY);
 
@@ -1053,7 +1086,7 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse markReturning(String missionId) {
-        Mission mission = getMissionByIdOrThrow(missionId);
+        Mission mission = getLegacyMissionForRuntimeOrThrow(missionId);
         if (mission.getStatus() != MissionStatus.IN_FLIGHT && mission.getStatus() != MissionStatus.IN_PROGRESS) {
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID,
                     "Mission must be IN_FLIGHT to mark returning, current: " + mission.getStatus());
@@ -1069,7 +1102,7 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse startPostDeviceChecking(String missionId) {
-        Mission mission = getMissionByIdOrThrow(missionId);
+        Mission mission = getLegacyMissionForRuntimeOrThrow(missionId);
         MissionStatus current = mission.getStatus();
         // Cho phép sang Postcheck cả khi mission chưa bay (chỉ chụp ảnh tham chiếu).
         boolean neverFlew = current == MissionStatus.CONNECTED
@@ -1088,7 +1121,7 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canUploadMissionMedia(#missionId)")
     public MissionResponse completeMission(String missionId) {
-        Mission resolved = getMissionByIdOrThrow(missionId);
+        Mission resolved = getLegacyMissionForRuntimeOrThrow(missionId);
         Mission mission = missionRepository.findByIdForUpdate(resolved.getId()).orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
         String resolvedMissionId = mission.getId();
         if (mission.getStatus() == MissionStatus.COMPLETED
@@ -1122,7 +1155,7 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse failMission(String missionId, String reason) {
-        Mission mission = getMissionByIdOrThrow(missionId);
+        Mission mission = getLegacyMissionForRuntimeOrThrow(missionId);
         if (mission.getStatus() == MissionStatus.IN_FLIGHT
                 || mission.getStatus() == MissionStatus.RETURNING) {
             updateDeviceStatus(mission, DeviceStatus.MAINTENANCE);
@@ -1179,7 +1212,7 @@ public class MissionService implements IMissionService {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
                     "Device status does not match the submitted inspection results");
         }
-        Mission mission = getMissionByIdOrThrow(missionId);
+        Mission mission = getLegacyMissionForRuntimeOrThrow(missionId);
         requireStatus(mission, MissionStatus.POSTFLIGHT_CHECKING);
         String summary = results.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
@@ -1197,7 +1230,7 @@ public class MissionService implements IMissionService {
     private MissionResponse savePostFlightStatus(String missionId, DeviceStatus newDeviceStatus,
             String notes, Map<String, InspectionResult> results,
             PostFlightStatusRequest.TelemetrySnapshot telemetrySnapshot) {
-        Mission mission = getMissionByIdOrThrow(missionId);
+        Mission mission = getLegacyMissionForRuntimeOrThrow(missionId);
         Device device = getCurrentDevice(mission.getId());
         if (device == null) {
             throw new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission " + missionId + " has no assigned device");
@@ -1366,6 +1399,12 @@ public class MissionService implements IMissionService {
         return missionRepository.findById(missionId)
                 .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND,
                         "Mission not found: " + missionId));
+    }
+
+    private Mission getLegacyMissionForRuntimeOrThrow(String missionId) {
+        Mission mission = getMissionByIdOrThrow(missionId);
+        MissionRuntimeGate.requireLegacyRuntime(mission);
+        return mission;
     }
 
     private String currentStaffId() {

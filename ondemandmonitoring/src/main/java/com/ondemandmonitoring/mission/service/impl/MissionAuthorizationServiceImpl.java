@@ -31,7 +31,7 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
 
     @Override
     public boolean canAttachChecklistEvidence(String missionId) {
-        return findMissionById(missionId).filter(m -> m.getStatus() == MissionStatus.PENDING_REVIEW || m.getStatus() == MissionStatus.COMPLETED)
+        return findRuntimeMissionById(missionId).filter(m -> m.getStatus() == MissionStatus.PENDING_REVIEW || m.getStatus() == MissionStatus.COMPLETED)
                 .filter(m -> results.findByMissionId(m.getId()).map(r -> r.getApprovalStatus() != com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus.APPROVED
                         && r.getApprovalStatus() != com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL).orElse(true))
                 .map(m -> canExecuteMonitoringChecklist(m.getId()) || canUploadMissionMedia(m.getId())).orElse(false);
@@ -67,7 +67,7 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
     public boolean canRespondToMission(String missionId, String staffId) {
         User user = currentUser.getCurrentUser();
         if (!hasRole(user, RoleCode.STAFF) || !user.getId().equals(staffId)) return false;
-        return findMissionById(missionId).filter(mission ->
+        return findRuntimeMissionById(missionId).filter(mission ->
                 mission.getStatus() == MissionStatus.WAITING_CREW_CONFIRMATION
                         || mission.getStatus() == MissionStatus.WAITING_OPERATOR_ACCEPTANCE)
                 .map(mission -> ownAssignments(mission.getId(), user).stream()
@@ -94,7 +94,7 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
     public boolean canExecuteMonitoringChecklist(String missionId) {
         User user = currentUser.getCurrentUser();
         if (!hasRole(user, RoleCode.STAFF)) return false;
-        return findMissionById(missionId).filter(mission -> Set.of(MissionStatus.IN_FLIGHT,
+        return findRuntimeMissionById(missionId).filter(mission -> Set.of(MissionStatus.IN_FLIGHT,
                 MissionStatus.IN_PROGRESS, MissionStatus.RETURNING, MissionStatus.POSTFLIGHT_CHECKING,
                 MissionStatus.PENDING_REVIEW, MissionStatus.COMPLETED).contains(mission.getStatus())).map(mission -> {
                     boolean completed = mission.getStatus() == MissionStatus.COMPLETED;
@@ -135,7 +135,7 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
     public boolean canUploadMissionMedia(String missionId) {
         User user = currentUser.getCurrentUser();
         if (!hasRole(user, RoleCode.STAFF)) return false;
-        return findMissionById(missionId)
+        return findRuntimeMissionById(missionId)
                 .filter(mission -> mission.getStatus() == MissionStatus.PENDING_REVIEW
                         || mission.getStatus() == MissionStatus.COMPLETED)
                 .map(mission -> hasEligibleInspectorAssignment(mission, user))
@@ -144,7 +144,7 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
 
     @Override
     public boolean canCompleteMission(String missionId) {
-        return findMissionById(missionId)
+        return findRuntimeMissionById(missionId)
                 .filter(mission -> mission.getStatus() == MissionStatus.PENDING_REVIEW)
                 .map(mission -> canUploadMissionMedia(mission.getId())).orElse(false);
     }
@@ -154,7 +154,7 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
         // Actor/status capability only; submission also validates readiness, completion and result locks.
         // While a mission is PENDING_REVIEW the upload screen uses this to expose the
         // "send to manager" action; the client completes the mission before submitting.
-        return findMissionById(missionId)
+        return findRuntimeMissionById(missionId)
                 .filter(mission -> mission.getStatus() == MissionStatus.PENDING_REVIEW
                         || mission.getStatus() == MissionStatus.COMPLETED)
                 .map(mission -> mission.getStatus() == MissionStatus.PENDING_REVIEW
@@ -166,7 +166,7 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
     private boolean canPerform(String missionId, MissionStaffRole task) {
         User user = currentUser.getCurrentUser();
         if (!hasRole(user, RoleCode.STAFF)) return false;
-        return findMissionById(missionId).filter(mission -> !TERMINAL_STATUSES.contains(mission.getStatus()))
+        return findRuntimeMissionById(missionId).filter(mission -> !TERMINAL_STATUSES.contains(mission.getStatus()))
                 .map(mission -> {
                     List<MissionStaffAssignment> crew = assignments.findAllByMissionIdAndIsCurrentTrue(mission.getId());
                     return crew.stream().anyMatch(entry -> entry.getStaff() != null
@@ -198,6 +198,10 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
 
     private Optional<Mission> findMissionById(String missionId) {
         return missions.findById(missionId);
+    }
+
+    private Optional<Mission> findRuntimeMissionById(String missionId) {
+        return findMissionById(missionId).filter(MissionRuntimeGate::allowsLegacyRuntime);
     }
 
     @Override

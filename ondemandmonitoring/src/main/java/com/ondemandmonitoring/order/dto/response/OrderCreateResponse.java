@@ -1,6 +1,7 @@
 package com.ondemandmonitoring.order.dto.response;
 
 import com.ondemandmonitoring.order.enums.OrderStatus;
+import com.ondemandmonitoring.order.enums.ExecutionPlanStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -49,6 +50,8 @@ public class OrderCreateResponse {
 
     // Status & Review Info
     OrderStatus orderStatus;
+    long executionPlanRevision;
+    ExecutionPlanStatus executionPlanStatus;
     String rejectReason;
     String reviewById;
     String reviewByName;

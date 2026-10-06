@@ -21,13 +21,13 @@ class OrderMultiMissionFoundationTest {
         assertNotNull(BaseEntity.class.getDeclaredField("version").getAnnotation(Version.class));
     }
 
-    @Test void relationIsPreparedWithoutRemovingExplicitPhaseTwoGate() throws Exception {
+    @Test void relationAllowsMultiMissionWithoutHibernateRecreatingPhaseTwoGate() throws Exception {
         var field = Mission.class.getDeclaredField("order");
         assertEquals(FetchType.LAZY, field.getAnnotation(ManyToOne.class).fetch());
         assertFalse(field.getAnnotation(ManyToOne.class).optional());
         assertFalse(field.getAnnotation(JoinColumn.class).nullable());
         assertFalse(field.getAnnotation(JoinColumn.class).unique());
-        assertTrue(java.util.Arrays.stream(Mission.class.getAnnotation(Table.class).uniqueConstraints())
+        assertFalse(java.util.Arrays.stream(Mission.class.getAnnotation(Table.class).uniqueConstraints())
                 .anyMatch(c -> c.name().equals("uk_missions_order")));
     }
 

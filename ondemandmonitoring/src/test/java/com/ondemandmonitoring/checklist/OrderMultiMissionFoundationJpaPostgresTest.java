@@ -38,7 +38,7 @@ class OrderMultiMissionFoundationJpaPostgresTest extends OrderMissionPostgresTes
         assignments.assign(s, assignment(checklist("Requirement"), 0));
         var order = orderService.createOrder(orderRequest(s));
         orderService.approveOrder(order.getId());
-        String missionId = missionService.createMission(request(order.getId())).getId();
+        String missionId = legacyMission(request(order.getId())).getId();
         var repository = new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(entityManagerFactory))
                 .getRepository(MissionChecklistAssignmentRepository.class);
         String itemId = order.getChecklistItems().getFirst().getId();
@@ -74,11 +74,11 @@ class OrderMultiMissionFoundationJpaPostgresTest extends OrderMissionPostgresTes
         String s = service("Monitoring");
         assignments.assign(s, assignment(checklist("Requirement"), 0));
         var order = orderService.createOrder(orderRequest(s)); orderService.approveOrder(order.getId());
-        String missionId = missionService.createMission(request(order.getId())).getId();
+        String missionId = legacyMission(request(order.getId())).getId();
         var repository = new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(entityManagerFactory))
                 .getRepository(MissionChecklistExecutionRepository.class);
         String executionId = transaction.execute(tx -> {
-            // The unchanged Phase 5 initializer already materialized this execution at creation.
+            // Explicit historical fixture materialized this legacy execution.
             var execution = repository.findOrderedByMissionId(missionId).getFirst();
             assertNull(execution.getMissionChecklistAssignmentId());
             return execution.getId();

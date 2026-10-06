@@ -172,12 +172,16 @@ public class DeviceConnectionService implements IDeviceConnectionService {
         if (connections.size() > 1) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Ambiguous telemetry connection; exact Mission required");
         }
-        return connections.stream().findFirst();
+        return connections.stream().findFirst().map(connection -> {
+            if (connection.getMission() != null) MissionRuntimeGate.requireLegacyRuntime(connection.getMission());
+            return connection;
+        });
     }
 
     private DeviceConnection connectTelemetrySession(String deviceId, String missionId) {
         MissionDeviceAssignment deviceAssignment = resolveTelemetryDeviceAssignment(deviceId, missionId);
         Mission mission = deviceAssignment.getMission();
+        MissionRuntimeGate.requireLegacyRuntime(mission);
         if (mission.getStatus() != MissionStatus.SCHEDULED
                 && mission.getStatus() != MissionStatus.CONNECTED
                 && mission.getStatus() != MissionStatus.PREFLIGHT_CHECKING
@@ -298,6 +302,7 @@ public class DeviceConnectionService implements IDeviceConnectionService {
 
     private Mission getMissionByIdOrThrow(String missionId) {
         return missionRepository.findById(missionId)
+                .map(mission -> { MissionRuntimeGate.requireLegacyRuntime(mission); return mission; })
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission not found: " + missionId));
     }
 }

@@ -17,9 +17,6 @@ import org.locationtech.jts.geom.Polygon;
 @Setter
 @Entity
 @Table(name = "missions", uniqueConstraints = {
-        // Phase 2 expansion only: keep the explicit DB gate for fresh Hibernate schemas.
-        // Remove this constraint together with the DB unique during the later runtime cutover.
-        @UniqueConstraint(name = "uk_missions_order", columnNames = "order_id"),
         @UniqueConstraint(name = "uk_mission_id_order", columnNames = {"id", "order_id"})})
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class Mission extends BaseEntity {
@@ -49,10 +46,10 @@ public class Mission extends BaseEntity {
     @Column(name = "finalized_plan_revision")
     Long finalizedPlanRevision;
 
-    @Column(name = "creation_idempotency_key", length = 36)
+    @Column(name = "creation_idempotency_key", length = 36, updatable = false)
     String creationIdempotencyKey;
 
-    @Column(name = "creation_request_hash", length = 64)
+    @Column(name = "creation_request_hash", length = 64, updatable = false)
     String creationRequestHash;
 
     @Column(name = "replaces_mission_id", length = 255)

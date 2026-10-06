@@ -69,9 +69,9 @@ public class MissionController {
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<MissionResponse>> createMission(
             @Valid @RequestBody MissionCreateRequest request) {
-        MissionResponse response = missionService.createMission(request);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.ok("Mission created successfully", response));
+        var result = missionService.createMissionWithOutcome(request);
+        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK)
+                .body(ApiResponse.ok(result.created() ? "Planning Mission created" : "Mission creation replayed", result.mission()));
     }
 
     @GetMapping("/all")

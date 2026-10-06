@@ -47,10 +47,35 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
     MissionCreateRequest request(String orderId) {
         var request = new MissionCreateRequest();
         request.setOrderId(orderId);
+        request.setIdempotencyKey(UUID.nameUUIDFromBytes(orderId.getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString());
+        request.setExpectedPlanRevision(0L);
+        request.setScopeLabel("Whole Order scope");
         var start = java.time.LocalDate.now().plusDays(1).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
         request.setScheduledStartAt(start);
         request.setScheduledEndAt(start.plusSeconds(3600));
         return request;
+    }
+
+    /** Explicit historical fixture, not the new planning creation command. */
+    MissionResponse legacyMission(MissionCreateRequest request) {
+        return transaction.execute(tx -> {
+            var mission = new com.ondemandmonitoring.mission.domain.Mission();
+            mission.setOrder(orders.findById(request.getOrderId()).orElseThrow());
+            mission.setMissionCode("legacy-" + UUID.randomUUID());
+            mission.setStatus(com.ondemandmonitoring.mission.enums.MissionStatus.RESOURCE_ASSIGNING);
+            mission.setScheduledStartAt(request.getScheduledStartAt());
+            mission.setScheduledEndAt(request.getScheduledEndAt());
+            mission = missions.saveAndFlush(mission);
+            var executions = new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(
+                    org.springframework.orm.jpa.SharedEntityManagerCreator.createSharedEntityManager(entityManagerFactory))
+                    .getRepository(com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository.class);
+            // Use the actual legacy initializer, including its integrity/rollback contract.
+            var initializer = new com.ondemandmonitoring.mission.service.impl.MissionChecklistExecutionServiceImpl(
+                    missions, snapshots, executions, null, null, resolver,
+                    org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.mission.mapper.MissionChecklistExecutionMapper.class), null);
+            initializer.initialize(mission);
+            return MissionResponse.builder().id(mission.getId()).build();
+        });
     }
 
     long count(String orderId) {
@@ -76,7 +101,8 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
         var general = new MissionController(missionService, null, null);
         var nested = new OrderMissionController(missionService, null);
         var first = general.createMission(request(id)).getBody().getData();
-        var second = nested.createMissionForOrder(id, request("ignored-body-id")).getBody().getData();
+        var retry = request(id); retry.setOrderId("ignored-body-id");
+        var second = nested.createMissionForOrder(id, retry).getBody().getData();
         assertEquals(first.getId(), second.getId());
         assertEquals(1, count(id));
     }

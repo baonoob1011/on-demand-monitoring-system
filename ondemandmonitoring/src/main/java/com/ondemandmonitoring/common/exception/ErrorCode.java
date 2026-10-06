@@ -45,6 +45,11 @@ public enum ErrorCode {
      *
      */
     MISSION_NOT_FOUND("Mission not found", HttpStatus.NOT_FOUND),
+    IDEMPOTENCY_KEY_REUSED("Idempotency key was used for a different Mission creation intent", HttpStatus.CONFLICT),
+    EXECUTION_PLAN_REVISION_CONFLICT("Execution plan changed; refresh and retry", HttpStatus.CONFLICT),
+    EXECUTION_PLAN_NOT_DRAFT("Execution plan must be DRAFT", HttpStatus.CONFLICT),
+    MULTI_MISSION_LEGACY_ORDER_NOT_MIGRATED("Legacy Order requires planning migration before creating siblings", HttpStatus.CONFLICT),
+    MISSION_PLANNING_ONLY("Planning Mission cannot enter runtime before finalize/materialization cutover", HttpStatus.CONFLICT),
     MISSION_STATUS_INVALID("Mission status is invalid for this operation", HttpStatus.CONFLICT),
     CONCURRENT_UPDATE("Resource changed during this request; refresh and retry", HttpStatus.CONFLICT),
     CHECKLIST_EXECUTION_NOT_FOUND("Checklist execution not found", HttpStatus.NOT_FOUND),

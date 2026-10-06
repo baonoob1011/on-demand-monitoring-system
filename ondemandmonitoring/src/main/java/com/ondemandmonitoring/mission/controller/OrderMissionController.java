@@ -40,10 +40,10 @@ public class OrderMissionController {
     @PreAuthorize("hasAnyRole('MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<MissionResponse>> createMissionForOrder(
             @PathVariable String orderId,
-            @RequestBody MissionCreateRequest request) {
+            @jakarta.validation.Valid @RequestBody MissionCreateRequest request) {
         request.setOrderId(orderId);
-        MissionResponse response = missionService.createMission(request);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.ok("Mission created successfully", response));
+        var result = missionService.createMissionWithOutcome(request);
+        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK)
+                .body(ApiResponse.ok(result.created() ? "Planning Mission created" : "Mission creation replayed", result.mission()));
     }
 }
