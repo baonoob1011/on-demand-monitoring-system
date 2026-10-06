@@ -64,8 +64,14 @@ class ChecklistEvidenceServiceTest {
     @Test void rejectsWrongExecutionMission() { execution.setMissionId("other"); error(ErrorCode.CHECKLIST_EXECUTION_PARENT_MISMATCH,()->service.attach("m",request())); }
     @Test void rejectsStaleVersion() { execution.setVersion(1L); error(ErrorCode.CONCURRENT_UPDATE,()->service.attach("m",request())); }
     @Test void deniesUnassignedActor() { when(auth.canAttachChecklistEvidence("m")).thenReturn(false); error(ErrorCode.ACCESS_DENIED,()->service.attach("m",request())); }
-    @Test void rejectsManualSatelliteUnknownAndMapillarySources() {
-        for(String source:Arrays.asList("MANUAL_UPLOAD","SATELLITE_SNAPSHOT","MAPILLARY_REFERENCE",null)) { asset.setSourceType(source); error(ErrorCode.EVIDENCE_NOT_ELIGIBLE,()->service.attach("m",request())); }
+    @Test void permitsSystemSnapshotsAsChecklistEvidence() {
+        asset.setSourceType("SATELLITE_SNAPSHOT");
+
+        assertEquals(1, service.attach("m", request()).size());
+        assertTrue(service.ready(execution, List.of(link()), false));
+    }
+    @Test void rejectsManualUnknownAndMapillarySources() {
+        for(String source:Arrays.asList("MANUAL_UPLOAD","MAPILLARY_REFERENCE",null)) { asset.setSourceType(source); error(ErrorCode.EVIDENCE_NOT_ELIGIBLE,()->service.attach("m",request())); }
     }
     @Test void permitsPreValidationLinkButDoesNotCount() {
         asset.setMediaStatus(MediaStatus.UPLOAD_PENDING); asset.setValidatedAt(null);

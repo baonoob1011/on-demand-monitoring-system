@@ -83,6 +83,27 @@ class MissionAuthorizationServiceTest {
         assertThat(policy.canOperatePayload("mission-1")).isTrue();
     }
 
+    @Test
+    void oneStaffWithAllAcceptedRolesCanPerformTheFullMissionFlow() {
+        var allRoles = java.util.Arrays.stream(MissionStaffRole.values())
+                .map(role -> MissionStaffAssignment.builder().staff(staff).mission(mission).assignedRole(role)
+                        .responseStatus(StaffResponseStatus.ACCEPTED).isCurrent(true).build())
+                .toList();
+        when(assignments.findAllByMissionIdAndIsCurrentTrue("mission-1")).thenReturn(allRoles);
+        when(assignments.findByMissionId("mission-1")).thenReturn(allRoles);
+        when(assignments.findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc("mission-1", "staff-1"))
+                .thenReturn(allRoles);
+
+        assertThat(policy.canOperatePayload("mission-1")).isTrue();
+        assertThat(policy.canControlFlight("mission-1")).isTrue();
+        assertThat(policy.canMaintainDevice("mission-1")).isTrue();
+
+        mission.setStatus(MissionStatus.PENDING_REVIEW);
+        assertThat(policy.canUploadMissionMedia("mission-1")).isTrue();
+        assertThat(policy.canCompleteMission("mission-1")).isTrue();
+        assertThat(policy.canSubmitMissionResult("mission-1")).isTrue();
+    }
+
     @ParameterizedTest
     @EnumSource(value = RoleCode.class, names = "STAFF", mode = EnumSource.Mode.EXCLUDE)
     void systemRoleDoesNotBypassCrewPermissions(RoleCode role) {
@@ -134,6 +155,20 @@ class MissionAuthorizationServiceTest {
         assertThat(policy.canViewMission("mission-1")).isFalse();
     }
 
+    @Test
+    void historicalCrewCanStillReadNonTerminalMissionForReviewPermissions() {
+        mission.setStatus(MissionStatus.PENDING_REVIEW);
+        var entry = MissionStaffAssignment.builder().staff(staff).mission(mission).assignedRole(MissionStaffRole.INSPECTOR)
+                .responseStatus(StaffResponseStatus.ACCEPTED).isCurrent(false)
+                .releasedAt(Instant.now()).releaseReason("MISSION_COMPLETE").build();
+        when(assignments.findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc("mission-1", "staff-1"))
+                .thenReturn(List.of());
+        when(assignments.existsByMissionIdAndStaffId("mission-1", "staff-1")).thenReturn(true);
+        when(assignments.findByMissionId("mission-1")).thenReturn(List.of(entry));
+
+        assertThat(policy.canViewMission("mission-1")).isTrue();
+    }
+
     private MissionStaffAssignment assign(MissionStaffRole role, StaffResponseStatus response) {
         var entry = MissionStaffAssignment.builder().staff(staff).mission(mission).assignedRole(role)
                 .responseStatus(response).isCurrent(true).build();
@@ -150,7 +185,7 @@ class MissionAuthorizationServiceTest {
         var entry = assign(MissionStaffRole.INSPECTOR, StaffResponseStatus.ACCEPTED);
         assertThat(policy.canUploadMissionMedia("mission-1")).isTrue();
         assertThat(policy.canCompleteMission("mission-1")).isTrue();
-        assertThat(policy.canSubmitMissionResult("mission-1")).isFalse();
+        assertThat(policy.canSubmitMissionResult("mission-1")).isTrue();
         assertThat(policy.canUploadMissionMedia("another-mission")).isFalse();
         entry.setIsCurrent(false);
         assertThat(policy.canUploadMissionMedia("mission-1")).isFalse();

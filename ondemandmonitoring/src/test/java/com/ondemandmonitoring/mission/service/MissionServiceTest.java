@@ -285,6 +285,27 @@ class MissionServiceTest {
         }
 
         @Test
+        void oneStaffCanAcceptAllAssignedRolesAndScheduleMission() {
+            Mission mission = buildMission("m-solo", MissionStatus.WAITING_CREW_CONFIRMATION);
+            var assignments = java.util.Arrays.stream(MissionStaffRole.values())
+                    .map(role -> staffAssignment(mission, "seed-staff-1", role, "PENDING"))
+                    .toList();
+            when(missionRepository.findById("m-solo")).thenReturn(Optional.of(mission));
+            when(missionStaffAssignmentRepository.findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc(
+                    "m-solo", "seed-staff-1"))
+                    .thenReturn(assignments);
+            when(missionStaffAssignmentRepository.findAllByMissionIdAndIsCurrentTrue("m-solo"))
+                    .thenReturn(assignments);
+            when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            MissionResponse result = missionService.acceptMission("m-solo", "seed-staff-1");
+
+            assertThat(result.getStatus()).isEqualTo(MissionStatus.SCHEDULED);
+            assertThat(assignments).allMatch(entry -> entry.getResponseStatus() == StaffResponseStatus.ACCEPTED);
+            verify(missionStaffAssignmentRepository).saveAll(assignments);
+        }
+
+        @Test
         @DisplayName("2. acceptMission throws exception when mission not found")
         void acceptMission_notFound_throws() {
             when(missionRepository.findById("m-missing")).thenReturn(Optional.empty());

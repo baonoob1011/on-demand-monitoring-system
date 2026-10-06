@@ -55,20 +55,19 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
     @Transactional(readOnly = true)
     @PreAuthorize("@missionAuthorizationService.canViewMission(#missionId)")
     public MissionResultResponse getByMissionId(String missionId) {
-        MissionResult result = missionResultRepository.findByMissionId(missionId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
-                        "Mission result not found for mission: " + missionId));
-        return toResponse(result);
+        return missionResultRepository.findByMissionId(missionId)
+                .map(this::toResponse)
+                .orElse(null);
     }
 
     @Override
     @Transactional
-    @PreAuthorize("@missionAuthorizationService.canExecuteMonitoringChecklist(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canUploadMissionMedia(#missionId)")
     public MissionResultResponse upsert(String missionId, MissionResultRequest request) {
         Mission mission = missionRepository.findByIdForUpdate(missionId)
                 .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND,
                         "Mission not found: " + missionId));
-        if (!authorization.canExecuteMonitoringChecklist(missionId)) throw new ApiException(ErrorCode.ACCESS_DENIED);
+        if (!authorization.canUploadMissionMedia(missionId)) throw new ApiException(ErrorCode.ACCESS_DENIED);
         if (mission.getStatus() != MissionStatus.COMPLETED)
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID, "Complete operational mission before submitting results");
         checklistExecutionService.requireReadyForSubmission(mission);

@@ -60,8 +60,7 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
         User user = currentUser.getCurrentUser();
         if (!hasRole(user, RoleCode.STAFF)) return false;
         if (!ownAssignments(mission.get().getId(), user).isEmpty()) return true;
-        return TERMINAL_STATUSES.contains(mission.get().getStatus())
-                && assignments.existsByMissionIdAndStaffId(mission.get().getId(), user.getId());
+        return assignments.existsByMissionIdAndStaffId(mission.get().getId(), user.getId());
     }
 
     @Override
@@ -152,10 +151,16 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
 
     @Override
     public boolean canSubmitMissionResult(String identifier) {
-        // Actor/status capability only; submission also validates readiness and result locks.
+        // Actor/status capability only; submission also validates readiness, completion and result locks.
+        // While a mission is PENDING_REVIEW the upload screen uses this to expose the
+        // "send to manager" action; the client completes the mission before submitting.
         return resolveMission(identifier)
-                .filter(mission -> mission.getStatus() == MissionStatus.COMPLETED)
-                .map(mission -> canExecuteMonitoringChecklist(mission.getId())).orElse(false);
+                .filter(mission -> mission.getStatus() == MissionStatus.PENDING_REVIEW
+                        || mission.getStatus() == MissionStatus.COMPLETED)
+                .map(mission -> mission.getStatus() == MissionStatus.PENDING_REVIEW
+                        ? canCompleteMission(mission.getId())
+                        : canExecuteMonitoringChecklist(mission.getId()))
+                .orElse(false);
     }
 
     private boolean canPerform(String identifier, MissionStaffRole task) {
