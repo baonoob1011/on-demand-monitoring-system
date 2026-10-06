@@ -3051,9 +3051,8 @@ async def main() -> None:
         now_s = time.monotonic()
         battery_snapshot = simulated_battery.snapshot()
         px4_battery_age_s = now_s - current_px4_battery_update_s if current_px4_battery_update_s is not None else None
-        has_fresh_px4_battery = current_px4_battery_percent is not None and fresh(px4_battery_age_s, 10.0)
-        display_battery_percent = current_px4_battery_percent if has_fresh_px4_battery else battery_snapshot.battery_percent
-        display_battery_state = battery_state(display_battery_percent) if has_fresh_px4_battery else battery_snapshot.battery_state
+        display_battery_percent = battery_snapshot.battery_percent
+        display_battery_state = battery_snapshot.battery_state
         horizontal_speed = math.hypot(
             current_velocity_north_m_s,
             current_velocity_east_m_s,
