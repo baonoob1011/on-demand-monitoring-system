@@ -69,11 +69,17 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
             var executions = new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(
                     org.springframework.orm.jpa.SharedEntityManagerCreator.createSharedEntityManager(entityManagerFactory))
                     .getRepository(com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository.class);
-            // Use the actual legacy initializer, including its integrity/rollback contract.
-            var initializer = new com.ondemandmonitoring.mission.service.impl.MissionChecklistExecutionServiceImpl(
-                    missions, snapshots, executions, null, null, resolver,
-                    org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.mission.mapper.MissionChecklistExecutionMapper.class), null);
-            initializer.initialize(mission);
+            var assignmentRepository = new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(entityManagerFactory))
+                    .getRepository(com.ondemandmonitoring.mission.repository.MissionChecklistAssignmentRepository.class);
+            // Explicit historical fixture only: production materializes selected Assignments, not whole Orders.
+            for (var item : snapshots.findAllByOrderIdInOrderByDisplayOrderAscIdAsc(java.util.List.of(mission.getOrder().getId()))) {
+                var assignment = new com.ondemandmonitoring.mission.domain.MissionChecklistAssignment();
+                assignment.setMissionId(mission.getId()); assignment.setOrderId(mission.getOrder().getId());
+                assignment.setOrderChecklistItemId(item.getId()); assignment.setOrderChecklistItem(item);
+                assignment.setDisplayOrder(item.getDisplayOrder()); assignment.setAssignedAt(java.time.Instant.now());
+                assignmentRepository.saveAndFlush(assignment);
+            }
+            new com.ondemandmonitoring.mission.service.impl.MissionChecklistMaterializationServiceImpl(assignmentRepository, executions).materialize(mission);
             return MissionResponse.builder().id(mission.getId()).build();
         });
     }
@@ -289,15 +295,23 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
             return auth;
         }
         @Bean com.ondemandmonitoring.mission.service.IMissionChecklistExecutionService executionService(
-                MissionRepository missions, OrderChecklistItemRepository items,
+                MissionRepository missions, com.ondemandmonitoring.mission.service.IMissionChecklistScopeService scope,
                 com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository executions,
                 com.ondemandmonitoring.mission.repository.MissionResultRepository results,
                 com.ondemandmonitoring.mission.service.IMissionAuthorizationService auth,
                 com.ondemandmonitoring.user.service.AuthenticatedUserResolver resolver,
                 com.ondemandmonitoring.mission.service.IChecklistEvidenceService evidenceService) {
             return new com.ondemandmonitoring.mission.service.impl.MissionChecklistExecutionServiceImpl(
-                    missions, items, executions, results, auth, resolver,
+                    missions, scope, executions, results, auth, resolver,
                     org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.mission.mapper.MissionChecklistExecutionMapper.class), evidenceService);
+        }
+        @Bean com.ondemandmonitoring.mission.repository.MissionChecklistAssignmentRepository missionAssignments(EntityManagerFactory factory) {
+            return new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory)).getRepository(com.ondemandmonitoring.mission.repository.MissionChecklistAssignmentRepository.class);
+        }
+        @Bean com.ondemandmonitoring.mission.service.IMissionChecklistScopeService checklistScope(
+                com.ondemandmonitoring.mission.repository.MissionChecklistAssignmentRepository assignments,
+                com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository executions) {
+            return new com.ondemandmonitoring.mission.service.impl.MissionChecklistScopeServiceImpl(assignments, executions);
         }
         @Bean com.ondemandmonitoring.mission.repository.MissionChecklistEvidenceRepository evidenceRepository(EntityManagerFactory factory) {
             return new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory)).getRepository(com.ondemandmonitoring.mission.repository.MissionChecklistEvidenceRepository.class);

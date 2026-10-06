@@ -110,6 +110,8 @@ class ChecklistPostgresTest {
                     "seeddata/migrations/add_order_multi_mission_foundation.sql").getInputStream()) {
                 new JdbcTemplate(dataSource).execute(new String(foundationMigration.readAllBytes(),
                         java.nio.charset.StandardCharsets.UTF_8).replace("public.", SCHEMA + "."));
+                // Historical Phase 2/4 schema fixture only; Phase 5 subclasses apply the new NOT NULL cutover.
+                new JdbcTemplate(dataSource).execute("ALTER TABLE mission_checklist_executions ALTER COLUMN mission_checklist_assignment_id DROP NOT NULL");
             }
         } catch (java.io.IOException exception) {
             throw new IllegalStateException(exception);

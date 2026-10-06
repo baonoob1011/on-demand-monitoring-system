@@ -125,7 +125,7 @@ class MissionServiceTest {
                 missionDeviceAssignmentRepository,
                 missionStaffAssignmentRepository,
                 deviceRepository,
-                missionMapper);
+                missionMapper, com.ondemandmonitoring.mission.service.ScopeTestFixture.validScope());
 
         flightTokenService = new FlightTokenService(
                 flightTokenRepository,
@@ -775,7 +775,7 @@ class MissionServiceTest {
             var item = new com.ondemandmonitoring.order.domain.OrderChecklistItem(); item.setId("pending-item"); item.setOrder(order);
             when(itemRepository.findAllByOrderIdInOrderByDisplayOrderAscIdAsc(List.of("o"))).thenReturn(List.of(item));
             var checklist = new com.ondemandmonitoring.mission.service.impl.MissionChecklistExecutionServiceImpl(
-                    missionRepository, itemRepository, executionRepository, resultRepository, auth, authenticatedUserResolver,
+                    missionRepository, mock(com.ondemandmonitoring.mission.service.IMissionChecklistScopeService.class), executionRepository, resultRepository, auth, authenticatedUserResolver,
                     org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.mission.mapper.MissionChecklistExecutionMapper.class), com.ondemandmonitoring.mission.service.EvidenceTestFixture.emptyService());
             assertThat(checklist.isReadyForSubmission(mission)).isFalse();
             var results = new com.ondemandmonitoring.mission.service.impl.MissionResultService(
@@ -980,7 +980,7 @@ class MissionServiceTest {
         when(postDeviceCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc("integrated"))
                 .thenReturn(Optional.of(new PersistedPostDeviceCheck()));
         var policy = new com.ondemandmonitoring.mission.service.impl.MissionAuthorizationServiceImpl(
-                missionStaffAssignmentRepository, missionRepository, authenticatedUserResolver, mock(com.ondemandmonitoring.mission.repository.MissionResultRepository.class));
+                missionStaffAssignmentRepository, missionRepository, authenticatedUserResolver, mock(com.ondemandmonitoring.mission.repository.MissionResultRepository.class), ScopeTestFixture.validScope());
         var items = mock(com.ondemandmonitoring.order.repository.OrderChecklistItemRepository.class);
         var executions = mock(com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository.class);
         var resultRepo = mock(com.ondemandmonitoring.mission.repository.MissionResultRepository.class);
@@ -989,12 +989,13 @@ class MissionServiceTest {
         execution.setId("execution"); execution.setVersion(0L); execution.setMissionId(mission.getId());
         execution.setMission(mission); execution.setOrderId(order.getId()); execution.setOrderChecklistItemId(item.getId());
         execution.setOrderChecklistItem(item); execution.setExecutionStatus(com.ondemandmonitoring.mission.enums.ChecklistExecutionStatus.PENDING);
+        ScopeTestFixture.link(execution, mission);
         when(items.findAllByOrderIdInOrderByDisplayOrderAscIdAsc(List.of("order"))).thenReturn(List.of(item));
         when(executions.findOrderedByMissionId(mission.getId())).thenReturn(List.of(execution));
         when(executions.findById(execution.getId())).thenReturn(Optional.of(execution));
         when(executions.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
         var checklist = new com.ondemandmonitoring.mission.service.impl.MissionChecklistExecutionServiceImpl(
-                missionRepository, items, executions, resultRepo, policy, authenticatedUserResolver,
+                missionRepository, ScopeTestFixture.validScope(), executions, resultRepo, policy, authenticatedUserResolver,
                 org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.mission.mapper.MissionChecklistExecutionMapper.class), com.ondemandmonitoring.mission.service.EvidenceTestFixture.emptyService());
         var resultMapper = mock(com.ondemandmonitoring.mission.mapper.MissionResultMapper.class);
         var results = new com.ondemandmonitoring.mission.service.impl.MissionResultService(

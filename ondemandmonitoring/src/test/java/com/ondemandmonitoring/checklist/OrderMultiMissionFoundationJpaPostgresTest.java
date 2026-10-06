@@ -43,10 +43,8 @@ class OrderMultiMissionFoundationJpaPostgresTest extends OrderMissionPostgresTes
                 .getRepository(MissionChecklistAssignmentRepository.class);
         String itemId = order.getChecklistItems().getFirst().getId();
         String firstId = transaction.execute(tx -> {
-            var row = new MissionChecklistAssignment();
-            row.setMissionId(missionId); row.setOrderId(order.getId()); row.setOrderChecklistItemId(itemId);
-            row.setAssignedAt(Instant.now()); row.setAssignedBy(resolver.getCurrentUser().getId());
-            return repository.saveAndFlush(row).getId();
+            // Current historical fixture already includes its linked Assignment.
+            return repository.findByMissionIdAndOrderChecklistItemIdAndRemovedAtIsNull(missionId,itemId).orElseThrow().getId();
         });
         transaction.executeWithoutResult(tx -> {
             var row = repository.findByMissionIdAndOrderChecklistItemIdAndRemovedAtIsNull(missionId, itemId).orElseThrow();
@@ -80,7 +78,7 @@ class OrderMultiMissionFoundationJpaPostgresTest extends OrderMissionPostgresTes
         String executionId = transaction.execute(tx -> {
             // Explicit historical fixture materialized this legacy execution.
             var execution = repository.findOrderedByMissionId(missionId).getFirst();
-            assertNull(execution.getMissionChecklistAssignmentId());
+            assertNotNull(execution.getMissionChecklistAssignmentId());
             return execution.getId();
         });
         migrateFoundation();

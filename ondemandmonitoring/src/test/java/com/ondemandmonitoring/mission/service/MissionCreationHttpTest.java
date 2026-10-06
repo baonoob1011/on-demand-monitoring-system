@@ -100,6 +100,7 @@ class MissionCreationHttpTest {
         mvc.perform(post("/api/orders/o/missions").contentType("application/json").content("{}" )).andExpect(status().isUnauthorized());
     }
     @Configuration @EnableWebMvc static class Beans {
+        @Bean IMissionChecklistScopeService scope(){return ScopeTestFixture.validScope();}
         @Bean MissionServiceTest fixture(){var f=new MissionServiceTest();f.setUp();return f;}
         @Bean IMissionService missionService(MissionServiceTest f){return f.missionService;}
         @Bean MissionRepository missions(MissionServiceTest f){return f.missionRepository;}

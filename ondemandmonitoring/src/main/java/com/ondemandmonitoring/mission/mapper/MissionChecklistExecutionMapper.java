@@ -8,7 +8,7 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface MissionChecklistExecutionMapper {
     @Mapping(target = "content", source = "orderChecklistItem.content")
-    @Mapping(target = "displayOrder", source = "orderChecklistItem.displayOrder")
+    @Mapping(target = "displayOrder", source = "missionChecklistAssignment.displayOrder")
     @Mapping(target = "sourceType", source = "orderChecklistItem.sourceType")
     ChecklistExecutionResponse toResponse(MissionChecklistExecution execution);
 }

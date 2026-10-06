@@ -20,7 +20,7 @@ class MonitoringChecklistAuthorizationTest {
     MissionStaffAssignmentRepository assignments = mock(MissionStaffAssignmentRepository.class);
     AuthenticatedUserResolver resolver = mock(AuthenticatedUserResolver.class);
     MissionResultRepository results = mock(MissionResultRepository.class);
-    IMissionAuthorizationService policy = new MissionAuthorizationServiceImpl(assignments, missions, resolver, results);
+    IMissionAuthorizationService policy = new MissionAuthorizationServiceImpl(assignments, missions, resolver, results, com.ondemandmonitoring.mission.service.ScopeTestFixture.validScope());
     Mission mission;
     User actor;
 

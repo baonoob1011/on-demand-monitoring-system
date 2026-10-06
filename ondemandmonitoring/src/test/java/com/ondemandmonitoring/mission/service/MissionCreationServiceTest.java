@@ -90,8 +90,8 @@ class MissionCreationServiceTest {
         var mission=new Mission(); mission.setId("m"); mission.setCreationIdempotencyKey(UUID.randomUUID().toString());
         mission.setStatus(com.ondemandmonitoring.mission.enums.MissionStatus.IN_FLIGHT);
         when(fixture.missionRepository.findById("m")).thenReturn(Optional.of(mission));
-        error(ErrorCode.MISSION_PLANNING_ONLY,()->fixture.deviceConnectionService.connectGcs("m"));
-        error(ErrorCode.MISSION_PLANNING_ONLY,()->fixture.missionService.completeMission("m"));
+        error(ErrorCode.CHECKLIST_ASSIGNMENT_NOT_FINALIZED,()->fixture.deviceConnectionService.connectGcs("m"));
+        error(ErrorCode.CHECKLIST_ASSIGNMENT_NOT_FINALIZED,()->fixture.missionService.completeMission("m"));
         verifyNoInteractions(fixture.missionDeviceAssignmentRepository,fixture.missionStaffAssignmentRepository);
     }
     @Test void crewMayReadTheirPlanningMissionButCannotGainOperationalPermissions() {
@@ -101,7 +101,7 @@ class MissionCreationServiceTest {
         when(fixture.authenticatedUserResolver.getCurrentUser()).thenReturn(caller);
         when(fixture.missionRepository.findById("m")).thenReturn(Optional.of(mission));
         when(fixture.missionStaffAssignmentRepository.existsByMissionIdAndStaffId("m","crew")).thenReturn(true);
-        var auth=new com.ondemandmonitoring.mission.service.impl.MissionAuthorizationServiceImpl(fixture.missionStaffAssignmentRepository,fixture.missionRepository,fixture.authenticatedUserResolver,mock(com.ondemandmonitoring.mission.repository.MissionResultRepository.class));
+        var auth=new com.ondemandmonitoring.mission.service.impl.MissionAuthorizationServiceImpl(fixture.missionStaffAssignmentRepository,fixture.missionRepository,fixture.authenticatedUserResolver,mock(com.ondemandmonitoring.mission.repository.MissionResultRepository.class), ScopeTestFixture.validScope());
         assertTrue(auth.canViewMission("m"));assertFalse(auth.canControlFlight("m"));assertFalse(auth.canOperatePayload("m"));
         assertFalse(auth.canExecuteMonitoringChecklist("m"));assertFalse(auth.canUploadMissionMedia("m"));
         assertFalse(auth.canInspectDevice("m"));assertFalse(auth.canMaintainDevice("m"));assertFalse(auth.canAttachChecklistEvidence("m"));
@@ -115,7 +115,11 @@ class MissionCreationServiceTest {
         when(fixture.missionRepository.findByIdForUpdate("m")).thenReturn(Optional.of(mission));
         var checks=mock(IMissionChecklistExecutionService.class);
         var service=new com.ondemandmonitoring.mission.service.impl.MissionResultService(results,fixture.missionRepository,null,null,null,fixture.orderRepository,checks,fixture.authenticatedUserResolver,null);
-        error(ErrorCode.MISSION_PLANNING_ONLY,()->service.approve("r",null));
+        error(ErrorCode.CHECKLIST_ASSIGNMENT_NOT_FINALIZED,()->service.approve("r",null));
         assertEquals(OrderStatus.APPROVED,order.getOrderStatus());verifyNoInteractions(checks);verify(fixture.orderRepository,never()).save(any());
+        order.setExecutionPlanStatus(com.ondemandmonitoring.order.enums.ExecutionPlanStatus.FINALIZED);
+        order.setExecutionPlanRevision(4); mission.setFinalizedPlanRevision(4L);
+        error(ErrorCode.MULTI_MISSION_RESULT_APPROVAL_NOT_READY,()->service.approve("r",null));
+        assertEquals(OrderStatus.APPROVED,order.getOrderStatus()); verify(fixture.orderRepository,never()).save(any());
     }
 }

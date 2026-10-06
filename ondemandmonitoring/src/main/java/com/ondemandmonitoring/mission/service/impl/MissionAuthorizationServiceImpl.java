@@ -28,6 +28,7 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
     private final MissionRepository missions;
     private final AuthenticatedUserResolver currentUser;
     private final com.ondemandmonitoring.mission.repository.MissionResultRepository results;
+    private final com.ondemandmonitoring.mission.service.IMissionChecklistScopeService checklistScope;
 
     @Override
     public boolean canAttachChecklistEvidence(String missionId) {
@@ -201,7 +202,7 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
     }
 
     private Optional<Mission> findRuntimeMissionById(String missionId) {
-        return findMissionById(missionId).filter(MissionRuntimeGate::allowsLegacyRuntime);
+        return findMissionById(missionId).filter(MissionRuntimeGate::isStructurallyFinalized).filter(checklistScope::isMaterialized);
     }
 
     @Override

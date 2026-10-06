@@ -39,6 +39,7 @@ class ChecklistEvidenceServiceTest {
         var item = new OrderChecklistItem(); item.setId("i"); item.setOrder(order); item.setEvidencePolicyVersion(1); item.setMinimumEvidenceCount(1);
         execution = new MissionChecklistExecution(); execution.setId("e"); execution.setMissionId("m"); execution.setOrderId("o"); execution.setOrderChecklistItem(item); execution.setVersion(0L);
         execution.setExecutionStatus(ChecklistExecutionStatus.COMPLETED);
+        execution.setOrderChecklistItemId(item.getId()); ScopeTestFixture.link(execution, mission);
         asset = new MediaAsset(); asset.setId("a"); asset.setMissionId("m"); asset.setType("IMAGE"); asset.setSourceType("DRONE_CAMERA");
         asset.setMediaStatus(MediaStatus.PENDING_MANAGER_APPROVAL); asset.setValidatedAt(Instant.now());
         when(missions.findByIdForUpdate("m")).thenReturn(Optional.of(mission)); when(executions.findById("e")).thenReturn(Optional.of(execution));
@@ -79,6 +80,9 @@ class ChecklistEvidenceServiceTest {
     }
     @Test void supportsOneMediaAcrossMultipleItems() {
         var second=new MissionChecklistExecution(); second.setId("e2"); second.setMissionId("m"); second.setOrderId("o"); second.setOrderChecklistItem(execution.getOrderChecklistItem()); second.setVersion(0L);
+        var secondItem=new OrderChecklistItem(); secondItem.setId("i2"); secondItem.setOrder(mission.getOrder());
+        secondItem.setEvidencePolicyVersion(1); secondItem.setMinimumEvidenceCount(1);
+        second.setOrderChecklistItem(secondItem); second.setOrderChecklistItemId(secondItem.getId()); ScopeTestFixture.link(second, mission);
         when(executions.findById("e2")).thenReturn(Optional.of(second));
         assertEquals(2,service.attach("m",new BatchChecklistEvidenceRequest("a",List.of(new BatchChecklistEvidenceRequest.Target("e",0L),new BatchChecklistEvidenceRequest.Target("e2",0L)),null)).size());
     }

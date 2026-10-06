@@ -127,6 +127,7 @@ class OrderMissionListHttpTest {
 
     @Configuration @EnableWebMvc
     static class Beans {
+        @Bean com.ondemandmonitoring.mission.service.IMissionChecklistScopeService scope() { return com.ondemandmonitoring.mission.service.ScopeTestFixture.validScope(); }
         @Bean IMissionService missionService() { return mock(IMissionService.class); }
         @Bean OrderRepository orders() { return mock(OrderRepository.class); }
         @Bean MissionRepository missions() { return mock(MissionRepository.class); }

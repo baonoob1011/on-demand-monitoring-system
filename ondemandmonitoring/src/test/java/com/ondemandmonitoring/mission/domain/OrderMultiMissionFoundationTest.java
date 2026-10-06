@@ -43,10 +43,11 @@ class OrderMultiMissionFoundationTest {
         assertEquals("geometry(Polygon,4326)", Mission.class.getDeclaredField("targetArea").getAnnotation(Column.class).columnDefinition());
     }
 
-    @Test void executionAssignmentIsOptionalAndExistingIdentityRemains() throws Exception {
+    @Test void executionAssignmentIsMandatoryAndExistingIdentityRemains() throws Exception {
         assertNull(new MissionChecklistExecution().getMissionChecklistAssignmentId());
-        assertTrue(MissionChecklistExecution.class.getDeclaredField("missionChecklistAssignment")
-                .getAnnotation(ManyToOne.class).optional());
+        assertFalse(MissionChecklistExecution.class.getDeclaredField("missionChecklistAssignment")
+                .getAnnotation(OneToOne.class).optional());
+        assertFalse(MissionChecklistExecution.class.getDeclaredField("missionChecklistAssignmentId").getAnnotation(Column.class).nullable());
         for (String name : new String[] {"missionId", "orderId", "orderChecklistItemId"}) {
             assertFalse(MissionChecklistExecution.class.getDeclaredField(name).getAnnotation(Column.class).nullable());
         }

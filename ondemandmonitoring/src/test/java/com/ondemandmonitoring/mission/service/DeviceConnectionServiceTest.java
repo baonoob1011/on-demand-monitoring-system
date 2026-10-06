@@ -59,7 +59,7 @@ class DeviceConnectionServiceTest {
                 missionStaffAssignmentRepository,
                 deviceRepository,
                 missionMapper
-        );
+        , com.ondemandmonitoring.mission.service.ScopeTestFixture.validScope());
 
         lenient().when(missionMapper.toResponse(any())).thenAnswer(inv -> {
             Mission m = inv.getArgument(0);

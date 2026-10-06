@@ -11,7 +11,7 @@ import lombok.Setter;
 
 @Entity
 @Table(name = "mission_checklist_executions", uniqueConstraints =
-        @UniqueConstraint(name = "uk_execution_requirement", columnNames = "order_checklist_item_id"),
+        @UniqueConstraint(name = "uk_execution_assignment", columnNames = "mission_checklist_assignment_id"),
         indexes = @Index(name = "ix_execution_mission", columnList = "mission_id"))
 @org.hibernate.annotations.Check(constraints = "(execution_status = 'UNABLE_TO_VERIFY' and unable_to_verify_reason is not null and length(trim(unable_to_verify_reason)) > 0 or execution_status <> 'UNABLE_TO_VERIFY' and unable_to_verify_reason is null) and (execution_status in ('COMPLETED','UNABLE_TO_VERIFY') and started_at is not null and completed_at is not null or execution_status = 'IN_PROGRESS' and started_at is not null and completed_at is null or execution_status = 'PENDING' and started_at is null and completed_at is null)")
 @Getter
@@ -26,11 +26,11 @@ public class MissionChecklistExecution extends BaseEntity {
     @Column(name = "order_id", nullable = false, updatable = false)
     private String orderId;
 
-    // Nullable until assignment-based materialization replaces the current Phase 5 initializer.
-    @Column(name = "mission_checklist_assignment_id")
+    // Cutover migration verifies/backfills history and owns the composite same-scope FK.
+    @Column(name = "mission_checklist_assignment_id", nullable = false, updatable = false)
     private String missionChecklistAssignmentId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "mission_checklist_assignment_id", insertable = false, updatable = false,
             foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private MissionChecklistAssignment missionChecklistAssignment;

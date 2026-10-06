@@ -45,6 +45,7 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     private final MissionStaffAssignmentRepository missionStaffAssignmentRepository;
     private final DeviceRepository deviceRepository;
     private final MissionMapper missionMapper;
+    private final com.ondemandmonitoring.mission.service.IMissionChecklistScopeService checklistScope;
 
     @Override
     @Transactional
@@ -173,7 +174,7 @@ public class DeviceConnectionService implements IDeviceConnectionService {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Ambiguous telemetry connection; exact Mission required");
         }
         return connections.stream().findFirst().map(connection -> {
-            if (connection.getMission() != null) MissionRuntimeGate.requireLegacyRuntime(connection.getMission());
+            if (connection.getMission() != null) requireRuntime(connection.getMission());
             return connection;
         });
     }
@@ -181,7 +182,7 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     private DeviceConnection connectTelemetrySession(String deviceId, String missionId) {
         MissionDeviceAssignment deviceAssignment = resolveTelemetryDeviceAssignment(deviceId, missionId);
         Mission mission = deviceAssignment.getMission();
-        MissionRuntimeGate.requireLegacyRuntime(mission);
+        requireRuntime(mission);
         if (mission.getStatus() != MissionStatus.SCHEDULED
                 && mission.getStatus() != MissionStatus.CONNECTED
                 && mission.getStatus() != MissionStatus.PREFLIGHT_CHECKING
@@ -300,9 +301,14 @@ public class DeviceConnectionService implements IDeviceConnectionService {
                 .orElse(null);
     }
 
+    private void requireRuntime(Mission mission) {
+        MissionRuntimeGate.requireFinalizedStructure(mission);
+        checklistScope.requireMaterialized(mission);
+    }
+
     private Mission getMissionByIdOrThrow(String missionId) {
         return missionRepository.findById(missionId)
-                .map(mission -> { MissionRuntimeGate.requireLegacyRuntime(mission); return mission; })
+                .map(mission -> { requireRuntime(mission); return mission; })
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission not found: " + missionId));
     }
 }

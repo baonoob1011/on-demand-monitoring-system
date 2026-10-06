@@ -19,11 +19,13 @@ import static org.mockito.Mockito.*;
 class MissionChecklistExecutionServiceTest {
     MissionRepository missions = mock(MissionRepository.class);
     OrderChecklistItemRepository items = mock(OrderChecklistItemRepository.class);
+    MissionChecklistAssignmentRepository assignments = mock(MissionChecklistAssignmentRepository.class);
     MissionChecklistExecutionRepository executions = mock(MissionChecklistExecutionRepository.class);
     MissionResultRepository results = mock(MissionResultRepository.class);
     IMissionAuthorizationService auth = mock(IMissionAuthorizationService.class);
     AuthenticatedUserResolver resolver = mock(AuthenticatedUserResolver.class);
-    MissionChecklistExecutionServiceImpl service = new MissionChecklistExecutionServiceImpl(missions, items,
+    MissionChecklistExecutionServiceImpl service = new MissionChecklistExecutionServiceImpl(missions,
+            new com.ondemandmonitoring.mission.service.impl.MissionChecklistScopeServiceImpl(assignments, executions),
             executions, results, auth, resolver, org.mapstruct.factory.Mappers.getMapper(MissionChecklistExecutionMapper.class), com.ondemandmonitoring.mission.service.EvidenceTestFixture.emptyService());
     Mission mission; Order order; OrderChecklistItem item; MissionChecklistExecution execution;
 
@@ -34,6 +36,8 @@ class MissionChecklistExecutionServiceTest {
         execution = new MissionChecklistExecution(); execution.setId("e"); execution.setVersion(0L);
         execution.setMission(mission); execution.setMissionId("m"); execution.setOrderId("o");
         execution.setOrderChecklistItem(item); execution.setOrderChecklistItemId("i");
+        var assignment = ScopeTestFixture.link(execution, mission);
+        when(assignments.findByMissionIdAndRemovedAtIsNullOrderByDisplayOrderAscIdAsc("m")).thenReturn(List.of(assignment));
         when(missions.findByIdForUpdate("m")).thenReturn(Optional.of(mission));
         when(missions.findById("m")).thenReturn(Optional.of(mission));
         when(executions.findById("e")).thenReturn(Optional.of(execution));
@@ -115,7 +119,7 @@ class MissionChecklistExecutionServiceTest {
         error(ErrorCode.CHECKLIST_EXECUTION_INTEGRITY_INVALID, () -> service.update("m", "e", request(ChecklistExecutionStatus.COMPLETED)));
         error(ErrorCode.CHECKLIST_EXECUTION_NOT_FOUND, () -> service.update("m", "missing", request(ChecklistExecutionStatus.COMPLETED)));
         error(ErrorCode.MISSION_NOT_FOUND, () -> service.update("missing", "e", request(ChecklistExecutionStatus.COMPLETED)));
-        error(ErrorCode.CHECKLIST_EXECUTION_INTEGRITY_INVALID, () -> service.initialize(mission));
+        error(ErrorCode.CHECKLIST_EXECUTION_INTEGRITY_INVALID, () -> service.requireMaterialized(mission));
     }
 
     @Test void missingRowsAreNotReadyAndReadsNeverBackfill() {
@@ -123,7 +127,7 @@ class MissionChecklistExecutionServiceTest {
         assertFalse(service.getByMissionId("m").readyForSubmission());
         error(ErrorCode.CHECKLIST_NOT_READY, () -> service.requireReadyForSubmission(mission));
         verify(executions, never()).saveAllAndFlush(any());
-        when(items.findAllByOrderIdInOrderByDisplayOrderAscIdAsc(List.of("o"))).thenReturn(List.of());
+        when(assignments.findByMissionIdAndRemovedAtIsNullOrderByDisplayOrderAscIdAsc("m")).thenReturn(List.of());
         assertTrue(service.getByMissionId("m").legacySnapshot()); assertTrue(service.isReadyForSubmission(mission));
         order.setChecklistSnapshotAt(java.time.Instant.now()); assertFalse(service.getByMissionId("m").legacySnapshot());
     }

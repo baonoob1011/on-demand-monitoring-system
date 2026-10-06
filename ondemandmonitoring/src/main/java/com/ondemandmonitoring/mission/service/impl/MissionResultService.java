@@ -67,7 +67,8 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
         Mission mission = missionRepository.findByIdForUpdate(missionId)
                 .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND,
                         "Mission not found: " + missionId));
-        MissionRuntimeGate.requireLegacyRuntime(mission);
+        MissionRuntimeGate.requireFinalizedStructure(mission);
+        checklistExecutionService.requireMaterialized(mission);
         if (!authorization.canUploadMissionMedia(missionId)) throw new ApiException(ErrorCode.ACCESS_DENIED);
         if (mission.getStatus() != MissionStatus.COMPLETED)
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID, "Complete operational mission before submitting results");
@@ -101,7 +102,10 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public MissionResultResponse approve(String resultId, MissionResultReviewRequest request) {
         MissionResult result = requirePendingResult(resultId);
-        MissionRuntimeGate.requireLegacyRuntime(result.getMission());
+        MissionRuntimeGate.requireFinalizedStructure(result.getMission());
+        if (!MissionRuntimeGate.allowsLegacyRuntime(result.getMission()))
+            throw new ApiException(ErrorCode.MULTI_MISSION_RESULT_APPROVAL_NOT_READY);
+        checklistExecutionService.requireMaterialized(result.getMission());
         checklistExecutionService.requireReadyForFinalApproval(result.getMission());
         if (result.getMission().getStatus() != MissionStatus.COMPLETED)
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID);
@@ -137,7 +141,8 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
     @Override
     @Transactional
     public void ensureCompletedResult(Mission mission) {
-        MissionRuntimeGate.requireLegacyRuntime(mission);
+        MissionRuntimeGate.requireFinalizedStructure(mission);
+        checklistExecutionService.requireMaterialized(mission);
         missionRepository.findByIdForUpdate(mission.getId())
                 .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
         if (missionResultRepository.existsByMissionId(mission.getId())) {
