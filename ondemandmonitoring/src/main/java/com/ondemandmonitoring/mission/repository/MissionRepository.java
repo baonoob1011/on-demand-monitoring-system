@@ -31,7 +31,8 @@ public interface MissionRepository extends JpaRepository<Mission, String>, JpaSp
 
     Optional<Mission> findByMissionCode(String missionCode);
 
-    Optional<Mission> findByOrderId(String orderId);
+    /** Order aggregate query; never use an Order ID as exact Mission identity. */
+    List<Mission> findAllByOrderIdOrderByScheduledStartAtAscIdAsc(String orderId);
 
     boolean existsByMissionCode(String missionCode);
 

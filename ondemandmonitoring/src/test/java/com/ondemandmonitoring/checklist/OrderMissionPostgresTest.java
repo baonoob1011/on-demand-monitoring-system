@@ -74,7 +74,7 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
     @Test void bothCreationControllersUseSamePersistedMission() {
         String id = order(OrderStatus.APPROVED);
         var general = new MissionController(missionService, null, null);
-        var nested = new OrderMissionController(missionService);
+        var nested = new OrderMissionController(missionService, null);
         var first = general.createMission(request(id)).getBody().getData();
         var second = nested.createMissionForOrder(id, request("ignored-body-id")).getBody().getData();
         assertEquals(first.getId(), second.getId());

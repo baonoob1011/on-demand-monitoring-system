@@ -142,7 +142,7 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canViewMission(#missionId)")
     public MissionResponse getByIdResponse(String missionId) {
-        Mission mission = getOrThrow(missionId);
+        Mission mission = getMissionByIdOrThrow(missionId);
         ensureAcceptedMissionPlan(mission);
         return missionMapper.toResponse(mission);
     }
@@ -156,7 +156,7 @@ public class MissionService implements IMissionService {
     }
     @Override
     @Transactional(readOnly = true)
-    @PreAuthorize("@missionAuthorizationService.canViewMission(#missionCode)")
+    @PreAuthorize("@missionAuthorizationService.canViewMissionByCode(#missionCode)")
     public MissionResponse getByCodeResponse(String missionCode) {
         Mission mission = missionRepository.findByMissionCode(missionCode)
                 .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND,
@@ -171,9 +171,14 @@ public class MissionService implements IMissionService {
         Order order = orderRepository.findByIdForUpdate(request.getOrderId())
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND,
                         "Order not found with id: " + request.getOrderId()));
-        var existingMission = missionRepository.findByOrderId(request.getOrderId());
-        if (existingMission.isPresent()) {
-            return missionMapper.toResponse(existingMission.get());
+        // Temporary rollout gate ONLY for creation. Preserve legacy retry behavior while
+        // the locked Order and DB unique still prohibit a second Mission until Phase 4.
+        var existingMissions = missionRepository.findAllByOrderIdOrderByScheduledStartAtAscIdAsc(order.getId());
+        if (existingMissions.size() > 1) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Multi-Mission creation is not enabled");
+        }
+        if (existingMissions.size() == 1) {
+            return missionMapper.toResponse(existingMissions.getFirst());
         }
 
         if (order.getOrderStatus() != OrderStatus.APPROVED) {
@@ -237,7 +242,7 @@ public class MissionService implements IMissionService {
     @Transactional(readOnly = true)
     @PreAuthorize("@missionAuthorizationService.canViewMission(#missionId)")
     public MissionPlanResponse getMissionPlan(String missionId) {
-        Mission mission = getOrThrow(missionId);
+        Mission mission = getMissionByIdOrThrow(missionId);
         MissionPlan plan = missionPlanRepository.findByMissionId(mission.getId())
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.RESOURCE_NOT_FOUND,
@@ -248,7 +253,7 @@ public class MissionService implements IMissionService {
     @Override
     @Transactional(readOnly = true)
     public Mission findById(String missionId) {
-        return getOrThrow(missionId);
+        return getMissionByIdOrThrow(missionId);
     }
 
     // =========================================================================
@@ -284,7 +289,7 @@ public class MissionService implements IMissionService {
     public MissionResponse assignDevice(String missionId, AssignDeviceRequest request) {
         String deviceId = request.getDeviceId();
         DeviceRole deviceRole = request.getDeviceRole();
-        Mission mission = getOrThrow(missionId);
+        Mission mission = getMissionByIdOrThrow(missionId);
         String resolvedMissionId = mission.getId();
         if (mission.getStatus() != MissionStatus.RESOURCE_ASSIGNING
                 && mission.getStatus() != MissionStatus.WAITING_CREW_CONFIRMATION) {
@@ -400,7 +405,7 @@ public class MissionService implements IMissionService {
         String staffId = request.getStaffId();
         MissionStaffRole assignedRole = resolveStaffRole(request.getAssignedRole());
 
-        Mission mission = getOrThrow(missionId);
+        Mission mission = getMissionByIdOrThrow(missionId);
         String resolvedMissionId = mission.getId();
         if (mission.getStatus() != MissionStatus.RESOURCE_ASSIGNING
                 && mission.getStatus() != MissionStatus.WAITING_CREW_CONFIRMATION) {
@@ -501,7 +506,7 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canManageMissions()")
     public MissionResponse updateMission(String missionId, MissionUpdateRequest request) {
-        Mission mission = getOrThrow(missionId);
+        Mission mission = getMissionByIdOrThrow(missionId);
 
         Instant previousStart = mission.getScheduledStartAt();
         Instant previousEnd = mission.getScheduledEndAt();
@@ -547,7 +552,7 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canRespondToMission(#missionId,#staffId)")
     public MissionResponse rejectMission(String missionId, String staffId, String reason) {
-        Mission mission = getOrThrow(missionId);
+        Mission mission = getMissionByIdOrThrow(missionId);
         String resolvedMissionId = mission.getId();
         requireCrewConfirmationStatus(mission);
         List<MissionStaffAssignment> assignments =
@@ -571,7 +576,7 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canRespondToMission(#missionId,#staffId)")
     public MissionResponse acceptMission(String missionId, String staffId) {
-        Mission mission = getOrThrow(missionId);
+        Mission mission = getMissionByIdOrThrow(missionId);
         String resolvedMissionId = mission.getId();
         requireCrewConfirmationStatus(mission);
         List<MissionStaffAssignment> assignments =
@@ -602,14 +607,14 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canOperatePayload(#missionId)")
     public MissionResponse connectGcs(String missionId) {
-        return deviceConnectionService.connectGcs(getOrThrow(missionId).getId());
+        return deviceConnectionService.connectGcs(getMissionByIdOrThrow(missionId).getId());
     }
 
     @Override
     @Transactional(readOnly = true)
     @PreAuthorize("@missionAuthorizationService.canViewMission(#missionId)")
     public MissionTelemetryReadinessResponse getTelemetryReadiness(String missionId) {
-        Mission mission = getOrThrow(missionId);
+        Mission mission = getMissionByIdOrThrow(missionId);
         Device assignedDevice = getCurrentDevice(mission.getId());
         if (assignedDevice == null) {
             throw new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission has no assigned device");
@@ -622,14 +627,14 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canOperatePayload(#missionId)")
     public MissionResponse disconnectGcs(String missionId, String disconnectReason) {
-        return deviceConnectionService.disconnectGcs(getOrThrow(missionId).getId(), disconnectReason);
+        return deviceConnectionService.disconnectGcs(getMissionByIdOrThrow(missionId).getId(), disconnectReason);
     }
 
     @Override
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canOperatePayload(#missionId)")
     public MissionResponse handleGcsSessionLost(String missionId, String reason) {
-        return deviceConnectionService.handleGcsSessionLost(getOrThrow(missionId).getId(), reason);
+        return deviceConnectionService.handleGcsSessionLost(getMissionByIdOrThrow(missionId).getId(), reason);
     }
 
     @Override
@@ -827,7 +832,7 @@ public class MissionService implements IMissionService {
 //    @Override
 //    @Transactional
 //    public MissionResponse replacedevice(String missionId, String newDeviceCode) {
-//        Mission mission = getOrThrow(missionId);
+//        Mission mission = getMissionByIdOrThrow(missionId);
 //        Device newDevice = deviceRepository.findByDeviceCode(newDeviceCode)
 //                .orElseThrow(() -> new ApiException(ErrorCode.DEVICE_NOT_AVAILABLE,
 //                        "Device " + newDeviceCode + " không tồn tại"));
@@ -881,7 +886,7 @@ public class MissionService implements IMissionService {
 //    @Override
 //    @Transactional
 //    public MissionResponse replacedevice(String missionId, String newDeviceCode) {
-//        Mission mission = getOrThrow(missionId);
+//        Mission mission = getMissionByIdOrThrow(missionId);
 //        Device newDevice = deviceRepository.findByDeviceCode(newDeviceCode)
 //                .orElseThrow(() -> new ApiException(ErrorCode.DEVICE_NOT_AVAILABLE,
 //                        "Device " + newDeviceCode + " không tồn tại"));
@@ -959,7 +964,7 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("(@missionAuthorizationService.canOperatePayload(#missionId) or @missionAuthorizationService.canControlFlight(#missionId)) and @missionAuthorizationService.canViewStaffMissions(#staffId)")
     public MissionResponse handoverControl(String missionId, String staffId) {
-        Mission mission = getOrThrow(missionId);
+        Mission mission = getMissionByIdOrThrow(missionId);
         String resolvedMissionId = mission.getId();
         requireStatus(mission, MissionStatus.READY_TO_FLY);
 
@@ -989,7 +994,7 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse startMission(String missionId, String tokenValue) {
-        Mission mission = getOrThrow(missionId);
+        Mission mission = getMissionByIdOrThrow(missionId);
         String resolvedMissionId = mission.getId();
         requireStatus(mission, MissionStatus.READY_TO_FLY);
 
@@ -1048,7 +1053,7 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse markReturning(String missionId) {
-        Mission mission = getOrThrow(missionId);
+        Mission mission = getMissionByIdOrThrow(missionId);
         if (mission.getStatus() != MissionStatus.IN_FLIGHT && mission.getStatus() != MissionStatus.IN_PROGRESS) {
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID,
                     "Mission must be IN_FLIGHT to mark returning, current: " + mission.getStatus());
@@ -1064,7 +1069,7 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse startPostDeviceChecking(String missionId) {
-        Mission mission = getOrThrow(missionId);
+        Mission mission = getMissionByIdOrThrow(missionId);
         MissionStatus current = mission.getStatus();
         // Cho phép sang Postcheck cả khi mission chưa bay (chỉ chụp ảnh tham chiếu).
         boolean neverFlew = current == MissionStatus.CONNECTED
@@ -1083,7 +1088,7 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canUploadMissionMedia(#missionId)")
     public MissionResponse completeMission(String missionId) {
-        Mission resolved = getOrThrow(missionId);
+        Mission resolved = getMissionByIdOrThrow(missionId);
         Mission mission = missionRepository.findByIdForUpdate(resolved.getId()).orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
         String resolvedMissionId = mission.getId();
         if (mission.getStatus() == MissionStatus.COMPLETED
@@ -1117,7 +1122,7 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse failMission(String missionId, String reason) {
-        Mission mission = getOrThrow(missionId);
+        Mission mission = getMissionByIdOrThrow(missionId);
         if (mission.getStatus() == MissionStatus.IN_FLIGHT
                 || mission.getStatus() == MissionStatus.RETURNING) {
             updateDeviceStatus(mission, DeviceStatus.MAINTENANCE);
@@ -1133,7 +1138,7 @@ public class MissionService implements IMissionService {
 //    @Override
 //    @Transactional
 //    public MissionResponse failMission(String missionId, String reason) {
-//        Mission mission = getOrThrow(missionId);
+//        Mission mission = getMissionByIdOrThrow(missionId);
 //        if (mission.getStatus() == MissionStatus.IN_FLIGHT
 //                || mission.getStatus() == MissionStatus.RETURNING) {
 //            updatedeviceStatus(mission, DeviceStatus.MAINTENANCE);
@@ -1174,7 +1179,7 @@ public class MissionService implements IMissionService {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
                     "Device status does not match the submitted inspection results");
         }
-        Mission mission = getOrThrow(missionId);
+        Mission mission = getMissionByIdOrThrow(missionId);
         requireStatus(mission, MissionStatus.POSTFLIGHT_CHECKING);
         String summary = results.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
@@ -1192,7 +1197,7 @@ public class MissionService implements IMissionService {
     private MissionResponse savePostFlightStatus(String missionId, DeviceStatus newDeviceStatus,
             String notes, Map<String, InspectionResult> results,
             PostFlightStatusRequest.TelemetrySnapshot telemetrySnapshot) {
-        Mission mission = getOrThrow(missionId);
+        Mission mission = getMissionByIdOrThrow(missionId);
         Device device = getCurrentDevice(mission.getId());
         if (device == null) {
             throw new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission " + missionId + " has no assigned device");
@@ -1357,9 +1362,8 @@ public class MissionService implements IMissionService {
     // Helpers
     // =========================================================================
 
-    private Mission getOrThrow(String missionId) {
+    private Mission getMissionByIdOrThrow(String missionId) {
         return missionRepository.findById(missionId)
-                .or(() -> missionRepository.findByOrderId(missionId))
                 .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND,
                         "Mission not found: " + missionId));
     }

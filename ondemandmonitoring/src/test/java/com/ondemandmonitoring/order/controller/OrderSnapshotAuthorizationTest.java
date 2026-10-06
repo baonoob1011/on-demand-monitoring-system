@@ -105,6 +105,9 @@ class OrderSnapshotAuthorizationTest {
     }
     @Configuration @EnableWebMvc
     static class Beans {
+        @Bean com.ondemandmonitoring.mission.repository.MissionRepository missionRepository() {
+            return mock(com.ondemandmonitoring.mission.repository.MissionRepository.class);
+        }
         @Bean IOrderService service() { return mock(IOrderService.class); }
         @Bean OrderRepository orders() { return mock(OrderRepository.class); }
         @Bean AuthenticatedUserResolver resolver() { return mock(AuthenticatedUserResolver.class); }

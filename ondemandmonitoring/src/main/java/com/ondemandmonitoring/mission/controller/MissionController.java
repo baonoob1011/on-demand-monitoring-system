@@ -133,7 +133,7 @@ public class MissionController {
 
     /** GET /api/missions/code/{missionCode} – retrieve mission details by code */
     @GetMapping("/code/{missionCode}")
-    @PreAuthorize("@missionAuthorizationService.canViewMission(#missionCode)")
+    @PreAuthorize("@missionAuthorizationService.canViewMissionByCode(#missionCode)")
     public ResponseEntity<ApiResponse<MissionResponse>> getByCode(@PathVariable String missionCode) {
         MissionResponse response = missionService.getByCodeResponse(missionCode);
         return ResponseEntity.ok(ApiResponse.ok(response));

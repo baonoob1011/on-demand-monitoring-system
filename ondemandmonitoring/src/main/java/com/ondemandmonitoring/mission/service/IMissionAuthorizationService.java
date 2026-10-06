@@ -1,20 +1,21 @@
 package com.ondemandmonitoring.mission.service;
 
 public interface IMissionAuthorizationService {
+    boolean canViewMissionByCode(String missionCode);
     boolean canManageMissions();
     boolean canViewStaffMissions(String staffId);
-    boolean canViewMission(String identifier);
-    boolean canRespondToMission(String identifier);
-    boolean canRespondToMission(String identifier, String staffId);
-    boolean canControlFlight(String identifier);
-    boolean canOperatePayload(String identifier);
-    boolean canExecuteMonitoringChecklist(String identifier);
-    boolean canInspectDevice(String identifier);
-    boolean canMaintainDevice(String identifier);
-    boolean canViewMissionMedia(String identifier);
-    boolean canUploadMissionMedia(String identifier);
-    boolean canCompleteMission(String identifier);
-    boolean canSubmitMissionResult(String identifier);
-    boolean canAttachChecklistEvidence(String identifier);
-    boolean canDetachChecklistEvidence(String identifier);
+    boolean canViewMission(String missionId);
+    boolean canRespondToMission(String missionId);
+    boolean canRespondToMission(String missionId, String staffId);
+    boolean canControlFlight(String missionId);
+    boolean canOperatePayload(String missionId);
+    boolean canExecuteMonitoringChecklist(String missionId);
+    boolean canInspectDevice(String missionId);
+    boolean canMaintainDevice(String missionId);
+    boolean canViewMissionMedia(String missionId);
+    boolean canUploadMissionMedia(String missionId);
+    boolean canCompleteMission(String missionId);
+    boolean canSubmitMissionResult(String missionId);
+    boolean canAttachChecklistEvidence(String missionId);
+    boolean canDetachChecklistEvidence(String missionId);
 }

@@ -85,6 +85,24 @@ class MissionAuthorizationHttpTest {
     }
 
     @Test
+    void exactRoutesRejectOrderAndCodeAliasesWhileCodeLookupRemainsExplicit() throws Exception {
+        var order = new com.ondemandmonitoring.order.domain.Order(); order.setId("order-1");
+        mission.setOrder(order);
+        crew(MissionStaffRole.PILOT, StaffResponseStatus.ACCEPTED);
+        when(missions.findByMissionCode("MS-001")).thenReturn(Optional.of(mission));
+        mvc.perform(get("/api/missions/order-1").with(jwt().authorities(() -> "ROLE_STAFF")))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/missions/MS-001").with(jwt().authorities(() -> "ROLE_STAFF")))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/missions/order-1/connect").with(jwt().authorities(() -> "ROLE_STAFF")).with(csrf()))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(service);
+        mvc.perform(get("/api/missions/code/MS-001").with(jwt().authorities(() -> "ROLE_STAFF")))
+                .andExpect(status().isOk());
+        verify(service).getByCodeResponse("MS-001");
+    }
+
+    @Test
     void managerCoordinatesButCannotFly() throws Exception {
         user.getRole().setCode(RoleCode.MANAGER);
         crew(MissionStaffRole.PILOT, StaffResponseStatus.ACCEPTED);

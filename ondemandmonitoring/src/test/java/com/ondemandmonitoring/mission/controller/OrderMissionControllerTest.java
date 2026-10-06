@@ -16,7 +16,8 @@ import static org.mockito.Mockito.when;
 class OrderMissionControllerTest {
 
     private final IMissionService missionService = mock(IMissionService.class);
-    private final OrderMissionController controller = new OrderMissionController(missionService);
+    private final OrderMissionController controller = new OrderMissionController(missionService,
+            mock(com.ondemandmonitoring.mission.service.IOrderMissionQueryService.class));
 
     @Test
     void createMissionForOrderUsesPathOrderId() {

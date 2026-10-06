@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Service implementation managing device connection sessions
@@ -48,7 +49,7 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     @Override
     @Transactional
     public MissionResponse connectGcs(String missionId) {
-        Mission mission = getMission(missionId);
+        Mission mission = getMissionByIdOrThrow(missionId);
         String resolvedMissionId = mission.getId();
 
         if (mission.getStatus() != MissionStatus.SCHEDULED && mission.getStatus() != MissionStatus.CONNECTED) {
@@ -95,7 +96,7 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     @Override
     @Transactional
     public MissionResponse disconnectGcs(String missionId, String disconnectReason) {
-        Mission mission = getMission(missionId);
+        Mission mission = getMissionByIdOrThrow(missionId);
         String resolvedMissionId = mission.getId();
 
         deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(resolvedMissionId, "CONNECTED")
@@ -116,7 +117,7 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     @Override
     @Transactional
     public MissionResponse handleGcsSessionLost(String missionId, String reason) {
-        Mission mission = getMission(missionId);
+        Mission mission = getMissionByIdOrThrow(missionId);
         String resolvedMissionId = mission.getId();
 
         deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(resolvedMissionId, "CONNECTED")
@@ -147,12 +148,8 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     @Override
     @Transactional(readOnly = true)
     public DeviceConnection requireActiveTelemetryConnection(String deviceId) {
-        return deviceConnectionRepository
-                .findActiveTelemetryByDeviceIdentifier(
-                        deviceId,
-                        "CONNECTED")
-                .stream()
-                .findFirst()
+        return uniqueTelemetryConnection(deviceConnectionRepository
+                .findActiveTelemetryByDeviceIdentifier(deviceId, "CONNECTED"))
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.RESOURCE_NOT_FOUND,
                         "No active device connection found for telemetry device: " + deviceId));
@@ -161,11 +158,21 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     @Override
     @Transactional
     public DeviceConnection requireActiveTelemetryConnection(String deviceId, String missionId) {
-        return deviceConnectionRepository
-                .findActiveTelemetryByDeviceIdentifier(deviceId, "CONNECTED")
-                .stream()
-                .findFirst()
+        var connections = deviceConnectionRepository.findActiveTelemetryByDeviceIdentifier(deviceId, "CONNECTED");
+        if (missionId != null && !missionId.isBlank()) {
+            getMissionByIdOrThrow(missionId);
+            connections = connections.stream().filter(connection -> connection.getMission() != null
+                    && missionId.equals(connection.getMission().getId())).toList();
+        }
+        return uniqueTelemetryConnection(connections)
                 .orElseGet(() -> connectTelemetrySession(deviceId, missionId));
+    }
+
+    private Optional<DeviceConnection> uniqueTelemetryConnection(List<DeviceConnection> connections) {
+        if (connections.size() > 1) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Ambiguous telemetry connection; exact Mission required");
+        }
+        return connections.stream().findFirst();
     }
 
     private DeviceConnection connectTelemetrySession(String deviceId, String missionId) {
@@ -219,7 +226,7 @@ public class DeviceConnectionService implements IDeviceConnectionService {
 
     private MissionDeviceAssignment resolveTelemetryDeviceAssignment(String deviceId, String missionId) {
         if (missionId != null && !missionId.isBlank()) {
-            Mission mission = getMission(missionId);
+            Mission mission = getMissionByIdOrThrow(missionId);
             return getAssignedDeviceAssignment(mission.getId())
                     .filter(assignment -> matchesDevice(assignment.getDevice(), deviceId))
                     .orElseThrow(() -> new ApiException(
@@ -241,6 +248,11 @@ public class DeviceConnectionService implements IDeviceConnectionService {
                         deviceId,
                         telemetryStatuses)
                 : assignmentsById;
+
+        // Device-only telemetry compatibility may discover a unique Mission, never pick a sibling.
+        if (assignments.stream().map(assignment -> assignment.getMission().getId()).distinct().count() > 1) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Telemetry device has multiple Missions; exact Mission required");
+        }
 
         return assignments.stream()
                 .filter(assignment -> assignment.getDeviceRole() == DeviceRole.MAIN)
@@ -284,9 +296,8 @@ public class DeviceConnectionService implements IDeviceConnectionService {
                 .orElse(null);
     }
 
-    private Mission getMission(String missionId) {
+    private Mission getMissionByIdOrThrow(String missionId) {
         return missionRepository.findById(missionId)
-                .or(() -> missionRepository.findByOrderId(missionId))
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission not found: " + missionId));
     }
 }

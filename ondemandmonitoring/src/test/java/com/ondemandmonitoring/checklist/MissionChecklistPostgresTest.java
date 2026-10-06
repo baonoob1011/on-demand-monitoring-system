@@ -87,7 +87,7 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
     @Test void threeItemsInitializeOnceAcrossRetriesAndControllers() {
         String order = snapshotOrder(3);
         var first = new com.ondemandmonitoring.mission.controller.MissionController(missionService, null, null).createMission(request(order)).getBody().getData();
-        var second = new com.ondemandmonitoring.mission.controller.OrderMissionController(missionService)
+        var second = new com.ondemandmonitoring.mission.controller.OrderMissionController(missionService, null)
                 .createMissionForOrder(order, request("ignored")).getBody().getData();
         assertEquals(first.getId(), second.getId());
         assertEquals(first.getId(), missionService.createMission(request(order)).getId());

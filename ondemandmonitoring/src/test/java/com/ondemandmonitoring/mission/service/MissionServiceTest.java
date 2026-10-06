@@ -193,11 +193,11 @@ class MissionServiceTest {
         var request = new com.ondemandmonitoring.mission.dto.request.MissionCreateRequest();
         request.setOrderId(order.getId());
         when(orderRepository.findByIdForUpdate(order.getId())).thenReturn(Optional.of(order));
-        when(missionRepository.findByOrderId(order.getId())).thenReturn(Optional.of(existing));
+        when(missionRepository.findAllByOrderIdOrderByScheduledStartAtAscIdAsc(order.getId())).thenReturn(List.of(existing));
         assertThat(missionService.createMission(request).getId()).isEqualTo(existing.getId());
         var ordered = inOrder(orderRepository, missionRepository);
         ordered.verify(orderRepository).findByIdForUpdate(order.getId());
-        ordered.verify(missionRepository).findByOrderId(order.getId());
+        ordered.verify(missionRepository).findAllByOrderIdOrderByScheduledStartAtAscIdAsc(order.getId());
         verify(missionRepository, never()).save(any());
     }
 
@@ -209,6 +209,73 @@ class MissionServiceTest {
         when(orderRepository.findByIdForUpdate("order-1")).thenThrow(failure);
         assertThatThrownBy(() -> missionService.createMission(request)).isSameAs(failure);
         verifyNoInteractions(missionRepository);
+    }
+
+    @Test
+    void creationGateFailsClosedRatherThanSelectingOneOfMultipleChildren() {
+        var order = new com.ondemandmonitoring.order.domain.Order(); order.setId("order-1");
+        var request = new com.ondemandmonitoring.mission.dto.request.MissionCreateRequest();
+        request.setOrderId(order.getId());
+        when(orderRepository.findByIdForUpdate(order.getId())).thenReturn(Optional.of(order));
+        when(missionRepository.findAllByOrderIdOrderByScheduledStartAtAscIdAsc(order.getId()))
+                .thenReturn(List.of(new Mission(), new Mission()));
+        assertThatThrownBy(() -> missionService.createMission(request))
+                .isInstanceOf(com.ondemandmonitoring.common.exception.ApiException.class);
+        verify(missionRepository, never()).save(any());
+    }
+
+    @Test
+    void missionAndDeviceOperationsRejectOrderIdentityWithoutLookingUpChildren() {
+        assertThatThrownBy(() -> missionService.findById("order-1"))
+                .isInstanceOf(com.ondemandmonitoring.common.exception.ApiException.class);
+        assertThatThrownBy(() -> deviceConnectionService.connectGcs("order-1"))
+                .isInstanceOf(com.ondemandmonitoring.common.exception.ApiException.class);
+        verify(missionRepository, never()).findAllByOrderIdOrderByScheduledStartAtAscIdAsc(anyString());
+        verifyNoInteractions(missionDeviceAssignmentRepository, missionStaffAssignmentRepository);
+    }
+
+    @Test
+    void deviceOperationUsesExactChildMissionAndDoesNotTouchSibling() {
+        var order = new com.ondemandmonitoring.order.domain.Order(); order.setId("order-1");
+        var first = new Mission(); first.setId("m1"); first.setOrder(order);
+        var sibling = new Mission(); sibling.setId("m2"); sibling.setOrder(order);
+        when(missionRepository.findById("m1")).thenReturn(Optional.of(first));
+        assertThat(deviceConnectionService.disconnectGcs("m1", "NORMAL").getId()).isEqualTo("m1");
+        verify(deviceConnectionRepository).findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc("m1", "CONNECTED");
+        verify(missionRepository, never()).findById("m2");
+        verify(missionRepository, never()).findAllByOrderIdOrderByScheduledStartAtAscIdAsc(anyString());
+        assertThat(sibling.getStatus()).isNull();
+    }
+
+    @Test
+    void telemetryWithExactMissionCannotReuseSiblingSessionOrOrderAlias() {
+        var order = new com.ondemandmonitoring.order.domain.Order(); order.setId("order-1");
+        var first = new Mission(); first.setId("m1"); first.setOrder(order);
+        var second = new Mission(); second.setId("m2"); second.setOrder(order);
+        var firstSession = new DeviceConnection(); firstSession.setMission(first);
+        var secondSession = new DeviceConnection(); secondSession.setMission(second);
+        when(missionRepository.findById("m1")).thenReturn(Optional.of(first));
+        when(deviceConnectionRepository.findActiveTelemetryByDeviceIdentifier("device", "CONNECTED"))
+                .thenReturn(List.of(secondSession, firstSession));
+        assertThat(deviceConnectionService.requireActiveTelemetryConnection("device", "m1")).isSameAs(firstSession);
+        assertThatThrownBy(() -> deviceConnectionService.requireActiveTelemetryConnection("device", "order-1"))
+                .isInstanceOf(com.ondemandmonitoring.common.exception.ApiException.class);
+        assertThatThrownBy(() -> deviceConnectionService.requireActiveTelemetryConnection("device"))
+                .isInstanceOf(com.ondemandmonitoring.common.exception.ApiException.class);
+        verifyNoInteractions(missionDeviceAssignmentRepository);
+    }
+
+    @Test
+    void telemetryDoesNotDiscoverAnArbitrarySiblingFromDeviceAssignments() {
+        var first = new Mission(); first.setId("m1");
+        var second = new Mission(); second.setId("m2");
+        var a = new MissionDeviceAssignment(); a.setMission(first);
+        var b = new MissionDeviceAssignment(); b.setMission(second);
+        when(missionDeviceAssignmentRepository.findCurrentByDeviceIdAndMissionStatusIn(eq("device"), any()))
+                .thenReturn(List.of(a, b));
+        assertThatThrownBy(() -> deviceConnectionService.requireActiveTelemetryConnection("device", null))
+                .isInstanceOf(com.ondemandmonitoring.common.exception.ApiException.class);
+        verify(deviceConnectionRepository, never()).save(any());
     }
 
     @Test

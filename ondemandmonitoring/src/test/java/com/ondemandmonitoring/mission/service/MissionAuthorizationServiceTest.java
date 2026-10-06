@@ -180,6 +180,63 @@ class MissionAuthorizationServiceTest {
     }
 
     @Test
+    void siblingsShareOrderContextButNeverMissionPermissions() {
+        var order = new com.ondemandmonitoring.order.domain.Order(); order.setId("order-1");
+        mission.setOrder(order);
+        var sibling = new Mission(); sibling.setId("mission-2"); sibling.setOrder(order);
+        sibling.setStatus(MissionStatus.PENDING_REVIEW);
+        when(missions.findById("mission-2")).thenReturn(Optional.of(sibling));
+        var crew = java.util.Arrays.stream(MissionStaffRole.values()).map(role ->
+                MissionStaffAssignment.builder().mission(mission).staff(staff).assignedRole(role)
+                        .isCurrent(true).responseStatus(StaffResponseStatus.ACCEPTED).build()).toList();
+        when(assignments.findAllByMissionIdAndIsCurrentTrue("mission-1")).thenReturn(crew);
+        when(assignments.findByMissionId("mission-1")).thenReturn(crew);
+        when(assignments.findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc("mission-1", staff.getId()))
+                .thenReturn(crew);
+        assertThat(policy.canViewMission("mission-1")).isTrue();
+        assertThat(policy.canViewMission("mission-2")).isFalse();
+        assertThat(policy.canControlFlight("mission-1")).isTrue();
+        assertThat(policy.canControlFlight("mission-2")).isFalse();
+        assertThat(policy.canOperatePayload("mission-1")).isTrue();
+        assertThat(policy.canOperatePayload("mission-2")).isFalse();
+        assertThat(policy.canInspectDevice("mission-1")).isTrue();
+        assertThat(policy.canInspectDevice("mission-2")).isFalse();
+        assertThat(policy.canMaintainDevice("mission-1")).isTrue();
+        assertThat(policy.canMaintainDevice("mission-2")).isFalse();
+        mission.setStatus(MissionStatus.IN_FLIGHT);
+        assertThat(policy.canExecuteMonitoringChecklist("mission-1")).isTrue();
+        assertThat(policy.canExecuteMonitoringChecklist("mission-2")).isFalse();
+        mission.setStatus(MissionStatus.PENDING_REVIEW);
+        assertThat(policy.canAttachChecklistEvidence("mission-1")).isTrue();
+        assertThat(policy.canAttachChecklistEvidence("mission-2")).isFalse();
+        assertThat(policy.canDetachChecklistEvidence("mission-2")).isFalse();
+        assertThat(policy.canUploadMissionMedia("mission-1")).isTrue();
+        assertThat(policy.canUploadMissionMedia("mission-2")).isFalse();
+        assertThat(policy.canCompleteMission("mission-1")).isTrue();
+        assertThat(policy.canCompleteMission("mission-2")).isFalse();
+        assertThat(policy.canSubmitMissionResult("mission-1")).isTrue();
+        assertThat(policy.canSubmitMissionResult("mission-2")).isFalse();
+        var orders = mock(com.ondemandmonitoring.order.repository.OrderRepository.class);
+        when(orders.findById(order.getId())).thenReturn(Optional.of(order));
+        when(missions.findAllByOrderIdOrderByScheduledStartAtAscIdAsc(order.getId())).thenReturn(List.of(mission, sibling));
+        var orderPolicy = new com.ondemandmonitoring.order.service.impl.OrderAuthorizationService(
+                orders, resolver, policy, missions);
+        assertThat(orderPolicy.canViewOrder(order.getId())).isTrue();
+        assertThat(policy.canViewMission(order.getId())).isFalse();
+        assertThat(policy.canCompleteMission(order.getId())).isFalse();
+        assertThat(policy.canViewMission("mission-2")).isFalse();
+    }
+
+    @Test
+    void codeLookupIsExplicitAndCannotAliasTheMissionIdContract() {
+        when(missions.findByMissionCode("MS-001")).thenReturn(Optional.of(mission));
+        assign(MissionStaffRole.PILOT, StaffResponseStatus.ACCEPTED);
+        assertThat(policy.canViewMission("MS-001")).isFalse();
+        assertThat(policy.canViewMissionByCode("MS-001")).isTrue();
+        assertThat(policy.canViewMissionByCode("missing")).isFalse();
+    }
+
+    @Test
     void inspectorUploadAndCompletionRequireCurrentOrSuccessfulFinalAssignment() {
         mission.setStatus(MissionStatus.PENDING_REVIEW);
         var entry = assign(MissionStaffRole.INSPECTOR, StaffResponseStatus.ACCEPTED);
