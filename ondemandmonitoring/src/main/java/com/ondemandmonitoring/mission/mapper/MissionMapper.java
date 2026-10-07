@@ -11,6 +11,7 @@ import org.mapstruct.Mapping;
 public interface MissionMapper {
 
     @Mapping(source = "order.id", target = "orderId")
+    @Mapping(source = "replacesMissionId", target = "replacesMissionId")
     @Mapping(source = "order.orderCode", target = "orderCode")
     @Mapping(source = "order.title", target = "orderTitle")
     @Mapping(source = "order.preferredDateFrom", target = "orderPreferredDateFrom")

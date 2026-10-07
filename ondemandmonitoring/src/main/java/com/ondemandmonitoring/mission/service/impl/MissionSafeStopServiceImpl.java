@@ -48,16 +48,50 @@ public class MissionSafeStopServiceImpl implements IMissionSafeStopService {
             throw new ApiException(ErrorCode.MISSION_CANCELLATION_NOT_ALLOWED);
     }
 
+    private void requireRequestAllowed(Mission m, long expectedRevision) {
+        var order = m.getOrder();
+        if (order.getExecutionPlanStatus() != ExecutionPlanStatus.DRAFT) throw new ApiException(ErrorCode.EXECUTION_PLAN_NOT_DRAFT);
+        if (order.getExecutionPlanRevision() != expectedRevision) throw new ApiException(ErrorCode.EXECUTION_PLAN_REVISION_CONFLICT);
+        if (order.getOrderStatus() != OrderStatus.APPROVED && order.getOrderStatus() != OrderStatus.IN_PROGRESS)
+            throw new ApiException(ErrorCode.MISSION_CANCELLATION_NOT_ALLOWED);
+    }
+
+    private void requireConfirmationAllowed(Mission m, com.ondemandmonitoring.user.domain.User user) {
+        boolean authorized = user.getRole() != null && user.getRole().getCode() == RoleCode.STAFF
+                && crew.findByMissionId(m.getId()).stream().anyMatch(a -> a.getStaff() != null && user.getId().equals(a.getStaff().getId())
+                    && Boolean.TRUE.equals(a.getIsCurrent()) && a.getResponseStatus() == StaffResponseStatus.ACCEPTED
+                    && (a.getAssignedRole() == MissionStaffRole.PILOT
+                        || (!Boolean.TRUE.equals(m.getSafeStopRequiresLanding()) && a.getAssignedRole() == MissionStaffRole.OPERATOR)));
+        if (!authorized) throw new ApiException(ErrorCode.ACCESS_DENIED);
+        if (m.getSafeStopRequestedAt() == null || Set.of(MissionStatus.IN_FLIGHT, MissionStatus.IN_PROGRESS,
+                MissionStatus.RETURNING).contains(m.getStatus())) throw new ApiException(ErrorCode.MISSION_SAFE_STOP_NOT_READY);
+    }
+
+    private void requireCleanupRequested(Mission m) {
+        if (m.getSafeStopRequestedAt() == null || m.getSafeStopStatus() == MissionSafeStopStatus.FAILED)
+            throw new ApiException(ErrorCode.MISSION_SAFE_STOP_FAILED);
+    }
+
+    private void requireCleanupReady(Mission m, List<com.ondemandmonitoring.mission.domain.DeviceConnection> sessions) {
+        boolean live = sessions.stream().anyMatch(s -> "CONNECTED".equals(s.getConnectionStatus()) || Boolean.TRUE.equals(s.getTelemetryActive()));
+        if ((Boolean.TRUE.equals(m.getSafeStopRequiresLanding()) || live) && m.getSafeStopConfirmedAt() == null)
+            throw new ApiException(ErrorCode.MISSION_SAFE_STOP_NOT_READY);
+        if (Set.of(MissionStatus.IN_FLIGHT, MissionStatus.IN_PROGRESS, MissionStatus.RETURNING,
+                MissionStatus.CONNECTED, MissionStatus.PREFLIGHT_CHECKING, MissionStatus.READY_TO_FLY,
+                MissionStatus.POSTFLIGHT_CHECKING).contains(m.getStatus())) throw new ApiException(ErrorCode.MISSION_SAFE_STOP_NOT_READY);
+        if (Boolean.TRUE.equals(m.getSafeStopRequiresLanding()) && m.getStatus() != MissionStatus.FAILED
+                && inspections.findFirstByMissionIdOrderByCreatedAtDesc(m.getId()).filter(p -> p.getCompletedAt() != null
+                        && (m.getActualStartAt() == null || !p.getCompletedAt().isBefore(m.getActualStartAt()))
+                        && p.getDeviceConnection() != null && m.getId().equals(p.getDeviceConnection().getMission().getId())).isEmpty())
+            throw new ApiException(ErrorCode.MISSION_SAFE_STOP_NOT_READY);
+    }
+
     @Override @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public MissionSafeStopResponse request(String id, MissionSafeStopRequest request) {
         if (request == null || request.expectedPlanRevision() == null || request.reason() == null
                 || request.reason().isBlank() || request.reason().length() > 1000) throw new ApiException(ErrorCode.INVALID_REQUEST);
         var m = lock(id); acceptedHistoryGuard(m);
-        var order = m.getOrder();
-        if (order.getExecutionPlanStatus() != ExecutionPlanStatus.DRAFT) throw new ApiException(ErrorCode.EXECUTION_PLAN_NOT_DRAFT);
-        if (order.getExecutionPlanRevision() != request.expectedPlanRevision()) throw new ApiException(ErrorCode.EXECUTION_PLAN_REVISION_CONFLICT);
-        if (order.getOrderStatus() != OrderStatus.APPROVED && order.getOrderStatus() != OrderStatus.IN_PROGRESS)
-            throw new ApiException(ErrorCode.MISSION_CANCELLATION_NOT_ALLOWED);
+        requireRequestAllowed(m, request.expectedPlanRevision());
         if (m.getSafeStopRequestedAt() == null) {
             m.setSafeStopStatus(MissionSafeStopStatus.REQUESTED); m.setSafeStopRequestedAt(Instant.now());
             m.setSafeStopRequestedBy(actor.getCurrentUserId()); m.setSafeStopReason(request.reason().strip());
@@ -75,14 +109,7 @@ public class MissionSafeStopServiceImpl implements IMissionSafeStopService {
             throw new ApiException(ErrorCode.MISSION_SAFE_STOP_NOT_READY);
         var m = lock(id); acceptedHistoryGuard(m);
         var user = actor.getCurrentUser();
-        boolean authorized = user.getRole() != null && user.getRole().getCode() == RoleCode.STAFF
-                && crew.findByMissionId(id).stream().anyMatch(a -> a.getStaff() != null && user.getId().equals(a.getStaff().getId())
-                    && Boolean.TRUE.equals(a.getIsCurrent()) && a.getResponseStatus() == StaffResponseStatus.ACCEPTED
-                    && (a.getAssignedRole() == MissionStaffRole.PILOT
-                        || (!Boolean.TRUE.equals(m.getSafeStopRequiresLanding()) && a.getAssignedRole() == MissionStaffRole.OPERATOR)));
-        if (!authorized) throw new ApiException(ErrorCode.ACCESS_DENIED);
-        if (m.getSafeStopRequestedAt() == null || Set.of(MissionStatus.IN_FLIGHT, MissionStatus.IN_PROGRESS,
-                MissionStatus.RETURNING).contains(m.getStatus())) throw new ApiException(ErrorCode.MISSION_SAFE_STOP_NOT_READY);
+        requireConfirmationAllowed(m, user);
         if (m.getSafeStopConfirmedAt() == null) {
             m.setSafeStopStatus(MissionSafeStopStatus.IN_PROGRESS); m.setSafeStopConfirmedAt(Instant.now());
             m.setSafeStopConfirmedBy(user.getId()); m.setSafeStopConfirmation(request.confirmation().strip()); missions.saveAndFlush(m);
@@ -107,25 +134,14 @@ public class MissionSafeStopServiceImpl implements IMissionSafeStopService {
         var m = lock(id);
         if (m.getSafeStopCleanedAt() != null) return response(m);
         acceptedHistoryGuard(m);
-        if (m.getSafeStopRequestedAt() == null || m.getSafeStopStatus() == MissionSafeStopStatus.FAILED)
-            throw new ApiException(ErrorCode.MISSION_SAFE_STOP_FAILED);
+        requireCleanupRequested(m);
         var deviceRows = devices.findByMissionId(id); var staffRows = crew.findByMissionId(id);
         var ids = new TreeSet<String>();
         for (var a : deviceRows) ids.add(a.getDevice().getId());
         for (var a : staffRows) ids.add(a.getStaff().getId());
         resources.lockMissionResources(id, ids);
         var sessions = connections.findByMissionId(id);
-        boolean live = sessions.stream().anyMatch(s -> "CONNECTED".equals(s.getConnectionStatus()) || Boolean.TRUE.equals(s.getTelemetryActive()));
-        if ((Boolean.TRUE.equals(m.getSafeStopRequiresLanding()) || live) && m.getSafeStopConfirmedAt() == null)
-            throw new ApiException(ErrorCode.MISSION_SAFE_STOP_NOT_READY);
-        if (Set.of(MissionStatus.IN_FLIGHT, MissionStatus.IN_PROGRESS, MissionStatus.RETURNING,
-                MissionStatus.CONNECTED, MissionStatus.PREFLIGHT_CHECKING, MissionStatus.READY_TO_FLY,
-                MissionStatus.POSTFLIGHT_CHECKING).contains(m.getStatus())) throw new ApiException(ErrorCode.MISSION_SAFE_STOP_NOT_READY);
-        if (Boolean.TRUE.equals(m.getSafeStopRequiresLanding()) && m.getStatus() != MissionStatus.FAILED
-                && inspections.findFirstByMissionIdOrderByCreatedAtDesc(id).filter(p -> p.getCompletedAt() != null
-                        && (m.getActualStartAt() == null || !p.getCompletedAt().isBefore(m.getActualStartAt()))
-                        && p.getDeviceConnection() != null && id.equals(p.getDeviceConnection().getMission().getId())).isEmpty())
-            throw new ApiException(ErrorCode.MISSION_SAFE_STOP_NOT_READY);
+        requireCleanupReady(m, sessions);
         Instant now = Instant.now();
         for (var session : sessions) if ("CONNECTED".equals(session.getConnectionStatus()) || Boolean.TRUE.equals(session.getTelemetryActive())) {
             session.setConnectionStatus("DISCONNECTED"); session.setTelemetryActive(false);
@@ -152,7 +168,44 @@ public class MissionSafeStopServiceImpl implements IMissionSafeStopService {
         return response(missions.findById(missionId).orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND)));
     }
     private MissionSafeStopResponse response(Mission m) {
+        boolean planningAuthority = hasAuthority("ROLE_MANAGER") || hasAuthority("ROLE_ADMIN");
+        // Capability is an affordance snapshot, never authorization for a later write. Commands re-check under locks.
+        // Cancelled Missions expose no actions; existing cleanup replay remains callable without changing state.
+        boolean readableState = m.getOrder() != null && m.getOrder().getId() != null && m.getStatus() != null
+                && m.getOrder().getOrderStatus() != null && m.getOrder().getExecutionPlanStatus() != null
+                && (m.getSafeStopRequestedAt() == null || (m.getSafeStopStatus() != null && m.getSafeStopRequiresLanding() != null))
+                && m.getStatus() != MissionStatus.CANCELLED && m.getCancellationAt() == null;
+        boolean request = readableState && planningAuthority && allowed(() -> {
+            acceptedHistoryGuard(m); requireRequestAllowed(m, m.getOrder().getExecutionPlanRevision());
+        });
+        boolean confirm = readableState && hasAuthority("ROLE_STAFF") && allowed(() -> {
+            acceptedHistoryGuard(m); requireConfirmationAllowed(m, actor.getCurrentUser());
+        });
+        boolean cleanup = readableState && planningAuthority && allowed(() -> {
+            if (m.getSafeStopCleanedAt() != null) return; // Existing idempotent replay.
+            acceptedHistoryGuard(m); requireCleanupRequested(m); requireCleanupReady(m, connections.findByMissionId(m.getId()));
+        });
+        boolean cancel = readableState && planningAuthority && allowed(() -> MissionCancellationGuard.requireAllowed(
+                m.getOrder().getId(), m.getOrder(), m, m.getOrder().getExecutionPlanRevision(), results, missions));
         return new MissionSafeStopResponse(m.getId(), m.getSafeStopStatus(), m.getSafeStopRequestedAt(),
-                m.getSafeStopConfirmedAt(), m.getSafeStopCleanedAt(), m.getSafeStopFailureReason(), Boolean.TRUE.equals(m.getSafeStopRequiresLanding()));
+                m.getSafeStopConfirmedAt(), m.getSafeStopCleanedAt(), m.getSafeStopFailureReason(), Boolean.TRUE.equals(m.getSafeStopRequiresLanding()),
+                m.getSafeStopRequestedBy(), m.getSafeStopReason(), m.getSafeStopConfirmedBy(), m.getSafeStopConfirmation(),
+                request, confirm, cleanup, cancel);
+    }
+
+    private boolean hasAuthority(String authority) {
+        var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.isAuthenticated()
+                && !(authentication instanceof org.springframework.security.authentication.AnonymousAuthenticationToken)
+                && authentication.getAuthorities().stream().anyMatch(granted -> authority.equals(granted.getAuthority()));
+    }
+
+    private boolean allowed(Runnable guard) {
+        try { guard.run(); return true; }
+        catch (ApiException rejected) {
+            // Expected business denials become false. Infrastructure/internal failures remain visible.
+            if (rejected.getStatus().is4xxClientError()) return false;
+            throw rejected;
+        }
     }
 }

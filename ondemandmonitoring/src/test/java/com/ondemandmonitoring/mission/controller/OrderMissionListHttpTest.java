@@ -63,7 +63,7 @@ class OrderMissionListHttpTest {
         when(resolver.getCurrentUser()).thenAnswer(inv -> caller);
         when(orders.findById("o")).thenReturn(Optional.of(order));
         when(mapper.toResponse(any())).thenAnswer(inv -> {
-            Mission mission = inv.getArgument(0); return MissionResponse.builder().id(mission.getId()).build();
+            Mission mission = inv.getArgument(0); return MissionResponse.builder().id(mission.getId()).replacesMissionId(mission.getReplacesMissionId()).build();
         });
     }
 
@@ -123,6 +123,16 @@ class OrderMissionListHttpTest {
         mvc.perform(get("/api/orders/missing/missions").with(jwt().authorities(() -> "ROLE_MANAGER")))
                 .andExpect(status().isNotFound());
         verifyNoInteractions(missions, mapper);
+    }
+
+    @Test void replacementRelationsSurviveFreshOrderCollectionRead() throws Exception {
+        var first=child("m1"); var second=child("m2"); var third=child("m3");
+        second.setReplacesMissionId("m1"); third.setReplacesMissionId("m2");
+        when(missions.findAllByOrderIdOrderByScheduledStartAtAscIdAsc("o")).thenReturn(List.of(first,second,third));
+        mvc.perform(get("/api/orders/o/missions").with(jwt().authorities(() -> "ROLE_MANAGER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].replacesMissionId").isEmpty())
+                .andExpect(jsonPath("$.data[1].replacesMissionId").value("m1"))
+                .andExpect(jsonPath("$.data[2].replacesMissionId").value("m2"));
     }
 
     @Configuration @EnableWebMvc

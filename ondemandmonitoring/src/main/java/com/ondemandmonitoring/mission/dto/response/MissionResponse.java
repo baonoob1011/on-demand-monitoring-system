@@ -31,6 +31,9 @@ public class MissionResponse {
 
     String orderCode;
 
+    // Persisted relation only; no sibling detail lookup or inherited runtime history.
+    String replacesMissionId;
+
     String orderTitle;
 
     LocalDate orderPreferredDateFrom;

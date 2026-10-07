@@ -238,6 +238,37 @@ class ResourceSafetyPostgresTest extends ExecutionPlanAmendmentPostgresTest {
         assertEquals(1,jdbc.queryForObject("select count(*) from pg_extension where extname='btree_gist'",Integer.class));
     }
 
+    @AfterEach void clearCapabilityActor() { org.springframework.security.core.context.SecurityContextHolder.clearContext(); }
+
+    void capabilityAuthority(String role) {
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("test-actor",null,
+                    List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_"+role))));
+    }
+    @Test void capabilityReadsReflectRealCleanupAndCancelGuardsWithoutMutatingDatabase() {
+        ready(0); String pilot=operationalFixture(first); amend(); requestStop(first);
+        capabilityAuthority("MANAGER");
+        var before=jdbc.queryForList("select * from missions where id=?",first);
+        var locks=jdbc.queryForList("select * from resource_time_locks where mission_id=? order by id",first);
+        var capability=stop.get(first);
+        assertFalse(capability.canConfirmSafeStop()); assertFalse(capability.canCleanupSafeStop()); assertFalse(capability.canCancelMission());
+        assertEquals(before,jdbc.queryForList("select * from missions where id=?",first));
+        assertEquals(locks,jdbc.queryForList("select * from resource_time_locks where mission_id=? order by id",first));
+        postflight(first); actor(pilot); capabilityAuthority("STAFF");
+        assertTrue(stop.get(first).canConfirmSafeStop()); confirmStop(first);
+        assertTrue(stop.get(first).canConfirmSafeStop(),"existing idempotent confirmation replay");
+        capabilityAuthority("MANAGER"); assertTrue(stop.get(first).canCleanupSafeStop()); assertFalse(stop.get(first).canCancelMission());
+        stop.cleanup(first); assertTrue(stop.get(first).canCleanupSafeStop()); assertTrue(stop.get(first).canCancelMission());
+        cancel(first); assertFalse(stop.get(first).canCancelMission()); assertFalse(stop.get(first).canCleanupSafeStop());
+    }
+    @Test void ownAndSiblingCrewHaveDifferentConfirmationCapabilities() {
+        ready(0); String pilotA=operationalFixture(first); String pilotB=operationalFixture(second); amend();
+        requestStop(first); requestStop(second); postflight(first); postflight(second);
+        capabilityAuthority("STAFF"); actor(pilotA);
+        assertTrue(stop.get(first).canConfirmSafeStop()); assertFalse(stop.get(second).canConfirmSafeStop());
+        actor(pilotB); assertTrue(stop.get(second).canConfirmSafeStop()); assertFalse(stop.get(first).canConfirmSafeStop());
+    }
+
     @Configuration @Import(ExecutionPlanAmendmentPostgresTest.Beans.class)
     static class Beans {
         @Bean IResourceReservationService resourceReservations(DataSource data,EntityManagerFactory factory,AuthenticatedUserResolver actor) {
