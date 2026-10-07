@@ -35,4 +35,19 @@ class OrderCreateRequestValidationTest {
                     v.getPropertyPath().toString().startsWith("deliverables")));
         }
     }
+
+    @Test
+    void rejectsRecurrenceOutsideTwoToFiftyTwoFlights() {
+        try (var factory = Validation.buildDefaultValidatorFactory()) {
+            for (int bad : new int[] {1, 53}) {
+                var request = OrderCreateRequest.builder().recurrenceOccurrences(bad).build();
+                var paths = factory.getValidator().validate(request).stream()
+                        .map(v -> v.getPropertyPath().toString()).toList();
+                assertTrue(paths.contains("recurrenceOccurrences"), "occurrences " + bad);
+            }
+            var ok = OrderCreateRequest.builder().recurrenceOccurrences(4).build();
+            assertTrue(factory.getValidator().validate(ok).stream()
+                    .noneMatch(v -> v.getPropertyPath().toString().equals("recurrenceOccurrences")));
+        }
+    }
 }
