@@ -125,7 +125,8 @@ class MissionServiceTest {
                 missionDeviceAssignmentRepository,
                 missionStaffAssignmentRepository,
                 deviceRepository,
-                missionMapper, com.ondemandmonitoring.mission.service.ScopeTestFixture.validScope());
+                missionMapper, com.ondemandmonitoring.mission.service.ScopeTestFixture.validScope(),
+                mock(com.ondemandmonitoring.mission.service.IResourceReservationService.class));
 
         flightTokenService = new FlightTokenService(
                 flightTokenRepository,
@@ -157,7 +158,14 @@ class MissionServiceTest {
                 missionDeviceAssignmentRepository,
                 missionStaffAssignmentRepository,
                 resourceTimeLockRepository,
-                mock(com.ondemandmonitoring.mission.service.IMissionChecklistExecutionService.class));
+                mock(com.ondemandmonitoring.mission.service.IMissionChecklistExecutionService.class),
+                new com.ondemandmonitoring.mission.service.impl.ResourceReservationServiceImpl(
+                        mock(org.springframework.jdbc.core.JdbcTemplate.class), resourceTimeLockRepository, userScheduleRepository, authenticatedUserResolver));
+
+        when(missionRepository.findByIdForUpdate(anyString())).thenAnswer(call -> missionRepository.findById(call.getArgument(0)));
+        when(missionRepository.findOrderIdByMissionId(anyString())).thenAnswer(call -> missionRepository.findById(call.getArgument(0))
+                .map(m -> m.getOrder() == null ? "unit-order" : m.getOrder().getId()));
+        when(orderRepository.findByIdForUpdate("unit-order")).thenReturn(Optional.of(new com.ondemandmonitoring.order.domain.Order()));
 
         when(missionMapper.toResponse(any())).thenAnswer(inv -> {
             Mission m = inv.getArgument(0);
@@ -820,8 +828,8 @@ class MissionServiceTest {
         }
 
         @Test
-        @DisplayName("5. failMission keeps an airborne device unavailable after failure")
-        void failMission_setsDeviceAvailable() {
+        @DisplayName("5. failMission cannot bypass safe-stop for an airborne mission")
+        void failMission_airborneRequiresSafeStopWithoutReleasingResources() {
             Mission mission = buildMission("m-9", MissionStatus.IN_FLIGHT);
             Device device = buildDevice("DEV-01", DeviceStatus.ACTIVE_MISSION);
             MissionDeviceAssignment mda = new MissionDeviceAssignment();
@@ -833,10 +841,12 @@ class MissionServiceTest {
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(deviceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            MissionResponse result = missionService.failMission("m-9", "GPS lost");
-
-            assertThat(result.getStatus()).isEqualTo(MissionStatus.FAILED);
-            assertThat(device.getStatus()).isEqualTo(DeviceStatus.MAINTENANCE);
+            assertThatThrownBy(() -> missionService.failMission("m-9", "GPS lost"))
+                    .isInstanceOf(ApiException.class).extracting(e -> ((ApiException)e).getErrorCode())
+                    .isEqualTo(com.ondemandmonitoring.common.exception.ErrorCode.MISSION_CANCELLATION_REQUIRES_SAFE_STOP);
+            assertThat(mission.getStatus()).isEqualTo(MissionStatus.IN_FLIGHT);
+            assertThat(device.getStatus()).isEqualTo(DeviceStatus.ACTIVE_MISSION);
+            verify(resourceTimeLockRepository,never()).saveAllAndFlush(anyIterable());
         }
 
         @Test
@@ -856,6 +866,9 @@ class MissionServiceTest {
             schedule.setScheduleType(com.ondemandmonitoring.userschedule.enums.UserScheduleType.MISSION);
             schedule.setStatus(com.ondemandmonitoring.userschedule.enums.UserScheduleStatus.SCHEDULED);
             when(userScheduleRepository.findByReferenceId("m-post")).thenReturn(List.of(schedule));
+            var deviceLock = new com.ondemandmonitoring.mission.domain.ResourceTimeLock(); deviceLock.setResourceId(device.getId());
+            var staffLock = new com.ondemandmonitoring.mission.domain.ResourceTimeLock(); staffLock.setResourceId(staff.getId());
+            when(resourceTimeLockRepository.findByMissionId("m-post")).thenReturn(List.of(deviceLock,staffLock));
 
             when(missionRepository.findById("m-post")).thenReturn(Optional.of(mission));
             when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -866,8 +879,9 @@ class MissionServiceTest {
 
             assertThat(device.getStatus()).isEqualTo(DeviceStatus.AVAILABLE);
             assertThat(result.getStatus()).isEqualTo(MissionStatus.PENDING_REVIEW);
-            verify(resourceTimeLockRepository).findAllByResourceIdAndMissionId(device.getId(), "m-post");
-            verify(resourceTimeLockRepository).findAllByResourceIdAndMissionId("postflight-staff", "m-post");
+            assertThat(deviceLock.getReleasedAt()).isNotNull(); assertThat(staffLock.getReleasedAt()).isNotNull();
+            assertThat(deviceLock.getReleaseReason()).isEqualTo("POSTFLIGHT_COMPLETE");
+            verify(resourceTimeLockRepository,never()).deleteAll(anyIterable());
             assertThat(schedule.getStatus()).isEqualTo(com.ondemandmonitoring.userschedule.enums.UserScheduleStatus.COMPLETED);
             assertThat(mission.getActualEndAt()).isNotNull();
             assertThat(mda.getReleasedAt()).isNull(); assertThat(crew.getReleasedAt()).isNull();

@@ -85,9 +85,7 @@ public class OperatorDirectoryServiceImpl implements IOperatorDirectoryService {
     }
 
     private boolean isReleasedLock(ResourceTimeLock lock) {
-        return lock != null
-                && lock.getMission() != null
-                && isTerminalMission(lock.getMission().getStatus());
+        return lock != null && lock.getReleasedAt() != null;
     }
 
     private boolean isTerminalMission(MissionStatus status) {
@@ -97,27 +95,14 @@ public class OperatorDirectoryServiceImpl implements IOperatorDirectoryService {
     }
 
     private boolean hasScheduleConflict(String staffId, Mission mission) {
-        Instant start = mission.getScheduledStartAt();
-        Instant end = mission.getScheduledEndAt();
-        for (UserSchedule schedule : userScheduleRepository.findByStaffId(staffId)) {
-            if (schedule.getStatus() == UserScheduleStatus.CANCELLED
-                    || schedule.getStatus() == UserScheduleStatus.COMPLETED) {
-                continue;
-            }
-            if (mission.getId().equals(schedule.getReferenceId())) {
-                continue;
-            }
-            if (overlaps(schedule.getStartTime(), schedule.getEndTime(), start, end)) {
-                return true;
-            }
-        }
-        return false;
+        return com.ondemandmonitoring.mission.service.impl.ReservationWindowPolicy.staffHasConflict(
+                userScheduleRepository.findByStaffId(staffId), mission.getId(), mission.getScheduledStartAt(), mission.getScheduledEndAt());
     }
 
     private boolean overlaps(Instant startA, Instant endA, Instant startB, Instant endB) {
         if (startA == null || endA == null || startB == null || endB == null) {
             return false;
         }
-        return startA.isBefore(endB) && endA.isAfter(startB);
+        return com.ondemandmonitoring.mission.service.impl.ReservationWindowPolicy.overlaps(startA,endA,startB,endB);
     }
 }

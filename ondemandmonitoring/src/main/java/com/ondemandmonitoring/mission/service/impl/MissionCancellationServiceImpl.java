@@ -50,7 +50,10 @@ public class MissionCancellationServiceImpl implements IMissionCancellationServi
         if (mission.getCreationIdempotencyKey() == null) throw new ApiException(ErrorCode.MULTI_MISSION_LEGACY_ORDER_NOT_MIGRATED);
         if (results.existsByMissionIdAndApprovalStatus(missionId, MissionResultApprovalStatus.APPROVED))
             throw new ApiException(ErrorCode.MISSION_RESULT_ALREADY_APPROVED);
-        if (!SAFE_STATES.contains(mission.getStatus()) || missions.hasUnsafeCancellationResources(missionId))
+        if ((!SAFE_STATES.contains(mission.getStatus()) && !(mission.getStatus() == MissionStatus.PENDING_REVIEW
+                && mission.getSafeStopStatus() == MissionSafeStopStatus.READY_FOR_CANCELLATION))
+                || (mission.getSafeStopRequestedAt() != null && mission.getSafeStopStatus() != MissionSafeStopStatus.READY_FOR_CANCELLATION)
+                || missions.hasUnsafeCancellationResources(missionId))
             throw new ApiException(ErrorCode.MISSION_CANCELLATION_REQUIRES_SAFE_STOP);
         mission.setStatus(MissionStatus.CANCELLED);
         mission.setCancellationAt(Instant.now()); mission.setCancelledBy(actor.getCurrentUserId());

@@ -46,11 +46,13 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     private final DeviceRepository deviceRepository;
     private final MissionMapper missionMapper;
     private final com.ondemandmonitoring.mission.service.IMissionChecklistScopeService checklistScope;
+    private final com.ondemandmonitoring.mission.service.IResourceReservationService resources;
 
     @Override
     @Transactional
     public MissionResponse connectGcs(String missionId) {
         Mission mission = getMissionByIdOrThrow(missionId);
+        MissionRuntimeGate.requireOperationalCommandsAllowed(mission);
         String resolvedMissionId = mission.getId();
 
         if (mission.getStatus() != MissionStatus.SCHEDULED && mission.getStatus() != MissionStatus.CONNECTED) {
@@ -65,6 +67,7 @@ public class DeviceConnectionService implements IDeviceConnectionService {
                         ErrorCode.RESOURCE_NOT_FOUND,
                         "Mission has no current device assignment: " + resolvedMissionId));
         Device device = deviceAssignment.getDevice();
+        lockExclusiveSession(device, resolvedMissionId);
         MissionStaffAssignment staffAssignment = getCurrentStaffAssignment(resolvedMissionId);
         if (staffAssignment == null) {
             throw new ApiException(
@@ -159,12 +162,15 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     @Override
     @Transactional
     public DeviceConnection requireActiveTelemetryConnection(String deviceId, String missionId) {
+        if (missionId != null && !missionId.isBlank()) getMissionByIdOrThrow(missionId);
         var connections = deviceConnectionRepository.findActiveTelemetryByDeviceIdentifier(deviceId, "CONNECTED");
         if (missionId != null && !missionId.isBlank()) {
             getMissionByIdOrThrow(missionId);
             connections = connections.stream().filter(connection -> connection.getMission() != null
                     && missionId.equals(connection.getMission().getId())).toList();
         }
+        if (connections.size() == 1 && connections.getFirst().getMission() != null)
+            getMissionByIdOrThrow(connections.getFirst().getMission().getId());
         return uniqueTelemetryConnection(connections)
                 .orElseGet(() -> connectTelemetrySession(deviceId, missionId));
     }
@@ -181,7 +187,8 @@ public class DeviceConnectionService implements IDeviceConnectionService {
 
     private DeviceConnection connectTelemetrySession(String deviceId, String missionId) {
         MissionDeviceAssignment deviceAssignment = resolveTelemetryDeviceAssignment(deviceId, missionId);
-        Mission mission = deviceAssignment.getMission();
+        Mission mission = getMissionByIdOrThrow(deviceAssignment.getMission().getId());
+        MissionRuntimeGate.requireOperationalCommandsAllowed(mission);
         requireRuntime(mission);
         if (mission.getStatus() != MissionStatus.SCHEDULED
                 && mission.getStatus() != MissionStatus.CONNECTED
@@ -202,6 +209,7 @@ public class DeviceConnectionService implements IDeviceConnectionService {
         }
 
         Device device = deviceAssignment.getDevice();
+        lockExclusiveSession(device, mission.getId());
         if (mission.getStatus() == MissionStatus.SCHEDULED) {
             mission.setStatus(MissionStatus.CONNECTED);
             missionRepository.save(mission);
@@ -304,11 +312,19 @@ public class DeviceConnectionService implements IDeviceConnectionService {
     private void requireRuntime(Mission mission) {
         MissionRuntimeGate.requireFinalizedStructure(mission);
         checklistScope.requireMaterialized(mission);
+        MissionRuntimeGate.requireSessionAllowed(mission);
     }
 
     private Mission getMissionByIdOrThrow(String missionId) {
-        return missionRepository.findById(missionId)
+        return missionRepository.findByIdForUpdate(missionId)
                 .map(mission -> { requireRuntime(mission); return mission; })
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission not found: " + missionId));
+    }
+
+    private void lockExclusiveSession(Device device, String missionId) {
+        resources.lockResources(List.of(device.getId()));
+        if (deviceConnectionRepository.findActiveTelemetryByDeviceIdentifier(device.getId(), "CONNECTED").stream()
+                .anyMatch(c -> c.getMission() != null && !missionId.equals(c.getMission().getId())))
+            throw new ApiException(ErrorCode.RESOURCE_TIME_CONFLICT, "Device has another active Mission session");
     }
 }

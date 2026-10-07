@@ -48,7 +48,7 @@ public interface MissionRepository extends JpaRepository<Mission, String>, JpaSp
     @Query(value = """
             select exists(select 1 from mission_device_assignments where mission_id=:missionId and released_at is null)
                 or exists(select 1 from mission_staff_assignments where mission_id=:missionId and released_at is null)
-                or exists(select 1 from resource_time_locks where mission_id=:missionId)
+                or exists(select 1 from resource_time_locks where mission_id=:missionId and released_at is null)
                 or exists(select 1 from device_connections where mission_id=:missionId
                     and (connection_status='CONNECTED' or telemetry_active=true))
             """, nativeQuery = true)

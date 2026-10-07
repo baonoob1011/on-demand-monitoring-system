@@ -60,6 +60,7 @@ class FlightTokenServiceTest {
         device.setDeviceCode("DEVICE-01");
 
         MissionDeviceAssignment deviceAssignment = new MissionDeviceAssignment();
+        var mission = new com.ondemandmonitoring.mission.domain.Mission(); mission.setId(missionId); deviceAssignment.setMission(mission);
         deviceAssignment.setDevice(device);
         deviceAssignment.setIsCurrent(true);
 

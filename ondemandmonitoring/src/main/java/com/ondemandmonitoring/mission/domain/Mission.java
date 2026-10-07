@@ -64,6 +64,28 @@ public class Mission extends BaseEntity {
     @Column(name = "cancellation_reason", length = 1000)
     String cancellationReason;
 
+    @Column(name = "safe_stop_status", length = 40)
+    @Enumerated(EnumType.STRING)
+    com.ondemandmonitoring.mission.enums.MissionSafeStopStatus safeStopStatus;
+    @Column(name = "safe_stop_requested_at")
+    Instant safeStopRequestedAt;
+    @Column(name = "safe_stop_requested_by", length = 255)
+    String safeStopRequestedBy;
+    @Column(name = "safe_stop_reason", length = 1000)
+    String safeStopReason;
+    @Column(name = "safe_stop_requires_landing")
+    Boolean safeStopRequiresLanding;
+    @Column(name = "safe_stop_confirmed_at")
+    Instant safeStopConfirmedAt;
+    @Column(name = "safe_stop_confirmed_by", length = 255)
+    String safeStopConfirmedBy;
+    @Column(name = "safe_stop_confirmation", length = 1000)
+    String safeStopConfirmation;
+    @Column(name = "safe_stop_cleaned_at")
+    Instant safeStopCleanedAt;
+    @Column(name = "safe_stop_failure_reason", length = 1000)
+    String safeStopFailureReason;
+
     // ===== Schedule =====
 
     @Column(name = "scheduled_start_at", nullable = false)

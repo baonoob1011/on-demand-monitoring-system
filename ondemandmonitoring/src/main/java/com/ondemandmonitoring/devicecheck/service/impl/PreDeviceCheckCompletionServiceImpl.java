@@ -43,10 +43,11 @@ public class PreDeviceCheckCompletionServiceImpl implements IPreDeviceCheckCompl
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canOperatePayload(#missionId)")
     public PreDeviceCheckResponse complete(String missionId, String deviceId) {
-        Mission mission = missionRepository.findById(missionId)
+        Mission mission = missionRepository.findByIdForUpdate(missionId)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.MISSION_NOT_FOUND,
                         "Mission not found: " + missionId));
+        com.ondemandmonitoring.mission.service.impl.MissionRuntimeGate.requireOperationalCommandsAllowed(mission);
         Device assignedDevice = getCurrentDevice(mission.getId());
         if (assignedDevice == null || assignedDevice.getId() == null) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Mission has no assigned deviceId");

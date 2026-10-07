@@ -23,4 +23,19 @@ public final class MissionRuntimeGate {
     public static void requireFinalizedStructure(Mission mission) {
         if (!isStructurallyFinalized(mission)) throw new ApiException(ErrorCode.CHECKLIST_ASSIGNMENT_NOT_FINALIZED);
     }
+
+    public static void requireOperationalCommandsAllowed(Mission mission) {
+        if (mission.getStatus() == com.ondemandmonitoring.mission.enums.MissionStatus.CANCELLED
+                || mission.getSafeStopRequestedAt() != null)
+            throw new ApiException(ErrorCode.MISSION_CANCELLATION_REQUIRES_SAFE_STOP);
+    }
+
+    public static void requireSessionAllowed(Mission mission) {
+        if (mission.getStatus() == com.ondemandmonitoring.mission.enums.MissionStatus.CANCELLED
+                || mission.getStatus() == com.ondemandmonitoring.mission.enums.MissionStatus.FAILED
+                || mission.getStatus() == com.ondemandmonitoring.mission.enums.MissionStatus.COMPLETED
+                || mission.getSafeStopStatus() == com.ondemandmonitoring.mission.enums.MissionSafeStopStatus.IN_PROGRESS
+                || mission.getSafeStopStatus() == com.ondemandmonitoring.mission.enums.MissionSafeStopStatus.READY_FOR_CANCELLATION)
+            throw new ApiException(ErrorCode.MISSION_SAFE_STOP_NOT_READY);
+    }
 }

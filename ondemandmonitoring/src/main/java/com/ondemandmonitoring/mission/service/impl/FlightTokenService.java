@@ -59,6 +59,7 @@ public class FlightTokenService implements IFlightTokenService {
                         "Staff " + staffId + " is not assigned to mission " + missionId));
 
         String resolvedDeviceId = deviceAssignment.getDevice().getId();
+        MissionRuntimeGate.requireOperationalCommandsAllowed(deviceAssignment.getMission());
         String resolvedStaffId = staffAssignment.getStaff().getId().toString();
         Instant now = Instant.now();
         FlightToken token = new FlightToken();
