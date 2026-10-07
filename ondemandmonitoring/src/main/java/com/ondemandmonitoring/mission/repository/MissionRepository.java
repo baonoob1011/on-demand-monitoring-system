@@ -37,6 +37,23 @@ public interface MissionRepository extends JpaRepository<Mission, String>, JpaSp
     @Query("select m.id from Mission m where m.order.id = :orderId order by m.id")
     List<String> findIdsByOrderIdOrderById(@Param("orderId") String orderId);
 
+    @Query("select m.order.id from Mission m where m.id = :missionId")
+    Optional<String> findOrderIdByMissionId(@Param("missionId") String missionId);
+
+    boolean existsByReplacesMissionIdAndStatusNot(String replacesMissionId, MissionStatus status);
+
+    @Query("select count(r) > 0 from MissionResult r where r.mission.id = :missionId and r.approvalStatus = 'APPROVED'")
+    boolean hasApprovedResult(@Param("missionId") String missionId);
+
+    @Query(value = """
+            select exists(select 1 from mission_device_assignments where mission_id=:missionId and released_at is null)
+                or exists(select 1 from mission_staff_assignments where mission_id=:missionId and released_at is null)
+                or exists(select 1 from resource_time_locks where mission_id=:missionId)
+                or exists(select 1 from device_connections where mission_id=:missionId
+                    and (connection_status='CONNECTED' or telemetry_active=true))
+            """, nativeQuery = true)
+    boolean hasUnsafeCancellationResources(@Param("missionId") String missionId);
+
     Optional<Mission> findByOrderIdAndCreationIdempotencyKey(String orderId, String creationIdempotencyKey);
 
     boolean existsByMissionCode(String missionCode);

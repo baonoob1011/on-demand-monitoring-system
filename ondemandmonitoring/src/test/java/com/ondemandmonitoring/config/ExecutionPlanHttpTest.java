@@ -24,16 +24,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringJUnitConfig(classes={SecurityConfig.class,ActiveAccountFilter.class,GlobalExceptionHandler.class,
-        MissionChecklistAssignmentController.class,ExecutionPlanController.class,MissionAuthorizationHttpTest.Beans.class,ExecutionPlanHttpTest.Beans.class})
+        MissionChecklistAssignmentController.class,ExecutionPlanController.class,MissionCancellationController.class,MissionAuthorizationHttpTest.Beans.class,ExecutionPlanHttpTest.Beans.class})
 @WebAppConfiguration
 class ExecutionPlanHttpTest {
     @Autowired WebApplicationContext context;
     @Autowired AuthenticatedUserResolver resolver;
     @Autowired IMissionChecklistAssignmentService selection;
     @Autowired IExecutionPlanService plan;
+    @Autowired IMissionCancellationService cancellation;
     MockMvc mvc;
     @BeforeEach void prepare() {
-        reset(resolver,selection,plan);
+        reset(resolver,selection,plan,cancellation);
         when(resolver.getCurrentUser()).thenReturn(User.builder().isActive(true).role(Role.builder().code(RoleCode.MANAGER).active(true).build()).build());
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
     }
@@ -69,7 +70,26 @@ class ExecutionPlanHttpTest {
         verifyNoInteractions(selection,plan);
     }
     @Configuration static class Beans {
+        @Bean IMissionCancellationService cancellation() { return mock(IMissionCancellationService.class); }
         @Bean IMissionChecklistAssignmentService selection() {return mock(IMissionChecklistAssignmentService.class);}
         @Bean IExecutionPlanService plan() {return mock(IExecutionPlanService.class);}
+    }
+
+    @Test void amendmentAndCancellationAreManagerAdminOnlyAndValidateRequests() throws Exception {
+        String body = "{\"expectedPlanRevision\":4,\"reason\":\"Weather\"}";
+        for (String path : List.of("/api/orders/o/execution-plan/amend", "/api/missions/m/cancel")) {
+            mvc.perform(post(path).contentType("application/json").content(body)).andExpect(status().isUnauthorized());
+            for (String role : List.of("CUSTOMER", "STAFF")) {
+                mvc.perform(post(path).with(jwt().authorities(() -> "ROLE_" + role)).contentType("application/json").content(body))
+                        .andExpect(status().isForbidden());
+            }
+            mvc.perform(post(path).with(jwt().authorities(() -> "ROLE_MANAGER")).contentType("application/json").content("{}"))
+                    .andExpect(status().isBadRequest());
+            for (String role : List.of("MANAGER", "ADMIN")) {
+                mvc.perform(post(path).with(jwt().authorities(() -> "ROLE_" + role)).contentType("application/json").content(body))
+                        .andExpect(status().isOk());
+            }
+        }
+        verify(plan,times(2)).amend(eq("o"),any()); verify(cancellation,times(2)).cancel(eq("m"),any());
     }
 }

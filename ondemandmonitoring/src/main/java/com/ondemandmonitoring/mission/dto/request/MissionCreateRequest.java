@@ -17,6 +17,8 @@ import java.util.List;
 @Setter
 public class MissionCreateRequest {
     private String orderId;
+    @Size(max = 255)
+    private String replacesMissionId;
 
     @NotBlank
     @Pattern(regexp = "(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")

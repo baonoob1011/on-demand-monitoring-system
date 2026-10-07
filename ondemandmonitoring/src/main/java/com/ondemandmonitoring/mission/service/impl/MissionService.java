@@ -192,13 +192,27 @@ public class MissionService implements IMissionService {
         }
         if (order.getExecutionPlanStatus() != ExecutionPlanStatus.DRAFT)
             throw new ApiException(ErrorCode.EXECUTION_PLAN_NOT_DRAFT);
-        if (order.getOrderStatus() != OrderStatus.APPROVED)
+        if (order.getOrderStatus() != OrderStatus.APPROVED
+                && (order.getOrderStatus() != OrderStatus.IN_PROGRESS || order.getExecutionPlanAmendedAt() == null))
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Only APPROVED Orders allow new planning Missions in this phase");
         if (missionRepository.findAllByOrderIdOrderByScheduledStartAtAscIdAsc(order.getId()).stream()
                 .anyMatch(MissionRuntimeGate::allowsLegacyRuntime))
             throw new ApiException(ErrorCode.MULTI_MISSION_LEGACY_ORDER_NOT_MIGRATED);
         if (request.getExpectedPlanRevision() != order.getExecutionPlanRevision())
             throw new ApiException(ErrorCode.EXECUTION_PLAN_REVISION_CONFLICT);
+        if (intent.replacesMissionId() != null) {
+            String originalOrderId = missionRepository.findOrderIdByMissionId(intent.replacesMissionId())
+                    .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
+            if (!order.getId().equals(originalOrderId)) throw new ApiException(ErrorCode.MISSION_REPLACEMENT_CROSS_ORDER);
+            Mission original = missionRepository.findByIdForUpdate(intent.replacesMissionId())
+                    .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
+            if (!order.getId().equals(original.getOrder().getId())) throw new ApiException(ErrorCode.MISSION_REPLACEMENT_CROSS_ORDER);
+            if (missionRepository.hasApprovedResult(original.getId())) throw new ApiException(ErrorCode.MISSION_RESULT_ALREADY_APPROVED);
+            if (original.getStatus() != MissionStatus.CANCELLED || original.getCancellationAt() == null)
+                throw new ApiException(ErrorCode.MISSION_REPLACEMENT_ORIGINAL_NOT_CANCELLED);
+            if (missionRepository.existsByReplacesMissionIdAndStatusNot(original.getId(), MissionStatus.CANCELLED))
+                throw new ApiException(ErrorCode.MISSION_REPLACEMENT_ALREADY_EXISTS);
+        }
         validatePlanningSchedule(intent, order);
         if (order.getPoint() == null || order.getPoint().getSRID() != 4326 || !order.getPoint().isValid()
                 || order.getPoint().isEmpty() || !Double.isFinite(order.getPoint().getX())
@@ -214,6 +228,7 @@ public class MissionService implements IMissionService {
         mission.setOrder(order);
         mission.setScheduledStartAt(intent.start()); mission.setScheduledEndAt(intent.end());
         mission.setScopeLabel(intent.label());
+        mission.setReplacesMissionId(intent.replacesMissionId());
         mission.setTargetPoint((Point) order.getPoint().copy());
         mission.setTargetArea(order.getTargetArea() == null ? null : (Polygon) order.getTargetArea().copy());
         mission.setCreationIdempotencyKey(intent.key());
@@ -539,9 +554,21 @@ public class MissionService implements IMissionService {
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canManageMissions()")
     public MissionResponse updateMission(String missionId, MissionUpdateRequest request) {
-        Mission mission = getRuntimeMissionOrThrow(missionId);
-        // Rescheduling/reassignment of finalized decomposition needs a future plan amendment.
-        if (!MissionRuntimeGate.allowsLegacyRuntime(mission)) throw new ApiException(ErrorCode.EXECUTION_PLAN_NOT_DRAFT);
+        String orderId = missionRepository.findOrderIdByMissionId(missionId)
+                .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
+        Order order = orderRepository.findByIdForUpdate(orderId).orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND));
+        Mission mission = missionRepository.findByIdForUpdate(missionId).orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
+        if (!orderId.equals(mission.getOrder().getId())) throw new ApiException(ErrorCode.CHECKLIST_ASSIGNMENT_CROSS_ORDER);
+        if (mission.getFinalizedPlanRevision() != null || order.getExecutionPlanStatus() != ExecutionPlanStatus.DRAFT
+                || mission.getStatus() != MissionStatus.RESOURCE_ASSIGNING)
+            throw new ApiException(ErrorCode.EXECUTION_PLAN_NOT_DRAFT);
+        if (mission.getCreationIdempotencyKey() == null) throw new ApiException(ErrorCode.MULTI_MISSION_LEGACY_ORDER_NOT_MIGRATED);
+        if (order.getOrderStatus() != OrderStatus.APPROVED && order.getOrderStatus() != OrderStatus.IN_PROGRESS)
+            throw new ApiException(ErrorCode.INVALID_REQUEST);
+        if (request == null || request.getExpectedPlanRevision() == null
+                || request.getExpectedPlanRevision() != order.getExecutionPlanRevision()
+                || order.getExecutionPlanRevision() == Long.MAX_VALUE)
+            throw new ApiException(ErrorCode.EXECUTION_PLAN_REVISION_CONFLICT);
 
         Instant previousStart = mission.getScheduledStartAt();
         Instant previousEnd = mission.getScheduledEndAt();
@@ -553,6 +580,8 @@ public class MissionService implements IMissionService {
 
         mission.setScheduledStartAt(newStart);
         mission.setScheduledEndAt(newEnd);
+        order.setExecutionPlanRevision(order.getExecutionPlanRevision() + 1);
+        orderRepository.saveAndFlush(order);
 
         Mission saved = missionRepository.save(mission);
 

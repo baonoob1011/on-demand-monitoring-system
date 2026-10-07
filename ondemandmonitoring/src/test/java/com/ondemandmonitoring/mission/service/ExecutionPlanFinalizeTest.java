@@ -25,14 +25,14 @@ class ExecutionPlanFinalizeTest {
     IMissionChecklistMaterializationService materializer=mock(IMissionChecklistMaterializationService.class);
     IMissionChecklistScopeService scope=mock(IMissionChecklistScopeService.class);
     AuthenticatedUserResolver actor=mock(AuthenticatedUserResolver.class);
-    ExecutionPlanServiceImpl service=new ExecutionPlanServiceImpl(orders,missions,items,assignments,materializer,scope,actor,new ExecutionPlanCoverageService());
+    ExecutionPlanServiceImpl service=new ExecutionPlanServiceImpl(orders,missions,items,assignments,materializer,scope,actor,new ExecutionPlanCoverageService(),mock(com.ondemandmonitoring.order.service.IOrderExecutionCompletionPolicy.class));
     Order order; Mission first,second; OrderChecklistItem item;
     @BeforeEach void setup() {
         order=new Order(); order.setId("o"); order.setExecutionPlanRevision(3); order.setOrderStatus(OrderStatus.APPROVED);
         order.setPreferredDateFrom(LocalDate.of(2026,10,1)); order.setPreferredDateTo(LocalDate.of(2026,10,7));
         first=mission("a"); second=mission("b"); item=new OrderChecklistItem(); item.setId("i"); item.setOrder(order);
         when(orders.findByIdForUpdate("o")).thenReturn(Optional.of(order));
-        when(missions.findAllByOrderIdOrderByScheduledStartAtAscIdAsc("o")).thenReturn(List.of(second,first));
+        when(missions.findIdsByOrderIdOrderById("o")).thenReturn(List.of("b","a"));
         when(missions.findByIdForUpdate("a")).thenReturn(Optional.of(first)); when(missions.findByIdForUpdate("b")).thenReturn(Optional.of(second));
         when(items.findAllByOrderIdInOrderByDisplayOrderAscIdAsc(List.of("o"))).thenReturn(List.of(item));
         var assignment=new MissionChecklistAssignment(); assignment.setId("assignment"); assignment.setMissionId("a");
@@ -48,7 +48,7 @@ class ExecutionPlanFinalizeTest {
     void error(ErrorCode code,Runnable action) { assertEquals(code,assertThrows(ApiException.class,action::run).getErrorCode()); }
     @Test void finalizationLocksInOrderThenSetsOneSharedRevisionAndAudit() {
         finalizePlan(); var sequence=inOrder(orders,missions,materializer);
-        sequence.verify(orders).findByIdForUpdate("o"); sequence.verify(missions).findAllByOrderIdOrderByScheduledStartAtAscIdAsc("o");
+        sequence.verify(orders).findByIdForUpdate("o"); sequence.verify(missions).findIdsByOrderIdOrderById("o");
         sequence.verify(missions).findByIdForUpdate("a"); sequence.verify(missions).findByIdForUpdate("b");
         sequence.verify(materializer).materialize(first); sequence.verify(materializer).materialize(second);
         assertEquals(4,order.getExecutionPlanRevision()); assertEquals(4L,first.getFinalizedPlanRevision()); assertEquals(4L,second.getFinalizedPlanRevision());

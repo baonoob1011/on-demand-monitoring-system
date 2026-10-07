@@ -39,9 +39,10 @@ class MissionChecklistMaterializationTest {
                 && e.getOrderChecklistItem()==assignment.getOrderChecklistItem() && e.getExecutionStatus()==com.ondemandmonitoring.mission.enums.ChecklistExecutionStatus.PENDING
                 && e.getAssessmentStatus()==com.ondemandmonitoring.mission.enums.ChecklistAssessmentStatus.NOT_ASSESSED;}));
     }
-    @Test void scopeAllowsOnlyExactFinalizedRevisionAndBijection() {
-        assertTrue(scope.isMaterialized(mission)); mission.setFinalizedPlanRevision(3L); assertFalse(scope.isMaterialized(mission));
-        mission.setFinalizedPlanRevision(4L); mission.getOrder().setExecutionPlanStatus(ExecutionPlanStatus.DRAFT); assertFalse(scope.isMaterialized(mission));
+    @Test void historicalFinalizedRevisionRemainsEligibleDuringAmendmentButFutureRevisionDoesNot() {
+        assertTrue(scope.isMaterialized(mission)); mission.setFinalizedPlanRevision(3L); assertTrue(scope.isMaterialized(mission));
+        mission.getOrder().setExecutionPlanStatus(ExecutionPlanStatus.DRAFT); assertTrue(scope.isMaterialized(mission));
+        mission.setFinalizedPlanRevision(5L); assertFalse(scope.isMaterialized(mission));
     }
     @Test void missingExecutionNotReady() { when(executions.findOrderedByMissionId("m")).thenReturn(List.of()); assertFalse(scope.isMaterialized(mission)); }
     @Test void extraExecutionNotReady() { when(assignments.findByMissionIdAndRemovedAtIsNullOrderByDisplayOrderAscIdAsc("m")).thenReturn(List.of()); assertFalse(scope.isMaterialized(mission)); }

@@ -13,7 +13,7 @@ import org.locationtech.jts.io.WKBWriter;
 
 /** Versioned, length-prefixed business intent. Actor, expected revision and audit are excluded. */
 public record MissionCreationIntent(String orderId, String key, String label,
-        java.time.Instant start, java.time.Instant end) {
+        java.time.Instant start, java.time.Instant end, String replacesMissionId) {
     public static MissionCreationIntent from(MissionCreateRequest request) {
         if (request == null || request.getOrderId() == null || request.getOrderId().isBlank()
                 || request.getIdempotencyKey() == null
@@ -24,15 +24,20 @@ public record MissionCreationIntent(String orderId, String key, String label,
                 || request.getScheduledEndAt() == null) throw new ApiException(ErrorCode.INVALID_REQUEST);
         if (request.getTargetPoint() != null || request.getTargetArea() != null || request.getChecklistItemIds() != null)
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Custom scope and checklist assignment creation are deferred");
+        if (request.getReplacesMissionId() != null && (request.getReplacesMissionId().isBlank() || request.getReplacesMissionId().length() > 255))
+            throw new ApiException(ErrorCode.INVALID_REQUEST);
         return new MissionCreationIntent(request.getOrderId(), UUID.fromString(request.getIdempotencyKey()).toString(),
                 Normalizer.normalize(request.getScopeLabel().strip().replaceAll("\\s+", " "), Normalizer.Form.NFC),
-                request.getScheduledStartAt(), request.getScheduledEndAt());
+                request.getScheduledStartAt(), request.getScheduledEndAt(),
+                request.getReplacesMissionId() == null ? null : request.getReplacesMissionId().strip());
     }
 
     public String hash(Geometry point, Geometry area) {
-        StringBuilder canonical = new StringBuilder("mission-create:1;");
+        // Preserve every Phase 4 hash for ordinary creation; version 2 binds replacement identity.
+        StringBuilder canonical = new StringBuilder(replacesMissionId == null ? "mission-create:1;" : "mission-create:2;");
         for (String value : new String[] {orderId, label, start.toString(), end.toString(), geometry(point), geometry(area)})
             canonical.append(value.length()).append(':').append(value).append(';');
+        if (replacesMissionId != null) canonical.append(replacesMissionId.length()).append(':').append(replacesMissionId).append(';');
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                     .digest(canonical.toString().getBytes(StandardCharsets.UTF_8)));

@@ -20,6 +20,7 @@ public interface MissionResultRepository extends JpaRepository<MissionResult, St
     Optional<MissionResult> findByMissionId(@Param("missionId") String missionId);
 
     boolean existsByMissionId(String missionId);
+    boolean existsByMissionIdAndApprovalStatus(String missionId, MissionResultApprovalStatus approvalStatus);
 
     Page<MissionResult> findByApprovalStatus(MissionResultApprovalStatus approvalStatus, Pageable pageable);
 }
