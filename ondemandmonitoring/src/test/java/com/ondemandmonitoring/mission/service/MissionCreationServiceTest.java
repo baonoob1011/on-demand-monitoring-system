@@ -111,15 +111,15 @@ class MissionCreationServiceTest {
         mission.setStatus(com.ondemandmonitoring.mission.enums.MissionStatus.COMPLETED);
         var result=new com.ondemandmonitoring.mission.domain.MissionResult();result.setMission(mission);result.setApprovalStatus(com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL);
         var results=mock(com.ondemandmonitoring.mission.repository.MissionResultRepository.class);
-        when(results.findMissionIdByResultId("r")).thenReturn(Optional.of("m"));when(results.findById("r")).thenReturn(Optional.of(result));
+        when(results.findOrderIdByResultId("r")).thenReturn(Optional.of(order.getId()));when(results.findById("r")).thenReturn(Optional.of(result));
+        when(fixture.orderRepository.findByIdForUpdate(order.getId())).thenReturn(Optional.of(order));
+        when(fixture.missionRepository.findIdsByOrderIdOrderById(order.getId())).thenReturn(List.of("m"));
         when(fixture.missionRepository.findByIdForUpdate("m")).thenReturn(Optional.of(mission));
         var checks=mock(IMissionChecklistExecutionService.class);
-        var service=new com.ondemandmonitoring.mission.service.impl.MissionResultService(results,fixture.missionRepository,null,null,null,fixture.orderRepository,checks,fixture.authenticatedUserResolver,null);
+        var service=new com.ondemandmonitoring.mission.service.impl.MissionResultService(results,fixture.missionRepository,null,null,null,
+                new com.ondemandmonitoring.order.service.impl.OrderExecutionCompletionPolicy(fixture.orderRepository,fixture.missionRepository,results,checks),
+                checks,fixture.authenticatedUserResolver,null);
         error(ErrorCode.CHECKLIST_ASSIGNMENT_NOT_FINALIZED,()->service.approve("r",null));
         assertEquals(OrderStatus.APPROVED,order.getOrderStatus());verifyNoInteractions(checks);verify(fixture.orderRepository,never()).save(any());
-        order.setExecutionPlanStatus(com.ondemandmonitoring.order.enums.ExecutionPlanStatus.FINALIZED);
-        order.setExecutionPlanRevision(4); mission.setFinalizedPlanRevision(4L);
-        error(ErrorCode.MULTI_MISSION_RESULT_APPROVAL_NOT_READY,()->service.approve("r",null));
-        assertEquals(OrderStatus.APPROVED,order.getOrderStatus()); verify(fixture.orderRepository,never()).save(any());
     }
 }

@@ -19,11 +19,16 @@ public abstract class MissionResultMapper {
     @Autowired
     protected MediaAssetMapper mediaAssetMapper;
 
-    @Mapping(target = "missionId", source = "mission.id")
-    @Mapping(target = "missionCode", source = "mission.missionCode")
-    @Mapping(target = "mediaFiles", expression = "java(toMediaResponses(result.getMediaFiles(), mediaAssetService))")
-    public abstract MissionResultResponse toResponse(
+    public MissionResultResponse toResponse(
             MissionResult result,
+            @Context IMediaAssetService mediaAssetService) {
+        return result == null ? null : toResponse(result, result.getMediaFiles(), mediaAssetService);
+    }
+
+    @Mapping(target = "missionId", source = "result.mission.id")
+    @Mapping(target = "missionCode", source = "result.mission.missionCode")
+    @Mapping(target = "mediaFiles", expression = "java(toMediaResponses(mediaFiles, mediaAssetService))")
+    public abstract MissionResultResponse toResponse(MissionResult result, List<MediaAsset> mediaFiles,
             @Context IMediaAssetService mediaAssetService);
 
     protected List<MediaResponse> toMediaResponses(

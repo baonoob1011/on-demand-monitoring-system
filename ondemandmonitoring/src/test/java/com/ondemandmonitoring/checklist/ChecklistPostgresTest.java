@@ -535,7 +535,7 @@ class ChecklistPostgresTest {
                 PreferredTimeRepository times, AuthenticatedUserResolver resolver, MissionResultRepository results,
                 IOrderChecklistSnapshotService snapshots) {
             return new OrderService(orders, services, deliverables, links, times, resolver,
-                    Mappers.getMapper(OrderMapper.class), results, snapshots);
+                    Mappers.getMapper(OrderMapper.class), snapshots);
         }
     }
 }

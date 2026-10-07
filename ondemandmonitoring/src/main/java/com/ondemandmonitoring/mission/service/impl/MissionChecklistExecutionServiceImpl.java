@@ -149,10 +149,17 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
 
     @Override
     @Transactional(readOnly = true)
+    public boolean isReadyForFinalApproval(Mission mission) {
+        if (!isReadyForSubmission(mission)) return false;
+        var links = evidenceService.active(mission.getId());
+        return executions.findOrderedByMissionId(mission.getId()).stream().allMatch(e -> evidenceService.ready(e, links, true));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public void requireReadyForFinalApproval(Mission mission) {
         requireReadyForSubmission(mission);
-        var links = evidenceService.active(mission.getId());
-        if (!executions.findOrderedByMissionId(mission.getId()).stream().allMatch(e -> evidenceService.ready(e, links, true)))
+        if (!isReadyForFinalApproval(mission))
             throw new ApiException(ErrorCode.CHECKLIST_NOT_READY, "Approve required evidence media first; remove rejected/pending evidence from required items");
     }
 

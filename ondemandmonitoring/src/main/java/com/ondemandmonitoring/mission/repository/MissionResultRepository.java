@@ -10,6 +10,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface MissionResultRepository extends JpaRepository<MissionResult, String> {
+    @Query("select r.mission.order.id from MissionResult r where r.id = :resultId")
+    Optional<String> findOrderIdByResultId(@Param("resultId") String resultId);
+
     @Query("select r.mission.id from MissionResult r where r.id = :resultId")
     Optional<String> findMissionIdByResultId(@Param("resultId") String resultId);
 
@@ -17,8 +20,6 @@ public interface MissionResultRepository extends JpaRepository<MissionResult, St
     Optional<MissionResult> findByMissionId(@Param("missionId") String missionId);
 
     boolean existsByMissionId(String missionId);
-
-    boolean existsByMission_Order_IdAndApprovalStatus(String orderId, MissionResultApprovalStatus approvalStatus);
 
     Page<MissionResult> findByApprovalStatus(MissionResultApprovalStatus approvalStatus, Pageable pageable);
 }

@@ -26,7 +26,7 @@ class MissionResultServiceTest {
             mock(MediaAssetRepository.class),
             mock(IMediaAssetService.class),
             mapper,
-            mock(OrderRepository.class),
+            mock(com.ondemandmonitoring.order.service.IOrderExecutionCompletionPolicy.class),
             mock(IMissionChecklistExecutionService.class),
             mock(AuthenticatedUserResolver.class),
             mock(IMissionAuthorizationService.class)

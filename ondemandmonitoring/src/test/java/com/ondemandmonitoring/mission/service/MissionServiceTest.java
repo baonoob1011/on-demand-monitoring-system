@@ -781,7 +781,8 @@ class MissionServiceTest {
             var results = new com.ondemandmonitoring.mission.service.impl.MissionResultService(
                     resultRepository, missionRepository, mock(com.ondemandmonitoring.media.repository.MediaAssetRepository.class),
                     mock(com.ondemandmonitoring.media.service.IMediaAssetService.class),
-                    mock(com.ondemandmonitoring.mission.mapper.MissionResultMapper.class), orderRepository,
+                    mock(com.ondemandmonitoring.mission.mapper.MissionResultMapper.class),
+                    new com.ondemandmonitoring.order.service.impl.OrderExecutionCompletionPolicy(orderRepository, missionRepository, resultRepository, checklist),
                     checklist, authenticatedUserResolver, auth);
             org.springframework.test.util.ReflectionTestUtils.setField(missionService, "missionResultService", results);
             org.springframework.test.util.ReflectionTestUtils.setField(missionService, "checklistExecutionService", checklist);
@@ -1000,7 +1001,8 @@ class MissionServiceTest {
         var resultMapper = mock(com.ondemandmonitoring.mission.mapper.MissionResultMapper.class);
         var results = new com.ondemandmonitoring.mission.service.impl.MissionResultService(
                 resultRepo, missionRepository, mock(com.ondemandmonitoring.media.repository.MediaAssetRepository.class),
-                mock(com.ondemandmonitoring.media.service.IMediaAssetService.class), resultMapper, orderRepository,
+                mock(com.ondemandmonitoring.media.service.IMediaAssetService.class), resultMapper,
+                new com.ondemandmonitoring.order.service.impl.OrderExecutionCompletionPolicy(orderRepository, missionRepository, resultRepo, checklist),
                 checklist, authenticatedUserResolver, policy);
         when(resultRepo.save(any())).thenAnswer(call -> {
             com.ondemandmonitoring.mission.domain.MissionResult result = call.getArgument(0); result.setId("result");
@@ -1040,6 +1042,10 @@ class MissionServiceTest {
         var manager = User.builder().isActive(true).role(Role.builder().code(RoleCode.MANAGER).active(true).build()).build();
         manager.setId("manager"); when(authenticatedUserResolver.getCurrentUser()).thenReturn(manager);
         when(authenticatedUserResolver.getCurrentUserId()).thenReturn(manager.getId());
+        when(resultRepo.findOrderIdByResultId(result.getId())).thenReturn(Optional.of(order.getId()));
+        when(orderRepository.findByIdForUpdate(order.getId())).thenReturn(Optional.of(order));
+        when(missionRepository.findIdsByOrderIdOrderById(order.getId())).thenReturn(List.of(mission.getId()));
+        when(resultRepo.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
         results.approve(result.getId(), new com.ondemandmonitoring.mission.dto.request.MissionResultReviewRequest());
         assertThat(order.getOrderStatus()).isEqualTo(com.ondemandmonitoring.order.enums.OrderStatus.COMPLETED);
         assertThat(mission.getStatus()).isEqualTo(MissionStatus.COMPLETED);

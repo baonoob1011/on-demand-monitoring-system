@@ -54,7 +54,6 @@ public enum ErrorCode {
     CHECKLIST_ASSIGNMENT_DUPLICATE("Checklist selection contains duplicate items", HttpStatus.CONFLICT),
     CHECKLIST_COVERAGE_INCOMPLETE("Every Order checklist item must be assigned to an effective Mission", HttpStatus.CONFLICT),
     CHECKLIST_ASSIGNMENT_NOT_FINALIZED("Mission checklist plan is not finalized", HttpStatus.CONFLICT),
-    MULTI_MISSION_RESULT_APPROVAL_NOT_READY("New Mission results require the Order aggregate completion cutover before approval", HttpStatus.CONFLICT),
     MISSION_STATUS_INVALID("Mission status is invalid for this operation", HttpStatus.CONFLICT),
     CONCURRENT_UPDATE("Resource changed during this request; refresh and retry", HttpStatus.CONFLICT),
     CHECKLIST_EXECUTION_NOT_FOUND("Checklist execution not found", HttpStatus.NOT_FOUND),

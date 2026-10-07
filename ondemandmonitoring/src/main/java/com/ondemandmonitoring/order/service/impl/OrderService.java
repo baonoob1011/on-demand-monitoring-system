@@ -2,8 +2,6 @@ package com.ondemandmonitoring.order.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus;
-import com.ondemandmonitoring.mission.repository.MissionResultRepository;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.domain.OrderDeliverable;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
@@ -54,7 +52,6 @@ public class OrderService implements IOrderService {
     PreferredTimeRepository preferredTimeRepository;
     AuthenticatedUserResolver authenticatedUserResolver;
     OrderMapper orderMapper;
-    MissionResultRepository missionResultRepository;
     IOrderChecklistSnapshotService checklistSnapshots;
 
     @Override
@@ -175,12 +172,12 @@ public class OrderService implements IOrderService {
     }
 
     @Override
-    @Transactional
+    @Transactional(readOnly = true)
     @PreAuthorize("@orderAuthorizationService.canViewOrder(#orderId)")
     public OrderCreateResponse getOrderById(String orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
-        return toResponse(syncCompletedOrder(order));
+        return toResponse(order);
     }
 
     @Override
@@ -215,7 +212,7 @@ public class OrderService implements IOrderService {
     }
 
     @Override
-    @Transactional
+    @Transactional(readOnly = true)
     @PreAuthorize("hasRole('CUSTOMER')")
     public List<OrderCreateResponse> getMyOrders(OrderStatus status) {
         User customer = authenticatedUserResolver.getCurrentUser();
@@ -223,9 +220,7 @@ public class OrderService implements IOrderService {
                 ? orderRepository.findByCustomer_IdOrderByCreatedAtDesc(customer.getId())
                 : orderRepository.findByCustomer_IdAndOrderStatusOrderByCreatedAtDesc(customer.getId(), status);
 
-        return toResponses(orders.stream()
-                .map(this::syncCompletedOrder)
-                .toList());
+        return toResponses(orders);
     }
 
     private OrderCreateResponse toResponse(Order order) {
@@ -239,21 +234,6 @@ public class OrderService implements IOrderService {
             response.setChecklistItems(snapshots.getOrDefault(order.getId(), List.of()));
             return response;
         }).toList();
-    }
-
-    private Order syncCompletedOrder(Order order) {
-        if (order.getOrderStatus() == OrderStatus.COMPLETED
-                || order.getOrderStatus() == OrderStatus.REJECTED
-                || order.getOrderStatus() == OrderStatus.CANCELLED) {
-            return order;
-        }
-        boolean approvedResult = missionResultRepository.existsByMission_Order_IdAndApprovalStatus(
-                order.getId(), MissionResultApprovalStatus.APPROVED);
-        if (approvedResult) {
-            order.setOrderStatus(OrderStatus.COMPLETED);
-            return orderRepository.save(order);
-        }
-        return order;
     }
 
     private String generateUniqueOrderCode() {

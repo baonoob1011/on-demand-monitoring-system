@@ -311,7 +311,9 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
             var media = mock(MediaAssetRepository.class);
             when(media.findByMissionIdOrderByCapturedAtDesc(anyString())).thenReturn(List.of());
             return new MissionResultService(results, missions, media, mock(IMediaAssetService.class),
-                    org.mapstruct.factory.Mappers.getMapper(MissionResultMapper.class), orders, executions, resolver, auth);
+                    org.mapstruct.factory.Mappers.getMapper(MissionResultMapper.class),
+                    new com.ondemandmonitoring.order.service.impl.OrderExecutionCompletionPolicy(orders, missions, results, executions),
+                    executions, resolver, auth);
         }
     }
 }
