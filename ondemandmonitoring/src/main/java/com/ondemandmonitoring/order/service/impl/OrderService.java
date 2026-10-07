@@ -9,11 +9,18 @@ import com.ondemandmonitoring.order.domain.OrderDeliverable;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.request.OrderDeliverableRequest;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
+import com.ondemandmonitoring.order.enums.OrderDeliveryMethod;
+import com.ondemandmonitoring.order.enums.OrderPermitStatus;
+import com.ondemandmonitoring.order.enums.OrderPriority;
+import com.ondemandmonitoring.order.enums.OrderRecurrenceType;
+import com.ondemandmonitoring.order.enums.OrderResultFormat;
+import com.ondemandmonitoring.order.enums.OrderWeatherFallback;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.mapper.OrderMapper;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.IOrderService;
 import com.ondemandmonitoring.order.service.IOrderChecklistSnapshotService;
+import com.ondemandmonitoring.order.util.AirspacePolicy;
 import com.ondemandmonitoring.order.util.GeoReader;
 import com.ondemandmonitoring.order.util.ServiceAreaPolicy;
 import com.ondemandmonitoring.service.domain.DeliverableType;
@@ -107,6 +114,33 @@ public class OrderService implements IOrderService {
                     "preferredDateFrom must be before or equal to preferredDateTo");
         }
 
+        // 4b. Validate result deadline and recurrence
+        if (request.getResultDeadline() != null
+                && request.getResultDeadline().isBefore(request.getPreferredDateTo())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "resultDeadline must not be before preferredDateTo");
+        }
+        OrderRecurrenceType recurrenceType = request.getRecurrenceType() == null
+                ? OrderRecurrenceType.NONE
+                : request.getRecurrenceType();
+        if (recurrenceType != OrderRecurrenceType.NONE && request.getRecurrenceOccurrences() == null) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "recurrenceOccurrences is required when the order repeats");
+        }
+
+        // 4c. Delivery options and terms
+        if (!Boolean.TRUE.equals(request.getTermsAccepted())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Terms and data-security commitment must be accepted");
+        }
+        int retentionDays = request.getDataRetentionDays() == null
+                ? DEFAULT_RETENTION_DAYS
+                : request.getDataRetentionDays();
+        if (!ALLOWED_RETENTION_DAYS.contains(retentionDays)) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "dataRetentionDays must be one of " + ALLOWED_RETENTION_DAYS);
+        }
+
         // 5. Convert & validate GeoJSON geometries
         if (!Double.isFinite(request.getLatitude()) || !Double.isFinite(request.getLongitude())
                 || Math.abs(request.getLatitude()) > 90 || Math.abs(request.getLongitude()) > 180) {
@@ -121,6 +155,23 @@ public class OrderService implements IOrderService {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Invalid coverageArea GeoJSON");
         }
         ServiceAreaPolicy.assertSupported(location, targetArea);
+
+        // 5b. Airspace permit (airports etc.) must be answered by the customer
+        var permitZone = AirspacePolicy.findPermitZone(location, targetArea);
+        OrderPermitStatus permitStatus = request.getPermitStatus() == null
+                ? OrderPermitStatus.NONE : request.getPermitStatus();
+        if (permitZone.isPresent()) {
+            if (permitStatus == OrderPermitStatus.NONE) {
+                throw new ApiException(ErrorCode.INVALID_REQUEST,
+                        "Area is inside airspace requiring a permit (" + permitZone.get().name()
+                                + "). Provide permitStatus HAVE_PERMIT or NEED_SUPPORT.");
+            }
+            if (permitStatus == OrderPermitStatus.HAVE_PERMIT
+                    && (request.getPermitNumber() == null || request.getPermitNumber().isBlank())) {
+                throw new ApiException(ErrorCode.INVALID_REQUEST,
+                        "permitNumber is required when permitStatus is HAVE_PERMIT");
+            }
+        }
 
         // 6. Validate Deliverables requirement
         if (request.getDeliverables() == null || request.getDeliverables().isEmpty()) {
@@ -157,6 +208,27 @@ public class OrderService implements IOrderService {
         order.setPoint(location);
         order.setTargetArea(targetArea);
         order.setOrderStatus(OrderStatus.PENDING);
+        order.setPermitStatus(permitStatus);
+        order.setPermitRequired(permitZone.isPresent());
+        order.setPermitZoneName(permitZone.map(AirspacePolicy.PermitZone::name).orElse(null));
+        if (permitStatus != OrderPermitStatus.HAVE_PERMIT) {
+            order.setPermitNumber(null);
+        }
+        order.setRecurrenceType(recurrenceType);
+        if (recurrenceType == OrderRecurrenceType.NONE) {
+            order.setRecurrenceOccurrences(null);
+        }
+        if (order.getWeatherFallback() == null) {
+            order.setWeatherFallback(OrderWeatherFallback.CONTACT_CUSTOMER);
+        }
+        if (order.getPriority() == null) {
+            order.setPriority(OrderPriority.NORMAL);
+        }
+        order.setResultFormats(distinctOrDefault(request.getResultFormats(), OrderResultFormat.PHOTO));
+        order.setDeliveryMethods(distinctOrDefault(request.getDeliveryMethods(), OrderDeliveryMethod.DOWNLOAD));
+        order.setDataRetentionDays(retentionDays);
+        order.setTermsAcceptedAt(java.time.Instant.now());
+        order.setTermsVersion(TERMS_VERSION);
         order.setOrderCode(generateUniqueOrderCode());
         order.setReviewBy(null);
         order.setReviewAt(null);
@@ -239,6 +311,17 @@ public class OrderService implements IOrderService {
             response.setChecklistItems(snapshots.getOrDefault(order.getId(), List.of()));
             return response;
         }).toList();
+    }
+
+    /** Version recorded with the customer's acceptance of the terms and security commitment. */
+    static final String TERMS_VERSION = "2026-10";
+    static final int DEFAULT_RETENTION_DAYS = 90;
+    static final java.util.List<Integer> ALLOWED_RETENTION_DAYS = java.util.List.of(30, 90, 180, 365);
+
+    /** Keeps the customer's order of choice, drops duplicates, falls back to one default. */
+    private static <T> java.util.List<T> distinctOrDefault(java.util.List<T> values, T fallback) {
+        if (values == null || values.isEmpty()) return new java.util.ArrayList<>(java.util.List.of(fallback));
+        return new java.util.ArrayList<>(new java.util.LinkedHashSet<>(values));
     }
 
     private Order syncCompletedOrder(Order order) {

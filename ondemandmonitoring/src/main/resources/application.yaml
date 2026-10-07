@@ -143,3 +143,32 @@ weather:
       wind-speed-kmh: 35
       wind-gust-kmh: 50
       visibility-meters: 1000
+
+# Preliminary flight-area assessment (advisory only, rule-based; NOT legal or aviation limits).
+# External providers are configuration only; every value has a code default in FlightAreaProperties.
+flight-area-assessment:
+  max-radius-m: ${FLIGHT_AREA_MAX_RADIUS_M:5000}
+  max-altitude-agl-m: 500
+  restricted-zone-warning-distance-m: ${FLIGHT_AREA_RESTRICTED_ZONE_WARNING_DISTANCE_M:500}
+  obstacle-clearance-margin-m: 10
+  aggregate-timeout-ms: 25000
+  elevation:
+    base-url: ${FLIGHT_AREA_ELEVATION_BASE_URL:https://api.open-meteo.com}
+    path: /v1/elevation
+    connect-timeout-ms: 2000
+    read-timeout-ms: 4000
+  osm:
+    overpass-url: ${FLIGHT_AREA_OVERPASS_URL:https://overpass-api.de/api/interpreter}
+    connect-timeout-ms: 3000
+    read-timeout-ms: 10000
+    server-timeout-seconds: 9
+    max-attempts: 2
+    retry-delay-ms: 300
+    query-max-radius-m: ${FLIGHT_AREA_OSM_QUERY_MAX_RADIUS_M:1500}
+    aerodrome-search-radius-m: 5000
+    max-important-features: 15
+  cache:
+    enabled: true
+    elevation-ttl-minutes: 1440
+    osm-ttl-minutes: 60
+    max-entries: 500
