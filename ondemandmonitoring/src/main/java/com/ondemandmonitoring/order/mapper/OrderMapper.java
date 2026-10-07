@@ -23,6 +23,7 @@ public interface OrderMapper {
     @Mapping(target = "orderCode", ignore = true)
     @Mapping(target = "customer", ignore = true)
     @Mapping(target = "service", ignore = true)
+    @Mapping(target = "serviceBasePriceSnapshot", ignore = true)
     @Mapping(target = "preferredTime", ignore = true)
     @Mapping(target = "orderStatus", ignore = true)
     @Mapping(target = "permitRequired", ignore = true)

@@ -39,6 +39,8 @@ import com.ondemandmonitoring.mission.service.impl.DeviceConnectionService;
 import com.ondemandmonitoring.mission.service.impl.FlightTokenService;
 import com.ondemandmonitoring.mission.service.impl.MissionService;
 import com.ondemandmonitoring.order.repository.OrderRepository;
+import com.ondemandmonitoring.finance.repository.InvoiceRepository;
+import com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService;
 import com.ondemandmonitoring.planning.service.MissionPlanningService;
 import com.ondemandmonitoring.role.domain.Role;
 import com.ondemandmonitoring.role.domain.RoleCode;
@@ -80,6 +82,8 @@ class MissionServiceTest {
     PersistedPostDeviceCheckRepository postDeviceCheckRepository;
     MaintenanceTicketRepository maintenanceTicketRepository;
     OrderRepository orderRepository;
+    InvoiceRepository invoiceRepository;
+    IMissionPaymentEligibilityService missionPaymentEligibilityService;
     IDeviceConnectionService deviceConnectionService;
     IFlightTokenService flightTokenService;
     IMissionResultService missionResultService;
@@ -109,6 +113,8 @@ class MissionServiceTest {
         postDeviceCheckRepository = mock(PersistedPostDeviceCheckRepository.class);
         maintenanceTicketRepository = mock(MaintenanceTicketRepository.class);
         orderRepository = mock(OrderRepository.class);
+        invoiceRepository = mock(InvoiceRepository.class);
+        missionPaymentEligibilityService = mock(IMissionPaymentEligibilityService.class);
         staffDirectory = mock(IStaffDirectoryService.class);
         authenticatedUserResolver = mock(AuthenticatedUserResolver.class);
         userScheduleRepository = mock(UserScheduleRepository.class);
@@ -146,6 +152,8 @@ class MissionServiceTest {
                 postDeviceCheckRepository,
                 maintenanceTicketRepository,
                 orderRepository,
+                invoiceRepository,
+                missionPaymentEligibilityService,
                 deviceConnectionService,
                 flightTokenService,
                 missionResultService,

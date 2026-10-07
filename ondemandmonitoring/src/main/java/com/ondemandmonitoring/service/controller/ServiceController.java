@@ -1,10 +1,13 @@
 package com.ondemandmonitoring.service.controller;
 
 import com.ondemandmonitoring.common.api.ApiResponse;
+import com.ondemandmonitoring.common.exception.ApiException;
+import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.service.dto.request.ServiceRequest;
 import com.ondemandmonitoring.service.dto.response.ServicePricingEstimateResponse;
 import com.ondemandmonitoring.service.dto.response.ServiceRequirementSuggestionResponse;
 import com.ondemandmonitoring.service.dto.response.ServiceResponse;
+import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.service.domain.ServiceRequirementSuggestion;
 import com.ondemandmonitoring.service.repository.ServiceRequirementSuggestionRepository;
 import com.ondemandmonitoring.service.service.IServiceService;
@@ -45,11 +48,7 @@ public class ServiceController {
     ServiceRequirementSuggestionRepository suggestionRepository;
 
     @NonFinal
-    @Value("${odm.pricing.default-service-price:0}")
-    BigDecimal defaultServicePrice;
-
-    @NonFinal
-    @Value("${odm.pricing.addons.ai-image-analysis:0}")
+    @Value("${odm.pricing.addons.ai-image-analysis:500000}")
     BigDecimal aiImageAnalysisPrice;
 
     @Operation(summary = "Create service", description = "Creates a new monitoring service")
@@ -105,6 +104,11 @@ public class ServiceController {
             @RequestParam String serviceId,
             @RequestParam(defaultValue = "false") boolean aiImageAnalysis) {
 
+        Service service = serviceService.getEntityById(serviceId);
+        if (!Boolean.TRUE.equals(service.getIsActive())) {
+            throw new ApiException(ErrorCode.SERVICE_INACTIVE);
+        }
+
         List<ServicePricingEstimateResponse.AdditionalRequirementPrice> additionalRequirements =
                 new ArrayList<>();
 
@@ -122,9 +126,9 @@ public class ServiceController {
 
         ServicePricingEstimateResponse response = ServicePricingEstimateResponse.builder()
                 .serviceId(serviceId)
-                .servicePrice(defaultServicePrice)
+                .servicePrice(service.getBasePrice())
                 .additionalRequirements(additionalRequirements)
-                .totalPrice(defaultServicePrice.add(additionalTotal))
+                .totalPrice(service.getBasePrice().add(additionalTotal))
                 .build();
 
         return ResponseEntity.ok(ApiResponse.ok(response));
