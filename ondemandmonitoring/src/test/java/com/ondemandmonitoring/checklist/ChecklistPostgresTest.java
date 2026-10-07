@@ -262,7 +262,7 @@ class ChecklistPostgresTest {
         });
         var timeId = new JdbcTemplate(dataSource).queryForObject("select id from preferred_times", String.class);
         var typeId = new JdbcTemplate(dataSource).queryForObject("select id from deliverable_types", String.class);
-        return OrderCreateRequest.builder().title("Snapshot order").serviceId(serviceId).preferredTimeId(timeId)
+        return OrderCreateRequest.builder().title("Snapshot order").termsAccepted(true).serviceId(serviceId).preferredTimeId(timeId)
                 .preferredDateFrom(java.time.LocalDate.now()).preferredDateTo(java.time.LocalDate.now().plusDays(2))
                 .longitude(106.7005).latitude(10.7765)
                 .coverageArea(Map.of("type", "Polygon", "coordinates", List.of(List.of(

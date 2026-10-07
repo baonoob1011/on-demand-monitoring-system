@@ -119,6 +119,7 @@ class OrderServiceTest {
 
         OrderCreateRequest request = OrderCreateRequest.builder()
                 .title("Survey Forest")
+                .termsAccepted(true)
                 .serviceId("srv-1")
                 .preferredTimeId("pt-1")
                 .preferredDateFrom(LocalDate.now())
@@ -179,6 +180,7 @@ class OrderServiceTest {
 
         OrderCreateRequest request = OrderCreateRequest.builder()
                 .title("Outside Point")
+                .termsAccepted(true)
                 .serviceId("srv-1")
                 .preferredTimeId("pt-1")
                 .preferredDateFrom(LocalDate.now())
@@ -190,5 +192,138 @@ class OrderServiceTest {
                 .build();
 
         assertThrows(ApiException.class, () -> orderService.createOrder(request));
+    }
+
+    private OrderCreateRequest airportRequest(com.ondemandmonitoring.order.enums.OrderPermitStatus status, String number) {
+        Service service = Service.builder().name("Airport Check").build();
+        service.setId("srv-1");
+        PreferredTime preferredTime = PreferredTime.builder().name("Morning").build();
+        preferredTime.setId("pt-1");
+        DeliverableType delType = DeliverableType.builder().name("Photo Map").build();
+        delType.setId("dt-1");
+        when(serviceRepository.findByIdForUpdate("srv-1")).thenReturn(Optional.of(service));
+        when(preferredTimeRepository.findById("pt-1")).thenReturn(Optional.of(preferredTime));
+        when(deliverableTypeRepository.findById("dt-1")).thenReturn(Optional.of(delType));
+        when(serviceDeliverableRepository.existsByServiceIdAndDeliverableTypeId("srv-1", "dt-1")).thenReturn(true);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order o = invocation.getArgument(0);
+            o.setId("ord-airport");
+            return o;
+        });
+        Map<String, Object> area = Map.of(
+                "type", "Polygon",
+                "coordinates", List.of(List.of(
+                        List.of(106.6600, 10.8150),
+                        List.of(106.6610, 10.8150),
+                        List.of(106.6610, 10.8160),
+                        List.of(106.6600, 10.8160),
+                        List.of(106.6600, 10.8150))));
+        return OrderCreateRequest.builder()
+                .title("Runway check")
+                .termsAccepted(true)
+                .serviceId("srv-1")
+                .preferredTimeId("pt-1")
+                .preferredDateFrom(LocalDate.now())
+                .preferredDateTo(LocalDate.now().plusDays(1))
+                .longitude(106.6605)
+                .latitude(10.8155)
+                .coverageArea(area)
+                .permitStatus(status)
+                .permitNumber(number)
+                .deliverables(List.of(OrderDeliverableRequest.builder().deliverableTypeId("dt-1").requirement(Map.of()).build()))
+                .build();
+    }
+
+    @Test
+    void createOrder_NearAirportWithoutPermitAnswerIsRejected() {
+        OrderCreateRequest request = airportRequest(null, null);
+        assertThrows(ApiException.class, () -> orderService.createOrder(request));
+    }
+
+    @Test
+    void createOrder_NearAirportWithPermitNeedsNumber() {
+        OrderCreateRequest request = airportRequest(com.ondemandmonitoring.order.enums.OrderPermitStatus.HAVE_PERMIT, " ");
+        assertThrows(ApiException.class, () -> orderService.createOrder(request));
+    }
+
+    @Test
+    void createOrder_NearAirportWithSupportRequestIsAcceptedAndFlagged() {
+        OrderCreateResponse response = orderService.createOrder(
+                airportRequest(com.ondemandmonitoring.order.enums.OrderPermitStatus.NEED_SUPPORT, null));
+        assertEquals(Boolean.TRUE, response.getPermitRequired());
+        assertEquals("Tan Son Nhat Airport", response.getPermitZoneName());
+        assertEquals(com.ondemandmonitoring.order.enums.OrderPermitStatus.NEED_SUPPORT, response.getPermitStatus());
+    }
+
+    /** A valid request away from the airport zone, with every mock the create flow needs. */
+    private OrderCreateRequest.OrderCreateRequestBuilder deliveryRequest() {
+        Service service = Service.builder().name("Land Monitoring").build();
+        service.setId("srv-1");
+        PreferredTime preferredTime = PreferredTime.builder().name("Morning").build();
+        preferredTime.setId("pt-1");
+        DeliverableType delType = DeliverableType.builder().name("Photo Map").defaultFormat("JPEG").build();
+        delType.setId("dt-1");
+        when(serviceRepository.findByIdForUpdate("srv-1")).thenReturn(Optional.of(service));
+        when(preferredTimeRepository.findById("pt-1")).thenReturn(Optional.of(preferredTime));
+        when(deliverableTypeRepository.findById("dt-1")).thenReturn(Optional.of(delType));
+        when(serviceDeliverableRepository.existsByServiceIdAndDeliverableTypeId("srv-1", "dt-1")).thenReturn(true);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order o = invocation.getArgument(0);
+            o.setId("ord-delivery");
+            return o;
+        });
+        return OrderCreateRequest.builder()
+                .title("Delivery options")
+                .termsAccepted(true)
+                .serviceId("srv-1")
+                .preferredTimeId("pt-1")
+                .preferredDateFrom(LocalDate.now())
+                .preferredDateTo(LocalDate.now().plusDays(2))
+                .longitude(106.7005)
+                .latitude(10.7765)
+                .coverageArea(sampleCoverageAreaMap())
+                .deliverables(List.of(OrderDeliverableRequest.builder().deliverableTypeId("dt-1").requirement(Map.of()).build()));
+    }
+
+    @Test
+    void createOrder_RejectsWhenTermsAreNotAccepted() {
+        OrderCreateRequest missing = deliveryRequest().termsAccepted(null).build();
+        OrderCreateRequest declined = deliveryRequest().termsAccepted(false).build();
+        assertThrows(ApiException.class, () -> orderService.createOrder(missing));
+        assertThrows(ApiException.class, () -> orderService.createOrder(declined));
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    void createOrder_RejectsUnsupportedRetentionPeriod() {
+        OrderCreateRequest request = deliveryRequest().dataRetentionDays(45).build();
+        assertThrows(ApiException.class, () -> orderService.createOrder(request));
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    void createOrder_DefaultsDeliveryOptionsAndRecordsAcceptance() {
+        OrderCreateResponse response = orderService.createOrder(deliveryRequest().build());
+        assertEquals(List.of(com.ondemandmonitoring.order.enums.OrderResultFormat.PHOTO), response.getResultFormats());
+        assertEquals(List.of(com.ondemandmonitoring.order.enums.OrderDeliveryMethod.DOWNLOAD), response.getDeliveryMethods());
+        assertEquals(90, response.getDataRetentionDays());
+        assertNotNull(response.getTermsAcceptedAt());
+        assertEquals("2026-10", response.getTermsVersion());
+    }
+
+    @Test
+    void createOrder_KeepsChosenDeliveryOptionsWithoutDuplicates() {
+        var pdf = com.ondemandmonitoring.order.enums.OrderResultFormat.PDF_REPORT;
+        var photo = com.ondemandmonitoring.order.enums.OrderResultFormat.PHOTO;
+        var email = com.ondemandmonitoring.order.enums.OrderDeliveryMethod.EMAIL;
+        var api = com.ondemandmonitoring.order.enums.OrderDeliveryMethod.API;
+        OrderCreateResponse response = orderService.createOrder(deliveryRequest()
+                .resultFormats(List.of(pdf, photo, pdf))
+                .deliveryMethods(List.of(email, api))
+                .dataRetentionDays(180)
+                .build());
+        assertEquals(List.of(pdf, photo), response.getResultFormats());
+        assertEquals(List.of(email, api), response.getDeliveryMethods());
+        assertEquals(180, response.getDataRetentionDays());
     }
 }
