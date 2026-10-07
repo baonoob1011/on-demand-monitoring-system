@@ -18,6 +18,7 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -53,6 +54,9 @@ public class Order extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "service_id", nullable = false)
     private Service service;
+
+    @Column(name = "service_base_price_snapshot", precision = 19, scale = 0)
+    private BigDecimal serviceBasePriceSnapshot;
 
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;

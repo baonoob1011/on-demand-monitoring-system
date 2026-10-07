@@ -35,6 +35,9 @@ import com.ondemandmonitoring.mission.service.IMissionResultService;
 import com.ondemandmonitoring.mission.service.IMissionChecklistExecutionService;
 import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.order.repository.OrderRepository;
+import com.ondemandmonitoring.finance.enums.QuoteStatus;
+import com.ondemandmonitoring.finance.repository.InvoiceRepository;
+import com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService;
 import com.ondemandmonitoring.planning.service.MissionPlanningService;
 import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
@@ -104,6 +107,8 @@ public class MissionService implements IMissionService {
     PersistedPostDeviceCheckRepository postDeviceCheckRepository;
     MaintenanceTicketRepository maintenanceTicketRepository;
     OrderRepository orderRepository;
+    InvoiceRepository invoiceRepository;
+    IMissionPaymentEligibilityService missionPaymentEligibilityService;
     IDeviceConnectionService deviceConnectionService;
     IFlightTokenService flightTokenService;
     IMissionResultService missionResultService;
@@ -181,11 +186,17 @@ public class MissionService implements IMissionService {
                     "Order status must be APPROVED to create a mission");
         }
 
+        var invoice = invoiceRepository.findByOrderId(order.getId())
+                .filter(value -> value.getQuote().getStatus() == QuoteStatus.ACCEPTED_BY_CUSTOMER)
+                .orElseThrow(() -> new ApiException(ErrorCode.INVOICE_NOT_PAYABLE,
+                        "An accepted quote and invoice are required before mission creation"));
+
         validateScheduledDates(request.getScheduledStartAt(), request.getScheduledEndAt(), order);
 
         Mission mission = new Mission();
         mission.setMissionCode(generateMissionCode());
-        mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
+        mission.setStatus(missionPaymentEligibilityService.isDepositSatisfied(invoice)
+                ? MissionStatus.RESOURCE_ASSIGNING : MissionStatus.WAITING_DEPOSIT);
         mission.setOrder(order);
         mission.setScheduledStartAt(request.getScheduledStartAt());
         mission.setScheduledEndAt(request.getScheduledEndAt());

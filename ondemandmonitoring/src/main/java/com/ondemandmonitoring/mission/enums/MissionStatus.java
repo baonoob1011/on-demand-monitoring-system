@@ -4,6 +4,9 @@ public enum MissionStatus {
 
     CREATED,
 
+    /** Financial gate: operational work is blocked until the required deposit is verified. */
+    WAITING_DEPOSIT,
+
     RESOURCE_ASSIGNING,
 
     WAITING_CREW_CONFIRMATION,
@@ -40,7 +43,7 @@ public enum MissionStatus {
     /** Device airborne, transmitting realtime GPS + video stream. */
     IN_FLIGHT,
 
-    /** Legacy alias kept for compatibility – maps to IN_FLIGHT in most contexts. */
+    /** Legacy alias kept for compatibility - maps to IN_FLIGHT in most contexts. */
     IN_PROGRESS,
 
     RETURNING,

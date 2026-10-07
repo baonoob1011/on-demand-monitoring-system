@@ -20,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.math.BigDecimal;
 
 @Component
 @Order(20)
@@ -35,16 +36,15 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        // Bootstrap only an empty catalog. Existing rows belong to administrators,
-        // including renamed, inactive and newly created services.
-        if (serviceRepository.count() > 0) {
-            log.info("Skipping service catalog bootstrap: catalog already exists");
-            return;
-        }
-        int servicesUpserted = seedServices();
-        int deliverablesUpserted = seedDeliverableTypes();
+        boolean emptyCatalog = serviceRepository.count() == 0;
+        // Existing services belong to administrators. Reference deliverable types
+        // and missing links are safe to backfill without overwriting those rows.
+        int servicesUpserted = emptyCatalog ? seedServices() : 0;
+        int deliverablesUpserted = emptyCatalog
+                ? seedDeliverableTypes()
+                : backfillMissingDeliverableTypes();
         int linksCreated = seedServiceDeliverables();
-        int suggestionsUpserted = seedRequirementSuggestions();
+        int suggestionsUpserted = emptyCatalog ? seedRequirementSuggestions() : 0;
 
         log.info(
                 "Service catalog seed completed: services={}, deliverableTypes={}, serviceDeliverables={}, requirementSuggestions={}",
@@ -134,14 +134,7 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
     private int seedDeliverableTypes() {
         int count = 0;
 
-        List<DeliverableTypeSeed> seeds = List.of(
-                new DeliverableTypeSeed("Báo cáo Giám sát", "PDF"),
-                new DeliverableTypeSeed("Hình ảnh Kiểm tra", "JPG"),
-                new DeliverableTypeSeed("Video Ghi hình", "MP4"),
-                new DeliverableTypeSeed("Báo cáo Phân tích Nhiệt", "PDF"),
-                new DeliverableTypeSeed("Báo cáo Tiến độ", "PDF"),
-                new DeliverableTypeSeed("Báo cáo Nhiệt độ / Áp suất", "PDF")
-        );
+        List<DeliverableTypeSeed> seeds = supportedDeliverableTypes();
 
         for (DeliverableTypeSeed seed : seeds) {
             if (upsertDeliverableType(seed)) {
@@ -153,6 +146,33 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
         return count;
     }
 
+    private int backfillMissingDeliverableTypes() {
+        int count = 0;
+        for (DeliverableTypeSeed seed : supportedDeliverableTypes()) {
+            if (deliverableTypeRepository.findByNameIgnoreCase(seed.name()).isPresent()) {
+                continue;
+            }
+            deliverableTypeRepository.save(DeliverableType.builder()
+                    .name(seed.name())
+                    .defaultFormat(seed.defaultFormat())
+                    .isActive(true)
+                    .build());
+            count++;
+        }
+        return count;
+    }
+
+    private List<DeliverableTypeSeed> supportedDeliverableTypes() {
+        return List.of(
+                new DeliverableTypeSeed("Báo cáo Giám sát", "PDF"),
+                new DeliverableTypeSeed("Hình ảnh Kiểm tra", "JPG"),
+                new DeliverableTypeSeed("Video Ghi hình", "MP4"),
+                new DeliverableTypeSeed("Báo cáo Phân tích Nhiệt", "PDF"),
+                new DeliverableTypeSeed("Báo cáo Tiến độ", "PDF"),
+                new DeliverableTypeSeed("Báo cáo Nhiệt độ / Áp suất", "PDF")
+        );
+    }
+
     private int seedServiceDeliverables() {
         int count = 0;
 
@@ -161,6 +181,7 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
         mapping.put("Giám sát Đập nước / Hồ chứa", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình", "Báo cáo Phân tích Nhiệt"));
         mapping.put("Giám sát Rừng / Điểm nhiệt", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình", "Báo cáo Phân tích Nhiệt"));
         mapping.put("Giám sát Nông nghiệp / Cây trồng", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình"));
+        mapping.put("Kiểm tra Sân bay / Đường băng", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình"));
         mapping.put("Giám sát Kho công nghiệp / Nhà xưởng", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình", "Báo cáo Phân tích Nhiệt"));
         mapping.put("Giám sát Mặt nước / Dòng chảy", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình"));
         mapping.put("Đo nhiệt độ / Điểm nhiệt", List.of("Báo cáo Phân tích Nhiệt", "Hình ảnh Kiểm tra", "Video Ghi hình"));
@@ -169,6 +190,8 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
         mapping.put("Giám sát Tiến độ Xây dựng", List.of("Báo cáo Tiến độ", "Hình ảnh Kiểm tra", "Video Ghi hình"));
         mapping.put("Giám sát Sạt lở / Ngập lụt", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình"));
         mapping.put("Kiểm tra Tháp viễn thông", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình"));
+        mapping.put("Giám sát Mục tiêu xa", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình"));
+        mapping.put("Giám sát Bãi đáp / Trạm drone", List.of("Báo cáo Giám sát", "Hình ảnh Kiểm tra", "Video Ghi hình"));
 
         for (Map.Entry<String, List<String>> entry : mapping.entrySet()) {
             Service service = serviceRepository.findByNameIgnoreCase(entry.getKey()).orElse(null);
@@ -182,7 +205,8 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
                         .findByNameIgnoreCase(deliverableName)
                         .orElse(null);
 
-                if (deliverableType == null || serviceDeliverableRepository
+                if (deliverableType == null || !Boolean.TRUE.equals(deliverableType.getIsActive())
+                        || serviceDeliverableRepository
                         .existsByServiceIdAndDeliverableTypeId(service.getId(), deliverableType.getId())) {
                     continue;
                 }
@@ -196,8 +220,6 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
                 count++;
             }
         }
-
-        pruneUnsupportedServiceDeliverables();
 
         return count;
     }
@@ -217,6 +239,11 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
                         changed = true;
                     }
 
+                    if (existing.getBasePrice() == null) {
+                        existing.setBasePrice(basePriceFor(seed.name()));
+                        changed = true;
+                    }
+
                     if (changed) {
                         serviceRepository.save(existing);
                     }
@@ -227,10 +254,33 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
                     serviceRepository.save(Service.builder()
                             .name(seed.name())
                             .description(seed.description())
+                            .basePrice(basePriceFor(seed.name()))
                             .isActive(true)
                             .build());
                     return true;
                 });
+    }
+
+    private BigDecimal basePriceFor(String serviceName) {
+        long price = switch (serviceName) {
+            case "Giám sát Kho bãi / Logistics" -> 2_800_000L;
+            case "Giám sát Đập nước / Hồ chứa" -> 4_500_000L;
+            case "Giám sát Rừng / Điểm nhiệt" -> 4_800_000L;
+            case "Giám sát Nông nghiệp / Cây trồng" -> 2_600_000L;
+            case "Kiểm tra Sân bay / Đường băng" -> 6_500_000L;
+            case "Giám sát Kho công nghiệp / Nhà xưởng" -> 3_800_000L;
+            case "Giám sát Mặt nước / Dòng chảy" -> 3_000_000L;
+            case "Đo nhiệt độ / Điểm nhiệt" -> 4_200_000L;
+            case "Đo nhiệt độ / Áp suất" -> 3_600_000L;
+            case "Kiểm tra Công trình thủy lợi" -> 3_500_000L;
+            case "Giám sát Tiến độ Xây dựng" -> 3_200_000L;
+            case "Giám sát Sạt lở / Ngập lụt" -> 5_000_000L;
+            case "Kiểm tra Tháp viễn thông" -> 4_000_000L;
+            case "Giám sát Mục tiêu xa" -> 4_500_000L;
+            case "Giám sát Bãi đáp / Trạm drone" -> 2_400_000L;
+            default -> 3_200_000L;
+        };
+        return BigDecimal.valueOf(price);
     }
 
     private int seedRequirementSuggestions() {

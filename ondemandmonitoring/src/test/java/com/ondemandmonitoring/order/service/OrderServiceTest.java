@@ -95,7 +95,8 @@ class OrderServiceTest {
     @Test
     void createOrder_Success() {
         // Arrange
-        Service service = Service.builder().name("Land Monitoring").build();
+        Service service = Service.builder().name("Land Monitoring")
+                .basePrice(new java.math.BigDecimal("2800000")).build();
         service.setId("srv-1");
         PreferredTime preferredTime = PreferredTime.builder().name("Morning").build();
         preferredTime.setId("pt-1");
@@ -137,6 +138,7 @@ class OrderServiceTest {
         assertEquals("ord-123", response.getId());
         assertEquals("Survey Forest", response.getTitle());
         assertEquals(OrderStatus.PENDING, response.getOrderStatus());
+        assertEquals(new java.math.BigDecimal("2800000"), response.getServiceBasePriceSnapshot());
         assertEquals(106.7005, response.getLongitude());
         assertEquals(10.7765, response.getLatitude());
         assertEquals(300.0, response.getRadiusM());

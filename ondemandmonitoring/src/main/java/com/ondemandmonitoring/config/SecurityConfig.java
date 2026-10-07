@@ -56,6 +56,8 @@ public class SecurityConfig {
             "/api/auth/reset-password",
             "/api/auth/csrf",
             "/api/auth/logout",
+            "/api/payments/vnpay/ipn",
+            "/api/payments/vnpay/return",
             "/api/v1/auth/register",
             "/api/v1/auth/verify-otp",
             "/api/v1/auth/resend-otp",

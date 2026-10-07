@@ -246,9 +246,18 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
                 return MissionResponse.builder().id(mission.getId()).missionCode(mission.getMissionCode())
                         .status(mission.getStatus()).build();
             });
+            var invoiceRepository = mock(com.ondemandmonitoring.finance.repository.InvoiceRepository.class);
+            var invoice = mock(com.ondemandmonitoring.finance.domain.Invoice.class);
+            var quote = mock(com.ondemandmonitoring.finance.domain.Quote.class);
+            when(quote.getStatus()).thenReturn(com.ondemandmonitoring.finance.enums.QuoteStatus.ACCEPTED_BY_CUSTOMER);
+            when(invoice.getQuote()).thenReturn(quote);
+            when(invoiceRepository.findByOrderId(anyString())).thenReturn(java.util.Optional.of(invoice));
+            var eligibility = mock(com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService.class);
+            when(eligibility.isDepositSatisfied(invoice)).thenReturn(true);
             // Unused lifecycle collaborators are not loaded: only the real transactional creation path is exercised.
             return new MissionService(null, missions, null, null, mapper, null, null, null, null, null,
-                    null, null, orders, null, null, null, null, null, null, null, null, null, null, null, executions);
+                    null, null, orders, invoiceRepository, eligibility, null, null, null, null, null, null, null,
+                    null, null, null, null, executions);
         }
         @Bean com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository executions(EntityManagerFactory factory) {
             return new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory))
