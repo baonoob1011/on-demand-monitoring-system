@@ -21,6 +21,8 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ServiceRequest {
 
+    String code;
+
     @NotBlank(message = "Service name is required")
     String name;
 

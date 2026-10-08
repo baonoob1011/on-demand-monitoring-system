@@ -35,6 +35,7 @@ public class OrderCreateResponse {
     String orderCode;
     String customerId;
     String customerName;
+    String customerEmail;
 
     // General Info
     String title;

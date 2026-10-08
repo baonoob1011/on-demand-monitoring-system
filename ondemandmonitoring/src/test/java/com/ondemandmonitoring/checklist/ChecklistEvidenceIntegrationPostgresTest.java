@@ -62,13 +62,12 @@ class ChecklistEvidenceIntegrationPostgresTest extends OrderMissionPostgresTest 
         executionService.update(mission,row.getId(),request);
     }
     BatchChecklistEvidenceRequest attachRequest(String mission,String asset) {var row=row(mission);return new BatchChecklistEvidenceRequest(asset,List.of(new BatchChecklistEvidenceRequest.Target(row.getId(),row.getVersion())),null);}
-    @Test void newSnapshotOperationalSubmissionAndFinalApprovalUseActualEvidence() {
+    @Test void newSnapshotSubmitsValidatedEvidenceForWholeResultApproval() {
         String mission=mission(1); assertEquals(1,row(mission).getEvidencePolicyVersion());complete(mission);
         assertFalse(executionService.getByMissionId(mission).checklistEvidenceReady());String media=asset(mission,MediaStatus.PENDING_MANAGER_APPROVAL);
         evidenceService.attach(mission,attachRequest(mission,media));assertTrue(executionService.getByMissionId(mission).readyForMissionCompletion());
         setStatus(mission,MissionStatus.COMPLETED);var result=resultService.upsert(mission,new MissionResultRequest());
-        assertEquals(ErrorCode.CHECKLIST_NOT_READY,assertThrows(ApiException.class,()->resultService.approve(result.getId(),new MissionResultReviewRequest())).getErrorCode());
-        approvals.approve(mission,media);resultService.approve(result.getId(),new MissionResultReviewRequest());
+        resultService.approve(result.getId(),new MissionResultReviewRequest());
         assertThrows(ApiException.class,()->evidenceService.attach(mission,attachRequest(mission,media)));
         assertEquals(ErrorCode.CHECKLIST_EXECUTION_LOCKED, assertThrows(ApiException.class, () -> approvals.reject(mission, media)).getErrorCode());
     }
@@ -96,12 +95,11 @@ class ChecklistEvidenceIntegrationPostgresTest extends OrderMissionPostgresTest 
         var row=row(mission);var calls=new AtomicInteger();var outcomes=race(()->{if(calls.getAndIncrement()==0)return resultService.upsert(mission,new MissionResultRequest());evidenceService.detach(mission,row.getId(),row.getEvidence().getFirst().getEvidenceId(),row.getVersion(),null);return "detached";});
         assertEquals(1,outcomes.stream().filter(ApiException.class::isInstance).count());
     }
-    @Test void mediaApprovalAndFinalResultApprovalSerialize() throws Exception {
+    @Test void finalResultApprovalDoesNotRequirePerMediaApproval() {
         String mission=mission(1),media=asset(mission,MediaStatus.PENDING_MANAGER_APPROVAL);complete(mission);evidenceService.attach(mission,attachRequest(mission,media));setStatus(mission,MissionStatus.COMPLETED);
-        var result=resultService.upsert(mission,new MissionResultRequest());var calls=new AtomicInteger();
-        var outcomes=race(()->calls.getAndIncrement()==0?approvals.approve(mission,media):resultService.approve(result.getId(),new MissionResultReviewRequest()));
-        assertTrue(outcomes.stream().allMatch(r->!(r instanceof Throwable)||r instanceof ApiException e&&e.getErrorCode()==ErrorCode.CHECKLIST_NOT_READY));
-        assertEquals(MediaStatus.AVAILABLE,mediaRepository.findById(media).orElseThrow().getMediaStatus());
+        var result=resultService.upsert(mission,new MissionResultRequest());
+        assertEquals(MissionResultApprovalStatus.APPROVED,resultService.approve(result.getId(),new MissionResultReviewRequest()).getApprovalStatus());
+        assertEquals(MediaStatus.PENDING_MANAGER_APPROVAL,mediaRepository.findById(media).orElseThrow().getMediaStatus());
     }
     @Configuration @Import(MissionChecklistPostgresTest.ExecutionConfig.class)
     static class EvidenceConfig {

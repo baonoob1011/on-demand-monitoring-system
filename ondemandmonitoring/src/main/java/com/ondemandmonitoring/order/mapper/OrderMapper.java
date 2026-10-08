@@ -43,6 +43,7 @@ public interface OrderMapper {
 
     @Mapping(source = "customer.id", target = "customerId")
     @Mapping(source = "customer.fullName", target = "customerName")
+    @Mapping(source = "customer.email", target = "customerEmail")
     @Mapping(source = "service.id", target = "serviceId")
     @Mapping(source = "service.name", target = "serviceName")
     @Mapping(source = "preferredTime.id", target = "preferredTimeId")

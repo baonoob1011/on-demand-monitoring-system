@@ -24,22 +24,22 @@ class ChecklistAdminBootstrapPostgresTest extends ChecklistPostgresTest {
         return new ChecklistReorderRequest(rows.stream().map(row -> new ChecklistReorderRequest.Item(row.getChecklistId(), row.getVersion())).toList());
     }
 
-    @Test void seedRerunPersistsIdentityAndPreservesEmptyAdminTemplate() throws Exception {
-        String service = service("Giám sát Tiến độ Xây dựng");
+    @Test void seedRerunPersistsIdentityAndRestoresEmptySupportedTemplate() throws Exception {
+        String service = service("Giám sát công trình");
         seed.run(null); var initial = assignments.getByService(service, false);
-        assertEquals(10, initial.size()); assertEquals(20, definitions.count());
-        seed.run(null); assertEquals(20, definitions.count()); assertEquals(10, links.count());
+        assertEquals(6, initial.size()); assertEquals(19, definitions.count());
+        seed.run(null); assertEquals(19, definitions.count()); assertEquals(6, links.count());
         var reversed = new ArrayList<>(initial); Collections.reverse(reversed); assignments.reorder(service, reorder(reversed));
         seed.run(null); assertEquals(reversed.stream().map(ServiceChecklistResponse::getChecklistId).toList(), assignments.getByService(service, false).stream().map(ServiceChecklistResponse::getChecklistId).toList());
         initial.forEach(row -> assignments.unassign(service, row.getChecklistId()));
-        seed.run(null); assertTrue(assignments.getByService(service, false).isEmpty()); assertEquals(20, definitions.count());
+        seed.run(null); assertEquals(6, assignments.getByService(service, false).size()); assertEquals(19, definitions.count());
     }
 
     @Test void seededSnapshotStaysImmutableAndNewOrderUsesChangedTemplate() throws Exception {
-        String service = service("Giám sát Tiến độ Xây dựng"); seed.run(null);
+        String service = service("Giám sát công trình"); seed.run(null);
         var request = orderRequest(service);
         var old = orderService.createOrder(request);
-        assertEquals(10, old.getChecklistItems().size());
+        assertEquals(6, old.getChecklistItems().size());
         assertEquals(ChecklistDefaults.CONTENTS.getFirst(), old.getChecklistItems().getFirst().getContent());
         var template = assignments.getByService(service, false);
         template.subList(2, template.size()).forEach(row -> assignments.unassign(service, row.getChecklistId()));
@@ -86,7 +86,7 @@ class ChecklistAdminBootstrapPostgresTest extends ChecklistPostgresTest {
     @Test void allKnownServiceDefinitionsReceiveSensibleDefaultsWithoutCreatingServices() throws Exception {
         ChecklistDefaults.templates().keySet().forEach(this::service);
         seed.run(null); seed.run(null);
-        assertEquals(15, services.count()); assertEquals(20, definitions.count()); assertEquals(127, links.count());
+        assertEquals(4, services.count()); assertEquals(19, definitions.count()); assertEquals(23, links.count());
         for (var service : services.findAll()) {
             var rows = assignments.getByService(service.getId(), false);
             assertEquals(java.util.stream.IntStream.range(0, rows.size()).boxed().toList(), rows.stream().map(ServiceChecklistResponse::getDisplayOrder).toList());
