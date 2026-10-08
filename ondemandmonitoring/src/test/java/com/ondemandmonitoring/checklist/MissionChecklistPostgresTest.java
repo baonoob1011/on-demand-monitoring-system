@@ -42,6 +42,7 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
         reset(auth);
         when(auth.canViewMission(anyString())).thenReturn(true);
         when(auth.canExecuteMonitoringChecklist(anyString())).thenReturn(true);
+        when(auth.canSubmitMissionResult(anyString())).thenReturn(true);
         when(resolver.getCurrentUserId()).thenReturn("authenticated-operator");
     }
 

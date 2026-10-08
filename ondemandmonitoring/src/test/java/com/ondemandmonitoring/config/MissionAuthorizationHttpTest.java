@@ -220,6 +220,25 @@ class MissionAuthorizationHttpTest {
                 .contentType("application/json").content("{}")).andExpect(expected);
     }
 
+    @Test
+    void inspectorMayUploadMediaWithoutBeingAllowedToSubmitResult() throws Exception {
+        mission.setStatus(MissionStatus.PENDING_REVIEW);
+        crew(MissionStaffRole.INSPECTOR, StaffResponseStatus.ACCEPTED);
+        var mediaUploads = context.getBean(IMissionMediaUploadService.class);
+        var results = context.getBean(com.ondemandmonitoring.mission.service.IMissionResultService.class);
+        reset(mediaUploads, results);
+        mvc.perform(get("/api/missions/mission-1/permissions").with(jwt().authorities(() -> "ROLE_STAFF")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.canUploadMedia").value(true))
+                .andExpect(jsonPath("$.data.canSubmitMissionResult").value(false));
+        var file = new org.springframework.mock.web.MockMultipartFile("file", "capture.jpg", "image/jpeg", new byte[]{1,2,3});
+        mvc.perform(multipart("/api/missions/mission-1/media").file(file)
+                .with(jwt().authorities(() -> "ROLE_STAFF")).with(csrf()))
+                .andExpect(status().isCreated());
+        verify(mediaUploads).uploadWithRetry(eq("mission-1"),isNull(),any(),isNull());
+        submitResult(status().isForbidden());
+        verify(results,never()).upsert(anyString(),any());
+    }
+
     @Configuration
     @EnableWebMvc
     static class Beans {

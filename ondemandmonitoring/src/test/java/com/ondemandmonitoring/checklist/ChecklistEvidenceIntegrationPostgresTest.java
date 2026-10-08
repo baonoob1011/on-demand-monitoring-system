@@ -38,6 +38,7 @@ class ChecklistEvidenceIntegrationPostgresTest extends OrderMissionPostgresTest 
     @Override @BeforeEach void prepare() {
         super.prepare(); reset(auth);
         when(auth.canViewMission(anyString())).thenReturn(true); when(auth.canExecuteMonitoringChecklist(anyString())).thenReturn(true);
+        when(auth.canSubmitMissionResult(anyString())).thenReturn(true);
         when(auth.canAttachChecklistEvidence(anyString())).thenReturn(true); when(auth.canDetachChecklistEvidence(anyString())).thenReturn(true);
     }
     String mission(int count) {

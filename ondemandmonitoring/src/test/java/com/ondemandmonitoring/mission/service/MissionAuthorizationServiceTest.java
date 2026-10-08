@@ -242,7 +242,7 @@ class MissionAuthorizationServiceTest {
         var entry = assign(MissionStaffRole.INSPECTOR, StaffResponseStatus.ACCEPTED);
         assertThat(policy.canUploadMissionMedia("mission-1")).isTrue();
         assertThat(policy.canCompleteMission("mission-1")).isTrue();
-        assertThat(policy.canSubmitMissionResult("mission-1")).isTrue();
+        assertThat(policy.canSubmitMissionResult("mission-1")).isFalse();
         assertThat(policy.canUploadMissionMedia("another-mission")).isFalse();
         entry.setIsCurrent(false);
         assertThat(policy.canUploadMissionMedia("mission-1")).isFalse();

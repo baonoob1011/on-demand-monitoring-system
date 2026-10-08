@@ -153,14 +153,12 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
     @Override
     public boolean canSubmitMissionResult(String missionId) {
         // Actor/status capability only; submission also validates readiness, completion and result locks.
-        // While a mission is PENDING_REVIEW the upload screen uses this to expose the
-        // "send to manager" action; the client completes the mission before submitting.
+        // Reuse the monitoring actor policy, including Operator priority, Pilot fallback
+        // and successful final-crew release. Inspector media/acceptance is independent.
         return findRuntimeMissionById(missionId)
                 .filter(mission -> mission.getStatus() == MissionStatus.PENDING_REVIEW
                         || mission.getStatus() == MissionStatus.COMPLETED)
-                .map(mission -> mission.getStatus() == MissionStatus.PENDING_REVIEW
-                        ? canCompleteMission(mission.getId())
-                        : canExecuteMonitoringChecklist(mission.getId()))
+                .map(mission -> canExecuteMonitoringChecklist(mission.getId()))
                 .orElse(false);
     }
 

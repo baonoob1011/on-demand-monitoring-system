@@ -975,6 +975,8 @@ class MissionServiceTest {
         var mission = buildMission("integrated", MissionStatus.POSTFLIGHT_CHECKING);
         var order = new com.ondemandmonitoring.order.domain.Order(); order.setId("order");
         order.setOrderStatus(com.ondemandmonitoring.order.enums.OrderStatus.APPROVED); mission.setOrder(order);
+        order.setExecutionPlanStatus(com.ondemandmonitoring.order.enums.ExecutionPlanStatus.FINALIZED);
+        order.setExecutionPlanRevision(1);
         var device = buildDevice("device", DeviceStatus.RETURNING);
         var deviceAssignment = new MissionDeviceAssignment(); deviceAssignment.setDevice(device); deviceAssignment.setIsCurrent(true);
         var crew = java.util.Arrays.stream(MissionStaffRole.values()).map(role -> {

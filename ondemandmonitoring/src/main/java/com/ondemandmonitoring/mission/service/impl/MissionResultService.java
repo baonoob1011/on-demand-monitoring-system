@@ -60,14 +60,14 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
 
     @Override
     @Transactional
-    @PreAuthorize("@missionAuthorizationService.canUploadMissionMedia(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canSubmitMissionResult(#missionId)")
     public MissionResultResponse upsert(String missionId, MissionResultRequest request) {
         Mission mission = missionRepository.findByIdForUpdate(missionId)
                 .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND,
                         "Mission not found: " + missionId));
         MissionRuntimeGate.requireFinalizedStructure(mission);
         checklistExecutionService.requireMaterialized(mission);
-        if (!authorization.canUploadMissionMedia(missionId)) throw new ApiException(ErrorCode.ACCESS_DENIED);
+        if (!authorization.canSubmitMissionResult(missionId)) throw new ApiException(ErrorCode.ACCESS_DENIED);
         if (mission.getStatus() != MissionStatus.COMPLETED)
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID, "Complete operational mission before submitting results");
         checklistExecutionService.requireReadyForSubmission(mission);
