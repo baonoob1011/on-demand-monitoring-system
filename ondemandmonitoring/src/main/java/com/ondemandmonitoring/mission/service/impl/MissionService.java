@@ -121,6 +121,7 @@ public class MissionService implements IMissionService {
     ResourceTimeLockRepository resourceTimeLockRepository;
     IMissionChecklistExecutionService checklistExecutionService;
     com.ondemandmonitoring.mission.service.IResourceReservationService resources;
+    com.ondemandmonitoring.device.repository.DeviceTelemetryRepository telemetryRepository;
     // =========================================================================
     // Query Methods
     // =========================================================================
@@ -611,13 +612,36 @@ public class MissionService implements IMissionService {
     @Transactional(readOnly = true)
     @PreAuthorize("@missionAuthorizationService.canViewMission(#missionId)")
     public MissionTelemetryReadinessResponse getTelemetryReadiness(String missionId) {
-        Mission mission = getRuntimeMissionOrThrow(missionId);
-        Device assignedDevice = getCurrentDevice(mission.getId());
-        if (assignedDevice == null) {
-            throw new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission has no assigned device");
+        // A projection must not take the runtime mutation lock or establish a session.
+        Mission mission = getMissionByIdOrThrow(missionId);
+        var assignment = missionDeviceAssignmentRepository
+                .findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc(missionId).stream()
+                .filter(a -> a.getReleasedAt() == null && a.getDevice() != null)
+                .filter(a -> a.getDeviceRole() == DeviceRole.MAIN)
+                .findFirst()
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Mission has no current main device assignment"));
+        String deviceId = assignment.getDevice().getId();
+        if (!MissionRuntimeGate.isStructurallyFinalized(mission)
+                || mission.getSafeStopRequestedAt() != null
+                || !Set.of(MissionStatus.SCHEDULED, MissionStatus.CONNECTED, MissionStatus.PREFLIGHT_CHECKING,
+                        MissionStatus.READY_TO_FLY, MissionStatus.IN_FLIGHT, MissionStatus.IN_PROGRESS).contains(mission.getStatus())) {
+            return new MissionTelemetryReadinessResponse(deviceId, false, null);
         }
-
-        return new MissionTelemetryReadinessResponse(assignedDevice.getDeviceCode(), false, null);
+        checklistExecutionService.requireMaterialized(mission);
+        var session = deviceConnectionRepository
+                .findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc(missionId, "CONNECTED")
+                .filter(c -> Boolean.TRUE.equals(c.getTelemetryActive()) && c.getDisconnectedAt() == null)
+                .filter(c -> c.getDeviceAssignment() != null && assignment.getId().equals(c.getDeviceAssignment().getId()))
+                .filter(c -> c.getStaffAssignment() != null && Boolean.TRUE.equals(c.getStaffAssignment().getIsCurrent())
+                        && c.getStaffAssignment().getReleasedAt() == null
+                        && c.getStaffAssignment().getResponseStatus() == StaffResponseStatus.ACCEPTED);
+        var telemetry = session.flatMap(c -> telemetryRepository.findTopByDeviceConnectionIdOrderByRecordedAtDesc(c.getId()));
+        Instant recordedAt = telemetry.map(com.ondemandmonitoring.device.domain.DeviceTelemetry::getRecordedAt).orElse(null);
+        // Preserve the original preflight-readiness freshness contract (10 seconds).
+        boolean ready = telemetry.map(t -> Boolean.TRUE.equals(t.getConnected())).orElse(false)
+                && recordedAt != null
+                && java.time.Duration.between(recordedAt, Instant.now()).abs().compareTo(java.time.Duration.ofSeconds(10)) <= 0;
+        return new MissionTelemetryReadinessResponse(deviceId, ready, recordedAt);
     }
 
     @Override

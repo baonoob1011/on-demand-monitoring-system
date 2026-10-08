@@ -279,7 +279,7 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
             // Unused lifecycle collaborators are not loaded: only the real transactional creation path is exercised.
             return new MissionService(null, missions, null, null, mapper, null, null, null, null, null,
                     null, null, orders, null, null, null, null, null, null, null, null, null, null, null, executions,
-                    org.mockito.Mockito.mock(com.ondemandmonitoring.mission.service.IResourceReservationService.class));
+                    org.mockito.Mockito.mock(com.ondemandmonitoring.mission.service.IResourceReservationService.class), null);
         }
         @Bean com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository executions(EntityManagerFactory factory) {
             return new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory))

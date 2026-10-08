@@ -160,7 +160,8 @@ class MissionServiceTest {
                 resourceTimeLockRepository,
                 mock(com.ondemandmonitoring.mission.service.IMissionChecklistExecutionService.class),
                 new com.ondemandmonitoring.mission.service.impl.ResourceReservationServiceImpl(
-                        mock(org.springframework.jdbc.core.JdbcTemplate.class), resourceTimeLockRepository, userScheduleRepository, authenticatedUserResolver));
+                        mock(org.springframework.jdbc.core.JdbcTemplate.class), resourceTimeLockRepository, userScheduleRepository, authenticatedUserResolver),
+                mock(com.ondemandmonitoring.device.repository.DeviceTelemetryRepository.class));
 
         when(missionRepository.findByIdForUpdate(anyString())).thenAnswer(call -> missionRepository.findById(call.getArgument(0)));
         when(missionRepository.findOrderIdByMissionId(anyString())).thenAnswer(call -> missionRepository.findById(call.getArgument(0))
@@ -554,12 +555,13 @@ class MissionServiceTest {
             assignment.setDevice(device);
 
             when(missionRepository.findById("m-ready")).thenReturn(Optional.of(mission));
-            when(missionDeviceAssignmentRepository.findFirstByMissionIdOrderByCreatedAtDesc("m-ready"))
-                    .thenReturn(Optional.of(assignment));
+            when(missionDeviceAssignmentRepository.findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc("m-ready"))
+                    .thenReturn(List.of(assignment));
 
             var readiness = missionService.getTelemetryReadiness("m-ready");
 
-            assertThat(readiness.deviceId()).isEqualTo("DEV-01");
+            assertThat(readiness.deviceId()).isEqualTo(device.getId());
+            assertThat(readiness.ready()).isFalse();
         }
     }
 

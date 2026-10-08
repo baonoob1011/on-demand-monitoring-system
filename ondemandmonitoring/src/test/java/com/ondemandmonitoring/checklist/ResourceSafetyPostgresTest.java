@@ -60,7 +60,8 @@ class ResourceSafetyPostgresTest extends ExecutionPlanAmendmentPostgresTest {
                 repository(entityManagerFactory, PersistedPostDeviceCheckRepository.class),null,orders,sessions,null,resultService,
                 null,null,directory,resolver,repository(entityManagerFactory, UserScheduleRepository.class),
                 repository(entityManagerFactory, MissionDeviceAssignmentRepository.class),repository(entityManagerFactory, MissionStaffAssignmentRepository.class),
-                repository(entityManagerFactory, ResourceTimeLockRepository.class),runtime,reservations);
+                repository(entityManagerFactory, ResourceTimeLockRepository.class),runtime,reservations,
+                repository(entityManagerFactory, com.ondemandmonitoring.device.repository.DeviceTelemetryRepository.class));
     }
     void withMission(String id, Consumer<Mission> action) {
         transaction.executeWithoutResult(tx -> {
@@ -89,6 +90,34 @@ class ResourceSafetyPostgresTest extends ExecutionPlanAmendmentPostgresTest {
         when(resolver.getCurrentUserId()).thenReturn(id);
     }
     void planning(String id) { jdbc.update("update missions set status='RESOURCE_ASSIGNING',completed_at=null where id=?",id); }
+
+    @Test void telemetryReadinessIsNonMutatingInPostgresReadOnlyTransaction() {
+        ready(0); operationalFixture(first);
+        String connection = jdbc.queryForObject("select id from device_connections where mission_id=?",String.class,first);
+        jdbc.update("insert into device_telemetry(id,created_at,version,device_connection_id,connected,recorded_at) values (?,now(),0,?,true,now())",UUID.randomUUID().toString(),connection);
+        var before = readinessState(first);
+        var readOnly = new org.springframework.transaction.support.TransactionTemplate(transaction.getTransactionManager());
+        readOnly.setReadOnly(true);
+        var response = readOnly.execute(tx -> {
+            // Enforce server-side read-only, not just the JDBC hint (PostgreSQL regression).
+            jdbc.execute("SET TRANSACTION READ ONLY");
+            var result = operational.getTelemetryReadiness(first);
+            assertEquals("on",jdbc.queryForObject("show transaction_read_only",String.class));
+            assertEquals(0,jdbc.queryForObject("select count(*) from pg_locks where pid=pg_backend_pid() and mode in ('RowShareLock','RowExclusiveLock')",Integer.class));
+            return result;
+        });
+        assertTrue(response.ready());
+        assertEquals(jdbc.queryForObject("select device_id from mission_device_assignments where mission_id=?",String.class,first),response.deviceId());
+        assertEquals(before,readinessState(first));
+        jdbc.update("update device_telemetry set recorded_at=now()-interval '20 seconds' where device_connection_id=?",connection);
+        assertFalse(readOnly.execute(tx -> operational.getTelemetryReadiness(first)).ready());
+        jdbc.update("update missions set status='CANCELLED' where id=?",first);
+        assertFalse(readOnly.execute(tx -> operational.getTelemetryReadiness(first)).ready());
+    }
+    List<String> readinessState(String missionId) {
+        return List.of("missions","mission_device_assignments","mission_staff_assignments","device_connections","resource_time_locks").stream()
+                .map(table -> jdbc.queryForObject("select coalesce(jsonb_agg(to_jsonb(t) order by id)::text,'[]') from "+table+" t where "+(table.equals("missions")?"id":"mission_id")+"=?",String.class,missionId)).toList();
+    }
 
     @Test void sameExclusiveResourceAcrossOrdersSerializesOverlap() throws Exception {
         ready(0); String other=independentMission();
