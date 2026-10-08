@@ -2,7 +2,6 @@ package com.ondemandmonitoring.order.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus;
 import com.ondemandmonitoring.mission.repository.MissionResultRepository;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.domain.OrderDeliverable;
@@ -253,7 +252,7 @@ public class OrderService implements IOrderService {
     public OrderCreateResponse getOrderById(String orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
-        return toResponse(syncCompletedOrder(order));
+        return toResponse(order);
     }
 
     @Override
@@ -296,9 +295,7 @@ public class OrderService implements IOrderService {
                 ? orderRepository.findByCustomer_IdOrderByCreatedAtDesc(customer.getId())
                 : orderRepository.findByCustomer_IdAndOrderStatusOrderByCreatedAtDesc(customer.getId(), status);
 
-        return toResponses(orders.stream()
-                .map(this::syncCompletedOrder)
-                .toList());
+        return toResponses(orders);
     }
 
     private OrderCreateResponse toResponse(Order order) {
@@ -323,21 +320,6 @@ public class OrderService implements IOrderService {
     private static <T> java.util.List<T> distinctOrDefault(java.util.List<T> values, T fallback) {
         if (values == null || values.isEmpty()) return new java.util.ArrayList<>(java.util.List.of(fallback));
         return new java.util.ArrayList<>(new java.util.LinkedHashSet<>(values));
-    }
-
-    private Order syncCompletedOrder(Order order) {
-        if (order.getOrderStatus() == OrderStatus.COMPLETED
-                || order.getOrderStatus() == OrderStatus.REJECTED
-                || order.getOrderStatus() == OrderStatus.CANCELLED) {
-            return order;
-        }
-        boolean approvedResult = missionResultRepository.existsByMission_Order_IdAndApprovalStatus(
-                order.getId(), MissionResultApprovalStatus.APPROVED);
-        if (approvedResult) {
-            order.setOrderStatus(OrderStatus.COMPLETED);
-            return orderRepository.save(order);
-        }
-        return order;
     }
 
     private String generateUniqueOrderCode() {

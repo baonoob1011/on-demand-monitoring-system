@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
+import com.ondemandmonitoring.delivery.repository.OrderDeliveryRepository;
 import com.ondemandmonitoring.finance.config.PaymentProperties;
 import com.ondemandmonitoring.finance.domain.*;
 import com.ondemandmonitoring.finance.dto.QuoteDraftRequest;
@@ -32,12 +33,13 @@ class QuoteServiceTest {
     MissionRepository missions = mock(MissionRepository.class);
     AuthenticatedUserResolver users = mock(AuthenticatedUserResolver.class);
     IMissionChecklistExecutionService executions = mock(IMissionChecklistExecutionService.class);
+    OrderDeliveryRepository deliveries = mock(OrderDeliveryRepository.class);
     QuoteService service;
     Order order;
 
     @BeforeEach void setUp() {
         service = new QuoteService(orders, items, mock(OrderChecklistItemMapper.class), quotes, invoices, missions,
-                executions, users, new PaymentProperties(new BigDecimal("0.30")));
+                executions, users, new PaymentProperties(new BigDecimal("0.30")), deliveries);
         order = new Order(); order.setId("o1"); order.setOrderStatus(OrderStatus.PENDING);
         var catalog = new com.ondemandmonitoring.service.domain.Service(); catalog.setName("Building inspection");
         order.setService(catalog);

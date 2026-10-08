@@ -2,6 +2,8 @@ package com.ondemandmonitoring.finance.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
+import com.ondemandmonitoring.delivery.enums.DeliveryStatus;
+import com.ondemandmonitoring.delivery.repository.OrderDeliveryRepository;
 import com.ondemandmonitoring.finance.config.PaymentProperties;
 import com.ondemandmonitoring.finance.domain.*;
 import com.ondemandmonitoring.finance.dto.*;
@@ -46,6 +48,7 @@ public class QuoteService implements IQuoteService {
     private final IMissionChecklistExecutionService checklistExecutionService;
     private final AuthenticatedUserResolver currentUser;
     private final PaymentProperties paymentProperties;
+    private final OrderDeliveryRepository deliveries;
 
     @Transactional(readOnly = true)
     public PricingReviewResponse getPricingReview(String orderId) {
@@ -186,8 +189,9 @@ public class QuoteService implements IQuoteService {
     }
 
     private InvoiceResponse invoiceResponse(Invoice invoice) {
-        boolean finalPaymentAllowed = missions.findByOrderId(invoice.getOrder().getId())
-                .map(mission -> mission.getStatus() == MissionStatus.COMPLETED)
+        boolean finalPaymentAllowed = deliveries.findByOrderId(invoice.getOrder().getId())
+                .map(delivery -> delivery.getStatus() == DeliveryStatus.FINAL_PAYMENT_PENDING
+                        && delivery.getCustomerAcceptedAt() != null)
                 .orElse(false);
         return FinanceMapper.invoice(invoice, finalPaymentAllowed);
     }

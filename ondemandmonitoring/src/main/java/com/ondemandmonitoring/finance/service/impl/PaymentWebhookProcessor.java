@@ -2,6 +2,7 @@ package com.ondemandmonitoring.finance.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
+import com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService;
 import com.ondemandmonitoring.finance.domain.Invoice;
 import com.ondemandmonitoring.finance.domain.Payment;
 import com.ondemandmonitoring.finance.enums.*;
@@ -24,6 +25,7 @@ public class PaymentWebhookProcessor implements IPaymentWebhookService {
     private final InvoiceRepository invoices;
     private final MissionRepository missions;
     private final IMissionPaymentEligibilityService eligibility;
+    private final IDeliveryWorkflowService deliveryWorkflow;
 
     @Transactional
     public PaymentWebhookResult process(VerifiedWebhook webhook) {
@@ -65,6 +67,9 @@ public class PaymentWebhookProcessor implements IPaymentWebhookService {
         invoice.setStatus(paid.signum() == 0 ? InvoiceStatus.ISSUED
                 : paid.compareTo(invoice.getTotalAmount()) >= 0 ? InvoiceStatus.PAID : InvoiceStatus.PARTIALLY_PAID);
         missions.findByOrderIdForUpdate(invoice.getOrder().getId()).ifPresent(mission -> eligibility.unlockIfEligible(invoice, mission));
+        if (payment.getPaymentType() == PaymentType.FINAL_PAYMENT && invoice.getStatus() == InvoiceStatus.PAID) {
+            deliveryWorkflow.confirmFinalPayment(invoice.getOrder().getId());
+        }
         return PaymentWebhookResult.PROCESSED;
     }
 }

@@ -1,6 +1,7 @@
 package com.ondemandmonitoring.mission.service;
 
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
+import com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService;
 import com.ondemandmonitoring.media.service.IMediaAssetService;
 import com.ondemandmonitoring.mission.mapper.MissionResultMapper;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
@@ -29,7 +30,8 @@ class MissionResultServiceTest {
             mock(OrderRepository.class),
             mock(IMissionChecklistExecutionService.class),
             mock(AuthenticatedUserResolver.class),
-            mock(IMissionAuthorizationService.class)
+            mock(IMissionAuthorizationService.class),
+            mock(IDeliveryWorkflowService.class)
     );
 
     @Test

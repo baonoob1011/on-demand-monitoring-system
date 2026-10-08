@@ -754,7 +754,8 @@ class MissionServiceTest {
                     resultRepository, missionRepository, mock(com.ondemandmonitoring.media.repository.MediaAssetRepository.class),
                     mock(com.ondemandmonitoring.media.service.IMediaAssetService.class),
                     mock(com.ondemandmonitoring.mission.mapper.MissionResultMapper.class), orderRepository,
-                    checklist, authenticatedUserResolver, auth);
+                    checklist, authenticatedUserResolver, auth,
+                    mock(com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService.class));
             org.springframework.test.util.ReflectionTestUtils.setField(missionService, "missionResultService", results);
             org.springframework.test.util.ReflectionTestUtils.setField(missionService, "checklistExecutionService", checklist);
 
@@ -972,7 +973,8 @@ class MissionServiceTest {
         var results = new com.ondemandmonitoring.mission.service.impl.MissionResultService(
                 resultRepo, missionRepository, mock(com.ondemandmonitoring.media.repository.MediaAssetRepository.class),
                 mock(com.ondemandmonitoring.media.service.IMediaAssetService.class), resultMapper, orderRepository,
-                checklist, authenticatedUserResolver, policy);
+                checklist, authenticatedUserResolver, policy,
+                mock(com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService.class));
         when(resultRepo.save(any())).thenAnswer(call -> {
             com.ondemandmonitoring.mission.domain.MissionResult result = call.getArgument(0); result.setId("result");
             when(resultRepo.findByMissionId(mission.getId())).thenReturn(Optional.of(result));
@@ -1012,7 +1014,7 @@ class MissionServiceTest {
         manager.setId("manager"); when(authenticatedUserResolver.getCurrentUser()).thenReturn(manager);
         when(authenticatedUserResolver.getCurrentUserId()).thenReturn(manager.getId());
         results.approve(result.getId(), new com.ondemandmonitoring.mission.dto.request.MissionResultReviewRequest());
-        assertThat(order.getOrderStatus()).isEqualTo(com.ondemandmonitoring.order.enums.OrderStatus.COMPLETED);
+        assertThat(order.getOrderStatus()).isNotEqualTo(com.ondemandmonitoring.order.enums.OrderStatus.COMPLETED);
         assertThat(mission.getStatus()).isEqualTo(MissionStatus.COMPLETED);
     }
 

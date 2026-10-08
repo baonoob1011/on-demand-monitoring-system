@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import com.ondemandmonitoring.finance.domain.*;
+import com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService;
 import com.ondemandmonitoring.finance.enums.*;
 import com.ondemandmonitoring.finance.gateway.VerifiedWebhook;
 import com.ondemandmonitoring.finance.repository.*;
@@ -22,7 +23,8 @@ class PaymentWebhookProcessorTest {
     PaymentRepository payments = mock(PaymentRepository.class);
     InvoiceRepository invoices = mock(InvoiceRepository.class);
     MissionRepository missions = mock(MissionRepository.class);
-    PaymentWebhookProcessor processor = new PaymentWebhookProcessor(payments, invoices, missions, new MissionPaymentEligibilityService());
+    IDeliveryWorkflowService delivery = mock(IDeliveryWorkflowService.class);
+    PaymentWebhookProcessor processor = new PaymentWebhookProcessor(payments, invoices, missions, new MissionPaymentEligibilityService(), delivery);
     Payment payment; Invoice invoice; Mission mission;
 
     @BeforeEach void setUp() {
@@ -67,6 +69,7 @@ class PaymentWebhookProcessorTest {
         processor.process(webhook(700));
         assertThat(invoice.getStatus()).isEqualTo(InvoiceStatus.PAID);
         assertThat(invoice.getRemainingAmount()).isEqualByComparingTo("0");
+        verify(delivery).confirmFinalPayment("o1");
     }
 
     @Test void unknownVnPayOrderIsReportedWithoutMutation() {

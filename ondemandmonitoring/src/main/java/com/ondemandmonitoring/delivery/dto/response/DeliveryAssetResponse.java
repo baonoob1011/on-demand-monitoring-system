@@ -1,0 +1,7 @@
+package com.ondemandmonitoring.delivery.dto.response;
+
+import java.time.Instant;
+
+/** A media asset exposed through a short-lived delivery URL. */
+public record DeliveryAssetResponse(String id, String type, String fileName, Long size,
+                                    String url, Instant urlExpiresAt, boolean downloadable) {}
