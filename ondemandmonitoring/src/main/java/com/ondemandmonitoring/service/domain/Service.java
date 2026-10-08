@@ -22,6 +22,9 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class Service extends BaseEntity {
 
+    @Column(name = "code", unique = true, length = 80)
+    private String code;
+
     @Column(name = "name", nullable = false, unique = true)
     private String name;
 

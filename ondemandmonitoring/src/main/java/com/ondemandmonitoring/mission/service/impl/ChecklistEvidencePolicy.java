@@ -16,8 +16,9 @@ public class ChecklistEvidencePolicy {
         if (media.getMediaStatus() == MediaStatus.REJECTED) return "MEDIA_REJECTED";
         if (media.getValidatedAt() == null || media.getValidationError() != null) return "MEDIA_NOT_VALIDATED";
         if (media.getMediaStatus() == MediaStatus.AVAILABLE) return null;
-        if (media.getMediaStatus() == MediaStatus.PENDING_MANAGER_APPROVAL)
-            return finalApproval ? "MEDIA_APPROVAL_REQUIRED" : null;
+        // Media validation is the evidence gate. The manager reviews the submitted
+        // mission result as one package instead of approving every evidence file.
+        if (media.getMediaStatus() == MediaStatus.PENDING_MANAGER_APPROVAL) return null;
         return "MEDIA_NOT_VALIDATED";
     }
     public boolean attachable(MediaAsset media) {

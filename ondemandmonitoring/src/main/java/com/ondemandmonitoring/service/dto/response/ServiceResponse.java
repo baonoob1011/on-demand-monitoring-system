@@ -19,6 +19,7 @@ import lombok.experimental.FieldDefaults;
 public class ServiceResponse {
 
     String id;
+    String code;
     String name;
     String description;
     BigDecimal basePrice;

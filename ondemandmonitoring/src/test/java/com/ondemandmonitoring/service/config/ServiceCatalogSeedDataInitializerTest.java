@@ -1,44 +1,98 @@
 package com.ondemandmonitoring.service.config;
 
-import com.ondemandmonitoring.service.repository.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.ondemandmonitoring.service.domain.DeliverableType;
 import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.service.domain.ServiceDeliverable;
+import com.ondemandmonitoring.service.repository.DeliverableTypeRepository;
+import com.ondemandmonitoring.service.repository.ServiceDeliverableRepository;
+import com.ondemandmonitoring.service.repository.ServiceRepository;
+import com.ondemandmonitoring.service.repository.ServiceRequirementSuggestionRepository;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import static org.mockito.Mockito.*;
 
 class ServiceCatalogSeedDataInitializerTest {
+
     @Test
-    void emptyCatalogStillBootstrapsDefaultServices() {
-        ServiceRepository services = mock(ServiceRepository.class);
-        var initializer = new ServiceCatalogSeedDataInitializer(services,
-                mock(DeliverableTypeRepository.class), mock(ServiceDeliverableRepository.class),
-                mock(ServiceRequirementSuggestionRepository.class));
-        initializer.run(null);
-        verify(services, times(15)).save(any(Service.class));
-        verify(services, never()).delete(any(Service.class));
-    }
-    @Test
-    void existingCatalogBackfillsDeliverablesWithoutModifyingServices() {
+    void seedsFourDefaultServicesWhenMissing() {
         ServiceRepository services = mock(ServiceRepository.class);
         DeliverableTypeRepository types = mock(DeliverableTypeRepository.class);
         ServiceDeliverableRepository links = mock(ServiceDeliverableRepository.class);
         ServiceRequirementSuggestionRepository suggestions = mock(ServiceRequirementSuggestionRepository.class);
-        Service service = new Service();
-        service.setId("service-1");
+
+        when(services.findByCodeIgnoreCase(anyString())).thenReturn(Optional.empty());
+        when(services.findByNameIgnoreCase(anyString())).thenReturn(Optional.empty());
+        when(services.findAll()).thenReturn(List.of());
+        when(types.findByNameIgnoreCase(anyString())).thenReturn(Optional.of(activeType()));
+        when(types.findAll()).thenReturn(List.of());
+        when(links.findAll()).thenReturn(List.of());
+        when(suggestions.findAll()).thenReturn(List.of());
+        when(suggestions.findByServiceIdAndCategoryIgnoreCaseAndLabelIgnoreCase(anyString(), anyString(), anyString()))
+                .thenReturn(Optional.empty());
+
+        new ServiceCatalogSeedDataInitializer(services, types, links, suggestions).run(null);
+
+        verify(services, times(4)).save(any(Service.class));
+        verify(services, never()).delete(any(Service.class));
+        verify(suggestions, never()).delete(any());
+    }
+
+    @Test
+    void existingCatalogIsUpdatedAndLegacyServicesAreSoftDeactivated() {
+        ServiceRepository services = mock(ServiceRepository.class);
+        DeliverableTypeRepository types = mock(DeliverableTypeRepository.class);
+        ServiceDeliverableRepository links = mock(ServiceDeliverableRepository.class);
+        ServiceRequirementSuggestionRepository suggestions = mock(ServiceRequirementSuggestionRepository.class);
+
+        Service construction = new Service();
+        construction.setId("service-1");
+        construction.setCode("CONSTRUCTION_MONITORING");
+        construction.setName("Giám sát công trình");
+        construction.setIsActive(true);
+
+        Service legacy = new Service();
+        legacy.setId("legacy-1");
+        legacy.setCode("OLD_SERVICE");
+        legacy.setName("Giám sát Kho bãi / Logistics");
+        legacy.setIsActive(true);
+
+        DeliverableType type = activeType();
+        when(services.findByCodeIgnoreCase("CONSTRUCTION_MONITORING")).thenReturn(Optional.of(construction));
+        when(services.findByCodeIgnoreCase("FACTORY_INSPECTION")).thenReturn(Optional.empty());
+        when(services.findByCodeIgnoreCase("AREA_MONITORING")).thenReturn(Optional.empty());
+        when(services.findByCodeIgnoreCase("FOREST_MONITORING")).thenReturn(Optional.empty());
+        when(services.findByCodeIgnoreCase("OLD_SERVICE")).thenReturn(Optional.of(legacy));
+        when(services.findByNameIgnoreCase(anyString())).thenReturn(Optional.empty());
+        when(services.findAll()).thenReturn(List.of(construction, legacy));
+        when(types.findByNameIgnoreCase(anyString())).thenReturn(Optional.of(type));
+        when(types.findAll()).thenReturn(List.of(type));
+        when(links.findAll()).thenReturn(List.of());
+        when(suggestions.findAll()).thenReturn(List.of());
+        when(suggestions.findByServiceIdAndCategoryIgnoreCaseAndLabelIgnoreCase(anyString(), anyString(), anyString()))
+                .thenReturn(Optional.empty());
+
+        new ServiceCatalogSeedDataInitializer(services, types, links, suggestions).run(null);
+
+        verify(services, atLeastOnce()).save(legacy);
+        verify(links, atLeastOnce()).save(any(ServiceDeliverable.class));
+    }
+
+    private DeliverableType activeType() {
         DeliverableType type = DeliverableType.builder()
-                .name("Báo cáo Giám sát")
-                .defaultFormat("PDF")
+                .name("Ảnh chụp")
+                .defaultFormat("IMAGE")
                 .isActive(true)
                 .build();
         type.setId("type-1");
-        when(services.count()).thenReturn(1L);
-        when(services.findByNameIgnoreCase(anyString())).thenReturn(Optional.of(service));
-        when(types.findByNameIgnoreCase(anyString())).thenReturn(Optional.of(type));
-        new ServiceCatalogSeedDataInitializer(services, types, links, suggestions).run(null);
-        verify(services, never()).save(any(Service.class));
-        verify(links, atLeastOnce()).save(any(ServiceDeliverable.class));
-        verifyNoInteractions(suggestions);
+        return type;
     }
 }

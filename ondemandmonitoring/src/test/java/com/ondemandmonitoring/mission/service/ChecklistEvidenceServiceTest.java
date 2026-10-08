@@ -92,8 +92,8 @@ class ChecklistEvidenceServiceTest {
         for(var state:List.of(MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL,MissionResultApprovalStatus.APPROVED)) { result.setApprovalStatus(state); error(ErrorCode.CHECKLIST_EXECUTION_LOCKED,()->service.attach("m",request())); }
         result.setApprovalStatus(MissionResultApprovalStatus.REJECTED); assertEquals(1,service.attach("m",request()).size());
     }
-    @Test void readinessPendingOperationalAvailableFinalAndRejectionRecovery() {
-        assertFalse(service.ready(execution,List.of(),false)); assertTrue(service.ready(execution,List.of(link()),false)); assertFalse(service.ready(execution,List.of(link()),true));
+    @Test void validatedPendingMediaIsReadyForWholeResultReview() {
+        assertFalse(service.ready(execution,List.of(),false)); assertTrue(service.ready(execution,List.of(link()),false)); assertTrue(service.ready(execution,List.of(link()),true));
         asset.setMediaStatus(MediaStatus.AVAILABLE); assertTrue(service.ready(execution,List.of(link()),true));
         asset.setMediaStatus(MediaStatus.REJECTED); assertFalse(service.ready(execution,List.of(link()),false));
     }
