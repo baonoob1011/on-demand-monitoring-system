@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
+import com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService;
 import com.ondemandmonitoring.finance.domain.*;
 import com.ondemandmonitoring.finance.enums.*;
 import com.ondemandmonitoring.finance.record.PreparedPayment;
@@ -29,8 +30,9 @@ class PaymentPersistenceServiceTest {
     MissionRepository missions = mock(MissionRepository.class);
     AuthenticatedUserResolver users = mock(AuthenticatedUserResolver.class);
     PaymentReferenceGenerator references = mock(PaymentReferenceGenerator.class);
+    IDeliveryWorkflowService delivery = mock(IDeliveryWorkflowService.class);
     PaymentPersistenceService service = new PaymentPersistenceService(invoices, payments, missions, users,
-            new MissionPaymentEligibilityService(), references);
+            new MissionPaymentEligibilityService(), references, delivery);
     Invoice invoice; User owner;
 
     @BeforeEach void setUp() {
@@ -71,8 +73,7 @@ class PaymentPersistenceServiceTest {
     }
 
     @Test void finalPaymentIsBlockedBeforeMissionCompletion() {
-        Mission mission = new Mission(); mission.setStatus(MissionStatus.IN_PROGRESS);
-        when(missions.findByOrderId("o1")).thenReturn(Optional.of(mission));
+        doThrow(new ApiException(ErrorCode.FINAL_PAYMENT_NOT_ALLOWED)).when(delivery).requireFinalPaymentEligible("o1");
         assertThatThrownBy(() -> service.prepare("i1", PaymentType.FINAL_PAYMENT)).isInstanceOf(ApiException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.FINAL_PAYMENT_NOT_ALLOWED);
     }

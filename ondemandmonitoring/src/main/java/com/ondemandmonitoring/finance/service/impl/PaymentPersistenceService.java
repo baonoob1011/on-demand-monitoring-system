@@ -2,6 +2,7 @@ package com.ondemandmonitoring.finance.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
+import com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService;
 import com.ondemandmonitoring.finance.domain.Invoice;
 import com.ondemandmonitoring.finance.domain.Payment;
 import com.ondemandmonitoring.finance.dto.PaymentResponse;
@@ -33,6 +34,7 @@ public class PaymentPersistenceService implements IPaymentPersistenceService {
     private final AuthenticatedUserResolver currentUser;
     private final IMissionPaymentEligibilityService eligibility;
     private final PaymentReferenceGenerator referenceGenerator;
+    private final IDeliveryWorkflowService deliveryWorkflow;
 
     @Transactional
     public PreparedPayment prepare(String invoiceId, PaymentType type) {
@@ -48,9 +50,7 @@ public class PaymentPersistenceService implements IPaymentPersistenceService {
             throw new ApiException(ErrorCode.DEPOSIT_ALREADY_SATISFIED);
         }
         if (type == PaymentType.FINAL_PAYMENT) {
-            var mission = missions.findByOrderId(invoice.getOrder().getId())
-                    .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
-            if (mission.getStatus() != MissionStatus.COMPLETED) throw new ApiException(ErrorCode.FINAL_PAYMENT_NOT_ALLOWED);
+            deliveryWorkflow.requireFinalPaymentEligible(invoice.getOrder().getId());
         }
         var active = payments.findFirstByInvoiceIdAndPaymentTypeAndProviderAndStatusInOrderByCreatedAtDesc(
                 invoiceId, type, PaymentProvider.VNPAY,

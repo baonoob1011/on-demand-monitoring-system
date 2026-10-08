@@ -3,6 +3,7 @@ package com.ondemandmonitoring.mission.service.impl;
 import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
+import com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.IMediaAssetService;
@@ -17,11 +18,11 @@ import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.service.IMissionChecklistExecutionService;
 import com.ondemandmonitoring.mission.service.IMissionAuthorizationService;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
+import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.mission.mapper.MissionResultMapper;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.mission.repository.MissionResultRepository;
 import com.ondemandmonitoring.order.domain.Order;
-import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import java.time.Duration;
 import java.time.Instant;
@@ -46,10 +47,12 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
     MediaAssetRepository mediaAssetRepository;
     IMediaAssetService mediaAssetService;
     MissionResultMapper missionResultMapper;
+    /** Retained in the constructor for binary/test compatibility; result approval no longer completes an order. */
     OrderRepository orderRepository;
     IMissionChecklistExecutionService checklistExecutionService;
     AuthenticatedUserResolver currentUser;
     IMissionAuthorizationService authorization;
+    IDeliveryWorkflowService deliveryWorkflow;
 
     @Override
     @Transactional(readOnly = true)
@@ -103,6 +106,14 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
         checklistExecutionService.requireReadyForFinalApproval(result.getMission());
         if (result.getMission().getStatus() != MissionStatus.COMPLETED)
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID);
+        boolean unfinishedMediaReview = mediaAssetRepository
+                .findByMissionIdOrderByCapturedAtDesc(result.getMission().getId()).stream()
+                .anyMatch(asset -> asset.getMediaStatus() != com.ondemandmonitoring.media.domain.MediaStatus.AVAILABLE
+                        && asset.getMediaStatus() != com.ondemandmonitoring.media.domain.MediaStatus.REJECTED);
+        if (unfinishedMediaReview) {
+            throw new ApiException(ErrorCode.DELIVERY_NOT_READY,
+                    "Approve or reject every mission media file before approving the mission result");
+        }
         Instant now = Instant.now();
         result.setApprovalStatus(MissionResultApprovalStatus.APPROVED);
         result.setApprovedAt(now);
@@ -110,12 +121,9 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
         result.setReviewedBy(currentUser.getCurrentUserId());
         result.setReviewNote(request == null ? null : request.getNote());
         attachMissionMedia(result, result.getMission().getId());
-        Order order = result.getMission().getOrder();
-        if (order != null) {
-            order.setOrderStatus(OrderStatus.COMPLETED);
-            orderRepository.save(order);
-        }
-        return toResponse(missionResultRepository.save(result));
+        MissionResult saved = missionResultRepository.save(result);
+        deliveryWorkflow.markReadyForManagerReview(result.getMission().getOrder().getId());
+        return toResponse(saved);
     }
 
     @Override
@@ -176,6 +184,10 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
     }
 
     private MissionResultResponse toResponse(MissionResult result) {
+        var viewer = currentUser.getCurrentUser();
+        if (viewer != null && viewer.getRole() != null && viewer.getRole().getCode() == RoleCode.CUSTOMER) {
+            return missionResultMapper.toResponseWithoutMedia(result);
+        }
         String missionId = result.getMission().getId();
         if (result.getMediaFiles() == null || result.getMediaFiles().isEmpty()) {
             result.setMediaFiles(mediaAssetRepository.findByMissionIdOrderByCapturedAtDesc(missionId));
