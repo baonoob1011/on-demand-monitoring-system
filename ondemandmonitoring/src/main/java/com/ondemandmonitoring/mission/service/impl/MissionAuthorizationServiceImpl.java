@@ -83,12 +83,35 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
 
     @Override
     public boolean canControlFlight(String missionId) {
-        return canPerform(missionId, MissionStaffRole.PILOT);
+        return normalOperationAllowed(missionId) && canPerform(missionId, MissionStaffRole.PILOT);
+    }
+
+    @Override
+    public boolean canTerminateFlight(String missionId) {
+        return findRuntimeMissionById(missionId)
+                .filter(MissionRuntimeGate::hasActiveSafeStop)
+                .filter(m -> m.getSafeStopRequestedAt() != null && m.getSafeStopConfirmedAt() == null
+                        && m.getSafeStopCleanedAt() == null)
+                .filter(m -> Set.of(MissionStatus.CONNECTED, MissionStatus.PREFLIGHT_CHECKING,
+                        MissionStatus.READY_TO_FLY, MissionStatus.IN_FLIGHT, MissionStatus.IN_PROGRESS,
+                        MissionStatus.RETURNING).contains(m.getStatus()))
+                .map(m -> canPerform(m.getId(), MissionStaffRole.PILOT)).orElse(false);
+    }
+
+    private boolean normalOperationAllowed(String missionId) {
+        return findRuntimeMissionById(missionId).filter(m -> !MissionRuntimeGate.hasActiveSafeStop(m)).isPresent();
+    }
+
+    @Override
+    public boolean canPrepareSafeStopPostflight(String missionId) {
+        // Close out a historical ground confirmation, not a flight or session recovery.
+        return findRuntimeMissionById(missionId).filter(MissionRuntimeGate::allowsConfirmedGroundPostflight)
+                .map(m -> canPerform(m.getId(), MissionStaffRole.PILOT)).orElse(false);
     }
 
     @Override
     public boolean canOperatePayload(String missionId) {
-        return canPerform(missionId, MissionStaffRole.OPERATOR);
+        return normalOperationAllowed(missionId) && canPerform(missionId, MissionStaffRole.OPERATOR);
     }
 
     @Override

@@ -91,6 +91,102 @@ class ResourceSafetyPostgresTest extends ExecutionPlanAmendmentPostgresTest {
     }
     void planning(String id) { jdbc.update("update missions set status='RESOURCE_ASSIGNING',completed_at=null where id=?",id); }
 
+    List<String> availableDevices(String missionId) {
+        return transaction.execute(tx -> {
+            var mapper = mock(com.ondemandmonitoring.device.mapper.DeviceMapper.class);
+            when(mapper.toResponse(any())).thenAnswer(c -> {
+                com.ondemandmonitoring.device.domain.Device device = c.getArgument(0);
+                return com.ondemandmonitoring.device.dto.response.DeviceResponse.builder().id(device.getId()).build();
+            });
+            return new com.ondemandmonitoring.device.service.impl.DeviceAvailabilityServiceImpl(
+                    missions, repository(entityManagerFactory, DeviceRepository.class), mapper)
+                    .getAvailableForMission(missionId).stream().map(d -> d.getId()).toList();
+        });
+    }
+    List<String> availableStaff(String missionId) {
+        return transaction.execute(tx -> new com.ondemandmonitoring.user.service.impl.OperatorDirectoryServiceImpl(
+                repository(entityManagerFactory, UserRepository.class), missions,
+                repository(entityManagerFactory, ResourceTimeLockRepository.class),
+                repository(entityManagerFactory, UserScheduleRepository.class))
+                .getAvailableOperators(missionId).stream().map(u -> u.getId()).toList());
+    }
+    @Test void availabilityReturnsFreeResourcesWithoutWritingReservations() {
+        ready(0); String device = device(), user = staff();
+        assertTrue(availableDevices(first).contains(device));
+        assertTrue(availableStaff(first).contains(user));
+        assertEquals(0, rows("resource_time_locks"));
+    }
+    @Test void availabilityExcludesOverlappingSiblingResources() {
+        ready(0); String device = device(), user = staff();
+        withMission(first, m -> reservations.reserveAll(m, Map.of(device, false, user, true)));
+        assertFalse(availableDevices(second).contains(device));
+        assertFalse(availableStaff(second).contains(user));
+    }
+    @Test void availabilityAllowsAdjacentIntervals() {
+        ready(0); String device = device(), user = staff();
+        withMission(first, m -> reservations.reserveAll(m, Map.of(device, false, user, true)));
+        withMission(second, m -> { m.setScheduledStartAt(m.getScheduledEndAt()); m.setScheduledEndAt(m.getScheduledStartAt().plusSeconds(3600)); });
+        assertTrue(availableDevices(second).contains(device));
+        assertTrue(availableStaff(second).contains(user));
+    }
+    @Test void availabilityIncludesOwnCurrentAssignmentsAndOwnStaffSchedule() {
+        ready(0); String device = device(), user = staff(); planning(first);
+        var deviceRequest = new AssignDeviceRequest(); deviceRequest.setDeviceId(device);
+        var staffRequest = new AssignStaffRequest(); staffRequest.setStaffId(user); staffRequest.setAssignedRole("PILOT");
+        transaction.executeWithoutResult(tx -> { operational.assignDevice(first, deviceRequest); operational.assignStaff(first, staffRequest); });
+        jdbc.update("update devices set status='RESERVED' where id=?", device);
+        assertTrue(availableDevices(first).contains(device));
+        assertTrue(availableStaff(first).contains(user));
+        assertFalse(availableDevices(second).contains(device));
+        assertFalse(availableStaff(second).contains(user));
+    }
+    @Test void availabilityExcludesOverlappingDifferentOrderAndReleasedLocksBecomeAvailable() {
+        ready(0); String other = independentMission(), device = device(), user = staff();
+        withMission(other, m -> reservations.reserveAll(m, Map.of(device, false, user, true)));
+        assertFalse(availableDevices(first).contains(device));
+        assertFalse(availableStaff(first).contains(user));
+        withMission(other, m -> reservations.release(other, "TEST_RELEASE"));
+        assertTrue(availableDevices(first).contains(device));
+        assertTrue(availableStaff(first).contains(user));
+    }
+    @Test void availabilityRevalidatesAfterScheduleChanges() {
+        ready(0); String device = device(), user = staff();
+        withMission(first, m -> reservations.reserveAll(m, Map.of(device, false, user, true)));
+        withMission(second, m -> { m.setScheduledStartAt(m.getScheduledEndAt()); m.setScheduledEndAt(m.getScheduledStartAt().plusSeconds(3600)); });
+        assertTrue(availableDevices(second).contains(device));
+        assertTrue(availableStaff(second).contains(user));
+        withMission(second, m -> m.setScheduledStartAt(m.getScheduledStartAt().minusSeconds(1)));
+        assertFalse(availableDevices(second).contains(device));
+        assertFalse(availableStaff(second).contains(user));
+    }
+    @Test void availabilityPreservesDeviceAndAccountEligibility() {
+        ready(0); String device = device(), user = staff();
+        for (String status : List.of("MAINTENANCE", "OUT_OF_SERVICE", "OFFLINE", "CHARGING")) {
+            jdbc.update("update devices set status=? where id=?", status, device);
+            assertFalse(availableDevices(first).contains(device));
+        }
+        jdbc.update("update users set is_active=false where id=?", user);
+        assertFalse(availableStaff(first).contains(user));
+        jdbc.update("update users set is_active=true where id=?", user);
+        jdbc.update("update roles set is_active=false where code='STAFF'");
+        assertFalse(availableStaff(first).contains(user));
+    }
+    @Test void availabilityRequiresValidPersistedMissionSchedule() {
+        ready(0);
+        // Persisted Missions cannot lack an end. Service guards also protect incomplete legacy/mock data.
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                () -> jdbc.update("update missions set scheduled_end_at=null where id=?", first));
+        var incomplete = new Mission(); incomplete.setId(first);
+        var lookup = mock(MissionRepository.class);
+        when(lookup.findById(first)).thenReturn(Optional.of(incomplete));
+        error(ErrorCode.INVALID_REQUEST, () -> new com.ondemandmonitoring.device.service.impl.DeviceAvailabilityServiceImpl(
+                lookup, mock(DeviceRepository.class), mock(com.ondemandmonitoring.device.mapper.DeviceMapper.class))
+                .getAvailableForMission(first));
+        error(ErrorCode.INVALID_REQUEST, () -> new com.ondemandmonitoring.user.service.impl.OperatorDirectoryServiceImpl(
+                mock(UserRepository.class), lookup, mock(ResourceTimeLockRepository.class), mock(UserScheduleRepository.class))
+                .getAvailableOperators(first));
+    }
+
     @Test void telemetryReadinessIsNonMutatingInPostgresReadOnlyTransaction() {
         ready(0); operationalFixture(first);
         String connection = jdbc.queryForObject("select id from device_connections where mission_id=?",String.class,first);
@@ -200,22 +296,78 @@ class ResourceSafetyPostgresTest extends ExecutionPlanAmendmentPostgresTest {
             var check=new PersistedPostDeviceCheck(); check.setMission(missions.findById(id).orElseThrow());
             check.setDeviceConnection(repository(entityManagerFactory,DeviceConnectionRepository.class).findByMissionId(id).getFirst());
             check.setStatus(DeviceCheckStatus.PASSED); check.setTotalChecks(9); check.setPassedChecks(9); check.setFailedChecks(0);
-            check.setStartedAt(Instant.now()); check.setCompletedAt(Instant.now()); repository(entityManagerFactory,PersistedPostDeviceCheckRepository.class).saveAndFlush(check);
+            // Fixture mixes PostgreSQL now() with the host JVM clock; anchor chronology to the
+            // persisted start rather than weakening the production postflight freshness guard.
+            Instant completed = Instant.now();
+            Instant started = check.getMission().getActualStartAt();
+            if (started != null && completed.isBefore(started)) completed = started.plusMillis(1);
+            check.setStartedAt(started == null ? completed : started); check.setCompletedAt(completed);
+            repository(entityManagerFactory,PersistedPostDeviceCheckRepository.class).saveAndFlush(check);
         });
     }
     void requestStop(String id) { stop.request(id,new MissionSafeStopRequest(revision(),"Weather cancellation")); }
     void confirmStop(String id) { stop.confirm(id,new MissionSafeStopConfirmationRequest(true,true,"Landed, disarmed, control channel closed externally")); }
+
+    MissionAuthorizationServiceImpl flightPermissions() {
+        return new MissionAuthorizationServiceImpl(repository(entityManagerFactory,MissionStaffAssignmentRepository.class),
+                missions,resolver,repository(entityManagerFactory,MissionResultRepository.class),scope);
+    }
+    @Test void readySafeStopCannotReopenAndConfirmedCleanupCancellationPreserveLifecycle() {
+        ready(0); String pilot=operationalFixture(first);
+        withMission(first,m -> { m.setStatus(MissionStatus.READY_TO_FLY); m.setActualStartAt(null); });
+        amend(); requestStop(first); actor(pilot); capabilityAuthority("STAFF");
+        assertFalse(transaction.<Boolean>execute(tx -> flightPermissions().canControlFlight(first)));
+        assertTrue(transaction.<Boolean>execute(tx -> flightPermissions().canTerminateFlight(first)));
+        assertFalse(stop.get(first).canConfirmSafeStop());
+        error(ErrorCode.MISSION_CANCELLATION_REQUIRES_SAFE_STOP,() -> transaction.executeWithoutResult(tx -> operational.startMission(first)));
+        var completion = new com.ondemandmonitoring.devicecheck.service.impl.PreDeviceCheckCompletionServiceImpl(missions,null,null,null,null,null,null);
+        error(ErrorCode.MISSION_CANCELLATION_REQUIRES_SAFE_STOP,() -> transaction.executeWithoutResult(tx -> completion.complete(first,"unused")));
+        assertEquals(MissionStatus.READY_TO_FLY,missions.findById(first).orElseThrow().getStatus());
+        transaction.executeWithoutResult(tx -> operational.startPostDeviceChecking(first));
+        assertEquals(MissionStatus.POSTFLIGHT_CHECKING,missions.findById(first).orElseThrow().getStatus());
+        postflight(first); confirmStop(first);
+        assertEquals(MissionStatus.PENDING_REVIEW,missions.findById(first).orElseThrow().getStatus());
+        assertFalse(transaction.<Boolean>execute(tx -> flightPermissions().canControlFlight(first))); assertFalse(transaction.<Boolean>execute(tx -> flightPermissions().canTerminateFlight(first)));
+        capabilityAuthority("MANAGER"); assertTrue(stop.get(first).canCleanupSafeStop()); stop.cleanup(first);
+        assertTrue(stop.get(first).canCancelMission()); assertFalse(transaction.<Boolean>execute(tx -> flightPermissions().canControlFlight(first)));
+        cancel(first); assertEquals(MissionStatus.CANCELLED,missions.findById(first).orElseThrow().getStatus());
+        String next=replacement(first); assertNotEquals(first,next);
+        assertEquals(MissionStatus.CANCELLED,missions.findById(first).orElseThrow().getStatus());
+        assertNull(missions.findById(next).orElseThrow().getSafeStopRequestedAt());
+    }
+
+    @Test void historicalConfirmedReadyClosesOutViaPostflightWithoutReopeningFlight() {
+        ready(0); String pilot=operationalFixture(first); amend(); requestStop(first);
+        // Reproduce legacy data only in the disposable schema, never repair the application's DB.
+        withMission(first,m -> { m.setStatus(MissionStatus.READY_TO_FLY); m.setActualStartAt(null);
+            m.setSafeStopRequiresLanding(false); m.setSafeStopConfirmedAt(Instant.now());
+            m.setSafeStopStatus(MissionSafeStopStatus.IN_PROGRESS); });
+        actor(pilot);
+        assertFalse(transaction.<Boolean>execute(tx -> flightPermissions().canControlFlight(first)));
+        assertFalse(transaction.<Boolean>execute(tx -> flightPermissions().canTerminateFlight(first)));
+        assertTrue(transaction.<Boolean>execute(tx -> flightPermissions().canPrepareSafeStopPostflight(first)));
+        transaction.executeWithoutResult(tx -> operational.startPostDeviceChecking(first));
+        assertEquals(MissionStatus.POSTFLIGHT_CHECKING,missions.findById(first).orElseThrow().getStatus());
+        postflight(first); stop.cleanup(first); cancel(first);
+        assertEquals(MissionStatus.CANCELLED,missions.findById(first).orElseThrow().getStatus());
+    }
 
     @Test void activeMissionRequiresCrewConfirmationInspectionCleanupThenCancellationAndReplacement() {
         ready(0); String pilot=operationalFixture(first); amend(); var before=history(first);
         error(ErrorCode.MISSION_CANCELLATION_REQUIRES_SAFE_STOP,() -> cancel(first)); requestStop(first);
         error(ErrorCode.MISSION_SAFE_STOP_NOT_READY,() -> stop.cleanup(first));
         error(ErrorCode.MISSION_CANCELLATION_REQUIRES_SAFE_STOP,() -> transaction.executeWithoutResult(tx -> operational.startMission(first)));
+        transaction.executeWithoutResult(tx -> operational.markReturning(first));
+        assertEquals(MissionStatus.RETURNING,missions.findById(first).orElseThrow().getStatus());
+        transaction.executeWithoutResult(tx -> operational.startPostDeviceChecking(first));
+        assertEquals(MissionStatus.POSTFLIGHT_CHECKING,missions.findById(first).orElseThrow().getStatus());
         actor(pilot);
-        error(ErrorCode.MISSION_SAFE_STOP_NOT_READY,() -> confirmStop(first));
+        // Confirmation records the safe attestation; the completed postflight still gates cleanup.
         postflight(first); actor(pilot); confirmStop(first); stop.cleanup(first);
+        assertEquals(MissionStatus.PENDING_REVIEW,missions.findById(first).orElseThrow().getStatus());
         assertEquals("READY_FOR_CANCELLATION",jdbc.queryForObject("select safe_stop_status from missions where id=?",String.class,first));
         cancel(first); String replacement=replacement(first); assertNotEquals(first,replacement);
+        assertEquals(MissionStatus.CANCELLED,missions.findById(first).orElseThrow().getStatus());
         assertNotNull(stop.cleanup(first).cleanedAt()); // cleanup retry after cancellation is still a no-op.
         assertEquals(0,jdbc.queryForObject("select count(*) from resource_time_locks where mission_id=? and released_at is null",Integer.class,first));
         assertEquals(0,jdbc.queryForObject("select count(*) from device_connections where mission_id=? and telemetry_active=true",Integer.class,first));
@@ -246,7 +398,9 @@ class ResourceSafetyPostgresTest extends ExecutionPlanAmendmentPostgresTest {
     @Test void managerCannotAttestLandingAndCancelledMissionCannotReconnectOrAcceptTelemetry() {
         ready(0); String pilot=operationalFixture(first); amend(); requestStop(first); postflight(first);
         when(resolver.getCurrentUser()).thenReturn(User.builder().role(Role.builder().code(RoleCode.MANAGER).build()).isActive(true).build());
-        error(ErrorCode.ACCESS_DENIED,() -> confirmStop(first)); actor(pilot); confirmStop(first); stop.cleanup(first); cancel(first);
+        error(ErrorCode.ACCESS_DENIED,() -> confirmStop(first)); actor(pilot); confirmStop(first);
+        assertNotNull(jdbc.queryForObject("select safe_stop_confirmed_at from missions where id=?",Object.class,first),"confirmation must be persisted");
+        stop.cleanup(first); cancel(first);
         String device=jdbc.queryForObject("select device_id from mission_device_assignments where mission_id=?",String.class,first);
         error(ErrorCode.MISSION_SAFE_STOP_NOT_READY,() -> transaction.executeWithoutResult(tx -> sessions.connectGcs(first)));
         error(ErrorCode.MISSION_SAFE_STOP_NOT_READY,() -> transaction.executeWithoutResult(tx -> sessions.requireActiveTelemetryConnection(device,first)));

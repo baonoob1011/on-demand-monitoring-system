@@ -48,6 +48,11 @@ public class PreDeviceCheckCompletionServiceImpl implements IPreDeviceCheckCompl
                         ErrorCode.MISSION_NOT_FOUND,
                         "Mission not found: " + missionId));
         com.ondemandmonitoring.mission.service.impl.MissionRuntimeGate.requireOperationalCommandsAllowed(mission);
+        if (mission.getStatus() != MissionStatus.CONNECTED
+                && mission.getStatus() != MissionStatus.PREFLIGHT_CHECKING
+                && mission.getStatus() != MissionStatus.READY_TO_FLY) {
+            throw new ApiException(ErrorCode.MISSION_STATUS_INVALID, "Mission is not eligible for preflight completion");
+        }
         Device assignedDevice = getCurrentDevice(mission.getId());
         if (assignedDevice == null || assignedDevice.getId() == null) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Mission has no assigned deviceId");

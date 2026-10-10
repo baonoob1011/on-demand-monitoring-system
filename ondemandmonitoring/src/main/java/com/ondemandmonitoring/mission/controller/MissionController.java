@@ -383,7 +383,7 @@ public class MissionController {
 
     /** POST /api/missions/{id}/return – device heads back, RETURNING */
     @PostMapping("/{id}/return")
-    @PreAuthorize("@missionAuthorizationService.canControlFlight(#id)")
+    @PreAuthorize("@missionAuthorizationService.canControlFlight(#id) or @missionAuthorizationService.canTerminateFlight(#id)")
     public ResponseEntity<ApiResponse<MissionResponse>> markReturning(@PathVariable String id) {
         MissionResponse response = missionService.markReturning(id);
         return ResponseEntity.ok(ApiResponse.ok("device đang quay trở về", response));
@@ -391,7 +391,7 @@ public class MissionController {
 
     /** POST /api/missions/{id}/post-device or /postflight – device landed, POSTFLIGHT_CHECKING */
     @PostMapping({"/{id}/post-device", "/{id}/postflight"})
-    @PreAuthorize("@missionAuthorizationService.canControlFlight(#id)")
+    @PreAuthorize("@missionAuthorizationService.canControlFlight(#id) or @missionAuthorizationService.canTerminateFlight(#id) or @missionAuthorizationService.canPrepareSafeStopPostflight(#id)")
     public ResponseEntity<ApiResponse<MissionResponse>> startPostflight(@PathVariable String id) {
         MissionResponse response = missionService.startPostDeviceChecking(id);
         return ResponseEntity.ok(ApiResponse.ok("Bắt đầu kiểm tra sau bay", response));

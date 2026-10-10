@@ -47,9 +47,14 @@ public class OperatorDirectoryServiceImpl implements IOperatorDirectoryService {
             mission = missionRepository.findById(missionId)
                     .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND, "Mission not found: " + missionId));
         }
+        if (mission != null && (mission.getScheduledStartAt() == null || mission.getScheduledEndAt() == null
+                || !mission.getScheduledStartAt().isBefore(mission.getScheduledEndAt()))) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Mission schedule is required for availability");
+        }
         Mission targetMission = mission;
         return userRepository.findAllByRole_CodeAndIsActiveTrueOrderByFullNameAsc(RoleCode.STAFF)
                 .stream()
+                .filter(user -> user.getRole() != null && user.getRole().isActive())
                 .filter(user -> targetMission == null || isAvailableForMission(user, targetMission))
                 .map(user -> AvailableOperatorResponse.builder()
                         .id(user.getId())

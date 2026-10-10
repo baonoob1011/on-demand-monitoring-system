@@ -64,7 +64,9 @@ public class MissionSafeStopServiceImpl implements IMissionSafeStopService {
                         || (!Boolean.TRUE.equals(m.getSafeStopRequiresLanding()) && a.getAssignedRole() == MissionStaffRole.OPERATOR)));
         if (!authorized) throw new ApiException(ErrorCode.ACCESS_DENIED);
         if (m.getSafeStopRequestedAt() == null || Set.of(MissionStatus.IN_FLIGHT, MissionStatus.IN_PROGRESS,
-                MissionStatus.RETURNING).contains(m.getStatus())) throw new ApiException(ErrorCode.MISSION_SAFE_STOP_NOT_READY);
+                MissionStatus.RETURNING, MissionStatus.CONNECTED, MissionStatus.PREFLIGHT_CHECKING,
+                MissionStatus.READY_TO_FLY, MissionStatus.POSTFLIGHT_CHECKING).contains(m.getStatus()))
+            throw new ApiException(ErrorCode.MISSION_SAFE_STOP_NOT_READY);
     }
 
     private void requireCleanupRequested(Mission m) {

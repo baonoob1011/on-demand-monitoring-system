@@ -12,5 +12,7 @@ public record MissionPermissionsResponse(
         boolean canSubmitMissionResult,
         boolean canExecuteMonitoringChecklist,
         boolean canAttachChecklistEvidence,
-        boolean canDetachChecklistEvidence) {
+        boolean canDetachChecklistEvidence,
+        boolean canTerminateFlight,
+        boolean canPrepareSafeStopPostflight) {
 }

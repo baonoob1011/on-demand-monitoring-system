@@ -390,7 +390,9 @@ public class MissionService implements IMissionService {
                 resources.releaseResource(resolvedMissionId, assignment.getDevice().getId(), "DEVICE_REPLACED");
             }
             if (!currentMainAssignments.isEmpty()) {
-                missionDeviceAssignmentRepository.saveAll(currentMainAssignments);
+                // Release the unique current-MAIN slot before Hibernate queues the new INSERT.
+                // The existing Order -> Mission -> resource locks serialize replacements.
+                missionDeviceAssignmentRepository.saveAllAndFlush(currentMainAssignments);
             }
         }
 
@@ -398,6 +400,7 @@ public class MissionService implements IMissionService {
                 .mission(mission)
                 .device(device)
                 .deviceRole(role)
+                .isCurrent(true)
                 .checkupStatus(CheckupStatus.PENDING)
                 .postcheckStatus(null)
                 .verifiedBy(null)
@@ -1028,9 +1031,10 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId) or @missionAuthorizationService.canTerminateFlight(#missionId)")
     public MissionResponse markReturning(String missionId) {
         Mission mission = getRuntimeMissionOrThrow(missionId);
+        MissionRuntimeGate.requireTerminationTransitionAllowed(mission);
         if (mission.getStatus() != MissionStatus.IN_FLIGHT && mission.getStatus() != MissionStatus.IN_PROGRESS) {
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID,
                     "Mission must be IN_FLIGHT to mark returning, current: " + mission.getStatus());
@@ -1044,9 +1048,10 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId) or @missionAuthorizationService.canTerminateFlight(#missionId) or @missionAuthorizationService.canPrepareSafeStopPostflight(#missionId)")
     public MissionResponse startPostDeviceChecking(String missionId) {
         Mission mission = getRuntimeMissionOrThrow(missionId);
+        MissionRuntimeGate.requirePostflightTransitionAllowed(mission);
         MissionStatus current = mission.getStatus();
         // Cho phép sang Postcheck cả khi mission chưa bay (chỉ chụp ảnh tham chiếu).
         boolean neverFlew = current == MissionStatus.CONNECTED

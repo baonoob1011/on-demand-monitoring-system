@@ -24,18 +24,45 @@ public final class MissionRuntimeGate {
         if (!isStructurallyFinalized(mission)) throw new ApiException(ErrorCode.CHECKLIST_ASSIGNMENT_NOT_FINALIZED);
     }
 
+    public static boolean hasActiveSafeStop(Mission mission) {
+        return mission.getSafeStopStatus() != null || mission.getSafeStopRequestedAt() != null
+                || mission.getSafeStopConfirmedAt() != null || mission.getSafeStopCleanedAt() != null;
+    }
+
     public static void requireOperationalCommandsAllowed(Mission mission) {
         if (mission.getStatus() == com.ondemandmonitoring.mission.enums.MissionStatus.CANCELLED
-                || mission.getSafeStopRequestedAt() != null)
+                || hasActiveSafeStop(mission))
             throw new ApiException(ErrorCode.MISSION_CANCELLATION_REQUIRES_SAFE_STOP);
     }
 
+    /** Returning and postflight terminate operation; they never reopen a confirmed stop. */
+    public static void requireTerminationTransitionAllowed(Mission mission) {
+        if (mission.getSafeStopConfirmedAt() != null || mission.getSafeStopCleanedAt() != null
+                || mission.getSafeStopStatus() == com.ondemandmonitoring.mission.enums.MissionSafeStopStatus.READY_FOR_CANCELLATION)
+            throw new ApiException(ErrorCode.MISSION_SAFE_STOP_NOT_READY);
+    }
+
     public static void requireSessionAllowed(Mission mission) {
+        requireTerminationTransitionAllowed(mission);
         if (mission.getStatus() == com.ondemandmonitoring.mission.enums.MissionStatus.CANCELLED
                 || mission.getStatus() == com.ondemandmonitoring.mission.enums.MissionStatus.FAILED
                 || mission.getStatus() == com.ondemandmonitoring.mission.enums.MissionStatus.COMPLETED
                 || mission.getSafeStopStatus() == com.ondemandmonitoring.mission.enums.MissionSafeStopStatus.IN_PROGRESS
                 || mission.getSafeStopStatus() == com.ondemandmonitoring.mission.enums.MissionSafeStopStatus.READY_FOR_CANCELLATION)
             throw new ApiException(ErrorCode.MISSION_SAFE_STOP_NOT_READY);
+    }
+
+    public static boolean allowsConfirmedGroundPostflight(Mission mission) {
+        return mission.getSafeStopRequestedAt() != null && mission.getSafeStopConfirmedAt() != null
+                && mission.getSafeStopCleanedAt() == null
+                && mission.getSafeStopStatus() == com.ondemandmonitoring.mission.enums.MissionSafeStopStatus.IN_PROGRESS
+                && mission.getActualStartAt() == null && !Boolean.TRUE.equals(mission.getSafeStopRequiresLanding())
+                && java.util.Set.of(com.ondemandmonitoring.mission.enums.MissionStatus.CONNECTED,
+                    com.ondemandmonitoring.mission.enums.MissionStatus.PREFLIGHT_CHECKING,
+                    com.ondemandmonitoring.mission.enums.MissionStatus.READY_TO_FLY).contains(mission.getStatus());
+    }
+
+    public static void requirePostflightTransitionAllowed(Mission mission) {
+        if (!allowsConfirmedGroundPostflight(mission)) requireTerminationTransitionAllowed(mission);
     }
 }

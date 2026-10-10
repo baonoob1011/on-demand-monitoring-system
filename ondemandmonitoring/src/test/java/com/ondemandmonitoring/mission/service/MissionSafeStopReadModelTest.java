@@ -98,6 +98,15 @@ class MissionSafeStopReadModelTest {
         mission.setSafeStopConfirmedAt(Instant.now()); mission.setSafeStopStatus(MissionSafeStopStatus.IN_PROGRESS);
         assertTrue(service.get("m1").canConfirmSafeStop(),"existing confirmation replay remains permitted");
     }
+
+    @ParameterizedTest @EnumSource(value=MissionStatus.class, names={"READY_TO_FLY","CONNECTED","PREFLIGHT_CHECKING","POSTFLIGHT_CHECKING"})
+    void cannotConfirmBeforeLifecycleIsQuiescent(MissionStatus status) {
+        var pilot=authenticate(RoleCode.STAFF,"pilot"); assign(pilot,MissionStaffRole.PILOT); requested(false);
+        mission.setStatus(status);
+        assertFalse(service.get("m1").canConfirmSafeStop());
+        assertFalse(service.get("m1").canCleanupSafeStop());
+        assertEquals(status,mission.getStatus());
+    }
     @Test void operatorAllowedOnlyForNotYetFlownCaseAndAcceptedOwnAssignment() {
         var user=authenticate(RoleCode.STAFF,"operator"); assign(user,MissionStaffRole.OPERATOR); requested(false);
         assertTrue(service.get("m1").canConfirmSafeStop());
