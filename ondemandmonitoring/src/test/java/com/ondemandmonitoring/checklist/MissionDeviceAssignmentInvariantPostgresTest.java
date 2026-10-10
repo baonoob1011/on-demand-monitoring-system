@@ -40,7 +40,6 @@ import static org.mockito.Mockito.*;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class MissionDeviceAssignmentInvariantPostgresTest {
-    private static final String MIGRATION = "enforce_current_main_device_assignment.sql";
     @Autowired ApplicationContext context;
     ResourceSafetyPostgresTest fixture;
     MissionDeviceAssignmentRepository assignments;
@@ -52,7 +51,6 @@ class MissionDeviceAssignmentInvariantPostgresTest {
         fixture = new ResourceSafetyPostgresTest();
         context.getAutowireCapableBeanFactory().autowireBean(fixture);
         fixture.prepare();
-        fixture.migration(MIGRATION);
         fixture.ready(0);
         fixture.planning(fixture.first);
         assignments = repository(fixture.entityManagerFactory, MissionDeviceAssignmentRepository.class);
@@ -153,14 +151,14 @@ class MissionDeviceAssignmentInvariantPostgresTest {
                 + "where mission_id=? and device_id=?", fixture.first, old));
     }
 
-    @Test void duplicateLegacyMainFailsStrictQueryAndMigrationWithoutDeletingHistory() {
+    @Test void corruptCurrentMainFailsStrictQueryAndVerificationWithoutDeletingHistory() {
         dropInvariantInDisposableSchema();
         insert(fixture.device(), DeviceRole.MAIN, true);
         insert(fixture.device(), DeviceRole.MAIN, true);
         assertNonUnique(assertThrows(RuntimeException.class, this::currentMain));
         var before = fixture.jdbc.queryForList("select * from mission_device_assignments order by id");
-        var failure = assertThrows(RuntimeException.class, () -> fixture.migration(MIGRATION));
-        assertTrue(failure.getMessage().contains("Current MAIN assignment invariant violated"));
+        var failure = assertThrows(org.springframework.dao.DataAccessException.class, fixture::verifyCurrentSchema);
+        assertTrue(failure.getMostSpecificCause().getMessage().contains("uk_mission_device_assignment_current_main"));
         assertEquals(before, fixture.jdbc.queryForList("select * from mission_device_assignments order by id"));
     }
 
@@ -171,7 +169,6 @@ class MissionDeviceAssignmentInvariantPostgresTest {
         insert(fixture.device(), DeviceRole.MAIN, false);
         insert(fixture.device(), DeviceRole.SUPPORT, true);
         insert(fixture.device(), DeviceRole.SUPPORT, true);
-        fixture.migration(MIGRATION);
         assertEquals(1, currentMainCount());
         assertEquals(5, fixture.rows("mission_device_assignments"));
     }

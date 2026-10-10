@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Sibling fixtures relax the gate only inside a rolled-back transaction in the isolated test schema. */
+/** Current 1:N schema supports sibling identity and deterministic query ordering. */
 class MissionIdentityPostgresTest extends OrderMissionPostgresTest {
     @Test void aggregateQuerySupportsZeroOneAndMultipleChildrenWithStableOrdering() {
         String orderId = order(OrderStatus.APPROVED);
@@ -16,8 +16,7 @@ class MissionIdentityPostgresTest extends OrderMissionPostgresTest {
                 .stream().map(m -> m.getId()).toList());
         transaction.executeWithoutResult(tx -> {
             var jdbc = new JdbcTemplate(dataSource);
-            // Restore all DDL and data by rollback; never remove the runtime gate in the project DB.
-            jdbc.execute("ALTER TABLE missions DROP CONSTRAINT uk_missions_order");
+            // Only fixture rows are rolled back; no schema gate needs to be removed.
             jdbc.update("UPDATE missions SET scheduled_start_at=? WHERE id=?",
                     java.sql.Timestamp.from(Instant.parse("2026-10-08T10:00:00Z")), first.getId());
             for (String id : java.util.List.of("sibling-b", "sibling-a")) {

@@ -24,7 +24,6 @@ import static org.junit.jupiter.api.Assertions.*;
 class ExecutionPlanAmendmentPostgresTest extends OrderAggregateCompletionPostgresTest {
     @Autowired IMissionCancellationService cancellation;
 
-    @Override @BeforeEach void prepare() { super.prepare(); migration("enable_execution_plan_amendment.sql"); }
     void amend() { plan.amend(orderId, new ExecutionPlanAmendRequest(revision(), "  Weather requires a new flight  ")); }
     void cancel(String mission) { cancellation.cancel(mission, new MissionCancelRequest(revision(), "  Unsafe original package  ")); }
     MissionCreateRequest replacementRequest(String original) {
@@ -148,7 +147,6 @@ class ExecutionPlanAmendmentPostgresTest extends OrderAggregateCompletionPostgre
         String r3 = replacement(r2); assertNotEquals(r2,r3);
         String direct = replacement(first); assertNotEquals(r3,direct);
         error(ErrorCode.MISSION_REPLACEMENT_ALREADY_EXISTS, () -> replacement(first));
-        migration("enable_execution_plan_amendment.sql");
     }
     @Test void finalizedStructureCannotBeEditedButNewPlanningSelectionCan() {
         ready(1); amend(); error(ErrorCode.EXECUTION_PLAN_NOT_DRAFT, () -> choose(first,0));

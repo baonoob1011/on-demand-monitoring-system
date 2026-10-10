@@ -63,6 +63,8 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
             mission.setOrder(orders.findById(request.getOrderId()).orElseThrow());
             mission.setMissionCode("legacy-" + UUID.randomUUID());
             mission.setStatus(com.ondemandmonitoring.mission.enums.MissionStatus.RESOURCE_ASSIGNING);
+            mission.setTargetPoint(mission.getOrder().getPoint());
+            mission.setTargetArea(mission.getOrder().getTargetArea());
             mission.setScheduledStartAt(request.getScheduledStartAt());
             mission.setScheduledEndAt(request.getScheduledEndAt());
             mission = missions.saveAndFlush(mission);
@@ -120,22 +122,27 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
         assertEquals(0, count(id));
     }
 
-    @Test void databaseRejectsDuplicateEvenWhenServiceIsBypassed() {
+    @Test void databaseRejectsDuplicateCreationKeyButAllowsSiblingMissions() {
         String id = order(OrderStatus.APPROVED);
         missionService.createMission(request(id));
         var jdbc = new JdbcTemplate(dataSource);
         var exception = assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
-                INSERT INTO missions(id, mission_code, order_id, status, scheduled_start_at, scheduled_end_at, created_at, version)
-                VALUES (?, ?, ?, 'RESOURCE_ASSIGNING', now(), now() + interval '1 hour', now(), 0)
+                INSERT INTO missions(id,mission_code,order_id,status,scheduled_start_at,scheduled_end_at,
+                    created_at,version,creation_idempotency_key,creation_request_hash)
+                SELECT ?,?,order_id,status,scheduled_start_at,scheduled_end_at,now(),0,
+                    creation_idempotency_key,creation_request_hash FROM missions WHERE order_id=?
                 """, UUID.randomUUID().toString(), "duplicate-code", id));
-        // Hibernate may generate an implicit OneToOne UNIQUE name; assert the
-        // actual violation and column rather than relying on the DDL naming strategy.
         assertEquals("23505", ((java.sql.SQLException) exception.getMostSpecificCause()).getSQLState());
-        assertTrue(exception.getMostSpecificCause().getMessage().contains("(order_id)"));
-        assertEquals(1, count(id));
+        assertTrue(exception.getMostSpecificCause().getMessage().contains("uk_mission_creation_command"));
+        var sibling = request(id);
+        sibling.setIdempotencyKey(UUID.randomUUID().toString());
+        sibling.setExpectedPlanRevision(1L);
+        assertNotEquals(missions.findAllByOrderIdOrderByScheduledStartAtAscIdAsc(id).getFirst().getId(),
+                missionService.createMission(sibling).getId());
+        assertEquals(2, count(id));
     }
 
-    @Test void foundationMappingIsMandatoryLazyManyToOneButDatabaseStillGatesOneMission() throws Exception {
+    @Test void mappingIsMandatoryLazyManyToOne() throws Exception {
         var field = com.ondemandmonitoring.mission.domain.Mission.class.getDeclaredField("order");
         var mapping = field.getAnnotation(jakarta.persistence.ManyToOne.class);
         assertNotNull(mapping);
@@ -185,50 +192,6 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
         assertEquals(1, count(id));
     }
 
-    @Test void manualMigrationIsSafeRepeatableAndRefusesExistingDuplicates() throws Exception {
-        String schema = SCHEMA + "_migration";
-        var jdbc = new JdbcTemplate(dataSource);
-        String sql = new org.springframework.core.io.ClassPathResource(
-                "seeddata/migrations/enforce_order_mission_one_to_one.sql")
-                .getContentAsString(java.nio.charset.StandardCharsets.UTF_8).replace("public.", schema + ".");
-        jdbc.execute("CREATE SCHEMA " + schema);
-        try {
-            jdbc.execute("CREATE TABLE " + schema + ".orders(id varchar PRIMARY KEY)");
-            jdbc.update("INSERT INTO " + schema + ".orders VALUES ('order-x')");
-            jdbc.execute("CREATE TABLE " + schema + ".missions(id varchar PRIMARY KEY, order_id varchar REFERENCES "
-                    + schema + ".orders(id))");
-            // Empty database, then repeat on an existing database with data: no loss.
-            jdbc.execute(sql);
-            assertEquals("NO", jdbc.queryForObject("SELECT is_nullable FROM information_schema.columns "
-                    + "WHERE table_schema = ? AND table_name = 'missions' AND column_name = 'order_id'", String.class, schema));
-            jdbc.update("INSERT INTO " + schema + ".missions VALUES ('first', 'order-x')");
-            jdbc.execute(sql);
-            assertThrows(DataIntegrityViolationException.class,
-                    () -> jdbc.update("INSERT INTO " + schema + ".missions VALUES ('second', 'order-x')"));
-            jdbc.execute("ALTER TABLE " + schema + ".missions DROP CONSTRAINT uk_missions_order");
-            jdbc.update("INSERT INTO " + schema + ".missions VALUES ('second', 'order-x')");
-            var duplicateGuard = assertThrows(org.springframework.dao.DataAccessException.class, () -> jdbc.execute(sql));
-            assertTrue(duplicateGuard.getMostSpecificCause().getMessage().contains("Duplicate missions per Order"));
-            assertEquals(2, jdbc.queryForObject("SELECT count(*) FROM " + schema + ".missions", Integer.class));
-            assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM pg_constraint WHERE conrelid = '"
-                    + schema + ".missions'::regclass AND contype = 'u'", Integer.class));
-            // A NULL legacy row must also abort without silently repairing data.
-            jdbc.execute("DELETE FROM " + schema + ".missions");
-            jdbc.execute("ALTER TABLE " + schema + ".missions ALTER COLUMN order_id DROP NOT NULL");
-            jdbc.update("INSERT INTO " + schema + ".missions VALUES ('without-order', NULL)");
-            var nullGuard = assertThrows(org.springframework.dao.DataAccessException.class, () -> jdbc.execute(sql));
-            assertTrue(nullGuard.getMostSpecificCause().getMessage().contains("Missions without an Order"));
-            assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM " + schema
-                    + ".missions WHERE order_id IS NULL", Integer.class));
-            assertEquals("YES", jdbc.queryForObject("SELECT is_nullable FROM information_schema.columns "
-                    + "WHERE table_schema = ? AND table_name = 'missions' AND column_name = 'order_id'", String.class, schema));
-            assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM pg_constraint WHERE conrelid = '"
-                    + schema + ".missions'::regclass AND contype = 'u'", Integer.class));
-        } finally {
-            // Explicit generated schema owned by this test only; never public or the database itself.
-            jdbc.execute("DROP SCHEMA " + schema + " CASCADE");
-        }
-    }
 
     @Test void concurrentCreationBlocksOnOrderAndReturnsSameMission() throws Exception {
         String id = order(OrderStatus.APPROVED);

@@ -8,12 +8,13 @@
 -- Reference-data initializers remain responsible for seeds.
 --
 -- Usage (backend stopped while SQL runs; deployment role installs btree_gist):
--- 1. Empty local/test DB, required extensions; JPA_DDL_AUTO=update, start once.
+-- 1. Empty local/test DB, required extensions; JPA_DDL_AUTO=create, start once.
 -- 2. Stop backend.
 -- 3. psql -h <local-host> -p <test-port> -U <role> -d <fresh-db>
 --         -v ON_ERROR_STOP=1 -f bootstrap_after_hibernate.sql
 --    Supply credentials securely, never embed passwords in this command.
--- 4. JPA_DDL_AUTO=validate; restart backend.
+-- 4. psql with ON_ERROR_STOP=1: verify_current_schema.sql (read-only gate).
+-- 5. JPA_DDL_AUTO=validate; restart backend.
 -- Rerunnable BEFORE runtime fixtures exist; drift fails instead of being hidden.
 -- Historical backfills, temporary preservation snapshots, and intermediate
 -- Order 1:1/global snapshot-execution uniqueness gates are intentionally absent.
@@ -26,7 +27,7 @@ DO $$ DECLARE t text; occupied boolean; BEGIN
     FOREACH t IN ARRAY ARRAY['orders','missions','order_checklist_items',
         'mission_checklist_assignments','mission_checklist_executions',
         'mission_checklist_evidence','drone_media','mission_results',
-        'resource_time_locks','users','services','checklist_definitions'] LOOP
+        'resource_time_locks','mission_device_assignments','users','services','checklist_definitions'] LOOP
         IF to_regclass('public.' || t) IS NULL THEN
             RAISE EXCEPTION 'Hibernate prerequisite missing: public.%', t;
         END IF;
@@ -34,7 +35,7 @@ DO $$ DECLARE t text; occupied boolean; BEGIN
     FOREACH t IN ARRAY ARRAY['orders','missions','order_checklist_items',
         'mission_checklist_assignments','mission_checklist_executions',
         'mission_checklist_evidence','drone_media','mission_results',
-        'resource_time_locks'] LOOP
+        'resource_time_locks','mission_device_assignments'] LOOP
         EXECUTE format('SELECT EXISTS (SELECT 1 FROM public.%I)', t) INTO occupied;
         IF occupied THEN RAISE EXCEPTION 'Fresh bootstrap refused: public.% has runtime data', t; END IF;
     END LOOP;
@@ -42,7 +43,7 @@ END $$;
 LOCK TABLE public.orders, public.missions, public.order_checklist_items,
     public.mission_checklist_assignments, public.mission_checklist_executions,
     public.mission_checklist_evidence, public.drone_media, public.mission_results,
-    public.resource_time_locks IN ACCESS EXCLUSIVE MODE;
+    public.resource_time_locks, public.mission_device_assignments IN ACCESS EXCLUSIVE MODE;
 
 -- These columns need no migration DDL in current JPA. Still reject incomplete
 -- prerequisites: silently omitting safe-stop/release audit is not a bootstrap.
@@ -80,7 +81,7 @@ ALTER TABLE public.services ALTER COLUMN checklist_defaults_initialized SET DEFA
 ALTER TABLE public.order_checklist_items ALTER COLUMN evidence_policy_version SET DEFAULT 0;
 ALTER TABLE public.order_checklist_items ALTER COLUMN minimum_evidence_count SET DEFAULT 0;
 
--- SECTION 1: Multi-Mission foundation (add_order_multi_mission_foundation.sql).
+-- SECTION 1: Current multi-Mission identity and planning invariants.
 ALTER TABLE public.orders ALTER COLUMN execution_plan_status SET DEFAULT 'DRAFT';
 ALTER TABLE public.orders ALTER COLUMN execution_plan_revision SET DEFAULT 0;
 
@@ -234,6 +235,9 @@ DO $$ DECLARE entry record; actual text; expected text; BEGIN
         ('ix_evidence_mission_execution','','mission_checklist_evidence(mission_id,mission_checklist_execution_id)'),
         ('ix_evidence_media','','mission_checklist_evidence(media_asset_id)'),
         ('uk_mission_active_direct_replacement','UNIQUE','missions(replaces_mission_id) WHERE replaces_mission_id IS NOT NULL AND status <> ''CANCELLED'''),
+        -- At most one current MAIN assignment per Mission.
+        -- History and concurrent SUPPORT rows remain valid; duplicate MAIN fails.
+        ('uk_mission_device_assignment_current_main','UNIQUE','mission_device_assignments(mission_id) WHERE is_current = true AND device_role = ''MAIN'''),
         ('uk_resource_reservation_active_pair','UNIQUE','resource_time_locks(resource_id,mission_id) WHERE released_at IS NULL'),
         ('ix_resource_reservation_active_window','','resource_time_locks(resource_id,start_time,end_time) WHERE released_at IS NULL')
     ) AS indexes(index_name,uniqueness,definition) LOOP

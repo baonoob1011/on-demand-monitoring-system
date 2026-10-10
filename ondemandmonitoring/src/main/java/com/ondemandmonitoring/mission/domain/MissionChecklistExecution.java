@@ -17,7 +17,7 @@ import lombok.Setter;
 @Getter
 @Setter
 public class MissionChecklistExecution extends BaseEntity {
-    // Both composite FKs in add_mission_checklist_executions.sql share this technical Order key.
+    // Both exact-scope composite FKs share this technical Order key.
     // Apply that migration even after ddl-auto=create; plain JPA joins alone cannot enforce this invariant.
     @Column(name = "mission_id", nullable = false, updatable = false)
     private String missionId;

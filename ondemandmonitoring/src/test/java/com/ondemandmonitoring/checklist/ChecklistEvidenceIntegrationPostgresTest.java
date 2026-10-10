@@ -54,7 +54,8 @@ class ChecklistEvidenceIntegrationPostgresTest extends OrderMissionPostgresTest 
         String id=UUID.randomUUID().toString(),device=UUID.randomUUID().toString(),model=UUID.randomUUID().toString();var jdbc=new JdbcTemplate(dataSource);
         jdbc.update("insert into device_models(id,created_at,version,code,model_name) values (?,now(),0,?,'Test model')",model,model);
         jdbc.update("insert into devices(id,created_at,version,serial_number,name,model_id,status) values (?,now(),0,?,'Test camera',?,'AVAILABLE')",device,device,model);
-        jdbc.update("insert into mission_device_assignments(id,created_at,version,mission_id,device_id,device_role,checkup_status,is_current) values (?,now(),0,?,?,'MAIN','PENDING',true)",UUID.randomUUID().toString(),mission,device);
+        String deviceRole = jdbc.queryForObject("select count(*) from mission_device_assignments where mission_id=? and is_current and device_role='MAIN'", Integer.class, mission) == 0 ? "MAIN" : "SUPPORT";
+        jdbc.update("insert into mission_device_assignments(id,created_at,version,mission_id,device_id,device_role,checkup_status,is_current) values (?,now(),0,?,?,?,'PENDING',true)",UUID.randomUUID().toString(),mission,device,deviceRole);
         jdbc.update("insert into drone_media(id,created_at,version,mission_id,device_id,media_type,storage_provider,original_file_name,content_type,file_size,s3_bucket,s3_key,s3_url,captured_at,media_status,source_type,validated_at) values (?,now(),0,?,?,'IMAGE','S3','capture.jpg','image/jpeg',20,'test',?,?,now(),?,'DRONE_CAMERA',now())",id,mission,device,id,"s3://test/"+id,status.name());return id;
     }
     ChecklistExecutionResponse row(String mission) {return executionService.getByMissionId(mission).executions().getFirst();}

@@ -7,12 +7,10 @@ import com.ondemandmonitoring.mission.dto.response.MissionCreationResult;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.order.enums.*;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import static org.junit.jupiter.api.Assertions.*;
@@ -26,12 +24,7 @@ class MultiMissionCreationPostgresTest extends ChecklistPostgresTest {
     com.ondemandmonitoring.order.dto.request.OrderCreateRequest baseRequest;
     @Override @BeforeEach void prepare() {
         jdbc=new JdbcTemplate(dataSource); jdbc.execute("TRUNCATE missions CASCADE");
-        super.prepare(); baseRequest=null; cutover();
-    }
-    void cutover() {
-        try { jdbc.execute(new ClassPathResource("seeddata/migrations/enable_order_multi_mission_creation.sql")
-                .getContentAsString(StandardCharsets.UTF_8).replace("public.",SCHEMA+".")); }
-        catch(java.io.IOException e) {throw new IllegalStateException(e);}
+        super.prepare(); baseRequest=null;
     }
     String order() {
         // Reuse one identity/time fixture when creating another Order in the same test.
@@ -76,46 +69,10 @@ class MultiMissionCreationPostgresTest extends ChecklistPostgresTest {
         assertNotEquals(missionService.createMission(request(a,key,0)).getId(),missionService.createMission(request(b,key,0)).getId());
         assertEquals(1,count(a)); assertEquals(1,count(b));
     }
-    @Test void legacyRowsAndHistoricalExecutionDataSurviveRepeatableCutover() {
-        String o=order();
-        jdbc.update("insert into missions(id,mission_code,order_id,status,scheduled_start_at,scheduled_end_at,created_at,version) values ('legacy','legacy',?,'RESOURCE_ASSIGNING',now(),now()+interval '1 hour',now(),0)",o);
-        jdbc.execute("ALTER TABLE missions ADD CONSTRAINT unknown_local_order_unique UNIQUE(order_id)");
-        jdbc.execute("CREATE UNIQUE INDEX standalone_order_unique ON missions(order_id) INCLUDE(id)");
-        String before=jdbc.queryForObject("select row_to_json(m)::text from missions m where id='legacy'",String.class);
-        cutover(); cutover();
-        assertEquals(before,jdbc.queryForObject("select row_to_json(m)::text from missions m where id='legacy'",String.class));
-        assertNull(missions.findById("legacy").orElseThrow().getCreationIdempotencyKey());
-        assertEquals(ErrorCode.MULTI_MISSION_LEGACY_ORDER_NOT_MIGRATED,assertThrows(ApiException.class,
-                ()->missionService.createMission(request(o,UUID.randomUUID().toString(),0))).getErrorCode());
-        jdbc.update("insert into missions(id,mission_code,order_id,status,scheduled_start_at,scheduled_end_at,created_at,version) values ('second','second',?,'RESOURCE_ASSIGNING',now(),now()+interval '1 hour',now(),0)",o);
-        assertEquals(2,count(o));
-        assertThrows(org.springframework.dao.DataIntegrityViolationException.class,()->jdbc.update("update missions set order_id='missing' where id='second'"));
-        assertThrows(org.springframework.dao.DataIntegrityViolationException.class,()->jdbc.update("update missions set order_id=null where id='second'"));
-        assertEquals(1,jdbc.queryForObject("select count(*) from pg_constraint where conrelid='"+SCHEMA+".missions'::regclass and contype='u' and pg_get_constraintdef(oid)='UNIQUE (id, order_id)'",Integer.class));
-    }
     @Test void databaseEnforcesPairUniquenessAndKeyHashConsistency() {
         String o=order(),key=UUID.randomUUID().toString(); missionService.createMission(request(o,key,0));
         assertThrows(org.springframework.dao.DataIntegrityViolationException.class,()->jdbc.update("insert into missions(id,mission_code,order_id,status,scheduled_start_at,scheduled_end_at,created_at,version,creation_idempotency_key,creation_request_hash) select 'duplicate','duplicate',order_id,status,scheduled_start_at,scheduled_end_at,created_at,version,creation_idempotency_key,creation_request_hash from missions where order_id=?",o));
         assertThrows(org.springframework.dao.DataIntegrityViolationException.class,()->jdbc.update("update missions set creation_request_hash=null where order_id=?",o));
-    }
-    @Test void migrationPreservesLegacyExecutionsEvidenceResultAndGlobalExecutionUnique() {
-        var s=service("Historical monitoring");var r=orderRequest(s);r.setChecklistItems(List.of(selected(null,"Historical requirement")));
-        String o=orderService.createOrder(r).getId();String item=snapshots.findAllByOrderIdInOrderByDisplayOrderAscIdAsc(List.of(o)).getFirst().getId();
-        jdbc.update("insert into missions(id,mission_code,order_id,status,scheduled_start_at,scheduled_end_at,created_at,version) values ('historical','historical',?,'COMPLETED',now(),now()+interval '1 hour',now(),0)",o);
-        jdbc.update("insert into mission_checklist_executions(id,created_at,version,mission_id,order_id,order_checklist_item_id,execution_status,assessment_status,started_at,completed_at) values ('execution',now(),4,'historical',?,?,'COMPLETED','COMPLIANT',now(),now())",o,item);
-        jdbc.execute("insert into device_models(id,created_at,version,code,model_name) values ('model',now(),0,'model','Test model')");
-        jdbc.execute("insert into devices(id,created_at,version,serial_number,name,model_id,status) values ('device',now(),0,'device','Camera','model','AVAILABLE')");
-        jdbc.execute("insert into mission_device_assignments(id,created_at,version,mission_id,device_id,device_role,checkup_status,is_current) values ('device-assignment',now(),0,'historical','device','MAIN','PENDING',true)");
-        jdbc.execute("insert into drone_media(id,created_at,version,mission_id,device_id,media_type,storage_provider,original_file_name,content_type,file_size,s3_bucket,s3_key,s3_url,captured_at,media_status,source_type,validated_at) values ('media',now(),0,'historical','device','IMAGE','S3','photo.jpg','image/jpeg',20,'test','photo','s3://test/photo',now(),'AVAILABLE','DRONE_CAMERA',now())");
-        jdbc.update("insert into mission_checklist_evidence(id,created_at,version,mission_id,mission_checklist_execution_id,media_asset_id,attached_by,attached_at) values ('evidence',now(),2,'historical','execution','media',?,now())",resolver.getCurrentUser().getId());
-        jdbc.execute("insert into mission_results(id,created_at,version,mission_id,status,approval_status,completed_at,media_count,summary) values ('result',now(),3,'historical','COMPLETED','APPROVED',now(),1,'Historical result')");
-        jdbc.execute("insert into mission_result_media(mission_result_id,media_id) values ('result','media')");
-        var tables=List.of("missions","mission_checklist_executions","mission_checklist_evidence","mission_results","mission_result_media","drone_media");
-        var before=new HashMap<String,List<String>>();
-        for(String table:tables) before.put(table,jdbc.queryForList("select row_to_json(t)::text from "+table+" t",String.class));
-        cutover();cutover();
-        for(String table:tables) assertEquals(before.get(table),jdbc.queryForList("select row_to_json(t)::text from "+table+" t",String.class),table);
-        assertThrows(org.springframework.dao.DataIntegrityViolationException.class,()->jdbc.update("insert into mission_checklist_executions(id,created_at,version,mission_id,order_id,order_checklist_item_id,execution_status,assessment_status) values ('duplicate-execution',now(),0,'historical',?,?,'PENDING','NOT_ASSESSED')",o,item));
     }
     @Test void failedInsertRollsBackPlanRevisionAtomically() {
         String o=order(); jdbc.execute("alter table missions add constraint fixture_reject_new check (creation_idempotency_key is null)");

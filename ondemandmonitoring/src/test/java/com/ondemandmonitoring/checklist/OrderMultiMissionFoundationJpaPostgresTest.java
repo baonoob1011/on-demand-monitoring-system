@@ -4,11 +4,8 @@ import com.ondemandmonitoring.mission.domain.*;
 import com.ondemandmonitoring.mission.repository.*;
 import com.ondemandmonitoring.order.enums.ExecutionPlanStatus;
 import com.ondemandmonitoring.order.enums.OrderStatus;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
@@ -17,22 +14,6 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Also inherits existing creation/snapshot regressions against the expanded Hibernate schema. */
 @SpringJUnitConfig(OrderMissionPostgresTest.MissionConfig.class)
 class OrderMultiMissionFoundationJpaPostgresTest extends OrderMissionPostgresTest {
-    @Override @BeforeEach void prepare() {
-        super.prepare();
-        migrateFoundation();
-    }
-
-    private void migrateFoundation() {
-        try {
-            String migration = new org.springframework.core.io.ClassPathResource(
-                    "seeddata/migrations/add_order_multi_mission_foundation.sql")
-                    .getContentAsString(StandardCharsets.UTF_8).replace("public.", SCHEMA + ".");
-            new JdbcTemplate(dataSource).execute(migration);
-        } catch (java.io.IOException exception) {
-            throw new IllegalStateException(exception);
-        }
-    }
-
     @Test void assignmentRepositoryPersistsLazyRelationsSoftHistoryAndOptimisticVersion() {
         String s = service("Monitoring");
         assignments.assign(s, assignment(checklist("Requirement"), 0));
@@ -68,7 +49,7 @@ class OrderMultiMissionFoundationJpaPostgresTest extends OrderMissionPostgresTes
         });
     }
 
-    @Test void nullableExecutionLinkBackfillsAndScopeMappingPreservesExistingVersion() {
+    @Test void mandatoryExecutionLinkAndScopeMappingPreserveOptimisticVersion() {
         String s = service("Monitoring");
         assignments.assign(s, assignment(checklist("Requirement"), 0));
         var order = orderService.createOrder(orderRequest(s)); orderService.approveOrder(order.getId());
@@ -81,7 +62,6 @@ class OrderMultiMissionFoundationJpaPostgresTest extends OrderMissionPostgresTes
             assertNotNull(execution.getMissionChecklistAssignmentId());
             return execution.getId();
         });
-        migrateFoundation();
         transaction.executeWithoutResult(tx -> {
             var execution = repository.findById(executionId).orElseThrow();
             assertEquals(0L, execution.getVersion());

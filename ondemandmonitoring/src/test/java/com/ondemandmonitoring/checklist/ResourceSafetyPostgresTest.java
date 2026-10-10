@@ -44,7 +44,7 @@ class ResourceSafetyPostgresTest extends ExecutionPlanAmendmentPostgresTest {
         return new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory)).getRepository(type);
     }
     @Override @BeforeEach void prepare() {
-        super.prepare(); migration("harden_resource_reservations_and_safe_stop.sql");
+        super.prepare();
         var mapper = mock(MissionMapper.class);
         when(mapper.toResponse(any())).thenAnswer(c -> {
             Mission m = c.getArgument(0); return com.ondemandmonitoring.mission.dto.response.MissionResponse.builder().id(m.getId()).status(m.getStatus()).build();
@@ -404,10 +404,6 @@ class ResourceSafetyPostgresTest extends ExecutionPlanAmendmentPostgresTest {
         String device=jdbc.queryForObject("select device_id from mission_device_assignments where mission_id=?",String.class,first);
         error(ErrorCode.MISSION_SAFE_STOP_NOT_READY,() -> transaction.executeWithoutResult(tx -> sessions.connectGcs(first)));
         error(ErrorCode.MISSION_SAFE_STOP_NOT_READY,() -> transaction.executeWithoutResult(tx -> sessions.requireActiveTelemetryConnection(device,first)));
-    }
-    @Test void migrationReplaysWithoutRewritingResourceHistory() {
-        ready(0); withMission(first,m -> reservations.reserve(m,"R",false)); var before=jdbc.queryForList("select * from resource_time_locks");
-        migration("harden_resource_reservations_and_safe_stop.sql"); assertEquals(before,jdbc.queryForList("select * from resource_time_locks"));
     }
 
     @Test void databaseRejectsOverlapEvenWithoutApplicationMutexButAllowsAdjacentWindows() {

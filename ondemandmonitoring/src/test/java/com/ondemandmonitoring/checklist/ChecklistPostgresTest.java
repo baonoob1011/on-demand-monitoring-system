@@ -85,7 +85,9 @@ class ChecklistPostgresTest {
     TransactionTemplate transaction;
 
     @BeforeEach void prepare() {
-        applyExecutionMigration();
+        var jdbc = new JdbcTemplate(dataSource);
+        jdbc.execute("TRUNCATE orders, missions, drone_media, resource_time_locks, mission_device_assignments CASCADE");
+        bootstrapCurrentSchema();
         transaction = new TransactionTemplate(transactionManager);
         reset(resolver, times, deliverables, serviceDeliverables);
         transaction.executeWithoutResult(status -> {
@@ -96,26 +98,12 @@ class ChecklistPostgresTest {
         new JdbcTemplate(dataSource).execute("TRUNCATE users, roles, preferred_times, deliverable_types CASCADE");
     }
 
-    void applyExecutionMigration() {
-        try (var stream = new org.springframework.core.io.ClassPathResource(
-                "seeddata/migrations/add_mission_checklist_executions.sql").getInputStream()) {
-            String sql = new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
-                    .replace("public.", SCHEMA + ".");
-            new JdbcTemplate(dataSource).execute(sql);
-            try (var evidenceMigration = new org.springframework.core.io.ClassPathResource("seeddata/migrations/add_mission_checklist_evidence.sql").getInputStream()) {
-                new JdbcTemplate(dataSource).execute(new String(evidenceMigration.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).replace("public.", SCHEMA + "."));
-            }
-            // Recreated legacy execution tables also need the additive columns known to current JPA.
-            try (var foundationMigration = new org.springframework.core.io.ClassPathResource(
-                    "seeddata/migrations/add_order_multi_mission_foundation.sql").getInputStream()) {
-                new JdbcTemplate(dataSource).execute(new String(foundationMigration.readAllBytes(),
-                        java.nio.charset.StandardCharsets.UTF_8).replace("public.", SCHEMA + "."));
-                // Historical Phase 2/4 schema fixture only; Phase 5 subclasses apply the new NOT NULL cutover.
-                new JdbcTemplate(dataSource).execute("ALTER TABLE mission_checklist_executions ALTER COLUMN mission_checklist_assignment_id DROP NOT NULL");
-            }
-        } catch (java.io.IOException exception) {
-            throw new IllegalStateException(exception);
-        }
+    void bootstrapCurrentSchema() {
+        CurrentSchemaPostgres.bootstrap(dataSource, SCHEMA);
+    }
+
+    void verifyCurrentSchema() {
+        CurrentSchemaPostgres.verify(dataSource, SCHEMA);
     }
 
     @AfterAll void cleanup() {

@@ -70,17 +70,21 @@ class ChecklistAdminBootstrapPostgresTest extends ChecklistPostgresTest {
         assertEquals(List.of(0, 1), assignments.getByService(service, false).stream().map(ServiceChecklistResponse::getDisplayOrder).toList());
     }
 
-    @Test void migrationIsRerunnableAndPreservesCustomizedTemplate() throws Exception {
-        String service = service("Custom"), checklist = checklist("Admin"); assignments.assign(service, assignment(checklist, 0));
+    @Test void currentSchemaSeedCodeIsUniqueAndSeedPreservesCustomizedTemplate() throws Exception {
+        String service = service("Giám sát Tiến độ Xây dựng"), checklist = checklist("Admin");
+        assignments.assign(service, assignment(checklist, 0));
+        transaction.executeWithoutResult(tx -> {
+            var row = services.findById(service).orElseThrow();
+            row.setChecklistDefaultsInitialized(true);
+        });
+        seed.run(null); seed.run(null);
+        assertEquals(List.of(checklist), assignments.getByService(service, false).stream()
+                .map(ServiceChecklistResponse::getChecklistId).toList());
         var jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("alter table checklist_definitions drop column seed_code");
-        jdbc.execute("alter table services drop column checklist_defaults_initialized");
-        try (var resource = getClass().getClassLoader().getResourceAsStream("seeddata/migrations/add_checklist_bootstrap_markers.sql")) {
-            assertNotNull(resource); String sql = new String(resource.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).replace("public.", SCHEMA + ".");
-            jdbc.execute(sql); jdbc.execute(sql);
-        }
-        assertTrue(jdbc.queryForObject("select checklist_defaults_initialized from services where id=?", Boolean.class, service));
-        assertEquals(1, links.count());
+        String first = definitions.findAll().stream().filter(d -> d.getSeedCode() != null).findFirst().orElseThrow().getId();
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class, () -> jdbc.update(
+                "update checklist_definitions set seed_code=(select seed_code from checklist_definitions where id=?) where id=?",
+                first, checklist));
     }
 
     @Test void allKnownServiceDefinitionsReceiveSensibleDefaultsWithoutCreatingServices() throws Exception {

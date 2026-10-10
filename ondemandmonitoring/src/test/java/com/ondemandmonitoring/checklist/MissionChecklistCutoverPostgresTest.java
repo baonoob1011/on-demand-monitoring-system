@@ -7,12 +7,10 @@ import com.ondemandmonitoring.mission.repository.*;
 import com.ondemandmonitoring.mission.service.*;
 import com.ondemandmonitoring.mission.service.impl.*;
 import com.ondemandmonitoring.order.enums.*;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.*;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import static org.junit.jupiter.api.Assertions.*;
@@ -38,11 +36,7 @@ class MissionChecklistCutoverPostgresTest extends ChecklistPostgresTest {
 
     @Override @BeforeEach void prepare() {
         jdbc = new JdbcTemplate(dataSource); jdbc.execute("TRUNCATE missions CASCADE");
-        super.prepare(); migration("enable_order_multi_mission_creation.sql"); migration("cutover_mission_checklist_assignments.sql");
-    }
-    void migration(String name) {
-        try { jdbc.execute(new ClassPathResource("seeddata/migrations/" + name).getContentAsString(StandardCharsets.UTF_8).replace("public.", SCHEMA + ".")); }
-        catch (java.io.IOException exception) { throw new IllegalStateException(exception); }
+        super.prepare();
     }
     void fixture(int count) {
         String serviceId = service("Monitoring");
@@ -73,7 +67,8 @@ class MissionChecklistCutoverPostgresTest extends ChecklistPostgresTest {
         String id=UUID.randomUUID().toString(),device=UUID.randomUUID().toString(),model=UUID.randomUUID().toString();
         jdbc.update("insert into device_models(id,created_at,version,code,model_name) values (?,now(),0,?,'Test model')",model,model);
         jdbc.update("insert into devices(id,created_at,version,serial_number,name,model_id,status) values (?,now(),0,?,'Test camera',?,'AVAILABLE')",device,device,model);
-        jdbc.update("insert into mission_device_assignments(id,created_at,version,mission_id,device_id,device_role,checkup_status,is_current) values (?,now(),0,?,?,'MAIN','PENDING',true)",UUID.randomUUID().toString(),mission,device);
+        String deviceRole = jdbc.queryForObject("select count(*) from mission_device_assignments where mission_id=? and is_current and device_role='MAIN'", Integer.class, mission) == 0 ? "MAIN" : "SUPPORT";
+        jdbc.update("insert into mission_device_assignments(id,created_at,version,mission_id,device_id,device_role,checkup_status,is_current) values (?,now(),0,?,?,?,'PENDING',true)",UUID.randomUUID().toString(),mission,device,deviceRole);
         jdbc.update("insert into drone_media(id,created_at,version,mission_id,device_id,media_type,storage_provider,original_file_name,content_type,file_size,s3_bucket,s3_key,s3_url,captured_at,media_status,source_type,validated_at) values (?,now(),0,?,?,'IMAGE','S3','capture.jpg','image/jpeg',20,'test',?,?,now(),'PENDING_MANAGER_APPROVAL','DRONE_CAMERA',now())",id,mission,device,id,"s3://test/"+id);
         return id;
     }
@@ -177,12 +172,6 @@ class MissionChecklistCutoverPostgresTest extends ChecklistPostgresTest {
         jdbc.update("update mission_checklist_assignments set removed_at=now(),removed_by='manager' where mission_id=?",first);
         transaction.executeWithoutResult(tx -> assertFalse(scope.isMaterialized(missions.findById(first).orElseThrow())));
     }
-    @Test void cutoverCanRepeatWithoutTouchingExecutionAuditOrStates() {
-        fixture(1); choose(first,0); finalizePlan();
-        String before = jdbc.queryForObject("select jsonb_agg(to_jsonb(e) order by id)::text from mission_checklist_executions e",String.class);
-        migration("cutover_mission_checklist_assignments.sql");
-        assertEquals(before,jdbc.queryForObject("select jsonb_agg(to_jsonb(e) order by id)::text from mission_checklist_executions e",String.class));
-    }
 
     @Test void sameSnapshotEvidenceCannotLeakBetweenSiblingExecutions() {
         fixture(1); choose(first,0); choose(second,0); finalizePlan();
@@ -198,44 +187,6 @@ class MissionChecklistCutoverPostgresTest extends ChecklistPostgresTest {
             insert into mission_checklist_evidence(id,created_at,version,mission_id,mission_checklist_execution_id,media_asset_id,attached_at,attached_by)
             values('forged-link',now(),0,?,?,?,now(),?)
             """,second,b.getId(),media,resolver.getCurrentUserId()));
-    }
-    @Test void legacyBackfillPreservesExecutionEvidenceMediaAndResultAndRetainsRuntime() {
-        fixture(1); choose(first,0);
-        jdbc.update("delete from missions where id=?",second);
-        jdbc.update("update missions set creation_idempotency_key=null,creation_request_hash=null,status='PENDING_REVIEW' where id=?",first);
-        transaction.executeWithoutResult(tx->materializer.materialize(missions.findById(first).orElseThrow()));
-        var row=runtime.getByMissionId(first).executions().getFirst();
-        evidence.attach(first,new BatchChecklistEvidenceRequest(asset(first),List.of(new BatchChecklistEvidenceRequest.Target(row.getId(),row.getVersion())),null));
-        jdbc.update("update mission_checklist_executions set execution_status='UNABLE_TO_VERIFY',assessment_status='NON_COMPLIANT',unable_to_verify_reason='Preserve reason',observation='Preserve observation',started_at=now(),completed_at=now(),version=7");
-        jdbc.update("insert into mission_results(id,created_at,version,mission_id,status,approval_status,completed_at,media_count,summary) values ('legacy-result',now(),9,?,'COMPLETED','REJECTED',now(),1,'Preserve summary')",first);
-        jdbc.execute("alter table mission_checklist_executions alter column mission_checklist_assignment_id drop not null");
-        jdbc.update("update mission_checklist_executions set mission_checklist_assignment_id=null");
-        jdbc.execute("delete from mission_checklist_assignments");
-        String before=jdbc.queryForObject("select (to_jsonb(e)-'mission_checklist_assignment_id')::text from mission_checklist_executions e",String.class);
-        var history=new HashMap<String,String>();
-        for (var table:List.of("mission_checklist_evidence","drone_media","mission_results","order_checklist_items"))
-            history.put(table,jdbc.queryForObject("select jsonb_agg(to_jsonb(t) order by id)::text from "+table+" t",String.class));
-        migration("cutover_mission_checklist_assignments.sql");
-        assertEquals(before,jdbc.queryForObject("select (to_jsonb(e)-'mission_checklist_assignment_id')::text from mission_checklist_executions e",String.class));
-        history.forEach((table,values)->assertEquals(values,jdbc.queryForObject("select jsonb_agg(to_jsonb(t) order by id)::text from "+table+" t",String.class)));
-        assertEquals(row.getId(),runtime.getByMissionId(first).executions().getFirst().getId());
-        transaction.executeWithoutResult(tx->assertTrue(scope.isMaterialized(missions.findById(first).orElseThrow())));
-    }
-    @Test void unreconciledPlanningExecutionAbortsMigration() {
-        fixture(1); choose(first,0); finalizePlan();
-        jdbc.execute("alter table mission_checklist_executions alter column mission_checklist_assignment_id drop not null");
-        jdbc.update("update mission_checklist_executions set mission_checklist_assignment_id=null");
-        var exception=assertThrows(org.springframework.dao.DataAccessException.class,()->migration("cutover_mission_checklist_assignments.sql"));
-        assertTrue(exception.getMostSpecificCause().getMessage().contains("unlinked planning execution"));
-        assertEquals(1,rows("mission_checklist_assignments"));
-        assertNull(jdbc.queryForObject("select mission_checklist_assignment_id from mission_checklist_executions",String.class));
-    }
-    @Test void incompleteLegacyPackageRequiresExplicitClassificationWithoutFabrication() {
-        fixture(1); jdbc.update("delete from missions where id=?",second);
-        jdbc.update("update missions set creation_idempotency_key=null,creation_request_hash=null where id=?",first);
-        var exception=assertThrows(org.springframework.dao.DataAccessException.class,()->migration("cutover_mission_checklist_assignments.sql"));
-        assertTrue(exception.getMostSpecificCause().getMessage().contains("incomplete legacy execution package"));
-        assertEquals(0,rows("mission_checklist_assignments")); assertEquals(0,rows("mission_checklist_executions"));
     }
 
     @Configuration @Import(OrderMissionPostgresTest.MissionConfig.class)
