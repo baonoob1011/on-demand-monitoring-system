@@ -27,6 +27,10 @@ class OrderExecutionCompletionPolicyTest {
     Mission first, second;
 
     @BeforeEach void setup() {
+        when(results.findByMissionIds(any())).thenAnswer(call -> {
+            java.util.Collection<String> ids = call.getArgument(0);
+            return ids.stream().map(results::findByMissionId).flatMap(Optional::stream).toList();
+        });
         order = new Order(); order.setId("o"); order.setOrderStatus(OrderStatus.IN_PROGRESS);
         order.setExecutionPlanStatus(com.ondemandmonitoring.order.enums.ExecutionPlanStatus.FINALIZED);
         first = mission("a"); second = mission("b");

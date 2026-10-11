@@ -87,7 +87,6 @@ import com.ondemandmonitoring.mission.repository.*;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class MissionService implements IMissionService {
 
-    static final long TOKEN_TTL_SECONDS = 900L; // 15 minutes
     // Each operational step has a distinct actor and no role fallback.
     static final Set<MissionStaffRole> REQUIRED_CREW_ROLES = Set.of(
             MissionStaffRole.PILOT, MissionStaffRole.OPERATOR,

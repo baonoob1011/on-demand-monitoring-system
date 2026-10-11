@@ -14,7 +14,6 @@ import jakarta.persistence.LockModeType;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 public interface MissionRepository extends JpaRepository<Mission, String>, JpaSpecificationExecutor<Mission> {
     @Override
@@ -79,19 +78,6 @@ public interface MissionRepository extends JpaRepository<Mission, String>, JpaSp
 
     List<Mission> findByStatusIn(List<MissionStatus> statuses);
 
-    /**
-     * Find missions assigned to a device whose scheduled window overlaps [startAt, endAt].
-     * Used to validate device replacement availability / schedule conflict.
-     */
-    @Query("""
-            SELECT m FROM Mission m
-            JOIN MissionDeviceAssignment mda ON mda.mission = m
-            WHERE mda.device.id = :deviceId
-              AND mda.isCurrent = true
-              AND m.status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED')
-              AND m.completedAt IS NULL
-            """)
-    List<Mission> findActiveByDeviceId(@Param("deviceId") String deviceId);
 }
 
 

@@ -1062,6 +1062,7 @@ class MissionServiceTest {
         when(resultRepo.save(any())).thenAnswer(call -> {
             com.ondemandmonitoring.mission.domain.MissionResult result = call.getArgument(0); result.setId("result");
             when(resultRepo.findByMissionId(mission.getId())).thenReturn(Optional.of(result));
+            when(resultRepo.findByMissionIds(List.of(mission.getId()))).thenReturn(List.of(result));
             when(resultRepo.findById("result")).thenReturn(Optional.of(result));
             when(resultRepo.findMissionIdByResultId("result")).thenReturn(Optional.of(mission.getId())); return result;
         });

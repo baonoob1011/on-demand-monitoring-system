@@ -58,11 +58,13 @@ public class OrderExecutionCompletionPolicy implements IOrderExecutionCompletion
         // for effective coverage of every historical Order requirement.
         if (!coverage.evaluate(items.findAllByOrderIdInOrderByDisplayOrderAscIdAsc(List.of(order.getId())),
                 execution.missions(), assignments.findActiveByOrderId(order.getId())).coverageReady()) return false;
+        var byMission = results.findByMissionIds(effective.stream().map(m -> m.getId()).toList()).stream()
+                .collect(java.util.stream.Collectors.toMap(r -> r.getMission().getId(), r -> r));
         for (var mission : effective) {
             if (mission.getStatus() != MissionStatus.COMPLETED) return false;
-            var result = results.findByMissionId(mission.getId());
-            if (result.isEmpty() || result.get().getApprovalStatus() != MissionResultApprovalStatus.APPROVED
-                    || result.get().getStatus() == MissionResultStatus.FAILED) return false;
+            var result = byMission.get(mission.getId());
+            if (result == null || result.getApprovalStatus() != MissionResultApprovalStatus.APPROVED
+                    || result.getStatus() == MissionResultStatus.FAILED) return false;
             // Expected incompleteness is a boolean, not an exception caught from a transactional
             // proxy (which would mark the approval transaction rollback-only).
             // NON_COMPLIANT and justified UNABLE_TO_VERIFY retain their existing semantics.

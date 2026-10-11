@@ -15,6 +15,17 @@ public interface ResourceTimeLockRepository extends JpaRepository<ResourceTimeLo
     List<ResourceTimeLock> findByMissionId(String missionId);
 
     @org.springframework.data.jpa.repository.Query("""
+            select distinct l.resourceId from ResourceTimeLock l where l.resourceId in :resourceIds
+              and l.mission.id<>:missionId and l.releasedAt is null
+              and l.startTime<:end and l.endTime>:start
+            """)
+    java.util.Set<String> findConflictingResourceIds(
+            @org.springframework.data.repository.query.Param("resourceIds") java.util.Collection<String> resourceIds,
+            @org.springframework.data.repository.query.Param("missionId") String missionId,
+            @org.springframework.data.repository.query.Param("start") java.time.Instant start,
+            @org.springframework.data.repository.query.Param("end") java.time.Instant end);
+
+    @org.springframework.data.jpa.repository.Query("""
             select count(l) > 0 from ResourceTimeLock l where l.resourceId=:resourceId
               and l.mission.id<>:missionId and l.releasedAt is null
               and l.startTime<:end and l.endTime>:start

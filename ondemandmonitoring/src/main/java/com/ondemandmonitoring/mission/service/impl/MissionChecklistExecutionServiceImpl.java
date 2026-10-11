@@ -44,10 +44,11 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
         Mission mission = requireMission(missionId, false);
         if (!authorization.canViewMission(missionId)) throw new ApiException(ErrorCode.ACCESS_DENIED);
         var links = evidenceService.active(missionId);
-        var rows = executions.findOrderedByMissionId(missionId).stream()
+        var actual = executions.findOrderedByMissionId(missionId);
+        var rows = actual.stream()
                 .map(e -> evidenceService.enrich(mapper.toResponse(e), e, links)).toList();
-        boolean operational = isReadyForSubmission(mission);
-        boolean finalReady = operational && executions.findOrderedByMissionId(missionId).stream().allMatch(e -> evidenceService.ready(e, links, true));
+        boolean operational = scope.isMaterialized(mission) && operationalReady(mission, actual, links);
+        boolean finalReady = operational && actual.stream().allMatch(e -> evidenceService.ready(e, links, true));
         var blockers = new java.util.LinkedHashSet<String>();
         rows.forEach(r -> blockers.addAll(r.getBlockingReasons()));
         if (!operational && blockers.isEmpty()) blockers.add(MissionRuntimeGate.isStructurallyFinalized(mission)
@@ -130,6 +131,11 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
         if (!scope.isMaterialized(mission)) return false;
         List<MissionChecklistExecution> actual = executions.findOrderedByMissionId(mission.getId());
         var links = evidenceService.active(mission.getId());
+        return operationalReady(mission, actual, links);
+    }
+
+    private boolean operationalReady(Mission mission, List<MissionChecklistExecution> actual,
+            List<com.ondemandmonitoring.mission.domain.MissionChecklistEvidence> links) {
         return actual.stream().allMatch(execution ->
                 mission.getOrder().getId().equals(execution.getOrderId())
                 && execution.getExecutionStatus().isTerminal()
@@ -150,16 +156,21 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
     @Override
     @Transactional(readOnly = true)
     public boolean isReadyForFinalApproval(Mission mission) {
-        if (!isReadyForSubmission(mission)) return false;
+        if (!scope.isMaterialized(mission)) return false;
+        var actual = executions.findOrderedByMissionId(mission.getId());
         var links = evidenceService.active(mission.getId());
-        return executions.findOrderedByMissionId(mission.getId()).stream().allMatch(e -> evidenceService.ready(e, links, true));
+        return operationalReady(mission, actual, links)
+                && actual.stream().allMatch(e -> evidenceService.ready(e, links, true));
     }
 
     @Override
     @Transactional(readOnly = true)
     public void requireReadyForFinalApproval(Mission mission) {
-        requireReadyForSubmission(mission);
-        if (!isReadyForFinalApproval(mission))
+        if (!scope.isMaterialized(mission)) throw new ApiException(ErrorCode.CHECKLIST_NOT_READY);
+        var actual = executions.findOrderedByMissionId(mission.getId());
+        var links = evidenceService.active(mission.getId());
+        if (!operationalReady(mission, actual, links)) throw new ApiException(ErrorCode.CHECKLIST_NOT_READY);
+        if (!actual.stream().allMatch(e -> evidenceService.ready(e, links, true)))
             throw new ApiException(ErrorCode.CHECKLIST_NOT_READY, "Approve required evidence media first; remove rejected/pending evidence from required items");
     }
 
