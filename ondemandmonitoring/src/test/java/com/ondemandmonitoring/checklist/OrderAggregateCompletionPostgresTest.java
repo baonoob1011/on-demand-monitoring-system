@@ -83,6 +83,7 @@ class OrderAggregateCompletionPostgresTest extends MissionChecklistCutoverPostgr
             var item = new com.ondemandmonitoring.order.domain.OrderChecklistItem();
             item.setOrder(orders.findById(orderId).orElseThrow());
             item.setContent("Uncovered historical requirement");
+            item.setReviewStatus(com.ondemandmonitoring.order.enums.ChecklistReviewStatus.PENDING);
             item.setSourceType(com.ondemandmonitoring.order.enums.OrderChecklistSourceType.CUSTOMER_CUSTOM);
             item.setEvidencePolicyVersion(1);
             item.setMinimumEvidenceCount(1);

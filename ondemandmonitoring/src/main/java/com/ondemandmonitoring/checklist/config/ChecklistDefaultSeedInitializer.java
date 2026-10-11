@@ -49,13 +49,14 @@ public class ChecklistDefaultSeedInitializer implements ApplicationRunner {
         var existingServices = services.findAll();
         for (var mapping : ChecklistDefaults.templates().entrySet()) {
             var matches = existingServices.stream().filter(s -> s.getName() != null
-                    && ChecklistContentNormalizer.canonicalize(s.getName()).equalsIgnoreCase(mapping.getKey())).toList();
+                    && ChecklistContentNormalizer.canonicalize(s.getName())
+                    .equalsIgnoreCase(ChecklistContentNormalizer.canonicalize(mapping.getKey()))).toList();
             if (matches.size() != 1) {
                 log.info("Skipping default checklist mapping for {}: matching services={}", mapping.getKey(), matches.size());
                 continue;
             }
             var service = services.findByIdForUpdate(matches.getFirst().getId()).orElse(null);
-            if (service == null || Boolean.TRUE.equals(service.getChecklistDefaultsInitialized())) continue;
+            if (service == null) continue;
             var current = assignments.findAllByServiceIdOrderByDisplayOrderAscIdAsc(service.getId());
             if (current.isEmpty() && Boolean.TRUE.equals(service.getIsActive())) {
                 int order = 0;
@@ -67,9 +68,12 @@ public class ChecklistDefaultSeedInitializer implements ApplicationRunner {
                     link.setDisplayOrder(order++); assignments.save(link);
                 }
             }
-            // Mark existing, intentionally empty and inactive templates too; never reconcile on restart.
-            service.setChecklistDefaultsInitialized(true);
-            services.save(service);
+            // Mark initialized services, but allow supported active services with an empty
+            // template to be restored on the next run after catalog refactors or DB resets.
+            if (!Boolean.TRUE.equals(service.getChecklistDefaultsInitialized())) {
+                service.setChecklistDefaultsInitialized(true);
+                services.save(service);
+            }
         }
         assignments.flush();
     }

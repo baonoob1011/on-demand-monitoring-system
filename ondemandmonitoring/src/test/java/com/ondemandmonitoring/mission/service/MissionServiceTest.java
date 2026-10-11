@@ -39,6 +39,8 @@ import com.ondemandmonitoring.mission.service.impl.DeviceConnectionService;
 import com.ondemandmonitoring.mission.service.impl.FlightTokenService;
 import com.ondemandmonitoring.mission.service.impl.MissionService;
 import com.ondemandmonitoring.order.repository.OrderRepository;
+import com.ondemandmonitoring.finance.repository.InvoiceRepository;
+import com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService;
 import com.ondemandmonitoring.planning.service.MissionPlanningService;
 import com.ondemandmonitoring.role.domain.Role;
 import com.ondemandmonitoring.role.domain.RoleCode;
@@ -80,6 +82,8 @@ class MissionServiceTest {
     PersistedPostDeviceCheckRepository postDeviceCheckRepository;
     MaintenanceTicketRepository maintenanceTicketRepository;
     OrderRepository orderRepository;
+    InvoiceRepository invoiceRepository;
+    IMissionPaymentEligibilityService missionPaymentEligibilityService;
     IDeviceConnectionService deviceConnectionService;
     IFlightTokenService flightTokenService;
     IMissionResultService missionResultService;
@@ -109,6 +113,8 @@ class MissionServiceTest {
         postDeviceCheckRepository = mock(PersistedPostDeviceCheckRepository.class);
         maintenanceTicketRepository = mock(MaintenanceTicketRepository.class);
         orderRepository = mock(OrderRepository.class);
+        invoiceRepository = mock(InvoiceRepository.class);
+        missionPaymentEligibilityService = mock(IMissionPaymentEligibilityService.class);
         staffDirectory = mock(IStaffDirectoryService.class);
         authenticatedUserResolver = mock(AuthenticatedUserResolver.class);
         userScheduleRepository = mock(UserScheduleRepository.class);
@@ -147,6 +153,8 @@ class MissionServiceTest {
                 postDeviceCheckRepository,
                 maintenanceTicketRepository,
                 orderRepository,
+                invoiceRepository,
+                missionPaymentEligibilityService,
                 deviceConnectionService,
                 flightTokenService,
                 missionResultService,
@@ -763,6 +771,7 @@ class MissionServiceTest {
         void incompleteBusinessChecklistBlocksAcceptanceWithoutReleasingReportingAssignments() {
             Mission mission = buildMission("m-business", MissionStatus.PENDING_REVIEW);
             var order = new com.ondemandmonitoring.order.domain.Order(); order.setId("o"); mission.setOrder(order);
+            when(orderRepository.findByIdForUpdate("o")).thenReturn(Optional.of(order));
             Device device = buildDevice("DEV-01", DeviceStatus.RETURNING);
             var deviceAssignment = new MissionDeviceAssignment(); deviceAssignment.setDevice(device);
             var staffAssignment = new MissionStaffAssignment();
@@ -943,6 +952,9 @@ class MissionServiceTest {
         m.setId(id);
         m.setMissionCode("MC-" + id);
         m.setStatus(status);
+        var order = new com.ondemandmonitoring.order.domain.Order(); order.setId("order-" + id);
+        m.setOrder(order);
+        lenient().when(orderRepository.findByIdForUpdate(order.getId())).thenReturn(Optional.of(order));
         return m;
     }
 
@@ -1011,6 +1023,7 @@ class MissionServiceTest {
         var mission = buildMission("integrated", MissionStatus.POSTFLIGHT_CHECKING);
         var order = new com.ondemandmonitoring.order.domain.Order(); order.setId("order");
         order.setOrderStatus(com.ondemandmonitoring.order.enums.OrderStatus.APPROVED); mission.setOrder(order);
+        when(orderRepository.findByIdForUpdate(order.getId())).thenReturn(Optional.of(order));
         order.setExecutionPlanStatus(com.ondemandmonitoring.order.enums.ExecutionPlanStatus.FINALIZED);
         order.setExecutionPlanRevision(1);
         var device = buildDevice("device", DeviceStatus.RETURNING);

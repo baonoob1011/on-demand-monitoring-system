@@ -3,6 +3,7 @@ package com.ondemandmonitoring.mission.service.impl;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.common.exception.ErrorCode;
+import com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService;
 import com.ondemandmonitoring.device.domain.Device;
 import com.ondemandmonitoring.device.enums.DeviceStatus;
 import com.ondemandmonitoring.device.repository.DeviceRepository;
@@ -39,6 +40,9 @@ import com.ondemandmonitoring.mission.service.IMissionResultService;
 import com.ondemandmonitoring.mission.service.IMissionChecklistExecutionService;
 import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.order.repository.OrderRepository;
+import com.ondemandmonitoring.finance.enums.QuoteStatus;
+import com.ondemandmonitoring.finance.repository.InvoiceRepository;
+import com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService;
 import com.ondemandmonitoring.planning.service.MissionPlanningService;
 import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
@@ -51,12 +55,14 @@ import com.ondemandmonitoring.userschedule.repository.UserScheduleRepository;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -107,6 +113,8 @@ public class MissionService implements IMissionService {
     PersistedPostDeviceCheckRepository postDeviceCheckRepository;
     MaintenanceTicketRepository maintenanceTicketRepository;
     OrderRepository orderRepository;
+    InvoiceRepository invoiceRepository;
+    IMissionPaymentEligibilityService missionPaymentEligibilityService;
     IDeviceConnectionService deviceConnectionService;
     IFlightTokenService flightTokenService;
     IMissionResultService missionResultService;
@@ -121,6 +129,8 @@ public class MissionService implements IMissionService {
     IMissionChecklistExecutionService checklistExecutionService;
     com.ondemandmonitoring.mission.service.IResourceReservationService resources;
     com.ondemandmonitoring.device.repository.DeviceTelemetryRepository telemetryRepository;
+    @Autowired @NonFinal
+    IDeliveryWorkflowService deliveryWorkflowService;
     // =========================================================================
     // Query Methods
     // =========================================================================
@@ -223,9 +233,15 @@ public class MissionService implements IMissionService {
                     || !order.getTargetArea().isValid() || order.getTargetArea().isEmpty()
                     || !order.getTargetArea().covers(order.getPoint()))))
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Order scope must be valid WGS84 geometry");
+
+        var invoice = invoiceRepository.findByOrderId(order.getId())
+                .filter(value -> value.getQuote().getStatus() == QuoteStatus.ACCEPTED_BY_CUSTOMER)
+                .orElseThrow(() -> new ApiException(ErrorCode.INVOICE_NOT_PAYABLE,
+                        "An accepted quote and invoice are required before mission creation"));
         Mission mission = new Mission();
         mission.setMissionCode(generateMissionCode());
-        mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
+        mission.setStatus(missionPaymentEligibilityService.isDepositSatisfied(invoice)
+                ? MissionStatus.RESOURCE_ASSIGNING : MissionStatus.WAITING_DEPOSIT);
         mission.setOrder(order);
         mission.setScheduledStartAt(intent.start()); mission.setScheduledEndAt(intent.end());
         mission.setScopeLabel(intent.label());
@@ -1078,6 +1094,8 @@ public class MissionService implements IMissionService {
     public MissionResponse completeMission(String missionId) {
         Mission resolved = getRuntimeMissionOrThrow(missionId);
         MissionRuntimeGate.requireOperationalCommandsAllowed(resolved);
+        orderRepository.findByIdForUpdate(resolved.getOrder().getId())
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND));
         Mission mission = missionRepository.findByIdForUpdate(resolved.getId()).orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
         String resolvedMissionId = mission.getId();
         if (mission.getStatus() == MissionStatus.COMPLETED
@@ -1104,6 +1122,9 @@ public class MissionService implements IMissionService {
         log.info("Mission {} COMPLETED successfully", missionId);
         Mission saved = missionRepository.save(mission);
         missionResultService.ensureCompletedResult(saved);
+        if (deliveryWorkflowService != null) {
+            deliveryWorkflowService.markProcessing(saved.getOrder().getId());
+        }
         return missionMapper.toResponse(saved);
     }
 

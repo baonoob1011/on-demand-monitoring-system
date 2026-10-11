@@ -2,6 +2,7 @@ package com.ondemandmonitoring.order.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.checklist.domain.ChecklistDefinition;
+import com.ondemandmonitoring.order.enums.ChecklistReviewStatus;
 import com.ondemandmonitoring.order.enums.OrderChecklistSourceType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -43,6 +44,13 @@ public class OrderChecklistItem extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "source_type", nullable = false, length = 30, updatable = false)
     private OrderChecklistSourceType sourceType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "review_status", nullable = false)
+    private ChecklistReviewStatus reviewStatus;
+
+    @Column(name = "manager_note", length = 1000)
+    private String managerNote;
 
     @Column(name = "evidence_policy_version", nullable = false, updatable = false)
     private int evidencePolicyVersion;

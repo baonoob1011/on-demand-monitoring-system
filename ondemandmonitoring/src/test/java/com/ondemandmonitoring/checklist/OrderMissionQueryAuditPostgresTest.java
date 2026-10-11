@@ -129,7 +129,9 @@ class OrderMissionQueryAuditPostgresTest {
             case "manager-workspace" -> 6L * missionCount + 18;
             case "checklist-response", "final-readiness" -> 7;
             case "result-approve-replay" -> 6L * missionCount + 9;
-            case "result-approve" -> 6L * missionCount + 17;
+            // Incoming separate media-review prerequisite adds one bulk media read,
+            // independent of sibling/item count; preserve the existing linear bound.
+            case "result-approve" -> 6L * missionCount + 18;
             case "crew-gate" -> 1;
             case "staff-availability" -> 4;
             case "device-availability" -> 2;

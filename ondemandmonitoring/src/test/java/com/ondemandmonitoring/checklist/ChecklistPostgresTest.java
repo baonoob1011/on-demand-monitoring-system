@@ -258,7 +258,7 @@ class ChecklistPostgresTest {
         });
         var timeId = new JdbcTemplate(dataSource).queryForObject("select id from preferred_times", String.class);
         var typeId = new JdbcTemplate(dataSource).queryForObject("select id from deliverable_types", String.class);
-        return OrderCreateRequest.builder().title("Snapshot order").serviceId(serviceId).preferredTimeId(timeId)
+        return OrderCreateRequest.builder().title("Snapshot order").termsAccepted(true).serviceId(serviceId).preferredTimeId(timeId)
                 .preferredDateFrom(java.time.LocalDate.now()).preferredDateTo(java.time.LocalDate.now().plusDays(2))
                 .longitude(106.7005).latitude(10.7765)
                 .coverageArea(Map.of("type", "Polygon", "coordinates", List.of(List.of(
@@ -431,7 +431,7 @@ class ChecklistPostgresTest {
         assignments.assign(s, assignment(c, 0));
         var created = orderService.createOrder(orderRequest(s));
         var jdbc = new JdbcTemplate(dataSource);
-        String sql = "INSERT INTO order_checklist_items(id, order_id, source_checklist_id, content, display_order, source_type, created_at, version) VALUES (?, ?, ?, 'Copied', 0, ?, now(), 0)";
+        String sql = "INSERT INTO order_checklist_items(id, order_id, source_checklist_id, content, display_order, source_type, created_at, version, review_status) VALUES (?, ?, ?, 'Copied', 0, ?, now(), 0, 'PENDING')";
         var duplicate = assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(sql,
                 UUID.randomUUID().toString(), created.getId(), c, "SERVICE_TEMPLATE"));
         assertTrue(duplicate.getMostSpecificCause().getMessage().contains("uk_order_checklist_source"));
@@ -474,6 +474,9 @@ class ChecklistPostgresTest {
     @EnableJpaAuditing
     @EnableJpaRepositories(basePackageClasses = {ChecklistDefinitionRepository.class, OrderRepository.class})
     static class Config {
+        @Bean com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService deliveryWorkflow() {
+            return mock(com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService.class);
+        }
         @Bean DataSource dataSource() {
             String url = System.getenv("ODMS_CHECKLIST_TEST_JDBC_URL");
             String user = System.getenv().getOrDefault("ODMS_CHECKLIST_TEST_DB_USER", "checklist_test");

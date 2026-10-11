@@ -80,7 +80,7 @@ class ResourceSafetyPostgresTest extends ExecutionPlanAmendmentPostgresTest {
         operational = new MissionService(repository(entityManagerFactory, MissionRescheduleHistoryRepository.class), missions,
                 repository(entityManagerFactory, DeviceRepository.class), repository(entityManagerFactory, FlightTokenRepository.class), mapper,
                 null,null,null,repository(entityManagerFactory, DeviceConnectionRepository.class),null,
-                repository(entityManagerFactory, PersistedPostDeviceCheckRepository.class),null,orders,sessions,null,resultService,
+                repository(entityManagerFactory, PersistedPostDeviceCheckRepository.class),null,orders,null,null,sessions,null,resultService,
                 null,null,directory,resolver,repository(entityManagerFactory, UserScheduleRepository.class),
                 repository(entityManagerFactory, MissionDeviceAssignmentRepository.class),repository(entityManagerFactory, MissionStaffAssignmentRepository.class),
                 repository(entityManagerFactory, ResourceTimeLockRepository.class),runtime,reservations,

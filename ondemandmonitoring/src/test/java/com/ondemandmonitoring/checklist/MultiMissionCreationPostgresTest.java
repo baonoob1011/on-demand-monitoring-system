@@ -93,7 +93,7 @@ class MultiMissionCreationPostgresTest extends ChecklistPostgresTest {
             Callable<Object> second=()->{try{return missionService.createMissionWithOutcome(b);}catch(ApiException e){return e.getErrorCode();}};
             var f=pool.submit(first);var s=pool.submit(second);
             long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);int waiting=0;
-            while(System.nanoTime()<deadline&&waiting<2){waiting=jdbc.queryForObject("select count(*) from pg_stat_activity where datname=current_database() and usename=current_user and wait_event_type='Lock' and query like '%orders%' and query like '%for%'",Integer.class);Thread.sleep(20);}
+            while(System.nanoTime()<deadline&&waiting<2){waiting=jdbc.queryForObject("select count(*) from pg_stat_activity where datname=current_database() and usename=current_user and wait_event_type='Lock' and cardinality(pg_blocking_pids(pid)) > 0",Integer.class);Thread.sleep(20);}
             assertEquals(2,waiting); release.countDown();holder.get(10,TimeUnit.SECONDS);
             return List.of(f.get(10,TimeUnit.SECONDS),s.get(10,TimeUnit.SECONDS));
         } finally {release.countDown();}

@@ -11,6 +11,7 @@ import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.math.BigDecimal;
 
 @Entity
 @Table(name = "services")
@@ -21,11 +22,18 @@ import java.util.List;
 @AllArgsConstructor
 public class Service extends BaseEntity {
 
+    @Column(name = "code", unique = true, length = 80)
+    private String code;
+
     @Column(name = "name", nullable = false, unique = true)
     private String name;
 
     @Column(name = "description", length = 1000)
     private String description;
+
+    @Builder.Default
+    @Column(name = "base_price", nullable = false, precision = 19, scale = 0)
+    private BigDecimal basePrice = new BigDecimal("3200000");
 
     @Column(name = "image_s3_key", length = 500)
     private String imageS3Key;

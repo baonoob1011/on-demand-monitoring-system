@@ -1,10 +1,22 @@
 package com.ondemandmonitoring.order.dto.request;
 
+import com.ondemandmonitoring.order.enums.OrderDeliveryMethod;
+import com.ondemandmonitoring.order.enums.OrderPermitStatus;
+import com.ondemandmonitoring.order.enums.OrderPriority;
+import com.ondemandmonitoring.order.enums.OrderRecurrenceType;
+import com.ondemandmonitoring.order.enums.OrderResultFormat;
+import com.ondemandmonitoring.order.enums.OrderUsagePurpose;
+import com.ondemandmonitoring.order.enums.OrderWeatherFallback;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
@@ -30,6 +42,40 @@ public class OrderCreateRequest {
     @Size(max = 255, message = "Title must not exceed 255 characters")
     @Schema(description = "Title of the order", example = "Forest Area Monitoring")
     String title;
+
+    @Schema(description = "Intended use of the result", example = "INTERNAL")
+    OrderUsagePurpose usagePurpose;
+
+    @Schema(description = "Request priority, defaults to NORMAL", example = "NORMAL")
+    OrderPriority priority;
+
+    @DecimalMin(value = "10", message = "Flight altitude must be at least 10 m")
+    @DecimalMax(value = "120", message = "Flight altitude must not exceed 120 m")
+    @Schema(description = "Desired flight altitude in metres (10-120)", example = "60")
+    Double altitudeM;
+
+    @DecimalMin(value = "0", inclusive = false, message = "Estimated length must be positive")
+    @DecimalMax(value = "100000", message = "Estimated length must not exceed 100000 m")
+    @Schema(description = "Estimated length in metres for linear targets (roads, runways, pipelines)")
+    Double estimatedLengthM;
+
+    @Size(max = 120, message = "Contact name must not exceed 120 characters")
+    @Schema(description = "On-site contact person")
+    String siteContactName;
+
+    @Pattern(regexp = "^$|^[+0-9 ().-]{8,20}$", message = "Invalid contact phone number")
+    @Schema(description = "On-site contact phone", example = "0901234567")
+    String siteContactPhone;
+
+    @Size(max = 1000, message = "Access notes must not exceed 1000 characters")
+    @Schema(description = "Site access conditions (gate, escort, working hours...)")
+    String accessNotes;
+
+    @Schema(description = "Airspace permit answer; required when the area needs a permit")
+    OrderPermitStatus permitStatus;
+
+    @Size(max = 80, message = "Permit number must not exceed 80 characters")
+    String permitNumber;
 
     @NotBlank(message = "Service ID is required")
     @Schema(description = "Service ID", example = "550e8400-e29b-41d4-a716-446655440000")
@@ -64,6 +110,34 @@ public class OrderCreateRequest {
     @NotBlank(message = "Preferred time ID is required")
     @Schema(description = "Preferred time frame ID")
     String preferredTimeId;
+
+    @Schema(description = "Repeat the flight weekly or monthly; defaults to NONE", example = "NONE")
+    OrderRecurrenceType recurrenceType;
+
+    @Min(value = 2, message = "Recurrence must have at least 2 flights")
+    @Max(value = 52, message = "Recurrence must not exceed 52 flights")
+    @Schema(description = "Total number of flights when recurrenceType is not NONE (2-52)", example = "4")
+    Integer recurrenceOccurrences;
+
+    @Schema(description = "What to do when the flight cannot go ahead (weather, no permit, blocked access, equipment failure, safety); defaults to CONTACT_CUSTOMER")
+    OrderWeatherFallback weatherFallback;
+
+    @Schema(description = "Latest date the customer needs the result; must not be before preferredDateTo", example = "2026-10-12")
+    LocalDate resultDeadline;
+
+    @Size(max = 5, message = "At most 5 result formats")
+    @Schema(description = "Result formats wanted; defaults to [PHOTO]", example = "[\"PHOTO\",\"PDF_REPORT\"]")
+    List<@NotNull OrderResultFormat> resultFormats;
+
+    @Size(max = 3, message = "At most 3 delivery methods")
+    @Schema(description = "How the result is received; defaults to [DOWNLOAD]", example = "[\"DOWNLOAD\",\"EMAIL\"]")
+    List<@NotNull OrderDeliveryMethod> deliveryMethods;
+
+    @Schema(description = "Days the result data is kept: 30, 90, 180 or 365; defaults to 90", example = "90")
+    Integer dataRetentionDays;
+
+    @Schema(description = "Customer accepts the terms and the data-security commitment; must be true")
+    Boolean termsAccepted;
 
     @NotEmpty(message = "At least one deliverable is required")
     @Schema(description = "List of deliverable types with requirements for the service")

@@ -2,6 +2,7 @@ package com.ondemandmonitoring.media.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
+import com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.domain.MediaStatus;
 import com.ondemandmonitoring.media.dto.response.CustomerMediaNotificationResponse;
@@ -21,6 +22,8 @@ import org.springframework.data.domain.Sort;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.experimental.NonFinal;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +37,7 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
     MediaNotificationOutboxRepository notifications;
     IMediaObjectStorage storage;
     MediaWorkflowMapper mapper;
+    @Autowired @NonFinal IDeliveryWorkflowService deliveryWorkflow;
 
     @Override
     @Transactional(readOnly = true)
@@ -53,19 +57,21 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
     @Transactional(readOnly = true)
     public PageResponse<CustomerMediaResponse> listAvailablePage(String missionId, int page, int size) {
         String canonicalId = missionAccess.authorizeCustomer(missionId);
+        boolean originalsAvailable = deliveredMissionIds(List.of(canonicalId)).contains(canonicalId);
         var pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "capturedAt", "id"));
         return PageResponse.from(media.findByMissionIdAndMediaStatus(
-                canonicalId, MediaStatus.AVAILABLE, pageable).map(this::toResponse));
+                canonicalId, MediaStatus.AVAILABLE, pageable).map(asset -> toResponse(asset, originalsAvailable)));
     }
 
     @Override
     @Transactional(readOnly = true)
     public CustomerMediaResponse getAvailableInMission(String missionId, String mediaId) {
         String canonicalId = missionAccess.authorizeCustomer(missionId);
+        boolean originalsAvailable = deliveredMissionIds(List.of(canonicalId)).contains(canonicalId);
         return media.findById(mediaId)
                 .filter(asset -> canonicalId.equals(asset.getMissionId()))
                 .filter(asset -> asset.getMediaStatus() == MediaStatus.AVAILABLE)
-                .map(this::toResponse)
+                .map(asset -> toResponse(asset, originalsAvailable))
                 .orElseThrow(() -> new ApiException(ErrorCode.MEDIA_NOT_FOUND));
     }
 
@@ -73,9 +79,10 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
     @Transactional(readOnly = true)
     public List<CustomerMediaResponse> listAvailable(String missionId) {
         String canonicalId = missionAccess.authorizeCustomer(missionId);
+        boolean originalsAvailable = deliveredMissionIds(List.of(canonicalId)).contains(canonicalId);
         return media.findByMissionIdOrderByCapturedAtDesc(canonicalId).stream()
                 .filter(asset -> asset.getMediaStatus() == MediaStatus.AVAILABLE)
-                .map(this::toResponse).toList();
+                .map(asset -> toResponse(asset, originalsAvailable)).toList();
     }
 
     @Override
@@ -84,9 +91,10 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
         List<String> missionIds = ownMissionIds();
         if (missionIds.isEmpty())
             return List.of();
+        var delivered = new java.util.HashSet<>(deliveredMissionIds(missionIds));
         return media.findByMissionIdInAndMediaStatusOrderByCapturedAtDesc(missionIds,
                 MediaStatus.AVAILABLE)
-                .stream().map(this::toResponse).toList();
+                .stream().map(asset -> toResponse(asset, delivered.contains(asset.getMissionId()))).toList();
     }
 
     @Override
@@ -98,7 +106,7 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
         if (asset.getMediaStatus() != MediaStatus.AVAILABLE) {
             throw new ApiException(ErrorCode.MEDIA_NOT_FOUND);
         }
-        return toResponse(asset);
+        return toResponse(asset, deliveredMissionIds(List.of(asset.getMissionId())).contains(asset.getMissionId()));
     }
 
     @Override
@@ -127,8 +135,16 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
         return missionAccess.ownCustomerMissionIds();
     }
 
-    private CustomerMediaResponse toResponse(MediaAsset asset) {
+    private List<String> deliveredMissionIds(List<String> missionIds) {
+        // Normal ineligibility must not be represented by an exception here. Catching an
+        // exception from another transactional bean still marks the outer transaction as
+        // rollback-only and causes UnexpectedRollbackException during commit.
+        if (deliveryWorkflow == null) return missionIds;
+        return deliveryWorkflow.originalAccessibleMissionIds(missionIds);
+    }
+
+    private CustomerMediaResponse toResponse(MediaAsset asset, boolean originalsAvailable) {
         return mapper.toCustomerResponse(asset,
-                storage.createPresignedGetUrl(asset.getS3Bucket(), asset.getS3Key()));
+                originalsAvailable ? storage.createPresignedGetUrl(asset.getS3Bucket(), asset.getS3Key()) : null);
     }
 }

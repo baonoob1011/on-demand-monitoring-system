@@ -36,6 +36,8 @@ public class SimulationZoneSeeder implements CommandLineRunner {
 
     public static final String SOURCE_WORLD = "forest_monitoring_compact";
     public static final String COORDINATE_SYSTEM = "LOCAL_SIMULATION_METERS_GAZEBO_XY";
+    /** Zones whose polygon is real WGS84 longitude/latitude (all others are local simulation metres). */
+    public static final String GPS_COORDINATE_SYSTEM = "WGS84_GPS_LON_LAT";
     static final int SRID = 0;
     static final GeometryFactory GEOMETRY_FACTORY = new GeometryFactory(new PrecisionModel(), SRID);
 
@@ -278,7 +280,7 @@ public class SimulationZoneSeeder implements CommandLineRunner {
         zone.setCenterYM(centroid.getY());
         zone.setRadiusM(0.0);
         zone.setSourceWorld("hcmc_real_gps");
-        zone.setCoordinateSystem("WGS84_GPS_LON_LAT");
+        zone.setCoordinateSystem(GPS_COORDINATE_SYSTEM);
         zone.setPolygon(polygon);
         zoneRepository.save(zone);
     }

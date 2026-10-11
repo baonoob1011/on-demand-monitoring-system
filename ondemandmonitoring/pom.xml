@@ -58,6 +58,11 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-websocket</artifactId>
 		</dependency>
+		<!-- Outbound HTTP for flight-area providers: tries every resolved address when one is unreachable -->
+		<dependency>
+			<groupId>org.apache.httpcomponents.client5</groupId>
+			<artifactId>httpclient5</artifactId>
+		</dependency>
 		<!-- Spring AI - PostgreSQL pgvector Vector Store -->
 		<dependency>
 			<groupId>org.springframework.ai</groupId>

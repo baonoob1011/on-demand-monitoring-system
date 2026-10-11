@@ -188,7 +188,8 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
     private boolean canPerform(String missionId, MissionStaffRole task) {
         User user = currentUser.getCurrentUser();
         if (!hasRole(user, RoleCode.STAFF)) return false;
-        return findRuntimeMissionById(missionId).filter(mission -> !TERMINAL_STATUSES.contains(mission.getStatus()))
+        return findRuntimeMissionById(missionId).filter(mission -> mission.getStatus() != MissionStatus.WAITING_DEPOSIT)
+                .filter(mission -> !TERMINAL_STATUSES.contains(mission.getStatus()))
                 .map(mission -> {
                     List<MissionStaffAssignment> crew = assignments.findAllByMissionIdAndIsCurrentTrue(mission.getId());
                     return crew.stream().anyMatch(entry -> entry.getStaff() != null

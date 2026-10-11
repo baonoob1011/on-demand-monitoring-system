@@ -12,6 +12,10 @@ public interface ServiceRequirementSuggestionRepository extends JpaRepository<Se
 
     List<ServiceRequirementSuggestion> findByActiveTrueAndServiceIsNullOrderBySortOrderAscCreatedAtAsc();
 
+    Optional<ServiceRequirementSuggestion> findByServiceIsNullAndCategoryIgnoreCaseAndLabelIgnoreCase(
+            String category,
+            String label);
+
     Optional<ServiceRequirementSuggestion> findByServiceIdAndCategoryIgnoreCaseAndLabelIgnoreCase(
             String serviceId,
             String category,

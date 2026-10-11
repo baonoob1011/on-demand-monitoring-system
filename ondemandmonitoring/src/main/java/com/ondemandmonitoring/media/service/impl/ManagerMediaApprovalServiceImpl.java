@@ -48,7 +48,10 @@ public class ManagerMediaApprovalServiceImpl implements IManagerMediaApprovalSer
     @Override
     @Transactional
     public OperatorMissionMediaResponse approve(String missionId, String mediaId) {
-        MediaAsset asset = pendingAsset(missionId, mediaId);
+        // Promoting an already captured object to AVAILABLE does not alter the
+        // approved evidence package. Keep this recovery path open for legacy
+        // results that were approved while their media was still pending.
+        MediaAsset asset = pendingAsset(missionId, mediaId, false);
         Instant now = Instant.now();
         asset.setMediaStatus(MediaStatus.AVAILABLE);
         asset.setAvailableAt(now);
@@ -68,15 +71,15 @@ public class ManagerMediaApprovalServiceImpl implements IManagerMediaApprovalSer
     @Override
     @Transactional
     public OperatorMissionMediaResponse reject(String missionId, String mediaId) {
-        MediaAsset asset = pendingAsset(missionId, mediaId);
+        MediaAsset asset = pendingAsset(missionId, mediaId, true);
         asset.setMediaStatus(MediaStatus.REJECTED);
         asset.setAvailableAt(null);
         return toResponse(media.save(asset));
     }
 
-    private MediaAsset pendingAsset(String missionId, String mediaId) {
+    private MediaAsset pendingAsset(String missionId, String mediaId, boolean changesEvidenceDecision) {
         missionLock.lock(mediaId);
-        missionLock.requireMutable(missionId, mediaId);
+        if (changesEvidenceDecision) missionLock.requireMutable(missionId, mediaId);
         return media.findByIdForUpdate(mediaId)
                 .filter(asset -> missionId.equals(asset.getMissionId()))
                 .filter(asset -> asset.getMediaStatus() == MediaStatus.PENDING_MANAGER_APPROVAL)

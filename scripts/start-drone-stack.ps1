@@ -49,6 +49,36 @@ function ConvertTo-WslPath([string]$WindowsPath) {
     return "/mnt/$drive/$rest"
 }
 
+function Convert-ProjectShellScriptsToLf([string]$Root) {
+    $scriptRoot = Join-Path $Root "scripts"
+    $paths = @()
+    $paths += Get-ChildItem -LiteralPath $scriptRoot -Filter "*.sh" -File -Recurse -ErrorAction SilentlyContinue
+    $paths += Get-ChildItem -LiteralPath $scriptRoot -Filter "*.bash" -File -Recurse -ErrorAction SilentlyContinue
+
+    $wslBin = Join-Path $scriptRoot "wsl-bin"
+    if (Test-Path -LiteralPath $wslBin -PathType Container) {
+        $paths += Get-ChildItem -LiteralPath $wslBin -File -Recurse -ErrorAction SilentlyContinue
+    }
+
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    $normalizedCount = 0
+    foreach ($path in ($paths | Sort-Object -Property FullName -Unique)) {
+        $content = [System.IO.File]::ReadAllText($path.FullName)
+        $normalized = $content -replace "`r`n", "`n"
+        $normalized = $normalized -replace "`r", "`n"
+        if ($normalized -ne $content) {
+            [System.IO.File]::WriteAllText($path.FullName, $normalized, $utf8NoBom)
+            $normalizedCount++
+        }
+    }
+
+    if ($normalizedCount -gt 0) {
+        Write-Host "[CHECK] Shell scripts: LF (normalized $normalizedCount file(s))" -ForegroundColor Yellow
+    } else {
+        Write-Host "[CHECK] Shell scripts: LF" -ForegroundColor Green
+    }
+}
+
 function Start-WslWindow([string]$Title, [string]$Command) {
     $escapedCommand = $Command.Replace('"', '\"')
     $cmdLine = "title $Title && wsl.exe -d $ubuntuDistro -- bash -lc `"$escapedCommand`""
@@ -137,6 +167,7 @@ function Assert-DronePackage([string]$Forest3DPath, [string]$World) {
 
 $ubuntuDistro = "Ubuntu-24.04"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+Convert-ProjectShellScriptsToLf $repoRoot
 $forest3DPath = if ($SimWorld -eq "light") { $null } else { Resolve-Forest3DPath $repoRoot }
 if ($forest3DPath) { Assert-DronePackage $forest3DPath $SimWorld }
 $backendEnvFile = Join-Path $repoRoot ".env"
@@ -147,6 +178,12 @@ if (-not (Test-Path -LiteralPath $backendEnvFile -PathType Leaf)) {
 if (-not $SkipBootstrap) {
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "bootstrap-drone-stack.ps1") -UbuntuDistro $ubuntuDistro
 }
+
+& wsl.exe -d $ubuntuDistro -- bash -lc "command -v bash >/dev/null && test -r /proc/version"
+if ($LASTEXITCODE -ne 0) {
+    throw "WSL environment check failed for $ubuntuDistro. Run: wsl.exe -d $ubuntuDistro -- bash -lc 'uname -a'"
+}
+Write-Host "[CHECK] WSL environment: OK" -ForegroundColor Green
 
 $repoRootWsl = ConvertTo-WslPath $repoRoot
 $forest3DPathWsl = if ($forest3DPath) { ConvertTo-WslPath $forest3DPath } else { "" }

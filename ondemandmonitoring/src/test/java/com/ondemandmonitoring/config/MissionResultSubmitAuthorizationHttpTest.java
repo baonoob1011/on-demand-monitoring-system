@@ -65,6 +65,9 @@ class MissionResultSubmitAuthorizationHttpTest {
 
     @Configuration @EnableWebMvc
     static class Beans {
+        @Bean com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService deliveryWorkflow() {
+            return org.mockito.Mockito.mock(com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService.class);
+        }
         @Bean MissionResultSubmissionFixture fixture() { return new MissionResultSubmissionFixture(); }
         @Bean AuthenticatedUserResolver resolver(MissionResultSubmissionFixture fixture) { return fixture.resolver; }
         @Bean("missionAuthorizationService") IMissionAuthorizationService authorization(MissionResultSubmissionFixture fixture) { return fixture.authorization; }

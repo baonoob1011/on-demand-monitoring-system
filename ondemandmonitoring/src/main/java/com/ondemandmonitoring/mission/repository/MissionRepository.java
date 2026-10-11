@@ -79,5 +79,3 @@ public interface MissionRepository extends JpaRepository<Mission, String>, JpaSp
     List<Mission> findByStatusIn(List<MissionStatus> statuses);
 
 }
-
-

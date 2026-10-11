@@ -11,6 +11,7 @@ import com.ondemandmonitoring.order.domain.OrderChecklistItem;
 import com.ondemandmonitoring.order.dto.request.OrderChecklistItemRequest;
 import com.ondemandmonitoring.order.dto.response.OrderChecklistItemResponse;
 import com.ondemandmonitoring.order.enums.OrderChecklistSourceType;
+import com.ondemandmonitoring.order.enums.ChecklistReviewStatus;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.mapper.OrderChecklistItemMapper;
 import com.ondemandmonitoring.order.repository.OrderChecklistItemRepository;
@@ -101,6 +102,7 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
             entity.setOrder(order);
             entity.setSourceChecklist(source);
             entity.setSourceType(source == null ? OrderChecklistSourceType.CUSTOMER_CUSTOM : OrderChecklistSourceType.SERVICE_TEMPLATE);
+            entity.setReviewStatus(ChecklistReviewStatus.PENDING);
             String content = item.getContentOverride();
             if (content == null && source != null) {
                 content = source.getContent();

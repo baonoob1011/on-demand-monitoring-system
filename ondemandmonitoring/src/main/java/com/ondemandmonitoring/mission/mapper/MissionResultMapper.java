@@ -31,6 +31,12 @@ public abstract class MissionResultMapper {
     public abstract MissionResultResponse toResponse(MissionResult result, List<MediaAsset> mediaFiles,
             @Context IMediaAssetService mediaAssetService);
 
+    /** Customer result metadata never carries original media URLs; delivery endpoints own that access gate. */
+    @Mapping(target = "missionId", source = "mission.id")
+    @Mapping(target = "missionCode", source = "mission.missionCode")
+    @Mapping(target = "mediaFiles", expression = "java(java.util.List.of())")
+    public abstract MissionResultResponse toResponseWithoutMedia(MissionResult result);
+
     protected List<MediaResponse> toMediaResponses(
             List<MediaAsset> mediaFiles,
             @Context IMediaAssetService mediaAssetService) {

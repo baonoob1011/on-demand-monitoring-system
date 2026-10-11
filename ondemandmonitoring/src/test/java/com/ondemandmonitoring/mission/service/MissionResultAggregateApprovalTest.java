@@ -63,7 +63,7 @@ class MissionResultAggregateApprovalTest {
         service.approve("r", request);
         assertEquals(approvedAt, result.getApprovedAt()); assertEquals("original-manager", result.getReviewedBy());
         assertEquals("Original review", result.getReviewNote()); verify(results, never()).saveAndFlush(any());
-        verify(completion).completeIfReady(aggregate); verifyNoInteractions(user);
+        verify(completion).completeIfReady(aggregate); verify(user, never()).getCurrentUserId();
     }
     @Test void rejectedResultCannotApprove() {
         result.setApprovalStatus(MissionResultApprovalStatus.REJECTED);

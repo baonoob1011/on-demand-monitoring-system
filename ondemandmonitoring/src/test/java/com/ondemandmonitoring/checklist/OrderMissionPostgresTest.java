@@ -33,6 +33,21 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
     @Autowired MissionRepository missions;
     @Autowired IMissionService missionService;
 
+    static com.ondemandmonitoring.finance.repository.InvoiceRepository paidInvoices() {
+        var repository = mock(com.ondemandmonitoring.finance.repository.InvoiceRepository.class);
+        var invoice = mock(com.ondemandmonitoring.finance.domain.Invoice.class);
+        var quote = mock(com.ondemandmonitoring.finance.domain.Quote.class);
+        when(quote.getStatus()).thenReturn(com.ondemandmonitoring.finance.enums.QuoteStatus.ACCEPTED_BY_CUSTOMER);
+        when(invoice.getQuote()).thenReturn(quote);
+        when(repository.findByOrderId(anyString())).thenReturn(java.util.Optional.of(invoice));
+        return repository;
+    }
+    static com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService paidEligibility() {
+        var eligibility = mock(com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService.class);
+        when(eligibility.isDepositSatisfied(any())).thenReturn(true);
+        return eligibility;
+    }
+
     @Override @BeforeEach void prepare() {
         new JdbcTemplate(dataSource).execute("TRUNCATE missions CASCADE");
         super.prepare();
@@ -214,7 +229,8 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
                 waiting = jdbc.queryForObject("""
                         SELECT count(*) FROM pg_stat_activity
                         WHERE datname = current_database() AND usename = current_user
-                          AND wait_event_type = 'Lock' AND query LIKE '%orders%' AND query LIKE '%for%'
+                          AND wait_event_type = 'Lock'
+                          AND cardinality(pg_blocking_pids(pid)) > 0
                         """, Integer.class);
                 Thread.sleep(20);
             }
@@ -239,9 +255,17 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
                 return MissionResponse.builder().id(mission.getId()).missionCode(mission.getMissionCode())
                         .status(mission.getStatus()).build();
             });
+            var invoiceRepository = mock(com.ondemandmonitoring.finance.repository.InvoiceRepository.class);
+            var invoice = mock(com.ondemandmonitoring.finance.domain.Invoice.class);
+            var quote = mock(com.ondemandmonitoring.finance.domain.Quote.class);
+            when(quote.getStatus()).thenReturn(com.ondemandmonitoring.finance.enums.QuoteStatus.ACCEPTED_BY_CUSTOMER);
+            when(invoice.getQuote()).thenReturn(quote);
+            when(invoiceRepository.findByOrderId(anyString())).thenReturn(java.util.Optional.of(invoice));
+            var eligibility = mock(com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService.class);
+            when(eligibility.isDepositSatisfied(invoice)).thenReturn(true);
             // Unused lifecycle collaborators are not loaded: only the real transactional creation path is exercised.
             return new MissionService(null, missions, null, null, mapper, null, null, null, null, null,
-                    null, null, orders, null, null, null, null, null, null, null, null, null, null, null, executions,
+                    null, null, orders, invoiceRepository, eligibility, null, null, null, null, null, null, null, null, null, null, null, executions,
                     org.mockito.Mockito.mock(com.ondemandmonitoring.mission.service.IResourceReservationService.class), null);
         }
         @Bean com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository executions(EntityManagerFactory factory) {

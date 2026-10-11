@@ -90,6 +90,7 @@ ALTER TABLE public.orders ALTER COLUMN execution_plan_revision SET DEFAULT 0;
 -- This also validates every constraint and refuses same-name incorrect schemas.
 DO $$ DECLARE entry record; actual text; expected text; BEGIN
     FOR entry IN SELECT * FROM (VALUES
+        ('services','ck_services_base_price_positive','CHECK (base_price > 0)'),
         ('orders','ck_order_execution_plan',
          'CHECK (execution_plan_status IN (''DRAFT'',''FINALIZED'') AND execution_plan_revision >= 0 AND (execution_plan_status <> ''FINALIZED'' OR (execution_plan_revision > 0 AND execution_plan_finalized_at IS NOT NULL)) AND (execution_plan_finalized_by IS NULL OR execution_plan_finalized_at IS NOT NULL) AND ((execution_plan_amended_at IS NULL AND execution_plan_amended_by IS NULL AND execution_plan_amendment_reason IS NULL) OR (execution_plan_amended_at IS NOT NULL AND execution_plan_amended_by IS NOT NULL AND execution_plan_amendment_reason IS NOT NULL AND length(trim(execution_plan_amendment_reason)) > 0)))'),
         ('missions','uk_mission_id_order','UNIQUE (id, order_id)'),

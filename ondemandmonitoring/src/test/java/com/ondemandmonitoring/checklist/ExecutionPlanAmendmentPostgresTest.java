@@ -245,7 +245,7 @@ class ExecutionPlanAmendmentPostgresTest extends OrderAggregateCompletionPostgre
                         .missionCode(mission.getMissionCode()).status(mission.getStatus()).build();
             });
             return new MissionService(history,missions,null,null,mapper,null,null,null,null,null,
-                    null,null,orders,null,null,null,null,null,null,actor,null,null,null,null,executions,
+                    null,null,orders,OrderMissionPostgresTest.paidInvoices(),OrderMissionPostgresTest.paidEligibility(),null,null,null,null,null,null,actor,null,null,null,null,executions,
                     org.mockito.Mockito.mock(IResourceReservationService.class), null);
         }
         @Bean IMissionCancellationService cancellation(OrderRepository orders,MissionRepository missions,

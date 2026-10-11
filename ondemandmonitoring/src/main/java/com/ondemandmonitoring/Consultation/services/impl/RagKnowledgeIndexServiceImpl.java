@@ -101,6 +101,9 @@ public class RagKnowledgeIndexServiceImpl implements RagKnowledgeIndexService {
         String content = String.format("""
                 Service
 
+                Code:
+                %s
+
                 Name:
                 %s
 
@@ -113,6 +116,7 @@ public class RagKnowledgeIndexServiceImpl implements RagKnowledgeIndexService {
                 Requirement suggestions:
                 %s
                 """,
+                safe(service.getCode()),
                 safe(service.getName()),
                 safe(service.getDescription()),
                 deliverables.isBlank() ? "Chưa cấu hình" : deliverables,
@@ -122,6 +126,7 @@ public class RagKnowledgeIndexServiceImpl implements RagKnowledgeIndexService {
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("type", "SERVICE");
         if (service.getId() != null) metadata.put("serviceId", service.getId());
+        if (service.getCode() != null) metadata.put("serviceCode", service.getCode());
         if (service.getName() != null) metadata.put("serviceName", service.getName());
 
         return new Document(

@@ -21,6 +21,7 @@ DO $$ DECLARE e record; actual text; keys text[]; predicate text; meta record; B
         RAISE EXCEPTION 'Obsolete global replacement/reservation index exists';
     END IF;
     FOR e IN SELECT * FROM (VALUES
+        ('services','ck_services_base_price_positive','c'),
         ('orders','ck_order_execution_plan','c'),
         ('missions','ck_mission_foundation','c'),
         ('missions','uk_mission_id_order','u'),

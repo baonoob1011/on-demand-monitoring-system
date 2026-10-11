@@ -26,6 +26,11 @@ class MissionCreationServiceTest {
     }
     @BeforeEach void setup() {
         fixture = new MissionServiceTest(); fixture.setUp();
+        var quote = new com.ondemandmonitoring.finance.domain.Quote();
+        quote.setStatus(com.ondemandmonitoring.finance.enums.QuoteStatus.ACCEPTED_BY_CUSTOMER);
+        var invoice = new com.ondemandmonitoring.finance.domain.Invoice(); invoice.setQuote(quote);
+        when(fixture.invoiceRepository.findByOrderId("o")).thenReturn(Optional.of(invoice));
+        when(fixture.missionPaymentEligibilityService.isDepositSatisfied(invoice)).thenReturn(true);
         order = Order.builder().orderStatus(OrderStatus.APPROVED).preferredDateFrom(LocalDate.of(2026,10,8))
                 .preferredDateTo(LocalDate.of(2026,10,10)).build(); order.setId("o");
         var geometry = new GeometryFactory(new PrecisionModel(),4326);
@@ -65,6 +70,20 @@ class MissionCreationServiceTest {
         error(ErrorCode.IDEMPOTENCY_KEY_REUSED,()->fixture.missionService.createMission(r));
     }
     @Test void staleRevisionDoesNotCreate() { var r=request(); r.setExpectedPlanRevision(2L); error(ErrorCode.EXECUTION_PLAN_REVISION_CONFLICT,()->fixture.missionService.createMission(r)); verify(fixture.missionRepository,never()).saveAndFlush(any()); }
+    @Test void acceptedQuoteWithoutDepositCreatesWaitingMissionWithoutChangingScope() {
+        when(fixture.missionPaymentEligibilityService.isDepositSatisfied(any())).thenReturn(false);
+        fixture.missionService.createMission(request());
+        var captured = org.mockito.ArgumentCaptor.forClass(Mission.class);
+        verify(fixture.missionRepository).saveAndFlush(captured.capture());
+        assertEquals(com.ondemandmonitoring.mission.enums.MissionStatus.WAITING_DEPOSIT, captured.getValue().getStatus());
+        assertEquals("o", captured.getValue().getOrder().getId());
+        assertEquals(order.getPoint(), captured.getValue().getTargetPoint());
+    }
+    @Test void missingAcceptedInvoiceBlocksCreationWithoutSavingMission() {
+        when(fixture.invoiceRepository.findByOrderId("o")).thenReturn(Optional.empty());
+        error(ErrorCode.INVOICE_NOT_PAYABLE, () -> fixture.missionService.createMission(request()));
+        verify(fixture.missionRepository, never()).saveAndFlush(any());
+    }
     @Test void finalizedPlanRejectsNewKey() {order.setExecutionPlanStatus(ExecutionPlanStatus.FINALIZED); error(ErrorCode.EXECUTION_PLAN_NOT_DRAFT,()->fixture.missionService.createMission(request()));}
     @ParameterizedTest @EnumSource(value=OrderStatus.class,names={"COMPLETED","CANCELLED","REJECTED","IN_PROGRESS","PENDING"})
     void nonApprovedOrderRejectsNewKey(OrderStatus state) {order.setOrderStatus(state); error(ErrorCode.INVALID_REQUEST,()->fixture.missionService.createMission(request()));}

@@ -11,6 +11,8 @@ import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import com.ondemandmonitoring.service.controller.ServiceController;
 import com.ondemandmonitoring.service.service.IServiceService;
 import com.ondemandmonitoring.service.repository.ServiceRequirementSuggestionRepository;
+import com.ondemandmonitoring.service.domain.Service;
+import java.math.BigDecimal;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -62,6 +64,8 @@ class ChecklistAuthorizationTest {
         when(catalog.getAll(any(), any(), any())).thenReturn(PageResponse.from(Page.empty()));
         when(assignments.getByService(anyString(), anyBoolean())).thenReturn(List.of());
         when(assignments.getByChecklist(anyString())).thenReturn(List.of());
+        when(services.getEntityById("s1")).thenReturn(Service.builder()
+                .name("Service").basePrice(new BigDecimal("3200000")).isActive(true).build());
     }
 
     List<MockHttpServletRequestBuilder> adminRequests() {
@@ -76,8 +80,8 @@ class ChecklistAuthorizationTest {
             delete("/api/admin/services/s1/checklists/c1"),
             put("/api/admin/services/s1/checklists/order").content("{\"items\":[]}"),
             get("/api/admin/services/s1/checklists"), get("/api/admin/checklists/c1/services"),
-            post("/api/services").content("{\"name\":\"Service\"}"),
-            put("/api/services/s1").content("{\"name\":\"Service\"}"),
+            post("/api/services").content("{\"name\":\"Service\",\"basePrice\":3200000}"),
+            put("/api/services/s1").content("{\"name\":\"Service\",\"basePrice\":3200000}"),
             delete("/api/services/s1")
         );
     }
@@ -112,6 +116,18 @@ class ChecklistAuthorizationTest {
         mvc.perform(get("/api/services/s1/checklists").with(jwt().authorities(() -> "ROLE_CUSTOMER")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data").isArray());
         verify(assignments).getByService("s1", true);
+    }
+
+    @Test void customerPricingEstimateUsesNonZeroConfiguredDefaults() throws Exception {
+        role(RoleCode.CUSTOMER);
+        mvc.perform(get("/api/services/pricing-estimate")
+                        .param("serviceId", "s1")
+                        .param("aiImageAnalysis", "true")
+                        .with(jwt().authorities(() -> "ROLE_CUSTOMER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.servicePrice").value(3200000))
+                .andExpect(jsonPath("$.data.additionalRequirements[0].additionalPrice").value(500000))
+                .andExpect(jsonPath("$.data.totalPrice").value(3700000));
     }
 
     @Test void emptySearchIsOptionalAndPaginationBindsAsQueryParameters() throws Exception {

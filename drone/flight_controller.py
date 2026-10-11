@@ -987,6 +987,7 @@ async def connect_px4(drone: System) -> bool:
                 print(f"[PX4] Health: {status}", flush=True)
                 if health.is_local_position_ok and health.is_global_position_ok:
                     print("\n[PX4] Local position OK - Ready to fly!")
+                    print("[CHECK] Flight Controller: READY", flush=True)
                     return True
     except (asyncio.TimeoutError, grpc.aio.AioRpcError):
         print("\n[WARN] PX4 telemetry health stream unavailable")

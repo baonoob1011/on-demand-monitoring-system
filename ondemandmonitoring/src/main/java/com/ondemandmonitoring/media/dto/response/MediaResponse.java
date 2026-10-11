@@ -1,5 +1,6 @@
 package com.ondemandmonitoring.media.dto.response;
 
+import com.ondemandmonitoring.media.domain.MediaStatus;
 import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -19,6 +20,7 @@ public class MediaResponse {
     String missionId;
     String deviceId;
     String type;
+    MediaStatus status;
     String url;
     Long expiresIn;
     String contentType;

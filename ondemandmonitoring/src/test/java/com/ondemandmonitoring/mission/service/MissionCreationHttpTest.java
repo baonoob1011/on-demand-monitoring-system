@@ -49,6 +49,11 @@ class MissionCreationHttpTest {
     Map<String,Mission> stored;
     @BeforeEach void setup() {
         reset(fixture.orderRepository,fixture.missionRepository,fixture.authenticatedUserResolver);
+        var quote = new com.ondemandmonitoring.finance.domain.Quote();
+        quote.setStatus(com.ondemandmonitoring.finance.enums.QuoteStatus.ACCEPTED_BY_CUSTOMER);
+        var invoice = new com.ondemandmonitoring.finance.domain.Invoice(); invoice.setQuote(quote);
+        when(fixture.invoiceRepository.findByOrderId(anyString())).thenReturn(Optional.of(invoice));
+        when(fixture.missionPaymentEligibilityService.isDepositSatisfied(invoice)).thenReturn(true);
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         caller=User.builder().isActive(true).role(Role.builder().code(RoleCode.MANAGER).active(true).build()).build();caller.setId("manager");
         when(fixture.authenticatedUserResolver.getCurrentUser()).thenAnswer(inv->caller);
@@ -100,6 +105,9 @@ class MissionCreationHttpTest {
         mvc.perform(post("/api/orders/o/missions").contentType("application/json").content("{}" )).andExpect(status().isUnauthorized());
     }
     @Configuration @EnableWebMvc static class Beans {
+        @Bean com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService deliveryWorkflow() {
+            return org.mockito.Mockito.mock(com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService.class);
+        }
         @Bean IMissionChecklistScopeService scope(){return ScopeTestFixture.validScope();}
         @Bean MissionServiceTest fixture(){var f=new MissionServiceTest();f.setUp();return f;}
         @Bean IMissionService missionService(MissionServiceTest f){return f.missionService;}

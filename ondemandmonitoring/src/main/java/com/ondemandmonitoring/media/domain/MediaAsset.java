@@ -109,6 +109,10 @@ public class MediaAsset extends BaseEntity {
     @Column(name = "source_distance_meters")
     Double sourceDistanceMeters;
 
+    /** Manager-controlled exposure in the pre-payment customer preview. */
+    @Column(name = "preview_selected", nullable = false)
+    boolean previewSelected;
+
     public String getMissionId() {
         if (mission != null) {
             return mission.getId();

@@ -1,6 +1,5 @@
 package com.ondemandmonitoring.service.service.impl;
 
-import com.ondemandmonitoring.Consultation.services.RagKnowledgeIndexService;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.service.domain.Service;
@@ -23,7 +22,6 @@ public class ServiceServiceImpl implements IServiceService {
 
     ServiceRepository serviceRepository;
     ServiceMapper serviceMapper;
-    RagKnowledgeIndexService ragKnowledgeIndexService;
     IServiceImageService serviceImageService;
 
     @Override
@@ -33,12 +31,16 @@ public class ServiceServiceImpl implements IServiceService {
             throw new ApiException(ErrorCode.SERVICE_ALREADY_EXISTS,
                     "Service with name '" + request.getName() + "' already exists");
         }
+        if (request.getCode() != null && !request.getCode().isBlank()
+                && serviceRepository.existsByCodeIgnoreCase(request.getCode())) {
+            throw new ApiException(ErrorCode.SERVICE_ALREADY_EXISTS,
+                    "Service with code '" + request.getCode() + "' already exists");
+        }
         Service entity = serviceMapper.toEntity(request);
         if (entity.getIsActive() == null) {
             entity.setIsActive(true);
         }
         Service saved = serviceRepository.save(entity);
-        ragKnowledgeIndexService.indexServices();
         return toResponse(saved);
     }
 
@@ -69,6 +71,11 @@ public class ServiceServiceImpl implements IServiceService {
     @Transactional
     public ServiceResponse update(String id, ServiceRequest request) {
         Service entity = getEntityForUpdate(id);
+        if (request.getCode() != null && !request.getCode().isBlank()
+                && serviceRepository.existsByCodeIgnoreCaseAndIdNot(request.getCode(), id)) {
+            throw new ApiException(ErrorCode.SERVICE_ALREADY_EXISTS,
+                    "Service with code '" + request.getCode() + "' already exists");
+        }
         serviceMapper.updateEntityFromRequest(request, entity);
         Service saved = serviceRepository.save(entity);
         return toResponse(saved);

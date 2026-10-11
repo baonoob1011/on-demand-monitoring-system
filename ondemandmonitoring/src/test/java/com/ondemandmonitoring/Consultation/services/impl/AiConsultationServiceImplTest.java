@@ -24,38 +24,33 @@ class AiConsultationServiceImplTest {
         List<AcceptanceCase> cases = List.of(
                 new AcceptanceCase(
                         "Tôi muốn theo dõi tiến độ thi công của công trình.",
-                        "svc-progress",
-                        "Giám sát Tiến độ Xây dựng"
+                        "svc-construction",
+                        "Giám sát công trình"
                 ),
                 new AcceptanceCase(
                         "Tôi cần theo dõi công trường xây dựng.",
-                        "svc-progress",
-                        "Giám sát Tiến độ Xây dựng"
+                        "svc-construction",
+                        "Giám sát công trình"
                 ),
                 new AcceptanceCase(
-                        "Tôi muốn đo điểm nóng.",
-                        "svc-hotspot",
-                        "Đo nhiệt độ / Điểm nhiệt"
+                        "Tôi muốn kiểm tra mái nhà xưởng.",
+                        "svc-factory",
+                        "Kiểm tra nhà xưởng"
                 ),
                 new AcceptanceCase(
-                        "Tôi cần theo dõi mặt nước và dòng chảy.",
-                        "svc-water",
-                        "Giám sát Mặt nước / Dòng chảy"
+                        "Tôi cần chụp tổng quan khu vực.",
+                        "svc-area",
+                        "Giám sát khu vực"
                 ),
                 new AcceptanceCase(
-                        "Tôi muốn giám sát đập nước và mực nước hồ chứa.",
-                        "svc-dam",
-                        "Giám sát Đập nước / Hồ chứa"
+                        "Tôi muốn giám sát rừng và khu vực cây xanh.",
+                        "svc-forest",
+                        "Giám sát rừng"
                 ),
                 new AcceptanceCase(
-                        "Tôi cần đo nhiệt độ và áp suất khu vực bay.",
-                        "svc-temp-pressure",
-                        "Đo nhiệt độ / Áp suất"
-                ),
-                new AcceptanceCase(
-                        "Tôi muốn kiểm tra công trình thủy lợi và cửa xả.",
-                        "svc-hydraulic",
-                        "Kiểm tra Công trình thủy lợi"
+                        "Tôi muốn quan sát vị trí khó tiếp cận trong rừng.",
+                        "svc-forest",
+                        "Giám sát rừng"
                 )
         );
 
@@ -71,8 +66,8 @@ class AiConsultationServiceImplTest {
                             ),
                             new ServiceSearchCandidate(
                                     "svc-other",
-                                    "Giám sát Đập nước / Hồ chứa",
-                                    "Giám sát đập nước và hồ chứa.",
+                                    "Giám sát khu vực",
+                                    "Chụp ảnh và video tổng quan một khu vực theo phạm vi yêu cầu.",
                                     0.62
                             )
                     )
@@ -92,19 +87,19 @@ class AiConsultationServiceImplTest {
     @Test
     void closeRagScoresStillRecommendWhenCustomerEvidenceDirectlyMatchesTopService() throws Exception {
         Optional<AiConsultationResult> result = invokeRagRecommendation(
-                "Tôi muốn được tư vấn dịch vụ giám sát phù hợp cho khu vực Đập nước.",
-                "Địa chỉ/khu vực: Đập nước.\nVùng map nhận diện: Đập nước.",
+                "Tôi muốn được tư vấn dịch vụ phù hợp cho khu vực rừng.",
+                "Địa chỉ/khu vực: Rừng phòng hộ.\nVùng map nhận diện: Rừng.",
                 List.of(
                         new ServiceSearchCandidate(
-                                "svc-dam",
-                                "Giám sát Đập nước / Hồ chứa",
-                                "Giám sát khu vực đập nước, hồ chứa, cửa xả và thân đập.",
+                                "svc-forest",
+                                "Giám sát rừng",
+                                "Chụp ảnh và video khu vực rừng, ghi nhận hiện trạng và khu vực bất thường.",
                                 0.87
                         ),
                         new ServiceSearchCandidate(
-                                "svc-water",
-                                "Giám sát Mặt nước / Dòng chảy",
-                                "Theo dõi mặt nước, dòng chảy và bờ sông.",
+                                "svc-area",
+                                "Giám sát khu vực",
+                                "Chụp ảnh và video tổng quan một khu vực theo phạm vi giám sát.",
                                 0.82
                         )
                 )
@@ -112,7 +107,7 @@ class AiConsultationServiceImplTest {
 
         assertThat(result).isPresent();
         assertThat(result.get().requirementStatus()).isEqualTo(ConsultationStatus.RECOMMENDED);
-        assertThat(result.get().recommendedServiceId()).isEqualTo("svc-dam");
+        assertThat(result.get().recommendedServiceId()).isEqualTo("svc-forest");
     }
 
     @Test
@@ -127,20 +122,20 @@ class AiConsultationServiceImplTest {
                         """,
                 List.of(
                         new ServiceSearchCandidate(
-                                "svc-far-target",
-                                "Giám sát Mục tiêu xa",
-                                "Giám sát mục tiêu ở khoảng cách xa bằng waypoint và kiểm tra khu vực khó tiếp cận.",
+                                "svc-area",
+                                "Giám sát khu vực",
+                                "Chụp ảnh và video tổng quan một khu vực theo vị trí và phạm vi giám sát.",
                                 0.788
                         ),
                         new ServiceSearchCandidate(
-                                "svc-drone-station",
-                                "Giám sát Bãi đáp / Trạm drone",
-                                "Giám sát bãi đáp, điểm quay về và hành lang an toàn.",
+                                "svc-factory",
+                                "Kiểm tra nhà xưởng",
+                                "Quan sát mái, bề mặt và các khu vực khó tiếp cận của nhà xưởng.",
                                 0.784
                         ),
                         new ServiceSearchCandidate(
-                                "svc-progress",
-                                "Giám sát Tiến độ Xây dựng",
+                                "svc-construction",
+                                "Giám sát công trình",
                                 "Theo dõi công trình xây dựng, công trường, tiến độ thi công và đối chiếu hiện trạng bằng ảnh/video.",
                                 0.782
                         )
@@ -149,7 +144,7 @@ class AiConsultationServiceImplTest {
 
         assertThat(result).isPresent();
         assertThat(result.get().requirementStatus()).isEqualTo(ConsultationStatus.RECOMMENDED);
-        assertThat(result.get().recommendedServiceId()).isEqualTo("svc-progress");
+        assertThat(result.get().recommendedServiceId()).isEqualTo("svc-construction");
     }
 
     @Test
@@ -159,15 +154,15 @@ class AiConsultationServiceImplTest {
                 "Tôi muốn dùng drone để kiểm tra.",
                 List.of(
                         new ServiceSearchCandidate(
-                                "svc-dam",
-                                "Giám sát Đập nước / Hồ chứa",
-                                "Giám sát đập nước và hồ chứa.",
+                                "svc-area",
+                                "Giám sát khu vực",
+                                "Giám sát một khu vực theo phạm vi yêu cầu.",
                                 0.74
                         ),
                         new ServiceSearchCandidate(
-                                "svc-water",
-                                "Giám sát Mặt nước / Dòng chảy",
-                                "Giám sát mặt nước và dòng chảy.",
+                                "svc-factory",
+                                "Kiểm tra nhà xưởng",
+                                "Kiểm tra nhà xưởng bằng drone.",
                                 0.71
                         )
                 )

@@ -19,7 +19,7 @@ class ChecklistDefaultSeedInitializerTest {
     Service service;
 
     @BeforeEach void setup() {
-        service = Service.builder().name("Giám sát Tiến độ Xây dựng").build(); service.setId("s");
+        service = Service.builder().name("Giám sát công trình").build(); service.setId("s");
         when(services.findAll()).thenReturn(List.of(service));
         when(services.findByIdForUpdate("s")).thenReturn(Optional.of(service));
         when(definitions.findBySeedCode(anyString())).thenAnswer(call -> Optional.ofNullable(catalog.get(call.getArgument(0))));
@@ -36,19 +36,20 @@ class ChecklistDefaultSeedInitializerTest {
 
     @Test void bootstrapIsIdempotentAndDoesNotCreateServices() {
         seed.run(null); seed.run(null);
-        assertEquals(20, catalog.size()); assertEquals(10, templates.get("s").size());
-        assertEquals(java.util.stream.IntStream.range(0, 10).boxed().toList(), templates.get("s").stream().map(ServiceChecklist::getDisplayOrder).toList());
+        assertEquals(19, catalog.size()); assertEquals(6, templates.get("s").size());
+        assertEquals(java.util.stream.IntStream.range(0, 6).boxed().toList(), templates.get("s").stream().map(ServiceChecklist::getDisplayOrder).toList());
         assertTrue(service.getChecklistDefaultsInitialized());
-        verify(definitions, times(20)).saveAndFlush(any());
+        verify(definitions, times(19)).saveAndFlush(any());
         verify(services).save(service);
     }
 
-    @Test void restartKeepsEditedInactiveDefinitionsAndEmptyAdminTemplate() {
+    @Test void restartKeepsEditedInactiveDefinitionsAndRestoresEmptySupportedTemplate() {
         seed.run(null);
-        var edited = catalog.get("C001"); edited.setContent("Admin edited"); edited.setIsActive(false);
+        var edited = catalog.get(ChecklistDefaults.code(1)); edited.setContent("Admin edited"); edited.setIsActive(false);
         templates.get("s").clear(); seed.run(null);
-        assertEquals("Admin edited", catalog.get("C001").getContent()); assertFalse(catalog.get("C001").getIsActive());
-        assertTrue(templates.get("s").isEmpty()); assertEquals(20, catalog.size());
+        assertEquals("Admin edited", catalog.get(ChecklistDefaults.code(1)).getContent());
+        assertFalse(catalog.get(ChecklistDefaults.code(1)).getIsActive());
+        assertEquals(5, templates.get("s").size()); assertEquals(19, catalog.size());
     }
 
     @Test void preexistingTemplateIsNotChangedAndGetsMarker() {
@@ -60,7 +61,7 @@ class ChecklistDefaultSeedInitializerTest {
 
     @Test void missingAndAmbiguousServicesAreSkipped() {
         when(services.findAll()).thenReturn(List.of()); seed.run(null);
-        assertEquals(20, catalog.size()); verify(assignments, never()).save(any());
+        assertEquals(19, catalog.size()); verify(assignments, never()).save(any());
         var duplicate = Service.builder().name(service.getName().toUpperCase(Locale.ROOT)).build(); duplicate.setId("other");
         when(services.findAll()).thenReturn(List.of(service, duplicate)); seed.run(null);
         verify(services, never()).findByIdForUpdate(anyString());
@@ -70,8 +71,8 @@ class ChecklistDefaultSeedInitializerTest {
         var existing = new ChecklistDefinition(); existing.setId("existing"); existing.setContent(ChecklistDefaults.CONTENTS.getFirst());
         existing.setNormalizedContent(existing.getContent().toLowerCase(Locale.ROOT)); existing.setIsActive(false);
         when(definitions.findByNormalizedContent(existing.getNormalizedContent())).thenReturn(Optional.of(existing));
-        seed.run(null); assertSame(existing, catalog.get("C001")); assertFalse(existing.getIsActive());
-        assertEquals(9, templates.get("s").size());
+        seed.run(null); assertSame(existing, catalog.get(ChecklistDefaults.code(1))); assertFalse(existing.getIsActive());
+        assertEquals(5, templates.get("s").size());
     }
 
     @Test void inactiveAndRenamedServicesDoNotReceiveWrongMappings() {
