@@ -166,6 +166,9 @@ public class ChecklistEvidenceServiceImpl implements IChecklistEvidenceService {
     private MissionChecklistExecution execution(Mission mission, String id) {
         var execution = executions.findById(id).orElseThrow(() -> new ApiException(ErrorCode.CHECKLIST_EXECUTION_NOT_FOUND));
         if (!mission.getId().equals(execution.getMissionId())) throw new ApiException(ErrorCode.CHECKLIST_EXECUTION_PARENT_MISMATCH);
+        MissionRuntimeGate.requireFinalizedStructure(mission);
+        if (!ChecklistAssignmentIntegrity.matches(mission, execution))
+            throw new ApiException(ErrorCode.CHECKLIST_EXECUTION_INTEGRITY_INVALID);
         if (!mission.getOrder().getId().equals(execution.getOrderId()) || execution.getOrderChecklistItem() == null
                 || !mission.getOrder().getId().equals(execution.getOrderChecklistItem().getOrder().getId()))
             throw new ApiException(ErrorCode.CHECKLIST_EXECUTION_INTEGRITY_INVALID);

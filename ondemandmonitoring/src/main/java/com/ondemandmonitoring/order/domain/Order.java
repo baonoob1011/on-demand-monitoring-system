@@ -8,6 +8,7 @@ import com.ondemandmonitoring.order.enums.OrderPriority;
 import com.ondemandmonitoring.order.enums.OrderRecurrenceType;
 import com.ondemandmonitoring.order.enums.OrderResultFormat;
 import com.ondemandmonitoring.order.enums.OrderStatus;
+import com.ondemandmonitoring.order.enums.ExecutionPlanStatus;
 import com.ondemandmonitoring.order.enums.OrderUsagePurpose;
 import com.ondemandmonitoring.order.enums.OrderWeatherFallback;
 import com.ondemandmonitoring.service.domain.Service;
@@ -47,6 +48,31 @@ import org.locationtech.jts.geom.Polygon;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Order extends BaseEntity {
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "execution_plan_status", nullable = false, length = 30)
+    private ExecutionPlanStatus executionPlanStatus = ExecutionPlanStatus.DRAFT;
+
+    @Builder.Default
+    @jakarta.validation.constraints.PositiveOrZero
+    @Column(name = "execution_plan_revision", nullable = false)
+    private long executionPlanRevision = 0;
+
+    @Column(name = "execution_plan_finalized_at")
+    private Instant executionPlanFinalizedAt;
+
+    @Column(name = "execution_plan_finalized_by", length = 255)
+    private String executionPlanFinalizedBy;
+
+    @Column(name = "execution_plan_amended_at")
+    private Instant executionPlanAmendedAt;
+
+    @Column(name = "execution_plan_amended_by", length = 255)
+    private String executionPlanAmendedBy;
+
+    @Column(name = "execution_plan_amendment_reason", length = 1000)
+    private String executionPlanAmendmentReason;
 
     @Column(name = "order_code", unique = true, length = 40)
     private String orderCode;

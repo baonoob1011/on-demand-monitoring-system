@@ -26,10 +26,18 @@ public class MissionResponse {
     @Schema(description = "Current status of the mission", example = "PENDING")
     MissionStatus status;
 
+    com.ondemandmonitoring.mission.enums.MissionSafeStopStatus safeStopStatus;
+    Instant safeStopRequestedAt;
+    Instant safeStopConfirmedAt;
+    Instant safeStopCleanedAt;
+
     @Schema(description = "ID of the associated order", example = "123e4567-e89b-12d3-a456-426614174000")
     String orderId;
 
     String orderCode;
+
+    // Persisted relation only; no sibling detail lookup or inherited runtime history.
+    String replacesMissionId;
 
     String orderTitle;
 

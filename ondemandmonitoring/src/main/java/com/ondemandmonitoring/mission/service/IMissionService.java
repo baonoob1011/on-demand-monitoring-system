@@ -7,6 +7,7 @@ import com.ondemandmonitoring.mission.dto.request.MissionUpdateRequest;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
+import com.ondemandmonitoring.mission.dto.response.MissionCreationResult;
 import com.ondemandmonitoring.mission.dto.response.MissionTelemetryReadinessResponse;
 import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.device.enums.DeviceStatus;
@@ -26,6 +27,8 @@ import java.util.List;
 public interface IMissionService {
 
     MissionResponse createMission(MissionCreateRequest request);
+
+    MissionCreationResult createMissionWithOutcome(MissionCreateRequest request);
 
     MissionResponse updateMission(String missionId, MissionUpdateRequest request);
 

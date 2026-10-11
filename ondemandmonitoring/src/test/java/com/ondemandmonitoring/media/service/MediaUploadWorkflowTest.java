@@ -77,8 +77,6 @@ class MediaUploadWorkflowTest {
         MissionDeviceAssignment assignment = new MissionDeviceAssignment();
         assignment.setMission(mission);
         assignment.setDevice(device);
-        when(deviceAssignments.findByMissionIdAndIsCurrentTrue("mission-id"))
-                .thenReturn(Optional.of(assignment));
         when(deviceAssignments.findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc("mission-id"))
                 .thenReturn(java.util.List.of(assignment));
         when(deviceAssignments.findByMissionIdAndDeviceIdAndIsCurrentTrue("mission-id", "device-id"))
@@ -135,8 +133,6 @@ class MediaUploadWorkflowTest {
         mission.setStatus(MissionStatus.COMPLETED);
         when(staffAssignments.findByMissionIdAndStaffIdAndIsCurrentTrue(
                 "mission-id", userResolver.getCurrentUserId()))
-                .thenReturn(Optional.empty());
-        when(deviceAssignments.findByMissionIdAndIsCurrentTrue("mission-id"))
                 .thenReturn(Optional.empty());
         MissionStaffAssignment staff = new MissionStaffAssignment();
         staff.setStaff(userResolver.getCurrentUser());

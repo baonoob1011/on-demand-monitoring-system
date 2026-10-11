@@ -25,6 +25,28 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class CustomerMediaServiceTest {
+    @Test
+    void metadataRemainsVisibleButOriginalRequiresDeliveryGate() {
+        var access = mock(com.ondemandmonitoring.mission.service.IMissionMediaAccessService.class);
+        var delivery = mock(com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService.class);
+        var gated = new CustomerMediaServiceImpl(access, media, notifications, storage,
+                org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class));
+        org.springframework.test.util.ReflectionTestUtils.setField(gated, "deliveryWorkflow", delivery);
+        when(access.authorizeCustomer("m")).thenReturn("m");
+        var asset = new MediaAsset(); asset.setId("asset"); asset.setMissionId("m");
+        asset.setMediaStatus(MediaStatus.AVAILABLE); asset.setFileSize(12L);
+        asset.setS3Bucket("test"); asset.setS3Key("original");
+        when(media.findByMissionIdOrderByCapturedAtDesc("m")).thenReturn(List.of(asset));
+        when(delivery.originalAccessibleMissionIds(List.of("m"))).thenReturn(List.of());
+        assertThat(gated.listAvailable("m")).singleElement().satisfies(response -> {
+            assertThat(response.getMediaId()).isEqualTo("asset");
+            assertThat(response.getDownloadUrl()).isNull();
+        });
+        verifyNoInteractions(storage);
+        when(delivery.originalAccessibleMissionIds(List.of("m"))).thenReturn(List.of("m"));
+        when(storage.createPresignedGetUrl("test", "original")).thenReturn("https://example.test/original");
+        assertThat(gated.listAvailable("m").getFirst().getDownloadUrl()).isEqualTo("https://example.test/original");
+    }
     private final MissionRepository missions = mock(MissionRepository.class);
     private final MediaAssetRepository media = mock(MediaAssetRepository.class);
     private final MediaNotificationOutboxRepository notifications = mock(MediaNotificationOutboxRepository.class);
@@ -65,6 +87,31 @@ class CustomerMediaServiceTest {
         assertThat(result).hasSize(1);
         assertThat(result.getFirst().getMediaId()).isEqualTo("ready-1");
         verify(storage, times(1)).createPresignedGetUrl("bucket", "final/ready-1.jpg");
+    }
+
+    @Test
+    void libraryRetainsUndeliveredSiblingMetadataAndSignsOnlyDeliveredMission() {
+        var access = mock(com.ondemandmonitoring.mission.service.IMissionMediaAccessService.class);
+        var delivery = mock(com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService.class);
+        var gated = new CustomerMediaServiceImpl(access, media, notifications, storage,
+                org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class));
+        org.springframework.test.util.ReflectionTestUtils.setField(gated, "deliveryWorkflow", delivery);
+        var ids = List.of("m1", "m2");
+        when(access.ownCustomerMissionIds()).thenReturn(ids);
+        when(delivery.originalAccessibleMissionIds(ids)).thenReturn(List.of("m1"));
+        var first = new MediaAsset(); first.setId("a1"); first.setMissionId("m1");
+        first.setFileSize(10L); first.setMediaStatus(MediaStatus.AVAILABLE);
+        first.setS3Bucket("test"); first.setS3Key("a1");
+        var second = new MediaAsset(); second.setId("a2"); second.setMissionId("m2");
+        second.setFileSize(10L); second.setMediaStatus(MediaStatus.AVAILABLE);
+        second.setS3Bucket("test"); second.setS3Key("a2");
+        when(media.findByMissionIdInAndMediaStatusOrderByCapturedAtDesc(ids, MediaStatus.AVAILABLE)).thenReturn(List.of(first, second));
+        when(storage.createPresignedGetUrl("test", "a1")).thenReturn("https://example.test/a1");
+        var responses = gated.listAllAvailable();
+        assertThat(responses).extracting(response -> response.getMediaId()).containsExactly("a1", "a2");
+        assertThat(responses.getFirst().getDownloadUrl()).isNotNull();
+        assertThat(responses.getLast().getDownloadUrl()).isNull();
+        verify(storage, never()).createPresignedGetUrl("test", "a2");
     }
 
     @Test

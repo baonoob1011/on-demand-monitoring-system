@@ -66,8 +66,6 @@ class PaymentPersistenceServiceTest {
 
     @Test void finalPaymentUsesRemainingAmountAfterMissionCompletion() {
         invoice.setPaidAmount(new BigDecimal("300")); invoice.setRemainingAmount(new BigDecimal("700"));
-        Mission mission = new Mission(); mission.setStatus(MissionStatus.COMPLETED);
-        when(missions.findByOrderId("o1")).thenReturn(Optional.of(mission));
         PreparedPayment prepared = service.prepare("i1", PaymentType.FINAL_PAYMENT);
         assertThat(prepared.amount()).isEqualByComparingTo("700");
     }

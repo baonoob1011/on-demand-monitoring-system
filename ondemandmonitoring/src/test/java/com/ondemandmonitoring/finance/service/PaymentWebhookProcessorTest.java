@@ -24,7 +24,8 @@ class PaymentWebhookProcessorTest {
     InvoiceRepository invoices = mock(InvoiceRepository.class);
     MissionRepository missions = mock(MissionRepository.class);
     IDeliveryWorkflowService delivery = mock(IDeliveryWorkflowService.class);
-    PaymentWebhookProcessor processor = new PaymentWebhookProcessor(payments, invoices, missions, new MissionPaymentEligibilityService(), delivery);
+    com.ondemandmonitoring.order.repository.OrderRepository orders = mock(com.ondemandmonitoring.order.repository.OrderRepository.class);
+    PaymentWebhookProcessor processor = new PaymentWebhookProcessor(payments, invoices, missions, new MissionPaymentEligibilityService(), delivery, orders);
     Payment payment; Invoice invoice; Mission mission;
 
     @BeforeEach void setUp() {
@@ -39,7 +40,11 @@ class PaymentWebhookProcessorTest {
         mission = new Mission(); mission.setOrder(order); mission.setStatus(MissionStatus.WAITING_DEPOSIT);
         when(payments.findByTransactionReferenceForUpdate("123")).thenReturn(Optional.of(payment));
         when(invoices.findByIdForUpdate("i1")).thenReturn(Optional.of(invoice));
-        when(missions.findByOrderIdForUpdate("o1")).thenReturn(Optional.of(mission));
+        mission.setId("m1");
+        when(payments.findOrderIdByTransactionReference("123")).thenReturn(Optional.of("o1"));
+        when(orders.findByIdForUpdate("o1")).thenReturn(Optional.of(order));
+        when(missions.findIdsByOrderIdOrderById("o1")).thenReturn(java.util.List.of("m1"));
+        when(missions.findByIdForUpdate("m1")).thenReturn(Optional.of(mission));
     }
 
     @Test void wrongAmountDoesNotChangePayment() {
@@ -61,6 +66,25 @@ class PaymentWebhookProcessorTest {
         assertThat(processor.process(webhook(300))).isEqualTo(PaymentWebhookResult.ALREADY_CONFIRMED);
         verify(invoices, never()).findByIdForUpdate(anyString());
         verify(payments, never()).sumSuccessfulPayments(anyString());
+    }
+
+    @Test void depositUnlocksAllExactSiblingsUnderOrderFirstLocksAndReplayDoesNotCreditAgain() {
+        var sibling = new Mission(); sibling.setId("m2"); sibling.setOrder(mission.getOrder());
+        sibling.setStatus(MissionStatus.WAITING_DEPOSIT);
+        when(missions.findIdsByOrderIdOrderById("o1")).thenReturn(java.util.List.of("m1", "m2"));
+        when(missions.findByIdForUpdate("m2")).thenReturn(Optional.of(sibling));
+        when(payments.sumSuccessfulPayments("i1")).thenReturn(new BigDecimal("300"));
+        assertThat(processor.process(webhook(300))).isEqualTo(PaymentWebhookResult.PROCESSED);
+        assertThat(mission.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
+        assertThat(sibling.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
+        var locks = inOrder(orders, payments, invoices, missions);
+        locks.verify(orders).findByIdForUpdate("o1");
+        locks.verify(payments).findByTransactionReferenceForUpdate("123");
+        locks.verify(invoices).findByIdForUpdate("i1");
+        locks.verify(missions).findByIdForUpdate("m1");
+        locks.verify(missions).findByIdForUpdate("m2");
+        assertThat(processor.process(webhook(300))).isEqualTo(PaymentWebhookResult.ALREADY_CONFIRMED);
+        verify(payments, times(1)).sumSuccessfulPayments("i1");
     }
 
     @Test void finalPaymentMakesInvoicePaid() {

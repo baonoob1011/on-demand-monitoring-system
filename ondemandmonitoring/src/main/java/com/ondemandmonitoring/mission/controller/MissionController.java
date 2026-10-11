@@ -69,9 +69,9 @@ public class MissionController {
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<MissionResponse>> createMission(
             @Valid @RequestBody MissionCreateRequest request) {
-        MissionResponse response = missionService.createMission(request);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.ok("Mission created successfully", response));
+        var result = missionService.createMissionWithOutcome(request);
+        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK)
+                .body(ApiResponse.ok(result.created() ? "Planning Mission created" : "Mission creation replayed", result.mission()));
     }
 
     @GetMapping("/all")
@@ -133,7 +133,7 @@ public class MissionController {
 
     /** GET /api/missions/code/{missionCode} – retrieve mission details by code */
     @GetMapping("/code/{missionCode}")
-    @PreAuthorize("@missionAuthorizationService.canViewMission(#missionCode)")
+    @PreAuthorize("@missionAuthorizationService.canViewMissionByCode(#missionCode)")
     public ResponseEntity<ApiResponse<MissionResponse>> getByCode(@PathVariable String missionCode) {
         MissionResponse response = missionService.getByCodeResponse(missionCode);
         return ResponseEntity.ok(ApiResponse.ok(response));
@@ -383,7 +383,7 @@ public class MissionController {
 
     /** POST /api/missions/{id}/return – device heads back, RETURNING */
     @PostMapping("/{id}/return")
-    @PreAuthorize("@missionAuthorizationService.canControlFlight(#id)")
+    @PreAuthorize("@missionAuthorizationService.canControlFlight(#id) or @missionAuthorizationService.canTerminateFlight(#id)")
     public ResponseEntity<ApiResponse<MissionResponse>> markReturning(@PathVariable String id) {
         MissionResponse response = missionService.markReturning(id);
         return ResponseEntity.ok(ApiResponse.ok("device đang quay trở về", response));
@@ -391,7 +391,7 @@ public class MissionController {
 
     /** POST /api/missions/{id}/post-device or /postflight – device landed, POSTFLIGHT_CHECKING */
     @PostMapping({"/{id}/post-device", "/{id}/postflight"})
-    @PreAuthorize("@missionAuthorizationService.canControlFlight(#id)")
+    @PreAuthorize("@missionAuthorizationService.canControlFlight(#id) or @missionAuthorizationService.canTerminateFlight(#id) or @missionAuthorizationService.canPrepareSafeStopPostflight(#id)")
     public ResponseEntity<ApiResponse<MissionResponse>> startPostflight(@PathVariable String id) {
         MissionResponse response = missionService.startPostDeviceChecking(id);
         return ResponseEntity.ok(ApiResponse.ok("Bắt đầu kiểm tra sau bay", response));

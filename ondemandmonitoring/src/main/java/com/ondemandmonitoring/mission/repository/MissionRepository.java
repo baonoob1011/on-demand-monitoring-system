@@ -2,21 +2,23 @@ package com.ondemandmonitoring.mission.repository;
 
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
-import jakarta.persistence.LockModeType;
-import java.util.List;
-import java.util.Optional;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
-import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
+
+import java.util.List;
+import java.util.Optional;
 
 public interface MissionRepository extends JpaRepository<Mission, String>, JpaSpecificationExecutor<Mission> {
     @Override
     Optional<Mission> findById(String id);
+
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT m FROM Mission m WHERE m.id = :id")
@@ -28,11 +30,30 @@ public interface MissionRepository extends JpaRepository<Mission, String>, JpaSp
 
     Optional<Mission> findByMissionCode(String missionCode);
 
-    Optional<Mission> findByOrderId(String orderId);
+    /** Order aggregate query; never use an Order ID as exact Mission identity. */
+    List<Mission> findAllByOrderIdOrderByScheduledStartAtAscIdAsc(String orderId);
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT m FROM Mission m WHERE m.order.id = :orderId")
-    Optional<Mission> findByOrderIdForUpdate(@Param("orderId") String orderId);
+    @Query("select m.id from Mission m where m.order.id = :orderId order by m.id")
+    List<String> findIdsByOrderIdOrderById(@Param("orderId") String orderId);
+
+    @Query("select m.order.id from Mission m where m.id = :missionId")
+    Optional<String> findOrderIdByMissionId(@Param("missionId") String missionId);
+
+    boolean existsByReplacesMissionIdAndStatusNot(String replacesMissionId, MissionStatus status);
+
+    @Query("select count(r) > 0 from MissionResult r where r.mission.id = :missionId and r.approvalStatus = 'APPROVED'")
+    boolean hasApprovedResult(@Param("missionId") String missionId);
+
+    @Query(value = """
+            select exists(select 1 from mission_device_assignments where mission_id=:missionId and released_at is null)
+                or exists(select 1 from mission_staff_assignments where mission_id=:missionId and released_at is null)
+                or exists(select 1 from resource_time_locks where mission_id=:missionId and released_at is null)
+                or exists(select 1 from device_connections where mission_id=:missionId
+                    and (connection_status='CONNECTED' or telemetry_active=true))
+            """, nativeQuery = true)
+    boolean hasUnsafeCancellationResources(@Param("missionId") String missionId);
+
+    Optional<Mission> findByOrderIdAndCreationIdempotencyKey(String orderId, String creationIdempotencyKey);
 
     boolean existsByMissionCode(String missionCode);
 
@@ -57,17 +78,4 @@ public interface MissionRepository extends JpaRepository<Mission, String>, JpaSp
 
     List<Mission> findByStatusIn(List<MissionStatus> statuses);
 
-    /**
-     * Find missions assigned to a device whose scheduled window overlaps [startAt, endAt].
-     * Used to validate device replacement availability / schedule conflict.
-     */
-    @Query("""
-            SELECT m FROM Mission m
-            JOIN MissionDeviceAssignment mda ON mda.mission = m
-            WHERE mda.device.id = :deviceId
-              AND mda.isCurrent = true
-              AND m.status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED')
-              AND m.completedAt IS NULL
-            """)
-    List<Mission> findActiveByDeviceId(@Param("deviceId") String deviceId);
 }

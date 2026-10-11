@@ -6,6 +6,7 @@ import com.ondemandmonitoring.order.enums.OrderPriority;
 import com.ondemandmonitoring.order.enums.OrderRecurrenceType;
 import com.ondemandmonitoring.order.enums.OrderResultFormat;
 import com.ondemandmonitoring.order.enums.OrderStatus;
+import com.ondemandmonitoring.order.enums.ExecutionPlanStatus;
 import com.ondemandmonitoring.order.enums.OrderUsagePurpose;
 import com.ondemandmonitoring.order.enums.OrderWeatherFallback;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -81,6 +82,8 @@ public class OrderCreateResponse {
 
     // Status & Review Info
     OrderStatus orderStatus;
+    long executionPlanRevision;
+    ExecutionPlanStatus executionPlanStatus;
     String rejectReason;
     String reviewById;
     String reviewByName;

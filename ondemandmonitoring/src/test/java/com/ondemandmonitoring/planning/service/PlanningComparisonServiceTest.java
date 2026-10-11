@@ -11,6 +11,7 @@ import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.device.repository.DeviceTelemetryRepository;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
+import com.ondemandmonitoring.mission.enums.DeviceRole;
 import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
 import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
 import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
@@ -195,7 +196,8 @@ class PlanningComparisonServiceTest {
         when(homeProvider.home()).thenReturn(new SimulationPoint(0.0, -280.0));
         when(environment.sample(0.0, -280.0)).thenReturn(
                 new EnvironmentSample(0.0, -280.0, true, 1.0, 8.4, 9.4, false, null, null));
-        when(assignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1")).thenReturn(Optional.empty());
+        when(assignmentRepository.findByMissionIdAndDeviceRoleAndIsCurrentTrue(
+                "mission-1", DeviceRole.MAIN)).thenReturn(Optional.empty());
     }
 
     private PlannedRoute route(double distance, double worldZ, int pointCount) {

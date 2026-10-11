@@ -26,7 +26,7 @@ class MissionAuthorizationServiceTest {
     private final MissionStaffAssignmentRepository assignments = mock(MissionStaffAssignmentRepository.class);
     private final MissionRepository missions = mock(MissionRepository.class);
     private final AuthenticatedUserResolver resolver = mock(AuthenticatedUserResolver.class);
-    private final IMissionAuthorizationService policy = new MissionAuthorizationServiceImpl(assignments, missions, resolver, mock(com.ondemandmonitoring.mission.repository.MissionResultRepository.class));
+    private final IMissionAuthorizationService policy = new MissionAuthorizationServiceImpl(assignments, missions, resolver, mock(com.ondemandmonitoring.mission.repository.MissionResultRepository.class), com.ondemandmonitoring.mission.service.ScopeTestFixture.validScope());
     private User staff;
     private Mission mission;
 
@@ -59,6 +59,62 @@ class MissionAuthorizationServiceTest {
         assertThat(policy.canControlFlight("mission-1")).isFalse();
         mission.setStatus(MissionStatus.IN_FLIGHT);
         assertThat(policy.canRespondToMission("mission-1")).isFalse();
+    }
+
+    @ParameterizedTest
+    @EnumSource(com.ondemandmonitoring.mission.enums.MissionSafeStopStatus.class)
+    void everySafeStopPhaseDisablesNormalFlightAndPayload(com.ondemandmonitoring.mission.enums.MissionSafeStopStatus phase) {
+        mission.setStatus(MissionStatus.READY_TO_FLY);
+        mission.setSafeStopStatus(phase);
+        assign(MissionStaffRole.PILOT, StaffResponseStatus.ACCEPTED);
+        assertThat(policy.canControlFlight("mission-1")).isFalse();
+        assertThat(policy.canTerminateFlight("mission-1")).isFalse(); // no request timestamp: fail closed
+        assign(MissionStaffRole.OPERATOR, StaffResponseStatus.ACCEPTED);
+        assertThat(policy.canOperatePayload("mission-1")).isFalse();
+    }
+
+    @Test
+    void requestedPilotCanOnlyTerminateAndConfirmedCleanedCancelledCannotFly() {
+        mission.setStatus(MissionStatus.IN_FLIGHT);
+        mission.setSafeStopRequestedAt(Instant.now());
+        mission.setSafeStopStatus(com.ondemandmonitoring.mission.enums.MissionSafeStopStatus.REQUESTED);
+        assign(MissionStaffRole.PILOT, StaffResponseStatus.ACCEPTED);
+        assertThat(policy.canControlFlight("mission-1")).isFalse();
+        assertThat(policy.canTerminateFlight("mission-1")).isTrue();
+        assertThat(policy.canTerminateFlight("another-mission")).isFalse();
+        mission.setStatus(MissionStatus.PENDING_REVIEW);
+        mission.setSafeStopConfirmedAt(Instant.now());
+        assertThat(policy.canTerminateFlight("mission-1")).isFalse();
+        assertThat(policy.canControlFlight("mission-1")).isFalse();
+        mission.setSafeStopCleanedAt(Instant.now());
+        assertThat(policy.canControlFlight("mission-1")).isFalse();
+        mission.setStatus(MissionStatus.CANCELLED);
+        assertThat(policy.canTerminateFlight("mission-1")).isFalse();
+    }
+
+    @Test
+    void terminationRemainsPilotOnlyAndMaintainerCanFinishInspection() {
+        mission.setStatus(MissionStatus.RETURNING);
+        mission.setSafeStopRequestedAt(Instant.now());
+        assign(MissionStaffRole.OPERATOR, StaffResponseStatus.ACCEPTED);
+        assertThat(policy.canTerminateFlight("mission-1")).isFalse();
+        assertThat(policy.canOperatePayload("mission-1")).isFalse();
+        assign(MissionStaffRole.MAINTAINER, StaffResponseStatus.ACCEPTED);
+        mission.setStatus(MissionStatus.POSTFLIGHT_CHECKING);
+        assertThat(policy.canMaintainDevice("mission-1")).isTrue();
+    }
+
+    @Test
+    void historicalConfirmedReadyCanOnlyPreparePostflightNotReopenFlight() {
+        mission.setStatus(MissionStatus.READY_TO_FLY); mission.setSafeStopRequestedAt(Instant.now());
+        mission.setSafeStopConfirmedAt(Instant.now());
+        mission.setSafeStopStatus(com.ondemandmonitoring.mission.enums.MissionSafeStopStatus.IN_PROGRESS);
+        assign(MissionStaffRole.PILOT, StaffResponseStatus.ACCEPTED);
+        assertThat(policy.canControlFlight("mission-1")).isFalse();
+        assertThat(policy.canTerminateFlight("mission-1")).isFalse();
+        assertThat(policy.canPrepareSafeStopPostflight("mission-1")).isTrue();
+        mission.setSafeStopCleanedAt(Instant.now());
+        assertThat(policy.canPrepareSafeStopPostflight("mission-1")).isFalse();
     }
 
     @Test
@@ -180,12 +236,69 @@ class MissionAuthorizationServiceTest {
     }
 
     @Test
+    void siblingsShareOrderContextButNeverMissionPermissions() {
+        var order = new com.ondemandmonitoring.order.domain.Order(); order.setId("order-1");
+        mission.setOrder(order);
+        var sibling = new Mission(); sibling.setId("mission-2"); sibling.setOrder(order);
+        sibling.setStatus(MissionStatus.PENDING_REVIEW);
+        when(missions.findById("mission-2")).thenReturn(Optional.of(sibling));
+        var crew = java.util.Arrays.stream(MissionStaffRole.values()).map(role ->
+                MissionStaffAssignment.builder().mission(mission).staff(staff).assignedRole(role)
+                        .isCurrent(true).responseStatus(StaffResponseStatus.ACCEPTED).build()).toList();
+        when(assignments.findAllByMissionIdAndIsCurrentTrue("mission-1")).thenReturn(crew);
+        when(assignments.findByMissionId("mission-1")).thenReturn(crew);
+        when(assignments.findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc("mission-1", staff.getId()))
+                .thenReturn(crew);
+        assertThat(policy.canViewMission("mission-1")).isTrue();
+        assertThat(policy.canViewMission("mission-2")).isFalse();
+        assertThat(policy.canControlFlight("mission-1")).isTrue();
+        assertThat(policy.canControlFlight("mission-2")).isFalse();
+        assertThat(policy.canOperatePayload("mission-1")).isTrue();
+        assertThat(policy.canOperatePayload("mission-2")).isFalse();
+        assertThat(policy.canInspectDevice("mission-1")).isTrue();
+        assertThat(policy.canInspectDevice("mission-2")).isFalse();
+        assertThat(policy.canMaintainDevice("mission-1")).isTrue();
+        assertThat(policy.canMaintainDevice("mission-2")).isFalse();
+        mission.setStatus(MissionStatus.IN_FLIGHT);
+        assertThat(policy.canExecuteMonitoringChecklist("mission-1")).isTrue();
+        assertThat(policy.canExecuteMonitoringChecklist("mission-2")).isFalse();
+        mission.setStatus(MissionStatus.PENDING_REVIEW);
+        assertThat(policy.canAttachChecklistEvidence("mission-1")).isTrue();
+        assertThat(policy.canAttachChecklistEvidence("mission-2")).isFalse();
+        assertThat(policy.canDetachChecklistEvidence("mission-2")).isFalse();
+        assertThat(policy.canUploadMissionMedia("mission-1")).isTrue();
+        assertThat(policy.canUploadMissionMedia("mission-2")).isFalse();
+        assertThat(policy.canCompleteMission("mission-1")).isTrue();
+        assertThat(policy.canCompleteMission("mission-2")).isFalse();
+        assertThat(policy.canSubmitMissionResult("mission-1")).isTrue();
+        assertThat(policy.canSubmitMissionResult("mission-2")).isFalse();
+        var orders = mock(com.ondemandmonitoring.order.repository.OrderRepository.class);
+        when(orders.findById(order.getId())).thenReturn(Optional.of(order));
+        when(missions.findAllByOrderIdOrderByScheduledStartAtAscIdAsc(order.getId())).thenReturn(List.of(mission, sibling));
+        var orderPolicy = new com.ondemandmonitoring.order.service.impl.OrderAuthorizationService(
+                orders, resolver, policy, missions);
+        assertThat(orderPolicy.canViewOrder(order.getId())).isTrue();
+        assertThat(policy.canViewMission(order.getId())).isFalse();
+        assertThat(policy.canCompleteMission(order.getId())).isFalse();
+        assertThat(policy.canViewMission("mission-2")).isFalse();
+    }
+
+    @Test
+    void codeLookupIsExplicitAndCannotAliasTheMissionIdContract() {
+        when(missions.findByMissionCode("MS-001")).thenReturn(Optional.of(mission));
+        assign(MissionStaffRole.PILOT, StaffResponseStatus.ACCEPTED);
+        assertThat(policy.canViewMission("MS-001")).isFalse();
+        assertThat(policy.canViewMissionByCode("MS-001")).isTrue();
+        assertThat(policy.canViewMissionByCode("missing")).isFalse();
+    }
+
+    @Test
     void inspectorUploadAndCompletionRequireCurrentOrSuccessfulFinalAssignment() {
         mission.setStatus(MissionStatus.PENDING_REVIEW);
         var entry = assign(MissionStaffRole.INSPECTOR, StaffResponseStatus.ACCEPTED);
         assertThat(policy.canUploadMissionMedia("mission-1")).isTrue();
         assertThat(policy.canCompleteMission("mission-1")).isTrue();
-        assertThat(policy.canSubmitMissionResult("mission-1")).isTrue();
+        assertThat(policy.canSubmitMissionResult("mission-1")).isFalse();
         assertThat(policy.canUploadMissionMedia("another-mission")).isFalse();
         entry.setIsCurrent(false);
         assertThat(policy.canUploadMissionMedia("mission-1")).isFalse();

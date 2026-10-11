@@ -10,6 +10,14 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface MissionResultRepository extends JpaRepository<MissionResult, String> {
+    @Query("select r from MissionResult r where r.mission.id in :missionIds")
+    java.util.List<MissionResult> findByMissionIds(@Param("missionIds") java.util.Collection<String> missionIds);
+    @Query("select r.mission.id from MissionResult r where r.mission.id in :missionIds and r.approvalStatus = com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus.APPROVED")
+    java.util.Set<String> findApprovedMissionIds(@Param("missionIds") java.util.Set<String> missionIds);
+
+    @Query("select r.mission.order.id from MissionResult r where r.id = :resultId")
+    Optional<String> findOrderIdByResultId(@Param("resultId") String resultId);
+
     @Query("select r.mission.id from MissionResult r where r.id = :resultId")
     Optional<String> findMissionIdByResultId(@Param("resultId") String resultId);
 
@@ -17,8 +25,7 @@ public interface MissionResultRepository extends JpaRepository<MissionResult, St
     Optional<MissionResult> findByMissionId(@Param("missionId") String missionId);
 
     boolean existsByMissionId(String missionId);
-
-    boolean existsByMission_Order_IdAndApprovalStatus(String orderId, MissionResultApprovalStatus approvalStatus);
+    boolean existsByMissionIdAndApprovalStatus(String missionId, MissionResultApprovalStatus approvalStatus);
 
     Page<MissionResult> findByApprovalStatus(MissionResultApprovalStatus approvalStatus, Pageable pageable);
 }

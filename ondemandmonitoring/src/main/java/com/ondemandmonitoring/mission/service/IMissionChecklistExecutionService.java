@@ -6,10 +6,11 @@ import com.ondemandmonitoring.mission.dto.response.ChecklistExecutionResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionChecklistResponse;
 
 public interface IMissionChecklistExecutionService {
-    void initialize(Mission mission);
+    void requireMaterialized(Mission mission);
     MissionChecklistResponse getByMissionId(String missionId);
     ChecklistExecutionResponse update(String missionId, String executionId, ChecklistExecutionUpdateRequest request);
     boolean isReadyForSubmission(Mission mission);
+    boolean isReadyForFinalApproval(Mission mission);
     void requireReadyForSubmission(Mission mission);
     void requireReadyForFinalApproval(Mission mission);
 }

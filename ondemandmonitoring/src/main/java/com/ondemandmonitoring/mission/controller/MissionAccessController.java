@@ -30,6 +30,8 @@ public class MissionAccessController {
                 authorization.canSubmitMissionResult(id),
                 authorization.canExecuteMonitoringChecklist(id),
                 authorization.canAttachChecklistEvidence(id),
-                authorization.canDetachChecklistEvidence(id)));
+                authorization.canDetachChecklistEvidence(id),
+                authorization.canTerminateFlight(id),
+                authorization.canPrepareSafeStopPostflight(id)));
     }
 }

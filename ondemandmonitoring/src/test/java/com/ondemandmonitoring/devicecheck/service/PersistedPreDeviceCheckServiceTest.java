@@ -34,7 +34,7 @@ class PersistedPreDeviceCheckServiceTest {
     void reusesRecentlyStartedCheckingRun() {
         Mission mission = mission("mission-1");
         PersistedPreDeviceCheck activeRun = checkingRun("run-1", mission, Instant.now());
-        when(missionRepository.findById("mission-1")).thenReturn(Optional.of(mission));
+        when(missionRepository.findByIdForUpdate("mission-1")).thenReturn(Optional.of(mission));
         when(runRepository.findFirstByMissionIdOrderByCreatedAtDesc("mission-1"))
                 .thenReturn(Optional.of(activeRun));
 
@@ -49,7 +49,7 @@ class PersistedPreDeviceCheckServiceTest {
         Mission mission = mission("mission-1");
         PersistedPreDeviceCheck staleRun = checkingRun(
                 "run-old", mission, Instant.now().minusSeconds(31));
-        when(missionRepository.findById("mission-1")).thenReturn(Optional.of(mission));
+        when(missionRepository.findByIdForUpdate("mission-1")).thenReturn(Optional.of(mission));
         when(runRepository.findFirstByMissionIdOrderByCreatedAtDesc("mission-1"))
                 .thenReturn(Optional.of(staleRun));
         when(runRepository.save(any(PersistedPreDeviceCheck.class)))
@@ -75,6 +75,8 @@ class PersistedPreDeviceCheckServiceTest {
         run.setPassedChecks(1);
         run.setTotalChecks(1);
         when(runRepository.findByIdForUpdate("run-1")).thenReturn(Optional.of(run));
+        when(runRepository.findById("run-1")).thenReturn(Optional.of(run));
+        when(missionRepository.findByIdForUpdate("mission-1")).thenReturn(Optional.of(mission));
         PreDeviceCheckItemUpdateRequest update = new PreDeviceCheckItemUpdateRequest();
         update.setStatus(PreDeviceItemStatus.CHECKING);
         update.setMessage("stale in-flight response");

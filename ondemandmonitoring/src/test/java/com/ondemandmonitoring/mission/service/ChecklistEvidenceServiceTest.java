@@ -39,6 +39,7 @@ class ChecklistEvidenceServiceTest {
         var item = new OrderChecklistItem(); item.setId("i"); item.setOrder(order); item.setEvidencePolicyVersion(1); item.setMinimumEvidenceCount(1);
         execution = new MissionChecklistExecution(); execution.setId("e"); execution.setMissionId("m"); execution.setOrderId("o"); execution.setOrderChecklistItem(item); execution.setVersion(0L);
         execution.setExecutionStatus(ChecklistExecutionStatus.COMPLETED);
+        execution.setOrderChecklistItemId(item.getId()); ScopeTestFixture.link(execution, mission);
         asset = new MediaAsset(); asset.setId("a"); asset.setMissionId("m"); asset.setType("IMAGE"); asset.setSourceType("DRONE_CAMERA");
         asset.setMediaStatus(MediaStatus.PENDING_MANAGER_APPROVAL); asset.setValidatedAt(Instant.now());
         when(missions.findByIdForUpdate("m")).thenReturn(Optional.of(mission)); when(executions.findById("e")).thenReturn(Optional.of(execution));
@@ -79,6 +80,9 @@ class ChecklistEvidenceServiceTest {
     }
     @Test void supportsOneMediaAcrossMultipleItems() {
         var second=new MissionChecklistExecution(); second.setId("e2"); second.setMissionId("m"); second.setOrderId("o"); second.setOrderChecklistItem(execution.getOrderChecklistItem()); second.setVersion(0L);
+        var secondItem=new OrderChecklistItem(); secondItem.setId("i2"); secondItem.setOrder(mission.getOrder());
+        secondItem.setEvidencePolicyVersion(1); secondItem.setMinimumEvidenceCount(1);
+        second.setOrderChecklistItem(secondItem); second.setOrderChecklistItemId(secondItem.getId()); ScopeTestFixture.link(second, mission);
         when(executions.findById("e2")).thenReturn(Optional.of(second));
         assertEquals(2,service.attach("m",new BatchChecklistEvidenceRequest("a",List.of(new BatchChecklistEvidenceRequest.Target("e",0L),new BatchChecklistEvidenceRequest.Target("e2",0L)),null)).size());
     }
@@ -87,13 +91,27 @@ class ChecklistEvidenceServiceTest {
         assertNotNull(old.getDetachedAt()); assertEquals("actor",old.getDetachedBy()); assertEquals("replace",old.getDetachReason()); verify(links,never()).delete(any());
         assertNotEquals("link",service.attach("m",request()).getFirst().getEvidenceId());
     }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"mission", "execution"})
+    void siblingEvidenceCannotBeDetachedThroughAnotherScope(String mismatch) {
+        var foreign = link();
+        if (mismatch.equals("mission")) foreign.setMissionId("sibling");
+        else {
+            var other = new MissionChecklistExecution(); other.setId("sibling-execution");
+            foreign.setMissionChecklistExecution(other);
+        }
+        when(links.findById("link")).thenReturn(Optional.of(foreign));
+        error(ErrorCode.ACCESS_DENIED, () -> service.detach("m", "e", "link", 0L, "wrong scope"));
+        assertNull(foreign.getDetachedAt()); assertNull(foreign.getDetachedBy());
+        verify(links, never()).saveAndFlush(any()); verify(executions, never()).saveAndFlush(any());
+    }
     @Test void pendingAndApprovedLockWhileRejectedReopens() {
         var result=new MissionResult(); when(results.findByMissionId("m")).thenReturn(Optional.of(result));
         for(var state:List.of(MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL,MissionResultApprovalStatus.APPROVED)) { result.setApprovalStatus(state); error(ErrorCode.CHECKLIST_EXECUTION_LOCKED,()->service.attach("m",request())); }
         result.setApprovalStatus(MissionResultApprovalStatus.REJECTED); assertEquals(1,service.attach("m",request()).size());
     }
-    @Test void validatedPendingMediaIsReadyForWholeResultReview() {
-        assertFalse(service.ready(execution,List.of(),false)); assertTrue(service.ready(execution,List.of(link()),false)); assertTrue(service.ready(execution,List.of(link()),true));
+    @Test void validatedPendingMediaIsOperationallyReadyButRequiresApprovalForFinalReview() {
+        assertFalse(service.ready(execution,List.of(),false)); assertTrue(service.ready(execution,List.of(link()),false)); assertFalse(service.ready(execution,List.of(link()),true));
         asset.setMediaStatus(MediaStatus.AVAILABLE); assertTrue(service.ready(execution,List.of(link()),true));
         asset.setMediaStatus(MediaStatus.REJECTED); assertFalse(service.ready(execution,List.of(link()),false));
     }

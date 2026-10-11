@@ -25,6 +25,8 @@ public interface PaymentRepository extends JpaRepository<Payment, String> {
     Optional<Payment> findByTransactionReferenceForUpdate(@Param("reference") String reference);
 
     Optional<Payment> findByTransactionReference(String reference);
+    @Query("select p.invoice.order.id from Payment p where p.transactionReference=:reference")
+    Optional<String> findOrderIdByTransactionReference(@Param("reference") String reference);
     boolean existsByTransactionReference(String reference);
     boolean existsByPaymentCode(Long paymentCode);
 

@@ -232,31 +232,18 @@ public class QuoteService implements IQuoteService {
     }
 
     private void ensureWaitingDepositMission(Order order) {
-        Mission mission = missions.findByOrderIdForUpdate(order.getId()).orElse(null);
-        if (mission == null) {
-            mission = new Mission();
-            mission.setOrder(order);
-            mission.setMissionCode(generateMissionCode());
-            LocalDate date = Optional.ofNullable(order.getPreferredDateFrom()).orElse(LocalDate.now(BUSINESS_ZONE));
-            LocalTime start = order.getPreferredTime().getStartTime();
-            LocalTime end = order.getPreferredTime().getEndTime();
-            mission.setScheduledStartAt(ZonedDateTime.of(date, start, BUSINESS_ZONE).toInstant());
-            mission.setScheduledEndAt(ZonedDateTime.of(end.isAfter(start) ? date : date.plusDays(1), end, BUSINESS_ZONE).toInstant());
-            mission.setStatus(MissionStatus.WAITING_DEPOSIT);
-            mission = missions.save(mission);
-            checklistExecutionService.initialize(mission);
-        } else if (mission.getStatus() == MissionStatus.CREATED || mission.getStatus() == MissionStatus.RESOURCE_ASSIGNING) {
-            mission.setStatus(MissionStatus.WAITING_DEPOSIT);
-        } else if (mission.getStatus() != MissionStatus.WAITING_DEPOSIT) {
-            throw new ApiException(ErrorCode.MISSION_STATUS_INVALID, "Existing mission has already entered execution");
+        // Quote acceptance creates the invoice, not a hidden unassigned Mission.
+        // Manager planning remains the only creator/materializer in the 1:N model.
+        for (String id : missions.findIdsByOrderIdOrderById(order.getId()).stream().sorted().toList()) {
+            Mission mission = missions.findByIdForUpdate(id)
+                    .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
+            if (mission.getStatus() == MissionStatus.CANCELLED) continue;
+            if (mission.getStatus() == MissionStatus.CREATED || mission.getStatus() == MissionStatus.RESOURCE_ASSIGNING) {
+                mission.setStatus(MissionStatus.WAITING_DEPOSIT);
+            } else if (mission.getStatus() != MissionStatus.WAITING_DEPOSIT) {
+                throw new ApiException(ErrorCode.MISSION_STATUS_INVALID, "Existing mission has already entered execution");
+            }
         }
-    }
-
-    private String generateMissionCode() {
-        String code;
-        do code = "MSN-" + LocalDate.now(BUSINESS_ZONE).getYear() + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        while (missions.existsByMissionCode(code));
-        return code;
     }
 
     private void assertOwner(String orderId) {

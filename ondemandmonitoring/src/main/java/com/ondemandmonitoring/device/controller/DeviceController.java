@@ -6,9 +6,11 @@ import com.ondemandmonitoring.device.dto.request.DeviceCreateRequest;
 import com.ondemandmonitoring.device.dto.request.DeviceUpdateRequest;
 import com.ondemandmonitoring.device.dto.response.DeviceResponse;
 import com.ondemandmonitoring.device.service.IDeviceService;
+import com.ondemandmonitoring.device.service.IDeviceAvailabilityService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.List;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -37,6 +39,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class DeviceController {
 
     IDeviceService deviceService;
+    IDeviceAvailabilityService deviceAvailabilityService;
+
+    @Operation(summary = "Get devices available for the persisted Mission interval")
+    @GetMapping("/available")
+    public ResponseEntity<ApiResponse<List<DeviceResponse>>> getAvailable(
+            @RequestParam String missionId) {
+        return ResponseEntity.ok(ApiResponse.ok(deviceAvailabilityService.getAvailableForMission(missionId)));
+    }
 
     @Operation(summary = "Create device", description = "Creates a new physical device binding with serial number and model ID")
     @PostMapping

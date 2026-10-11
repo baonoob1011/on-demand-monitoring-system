@@ -10,7 +10,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.common.exception.ApiException;
-import com.ondemandmonitoring.mission.repository.MissionResultRepository;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.request.OrderDeliverableRequest;
@@ -47,7 +46,6 @@ class OrderServiceTest {
     private PreferredTimeRepository preferredTimeRepository;
     private AuthenticatedUserResolver authenticatedUserResolver;
     private OrderMapper orderMapper;
-    private MissionResultRepository missionResultRepository;
     private OrderService orderService;
 
     @BeforeEach
@@ -59,7 +57,6 @@ class OrderServiceTest {
         preferredTimeRepository = mock(PreferredTimeRepository.class);
         authenticatedUserResolver = mock(AuthenticatedUserResolver.class);
         orderMapper = Mappers.getMapper(OrderMapper.class);
-        missionResultRepository = mock(MissionResultRepository.class);
 
         orderService = new OrderService(
                 orderRepository,
@@ -69,7 +66,6 @@ class OrderServiceTest {
                 preferredTimeRepository,
                 authenticatedUserResolver,
                 orderMapper,
-                missionResultRepository,
                 mock(IOrderChecklistSnapshotService.class)
         );
 
@@ -90,6 +86,31 @@ class OrderServiceTest {
                         List.of(106.7000, 10.7760)
                 ))
         );
+    }
+
+    @Test
+    void orderGetAndCustomerListsNeverCompleteOrSaveOrders() {
+        Order order = Order.builder().orderStatus(OrderStatus.APPROVED).build();
+        order.setId("order-read");
+        String customer = authenticatedUserResolver.getCurrentUser().getId();
+        when(orderRepository.findById(order.getId())).thenReturn(Optional.of(order));
+        when(orderRepository.findByCustomer_IdOrderByCreatedAtDesc(customer)).thenReturn(List.of(order));
+        when(orderRepository.findByCustomer_IdAndOrderStatusOrderByCreatedAtDesc(customer, OrderStatus.APPROVED))
+                .thenReturn(List.of(order));
+        assertEquals(OrderStatus.APPROVED, orderService.getOrderById(order.getId()).getOrderStatus());
+        assertEquals(OrderStatus.APPROVED, orderService.getMyOrders(null).getFirst().getOrderStatus());
+        assertEquals(OrderStatus.APPROVED, orderService.getMyOrders(OrderStatus.APPROVED).getFirst().getOrderStatus());
+        assertEquals(OrderStatus.APPROVED, order.getOrderStatus());
+        verify(orderRepository, never()).save(any());
+        verify(orderRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void queryTransactionsAreExplicitlyReadOnly() throws Exception {
+        assertEquals(true, OrderService.class.getMethod("getOrderById", String.class)
+                .getAnnotation(org.springframework.transaction.annotation.Transactional.class).readOnly());
+        assertEquals(true, OrderService.class.getMethod("getMyOrders", OrderStatus.class)
+                .getAnnotation(org.springframework.transaction.annotation.Transactional.class).readOnly());
     }
 
     @Test

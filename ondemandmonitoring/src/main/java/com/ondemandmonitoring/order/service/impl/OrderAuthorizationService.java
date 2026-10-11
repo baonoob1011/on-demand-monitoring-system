@@ -1,6 +1,7 @@
 package com.ondemandmonitoring.order.service.impl;
 
 import com.ondemandmonitoring.mission.service.IMissionAuthorizationService;
+import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.IOrderAuthorizationService;
 import com.ondemandmonitoring.role.domain.RoleCode;
@@ -17,6 +18,7 @@ public class OrderAuthorizationService implements IOrderAuthorizationService {
     private final OrderRepository orders;
     private final AuthenticatedUserResolver currentUser;
     private final IMissionAuthorizationService missionAuthorization;
+    private final MissionRepository missions;
 
     @Override
     public boolean canViewOrder(String orderId) {
@@ -27,7 +29,9 @@ public class OrderAuthorizationService implements IOrderAuthorizationService {
             if (role == RoleCode.CUSTOMER) {
                 return order.getCustomer() != null && user.getId().equals(order.getCustomer().getId());
             }
-            return role == RoleCode.STAFF && missionAuthorization.canViewMission(orderId);
+            // Order context visibility never grants operational access to sibling Missions.
+            return role == RoleCode.STAFF && missions.findAllByOrderIdOrderByScheduledStartAtAscIdAsc(orderId)
+                    .stream().anyMatch(mission -> missionAuthorization.canViewMission(mission.getId()));
         }).orElse(false);
     }
 }

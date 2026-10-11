@@ -22,8 +22,7 @@ import com.ondemandmonitoring.role.domain.RoleCode;
 import com.ondemandmonitoring.mission.mapper.MissionResultMapper;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.mission.repository.MissionResultRepository;
-import com.ondemandmonitoring.order.domain.Order;
-import com.ondemandmonitoring.order.repository.OrderRepository;
+import com.ondemandmonitoring.order.service.IOrderExecutionCompletionPolicy;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -47,11 +46,12 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
     MediaAssetRepository mediaAssetRepository;
     IMediaAssetService mediaAssetService;
     MissionResultMapper missionResultMapper;
-    /** Retained in the constructor for binary/test compatibility; result approval no longer completes an order. */
-    OrderRepository orderRepository;
+    IOrderExecutionCompletionPolicy completionPolicy;
     IMissionChecklistExecutionService checklistExecutionService;
     AuthenticatedUserResolver currentUser;
     IMissionAuthorizationService authorization;
+    @org.springframework.beans.factory.annotation.Autowired
+    @lombok.experimental.NonFinal
     IDeliveryWorkflowService deliveryWorkflow;
 
     @Override
@@ -65,12 +65,14 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
 
     @Override
     @Transactional
-    @PreAuthorize("@missionAuthorizationService.canUploadMissionMedia(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canSubmitMissionResult(#missionId)")
     public MissionResultResponse upsert(String missionId, MissionResultRequest request) {
         Mission mission = missionRepository.findByIdForUpdate(missionId)
                 .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND,
                         "Mission not found: " + missionId));
-        if (!authorization.canUploadMissionMedia(missionId)) throw new ApiException(ErrorCode.ACCESS_DENIED);
+        MissionRuntimeGate.requireFinalizedStructure(mission);
+        checklistExecutionService.requireMaterialized(mission);
+        if (!authorization.canSubmitMissionResult(missionId)) throw new ApiException(ErrorCode.ACCESS_DENIED);
         if (mission.getStatus() != MissionStatus.COMPLETED)
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID, "Complete operational mission before submitting results");
         checklistExecutionService.requireReadyForSubmission(mission);
@@ -102,7 +104,24 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
     @Transactional
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public MissionResultResponse approve(String resultId, MissionResultReviewRequest request) {
-        MissionResult result = requirePendingResult(resultId);
+        String orderId = missionResultRepository.findOrderIdByResultId(resultId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND));
+        var aggregate = completionPolicy.lockAggregate(orderId);
+        MissionResult result = missionResultRepository.findById(resultId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND));
+        if (!orderId.equals(result.getMission().getOrder().getId())
+                || aggregate.missions().stream().noneMatch(m -> m.getId().equals(result.getMission().getId())))
+            throw new ApiException(ErrorCode.CHECKLIST_EXECUTION_INTEGRITY_INVALID);
+        if (result.getApprovalStatus() == MissionResultApprovalStatus.APPROVED) {
+            completionPolicy.completeIfReady(aggregate);
+            return toResponse(result);
+        }
+        if (result.getApprovalStatus() != MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL)
+            throw new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Pending mission result not found: " + resultId);
+        if (!ExecutionPlanCoverageService.effective(result.getMission()))
+            throw new ApiException(ErrorCode.MISSION_STATUS_INVALID);
+        MissionRuntimeGate.requireFinalizedStructure(result.getMission());
+        checklistExecutionService.requireMaterialized(result.getMission());
         checklistExecutionService.requireReadyForFinalApproval(result.getMission());
         if (result.getMission().getStatus() != MissionStatus.COMPLETED)
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID);
@@ -121,8 +140,9 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
         result.setReviewedBy(currentUser.getCurrentUserId());
         result.setReviewNote(request == null ? null : request.getNote());
         attachMissionMedia(result, result.getMission().getId());
-        MissionResult saved = missionResultRepository.save(result);
-        deliveryWorkflow.markReadyForManagerReview(result.getMission().getOrder().getId());
+        var saved = missionResultRepository.saveAndFlush(result);
+        completionPolicy.completeIfReady(aggregate);
+        if (deliveryWorkflow != null) deliveryWorkflow.markReadyForManagerReview(result.getMission().getOrder().getId());
         return toResponse(saved);
     }
 
@@ -143,6 +163,8 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
     @Override
     @Transactional
     public void ensureCompletedResult(Mission mission) {
+        MissionRuntimeGate.requireFinalizedStructure(mission);
+        checklistExecutionService.requireMaterialized(mission);
         missionRepository.findByIdForUpdate(mission.getId())
                 .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
         if (missionResultRepository.existsByMissionId(mission.getId())) {
@@ -189,10 +211,10 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
             return missionResultMapper.toResponseWithoutMedia(result);
         }
         String missionId = result.getMission().getId();
-        if (result.getMediaFiles() == null || result.getMediaFiles().isEmpty()) {
-            result.setMediaFiles(mediaAssetRepository.findByMissionIdOrderByCapturedAtDesc(missionId));
-        }
-        return missionResultMapper.toResponse(result, mediaAssetService);
+        var media = result.getMediaFiles();
+        if (media == null || media.isEmpty()) media = mediaAssetRepository.findByMissionIdOrderByCapturedAtDesc(missionId);
+        // Response fallback must not dirty a managed result during GET or an approve replay.
+        return missionResultMapper.toResponse(result, media, mediaAssetService);
     }
 
     private void attachMissionMedia(MissionResult result, String missionId) {

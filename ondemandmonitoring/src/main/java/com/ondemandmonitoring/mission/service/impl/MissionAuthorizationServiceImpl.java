@@ -28,17 +28,18 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
     private final MissionRepository missions;
     private final AuthenticatedUserResolver currentUser;
     private final com.ondemandmonitoring.mission.repository.MissionResultRepository results;
+    private final com.ondemandmonitoring.mission.service.IMissionChecklistScopeService checklistScope;
 
     @Override
-    public boolean canAttachChecklistEvidence(String identifier) {
-        return resolveMission(identifier).filter(m -> m.getStatus() == MissionStatus.PENDING_REVIEW || m.getStatus() == MissionStatus.COMPLETED)
+    public boolean canAttachChecklistEvidence(String missionId) {
+        return findRuntimeMissionById(missionId).filter(m -> m.getStatus() == MissionStatus.PENDING_REVIEW || m.getStatus() == MissionStatus.COMPLETED)
                 .filter(m -> results.findByMissionId(m.getId()).map(r -> r.getApprovalStatus() != com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus.APPROVED
                         && r.getApprovalStatus() != com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL).orElse(true))
                 .map(m -> canExecuteMonitoringChecklist(m.getId()) || canUploadMissionMedia(m.getId())).orElse(false);
     }
 
     @Override
-    public boolean canDetachChecklistEvidence(String identifier) { return canAttachChecklistEvidence(identifier); }
+    public boolean canDetachChecklistEvidence(String missionId) { return canAttachChecklistEvidence(missionId); }
 
     @Override
     public boolean canManageMissions() {
@@ -53,8 +54,8 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
     }
 
     @Override
-    public boolean canViewMission(String identifier) {
-        Optional<Mission> mission = resolveMission(identifier);
+    public boolean canViewMission(String missionId) {
+        Optional<Mission> mission = findMissionById(missionId);
         if (mission.isEmpty()) return false;
         if (canManageMissions()) return true;
         User user = currentUser.getCurrentUser();
@@ -64,10 +65,10 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
     }
 
     @Override
-    public boolean canRespondToMission(String identifier, String staffId) {
+    public boolean canRespondToMission(String missionId, String staffId) {
         User user = currentUser.getCurrentUser();
         if (!hasRole(user, RoleCode.STAFF) || !user.getId().equals(staffId)) return false;
-        return resolveMission(identifier).filter(mission ->
+        return findRuntimeMissionById(missionId).filter(mission ->
                 mission.getStatus() == MissionStatus.WAITING_CREW_CONFIRMATION
                         || mission.getStatus() == MissionStatus.WAITING_OPERATOR_ACCEPTANCE)
                 .map(mission -> ownAssignments(mission.getId(), user).stream()
@@ -76,25 +77,48 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
     }
 
     @Override
-    public boolean canRespondToMission(String identifier) {
-        return canRespondToMission(identifier, currentUser.getCurrentUserId());
+    public boolean canRespondToMission(String missionId) {
+        return canRespondToMission(missionId, currentUser.getCurrentUserId());
     }
 
     @Override
-    public boolean canControlFlight(String identifier) {
-        return canPerform(identifier, MissionStaffRole.PILOT);
+    public boolean canControlFlight(String missionId) {
+        return normalOperationAllowed(missionId) && canPerform(missionId, MissionStaffRole.PILOT);
     }
 
     @Override
-    public boolean canOperatePayload(String identifier) {
-        return canPerform(identifier, MissionStaffRole.OPERATOR);
+    public boolean canTerminateFlight(String missionId) {
+        return findRuntimeMissionById(missionId)
+                .filter(MissionRuntimeGate::hasActiveSafeStop)
+                .filter(m -> m.getSafeStopRequestedAt() != null && m.getSafeStopConfirmedAt() == null
+                        && m.getSafeStopCleanedAt() == null)
+                .filter(m -> Set.of(MissionStatus.CONNECTED, MissionStatus.PREFLIGHT_CHECKING,
+                        MissionStatus.READY_TO_FLY, MissionStatus.IN_FLIGHT, MissionStatus.IN_PROGRESS,
+                        MissionStatus.RETURNING).contains(m.getStatus()))
+                .map(m -> canPerform(m.getId(), MissionStaffRole.PILOT)).orElse(false);
+    }
+
+    private boolean normalOperationAllowed(String missionId) {
+        return findRuntimeMissionById(missionId).filter(m -> !MissionRuntimeGate.hasActiveSafeStop(m)).isPresent();
     }
 
     @Override
-    public boolean canExecuteMonitoringChecklist(String identifier) {
+    public boolean canPrepareSafeStopPostflight(String missionId) {
+        // Close out a historical ground confirmation, not a flight or session recovery.
+        return findRuntimeMissionById(missionId).filter(MissionRuntimeGate::allowsConfirmedGroundPostflight)
+                .map(m -> canPerform(m.getId(), MissionStaffRole.PILOT)).orElse(false);
+    }
+
+    @Override
+    public boolean canOperatePayload(String missionId) {
+        return normalOperationAllowed(missionId) && canPerform(missionId, MissionStaffRole.OPERATOR);
+    }
+
+    @Override
+    public boolean canExecuteMonitoringChecklist(String missionId) {
         User user = currentUser.getCurrentUser();
         if (!hasRole(user, RoleCode.STAFF)) return false;
-        return resolveMission(identifier).filter(mission -> Set.of(MissionStatus.IN_FLIGHT,
+        return findRuntimeMissionById(missionId).filter(mission -> Set.of(MissionStatus.IN_FLIGHT,
                 MissionStatus.IN_PROGRESS, MissionStatus.RETURNING, MissionStatus.POSTFLIGHT_CHECKING,
                 MissionStatus.PENDING_REVIEW, MissionStatus.COMPLETED).contains(mission.getStatus())).map(mission -> {
                     boolean completed = mission.getStatus() == MissionStatus.COMPLETED;
@@ -117,25 +141,25 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
     }
 
     @Override
-    public boolean canInspectDevice(String identifier) {
-        return canPerform(identifier, MissionStaffRole.INSPECTOR);
+    public boolean canInspectDevice(String missionId) {
+        return canPerform(missionId, MissionStaffRole.INSPECTOR);
     }
 
     @Override
-    public boolean canMaintainDevice(String identifier) {
-        return canPerform(identifier, MissionStaffRole.MAINTAINER);
+    public boolean canMaintainDevice(String missionId) {
+        return canPerform(missionId, MissionStaffRole.MAINTAINER);
     }
 
     @Override
-    public boolean canViewMissionMedia(String identifier) {
-        return canViewMission(identifier);
+    public boolean canViewMissionMedia(String missionId) {
+        return canViewMission(missionId);
     }
 
     @Override
-    public boolean canUploadMissionMedia(String identifier) {
+    public boolean canUploadMissionMedia(String missionId) {
         User user = currentUser.getCurrentUser();
         if (!hasRole(user, RoleCode.STAFF)) return false;
-        return resolveMission(identifier)
+        return findRuntimeMissionById(missionId)
                 .filter(mission -> mission.getStatus() == MissionStatus.PENDING_REVIEW
                         || mission.getStatus() == MissionStatus.COMPLETED)
                 .map(mission -> hasEligibleInspectorAssignment(mission, user))
@@ -143,31 +167,28 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
     }
 
     @Override
-    public boolean canCompleteMission(String identifier) {
-        return resolveMission(identifier)
+    public boolean canCompleteMission(String missionId) {
+        return findRuntimeMissionById(missionId)
                 .filter(mission -> mission.getStatus() == MissionStatus.PENDING_REVIEW)
                 .map(mission -> canUploadMissionMedia(mission.getId())).orElse(false);
     }
 
     @Override
-    public boolean canSubmitMissionResult(String identifier) {
+    public boolean canSubmitMissionResult(String missionId) {
         // Actor/status capability only; submission also validates readiness, completion and result locks.
-        // While a mission is PENDING_REVIEW the upload screen uses this to expose the
-        // "send to manager" action; the client completes the mission before submitting.
-        return resolveMission(identifier)
+        // Reuse the monitoring actor policy, including Operator priority, Pilot fallback
+        // and successful final-crew release. Inspector media/acceptance is independent.
+        return findRuntimeMissionById(missionId)
                 .filter(mission -> mission.getStatus() == MissionStatus.PENDING_REVIEW
                         || mission.getStatus() == MissionStatus.COMPLETED)
-                .map(mission -> mission.getStatus() == MissionStatus.PENDING_REVIEW
-                        ? canCompleteMission(mission.getId())
-                        : canExecuteMonitoringChecklist(mission.getId()))
+                .map(mission -> canExecuteMonitoringChecklist(mission.getId()))
                 .orElse(false);
     }
 
-    private boolean canPerform(String identifier, MissionStaffRole task) {
+    private boolean canPerform(String missionId, MissionStaffRole task) {
         User user = currentUser.getCurrentUser();
         if (!hasRole(user, RoleCode.STAFF)) return false;
-        return resolveMission(identifier)
-                .filter(mission -> mission.getStatus() != MissionStatus.WAITING_DEPOSIT)
+        return findRuntimeMissionById(missionId).filter(mission -> mission.getStatus() != MissionStatus.WAITING_DEPOSIT)
                 .filter(mission -> !TERMINAL_STATUSES.contains(mission.getStatus()))
                 .map(mission -> {
                     List<MissionStaffAssignment> crew = assignments.findAllByMissionIdAndIsCurrentTrue(mission.getId());
@@ -198,9 +219,18 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
                             : entry.getReleasedAt() == null));
     }
 
-    private Optional<Mission> resolveMission(String identifier) {
-        return missions.findById(identifier).or(() -> missions.findByOrderId(identifier))
-                .or(() -> missions.findByMissionCode(identifier));
+    private Optional<Mission> findMissionById(String missionId) {
+        return missions.findById(missionId);
+    }
+
+    private Optional<Mission> findRuntimeMissionById(String missionId) {
+        return findMissionById(missionId).filter(MissionRuntimeGate::isStructurallyFinalized).filter(checklistScope::isMaterialized);
+    }
+
+    @Override
+    public boolean canViewMissionByCode(String missionCode) {
+        return missions.findByMissionCode(missionCode)
+                .map(mission -> canViewMission(mission.getId())).orElse(false);
     }
 
     private boolean hasRole(User user, RoleCode role) {

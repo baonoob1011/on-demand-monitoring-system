@@ -12,6 +12,7 @@ import com.ondemandmonitoring.mission.service.impl.MissionResultService;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.repository.OrderRepository;
+import com.ondemandmonitoring.order.repository.OrderChecklistItemRepository;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.IMediaAssetService;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
@@ -42,6 +43,7 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
         reset(auth);
         when(auth.canViewMission(anyString())).thenReturn(true);
         when(auth.canExecuteMonitoringChecklist(anyString())).thenReturn(true);
+        when(auth.canSubmitMissionResult(anyString())).thenReturn(true);
         when(resolver.getCurrentUserId()).thenReturn("authenticated-operator");
     }
 
@@ -58,7 +60,7 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
     }
 
     String mission(int count) {
-        String id = missionService.createMission(request(snapshotOrder(count))).getId();
+        String id = legacyMission(request(snapshotOrder(count))).getId();
         setStatus(id, MissionStatus.IN_FLIGHT); return id;
     }
 
@@ -84,18 +86,15 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
         assertEquals(code, assertThrows(ApiException.class, call::run).getErrorCode());
     }
 
-    @Test void threeItemsInitializeOnceAcrossRetriesAndControllers() {
+    @Test void planningCreationDoesNotInitializeAcrossRetriesAndControllers() {
         String order = snapshotOrder(3);
         var first = new com.ondemandmonitoring.mission.controller.MissionController(missionService, null, null).createMission(request(order)).getBody().getData();
-        var second = new com.ondemandmonitoring.mission.controller.OrderMissionController(missionService)
-                .createMissionForOrder(order, request("ignored")).getBody().getData();
+        var second = new com.ondemandmonitoring.mission.controller.OrderMissionController(missionService, null)
+                .createMissionForOrder(order, request(order)).getBody().getData();
         assertEquals(first.getId(), second.getId());
         assertEquals(first.getId(), missionService.createMission(request(order)).getId());
         var rows = executionService.getByMissionId(first.getId()).executions();
-        assertEquals(3, rows.size()); assertEquals(3, rows.stream().map(ChecklistExecutionResponse::getId).distinct().count());
-        assertEquals(List.of(0, 1, 2), rows.stream().map(ChecklistExecutionResponse::getDisplayOrder).toList());
-        assertTrue(rows.stream().allMatch(row -> row.getExecutionStatus() == ChecklistExecutionStatus.PENDING
-                && row.getAssessmentStatus() == ChecklistAssessmentStatus.NOT_ASSESSED && row.getVersion() == 0));
+        assertTrue(rows.isEmpty());
     }
 
     @Test void explicitEmptyAndLegacyAreDistinctWithoutTemplateBackfill() {
@@ -104,7 +103,7 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
         assertTrue(executionService.getByMissionId(explicit).readyForSubmission());
         String order = snapshotOrder(0);
         transaction.executeWithoutResult(tx -> orders.findById(order).orElseThrow().setChecklistSnapshotAt(null));
-        String legacy = missionService.createMission(request(order)).getId();
+        String legacy = legacyMission(request(order)).getId();
         assertTrue(executionService.getByMissionId(legacy).legacySnapshot());
         assertTrue(executionService.getByMissionId(legacy).readyForSubmission());
         assertTrue(executionService.getByMissionId(legacy).executions().isEmpty());
@@ -116,17 +115,17 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
         var jdbc = new JdbcTemplate(dataSource);
         jdbc.execute("ALTER TABLE mission_checklist_executions ADD CONSTRAINT fixture_reject_execution CHECK (order_checklist_item_id <> '" + forbidden + "')");
         try {
-            error(ErrorCode.CHECKLIST_EXECUTION_INTEGRITY_INVALID, () -> missionService.createMission(request(order)));
+            error(ErrorCode.CHECKLIST_EXECUTION_INTEGRITY_INVALID, () -> legacyMission(request(order)));
             assertEquals(0, count(order)); assertEquals(0, executions.count());
             assertEquals(3, snapshots.count());
         } finally { jdbc.execute("ALTER TABLE mission_checklist_executions DROP CONSTRAINT fixture_reject_execution"); }
     }
 
-    @Test void concurrentCreationProducesOneMissionAndExactlyThreeExecutions() throws Exception {
+    @Test void concurrentPlanningCreationProducesOneMissionWithoutExecutions() throws Exception {
         String order = snapshotOrder(3);
         List<Object> outcomes = race(() -> missionService.createMission(request(order)).getId());
         assertEquals(outcomes.getFirst(), outcomes.getLast()); assertInstanceOf(String.class, outcomes.getFirst());
-        assertEquals(1, count(order)); assertEquals(3, executions.count());
+        assertEquals(1, count(order)); assertEquals(0, executions.count());
     }
 
     @Test void historicalContentSurvivesCatalogChangesAndExecutionUpdates() {
@@ -135,7 +134,7 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
         var request = orderRequest(service);
         String order = orderService.createOrder(request).getId();
         transaction.executeWithoutResult(tx -> orders.findById(order).orElseThrow().setOrderStatus(OrderStatus.APPROVED));
-        String mission = missionService.createMission(request(order)).getId(); setStatus(mission, MissionStatus.IN_FLIGHT);
+        String mission = legacyMission(request(order)).getId(); setStatus(mission, MissionStatus.IN_FLIGHT);
         var row = executionService.getByMissionId(mission).executions().getFirst();
         var edit = new com.ondemandmonitoring.checklist.dto.request.ChecklistRequest(); edit.setContent("New template");
         catalog.update(catalogId, edit); catalog.updateStatus(catalogId, false); assignments.unassign(service, catalogId);
@@ -153,15 +152,18 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
         var secondRow = executionService.getByMissionId(second).executions().getFirst();
         var jdbc = new JdbcTemplate(dataSource);
         String firstOrder = jdbc.queryForObject("select order_id from missions where id=?", String.class, first);
+        String secondAssignment = jdbc.queryForObject("select mission_checklist_assignment_id from mission_checklist_executions where id=?", String.class, secondRow.getId());
         jdbc.update("delete from mission_checklist_executions where id=?", secondRow.getId());
         var insertion = assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
-                "insert into mission_checklist_executions (id,created_at,version,mission_id,order_id,order_checklist_item_id,execution_status,assessment_status) values (?,now(),0,?,?,?,'PENDING','NOT_ASSESSED')",
-                UUID.randomUUID().toString(), first, firstOrder, secondRow.getOrderChecklistItemId()));
-        assertTrue(insertion.getMostSpecificCause().getMessage().contains("fk_execution_item_order"));
+                "insert into mission_checklist_executions (id,created_at,version,mission_id,order_id,order_checklist_item_id,mission_checklist_assignment_id,execution_status,assessment_status) values (?,now(),0,?,?,?,?,'PENDING','NOT_ASSESSED')",
+                UUID.randomUUID().toString(), first, firstOrder, secondRow.getOrderChecklistItemId(), secondAssignment));
+        assertEquals("23503", ((java.sql.SQLException) insertion.getMostSpecificCause()).getSQLState());
+        assertTrue(insertion.getMostSpecificCause().getMessage().contains("fk_execution_"));
         var modification = assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
                 "update mission_checklist_executions set order_checklist_item_id=? where id=?",
                 secondRow.getOrderChecklistItemId(), firstRow.getId()));
-        assertTrue(modification.getMostSpecificCause().getMessage().contains("fk_execution_item_order"));
+        assertEquals("23503", ((java.sql.SQLException) modification.getMostSpecificCause()).getSQLState());
+        assertTrue(modification.getMostSpecificCause().getMessage().contains("fk_execution_"));
         assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
                 "update mission_checklist_executions set mission_id=? where id=?", second, firstRow.getId()));
         error(ErrorCode.CHECKLIST_EXECUTION_PARENT_MISMATCH,
@@ -171,12 +173,13 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
     @Test void sqlEnforcesNullabilityUniquenessAndExecutionShape() {
         String mission = mission(1); var row = executionService.getByMissionId(mission).executions().getFirst();
         var jdbc = new JdbcTemplate(dataSource);
-        for (String column : List.of("mission_id", "order_id", "order_checklist_item_id", "execution_status", "assessment_status", "version")) {
+        for (String column : List.of("mission_id", "order_id", "order_checklist_item_id", "mission_checklist_assignment_id", "execution_status", "assessment_status", "version")) {
             assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
                     "update mission_checklist_executions set " + column + "=null where id=?", row.getId()));
         }
-        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
-                "insert into mission_checklist_executions (id,created_at,updated_at,version,mission_id,order_id,order_checklist_item_id,execution_status,assessment_status,observation,unable_to_verify_reason,started_at,completed_at,last_modified_by) select 'duplicate',created_at,updated_at,version,mission_id,order_id,order_checklist_item_id,execution_status,assessment_status,observation,unable_to_verify_reason,started_at,completed_at,last_modified_by from mission_checklist_executions"));
+        var duplicate = assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
+                "insert into mission_checklist_executions (id,created_at,updated_at,version,mission_id,order_id,order_checklist_item_id,mission_checklist_assignment_id,execution_status,assessment_status,observation,unable_to_verify_reason,started_at,completed_at,last_modified_by) select 'duplicate',created_at,updated_at,version,mission_id,order_id,order_checklist_item_id,mission_checklist_assignment_id,execution_status,assessment_status,observation,unable_to_verify_reason,started_at,completed_at,last_modified_by from mission_checklist_executions"));
+        assertEquals("23505", ((java.sql.SQLException) duplicate.getMostSpecificCause()).getSQLState());
         assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
                 "update mission_checklist_executions set execution_status='UNABLE_TO_VERIFY' where id=?", row.getId()));
         assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
@@ -269,7 +272,8 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
         assertEquals(pending.getId(), resubmitted.getId());
         var approved = resultService.approve(pending.getId(), new MissionResultReviewRequest());
         assertEquals(MissionResultApprovalStatus.APPROVED, approved.getApprovalStatus());
-        transaction.executeWithoutResult(tx -> assertEquals(OrderStatus.COMPLETED,
+        // An approved result does not implicitly finalize the aggregate execution plan.
+        transaction.executeWithoutResult(tx -> assertEquals(OrderStatus.APPROVED,
                 missions.findById(mission).orElseThrow().getOrder().getOrderStatus()));
         error(ErrorCode.CHECKLIST_EXECUTION_LOCKED, () -> resultService.upsert(mission, new MissionResultRequest()));
     }
@@ -281,7 +285,7 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
         setStatus(mission, MissionStatus.COMPLETED);
         var result = resultService.upsert(mission, new MissionResultRequest());
         new JdbcTemplate(dataSource).update("delete from mission_checklist_executions where id=?", row.getId());
-        error(ErrorCode.CHECKLIST_NOT_READY, () -> resultService.approve(result.getId(), new MissionResultReviewRequest()));
+        error(ErrorCode.CHECKLIST_EXECUTION_INTEGRITY_INVALID, () -> resultService.approve(result.getId(), new MissionResultReviewRequest()));
         assertEquals(MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL, resultService.getByMissionId(mission).getApprovalStatus());
     }
 
@@ -292,30 +296,20 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
                 resultService.approve(result.getId(), new MissionResultReviewRequest()).getApprovalStatus());
     }
 
-    @Test void migrationCreatesConstraintsWithoutBackfillAndIsRerunnable() {
-        String mission = mission(1); var row = executionService.getByMissionId(mission).executions().getFirst();
-        var jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("drop table mission_checklist_evidence");
-        jdbc.execute("drop table mission_checklist_executions");
-        applyExecutionMigration(); applyExecutionMigration();
-        assertEquals(0, executions.count()); assertEquals(1, missions.count()); assertEquals(1, snapshots.count());
-        assertFalse(executionService.getByMissionId(mission).readyForSubmission());
-        jdbc.update("insert into mission_checklist_executions (id,created_at,version,mission_id,order_id,order_checklist_item_id) select ?,now(),0,m.id,m.order_id,? from missions m where m.id=?",
-                UUID.randomUUID().toString(), row.getOrderChecklistItemId(), mission);
-        assertEquals(1, executions.count());
-        applyExecutionMigration(); assertEquals(1, executions.count());
-    }
 
     @Configuration @Import(OrderMissionPostgresTest.MissionConfig.class)
     static class ExecutionConfig {
         @Bean IMissionResultService resultService(MissionResultRepository results, MissionRepository missions,
                 OrderRepository orders, IMissionChecklistExecutionService executions, AuthenticatedUserResolver resolver,
-                IMissionAuthorizationService auth) {
+                IMissionAuthorizationService auth, OrderChecklistItemRepository items,
+                MissionChecklistAssignmentRepository assignments) {
             var media = mock(MediaAssetRepository.class);
             when(media.findByMissionIdOrderByCapturedAtDesc(anyString())).thenReturn(List.of());
             return new MissionResultService(results, missions, media, mock(IMediaAssetService.class),
-                    org.mapstruct.factory.Mappers.getMapper(MissionResultMapper.class), orders, executions, resolver, auth,
-                    mock(com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService.class));
+                    org.mapstruct.factory.Mappers.getMapper(MissionResultMapper.class),
+                    new com.ondemandmonitoring.order.service.impl.OrderExecutionCompletionPolicy(orders, missions, results, executions,
+                            items, assignments, new com.ondemandmonitoring.mission.service.impl.ExecutionPlanCoverageService()),
+                    executions, resolver, auth);
         }
     }
 }

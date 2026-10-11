@@ -26,9 +26,13 @@ public class PaymentWebhookProcessor implements IPaymentWebhookService {
     private final MissionRepository missions;
     private final IMissionPaymentEligibilityService eligibility;
     private final IDeliveryWorkflowService deliveryWorkflow;
+    private final com.ondemandmonitoring.order.repository.OrderRepository orders;
 
     @Transactional
     public PaymentWebhookResult process(VerifiedWebhook webhook) {
+        String orderId = payments.findOrderIdByTransactionReference(webhook.transactionReference()).orElse(null);
+        if (orderId == null) return PaymentWebhookResult.ORDER_NOT_FOUND;
+        orders.findByIdForUpdate(orderId).orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND));
         Payment payment = payments.findByTransactionReferenceForUpdate(webhook.transactionReference()).orElse(null);
         if (payment == null || payment.getProvider() != PaymentProvider.VNPAY) {
             return PaymentWebhookResult.ORDER_NOT_FOUND;
@@ -66,7 +70,11 @@ public class PaymentWebhookProcessor implements IPaymentWebhookService {
         invoice.setRemainingAmount(invoice.getTotalAmount().subtract(paid).max(BigDecimal.ZERO));
         invoice.setStatus(paid.signum() == 0 ? InvoiceStatus.ISSUED
                 : paid.compareTo(invoice.getTotalAmount()) >= 0 ? InvoiceStatus.PAID : InvoiceStatus.PARTIALLY_PAID);
-        missions.findByOrderIdForUpdate(invoice.getOrder().getId()).ifPresent(mission -> eligibility.unlockIfEligible(invoice, mission));
+        for (String missionId : missions.findIdsByOrderIdOrderById(invoice.getOrder().getId()).stream().sorted().toList()) {
+            var mission = missions.findByIdForUpdate(missionId)
+                    .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
+            eligibility.unlockIfEligible(invoice, mission);
+        }
         if (payment.getPaymentType() == PaymentType.FINAL_PAYMENT && invoice.getStatus() == InvoiceStatus.PAID) {
             deliveryWorkflow.confirmFinalPayment(invoice.getOrder().getId());
         }

@@ -1,11 +1,10 @@
 package com.ondemandmonitoring.mission.mapper;
 
-import com.ondemandmonitoring.device.domain.Device;
-import com.ondemandmonitoring.device.domain.DeviceModel;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.domain.MissionStaffAssignment;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
+import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionStaffAssignmentResponse;
 import com.ondemandmonitoring.mission.enums.MediaType;
 import com.ondemandmonitoring.mission.enums.MissionStaffRole;
@@ -15,6 +14,8 @@ import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepositor
 import com.ondemandmonitoring.order.domain.OrderDeliverable;
 import lombok.RequiredArgsConstructor;
 import org.mapstruct.Named;
+import org.mapstruct.AfterMapping;
+import org.mapstruct.MappingTarget;
 import org.springframework.stereotype.Component;
 
 import java.util.Comparator;
@@ -107,67 +108,24 @@ public class MissionMapperHelper {
         return summary == null || summary.isBlank() ? null : summary;
     }
 
-    @Named("missionDeviceId")
-    public String getDeviceId(Mission mission) {
-        MissionDeviceAssignment assignment = getCurrentDeviceAssignment(mission).orElse(null);
-        if (assignment == null || assignment.getDevice() == null) {
-            return null;
+    @AfterMapping
+    public void populateResources(Mission mission, @MappingTarget MissionResponse.MissionResponseBuilder response) {
+        // Preserve existing current/history fallback exactly, but resolve it once per DTO.
+        var device = getCurrentDeviceAssignment(mission).map(MissionDeviceAssignment::getDevice).orElse(null);
+        if (device != null) {
+            response.deviceId(device.getId()).deviceCode(device.getDeviceCode()).deviceName(device.getName())
+                    .deviceSerialNumber(device.getSerialNumber())
+                    .deviceStatus(device.getStatus() == null ? null : device.getStatus().name());
+            var model = device.getDeviceModel();
+            if (model != null) response.deviceModelCode(model.getCode()).deviceModelName(model.getModelName())
+                    .deviceManufacturer(model.getManufacturer())
+                    .devicePayload(firstPayloadValue(model.getSpecsMetadata()).orElse(null));
         }
-        return assignment.getDevice().getId();
+        var staffId = getStaffId(mission);
+        response.staffId(staffId).operatorId(staffId);
     }
 
-    @Named("missionDeviceCode")
-    public String getDeviceCode(Mission mission) {
-        MissionDeviceAssignment assignment = getCurrentDeviceAssignment(mission).orElse(null);
-        if (assignment == null || assignment.getDevice() == null) {
-            return null;
-        }
-        return assignment.getDevice().getDeviceCode();
-    }
-
-    @Named("missionDeviceName")
-    public String getDeviceName(Mission mission) {
-        return getMissionDevice(mission).map(Device::getName).orElse(null);
-    }
-
-    @Named("missionDeviceSerialNumber")
-    public String getDeviceSerialNumber(Mission mission) {
-        return getMissionDevice(mission).map(Device::getSerialNumber).orElse(null);
-    }
-
-    @Named("missionDeviceStatus")
-    public String getDeviceStatus(Mission mission) {
-        return getMissionDevice(mission)
-                .map(Device::getStatus)
-                .map(Enum::name)
-                .orElse(null);
-    }
-
-    @Named("missionDeviceModelCode")
-    public String getDeviceModelCode(Mission mission) {
-        return getMissionDeviceModel(mission).map(DeviceModel::getCode).orElse(null);
-    }
-
-    @Named("missionDeviceModelName")
-    public String getDeviceModelName(Mission mission) {
-        return getMissionDeviceModel(mission).map(DeviceModel::getModelName).orElse(null);
-    }
-
-    @Named("missionDeviceManufacturer")
-    public String getDeviceManufacturer(Mission mission) {
-        return getMissionDeviceModel(mission).map(DeviceModel::getManufacturer).orElse(null);
-    }
-
-    @Named("missionDevicePayload")
-    public String getDevicePayload(Mission mission) {
-        return getMissionDeviceModel(mission)
-                .map(DeviceModel::getSpecsMetadata)
-                .flatMap(this::firstPayloadValue)
-                .orElse(null);
-    }
-
-    @Named("missionStaffId")
-    public String getStaffId(Mission mission) {
+    private String getStaffId(Mission mission) {
         MissionStaffAssignment assignment = getCurrentStaffAssignment(mission, MissionStaffRole.OPERATOR)
                 .or(() -> getCurrentStaffAssignment(mission, MissionStaffRole.PILOT))
                 .orElse(null);
@@ -209,16 +167,6 @@ public class MissionMapperHelper {
         return !current.isEmpty()
                 ? Optional.of(current.get(0))
                 : missionDeviceAssignmentRepository.findFirstByMissionIdOrderByCreatedAtDesc(mission.getId());
-    }
-
-    private Optional<Device> getMissionDevice(Mission mission) {
-        return getCurrentDeviceAssignment(mission)
-                .map(MissionDeviceAssignment::getDevice);
-    }
-
-    private Optional<DeviceModel> getMissionDeviceModel(Mission mission) {
-        return getMissionDevice(mission)
-                .map(Device::getDeviceModel);
     }
 
     private Optional<MissionStaffAssignment> getCurrentStaffAssignment(Mission mission, MissionStaffRole role) {

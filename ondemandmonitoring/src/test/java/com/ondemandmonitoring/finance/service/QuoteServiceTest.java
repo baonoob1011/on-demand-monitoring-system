@@ -93,7 +93,7 @@ class QuoteServiceTest {
                 .isInstanceOf(ApiException.class).extracting("errorCode").isEqualTo(ErrorCode.QUOTE_NOT_APPROVED);
     }
 
-    @Test void acceptingApprovedQuoteCreatesThirtyPercentInvoiceAndWaitingMission() {
+    @Test void acceptingApprovedQuoteCreatesThirtyPercentInvoiceWithoutImplicitMission() {
         User customer = new User(); customer.setId("u1"); order.setCustomer(customer); when(users.getCurrentUser()).thenReturn(customer);
         var preferred = new com.ondemandmonitoring.warehouse.domain.PreferredTime();
         preferred.setStartTime(java.time.LocalTime.of(8, 0)); preferred.setEndTime(java.time.LocalTime.of(10, 0));
@@ -104,16 +104,15 @@ class QuoteServiceTest {
         when(quotes.findFirstByOrderIdAndStatusInOrderByQuoteVersionDesc("o1", List.of(QuoteStatus.APPROVED)))
                 .thenReturn(Optional.of(quote));
         when(invoices.save(any())).thenAnswer(call -> call.getArgument(0));
-        when(missions.findByOrderIdForUpdate("o1")).thenReturn(Optional.empty());
-        when(missions.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(missions.findIdsByOrderIdOrderById("o1")).thenReturn(List.of());
 
         var result = service.accept("o1", "q1");
 
         assertThat(result.depositAmount()).isEqualByComparingTo("2550000");
         assertThat(result.remainingAmount()).isEqualByComparingTo("8500000");
         assertThat(quote.getStatus()).isEqualTo(QuoteStatus.ACCEPTED_BY_CUSTOMER);
-        verify(missions).save(argThat(mission -> mission.getStatus() == com.ondemandmonitoring.mission.enums.MissionStatus.WAITING_DEPOSIT));
-        verify(executions).initialize(any());
+        verify(missions, never()).save(any());
+        verifyNoInteractions(executions);
     }
 
     private OrderChecklistItem item(String id, ChecklistReviewStatus status) {

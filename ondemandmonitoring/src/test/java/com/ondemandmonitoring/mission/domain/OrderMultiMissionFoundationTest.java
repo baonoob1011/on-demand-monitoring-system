@@ -1,0 +1,65 @@
+package com.ondemandmonitoring.mission.domain;
+
+import com.ondemandmonitoring.common.entity.BaseEntity;
+import com.ondemandmonitoring.order.domain.Order;
+import com.ondemandmonitoring.order.enums.ExecutionPlanStatus;
+import jakarta.persistence.*;
+import jakarta.validation.Validation;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+class OrderMultiMissionFoundationTest {
+    @Test void orderDefaultsDoNotReuseOptimisticVersion() throws Exception {
+        for (Order order : new Order[] {new Order(), Order.builder().build()}) {
+            assertEquals(ExecutionPlanStatus.DRAFT, order.getExecutionPlanStatus());
+            assertEquals(0, order.getExecutionPlanRevision());
+            assertNull(order.getVersion());
+            order.setVersion(8L);
+            order.setExecutionPlanRevision(3);
+            assertEquals(8L, order.getVersion());
+        }
+        assertNotNull(BaseEntity.class.getDeclaredField("version").getAnnotation(Version.class));
+    }
+
+    @Test void relationAllowsMultiMissionWithoutHibernateRecreatingPhaseTwoGate() throws Exception {
+        var field = Mission.class.getDeclaredField("order");
+        assertEquals(FetchType.LAZY, field.getAnnotation(ManyToOne.class).fetch());
+        assertFalse(field.getAnnotation(ManyToOne.class).optional());
+        assertFalse(field.getAnnotation(JoinColumn.class).nullable());
+        assertFalse(field.getAnnotation(JoinColumn.class).unique());
+        assertFalse(java.util.Arrays.stream(Mission.class.getAnnotation(Table.class).uniqueConstraints())
+                .anyMatch(c -> c.name().equals("uk_missions_order")));
+    }
+
+    @Test void newMissionFieldsAreNullableForUnchangedRuntime() throws Exception {
+        var mission = new Mission();
+        assertNull(mission.getTargetPoint());
+        assertNull(mission.getTargetArea());
+        assertNull(mission.getCreationIdempotencyKey());
+        assertNull(mission.getCreationRequestHash());
+        assertNull(mission.getReplacesMissionId());
+        assertNull(mission.getFinalizedPlanRevision());
+        assertEquals("geometry(Point,4326)", Mission.class.getDeclaredField("targetPoint").getAnnotation(Column.class).columnDefinition());
+        assertEquals("geometry(Polygon,4326)", Mission.class.getDeclaredField("targetArea").getAnnotation(Column.class).columnDefinition());
+    }
+
+    @Test void executionAssignmentIsMandatoryAndExistingIdentityRemains() throws Exception {
+        assertNull(new MissionChecklistExecution().getMissionChecklistAssignmentId());
+        assertFalse(MissionChecklistExecution.class.getDeclaredField("missionChecklistAssignment")
+                .getAnnotation(OneToOne.class).optional());
+        assertFalse(MissionChecklistExecution.class.getDeclaredField("missionChecklistAssignmentId").getAnnotation(Column.class).nullable());
+        for (String name : new String[] {"missionId", "orderId", "orderChecklistItemId"}) {
+            assertFalse(MissionChecklistExecution.class.getDeclaredField(name).getAnnotation(Column.class).nullable());
+        }
+    }
+
+    @Test void negativePlanningValuesFailValidation() {
+        try (var factory = Validation.buildDefaultValidatorFactory()) {
+            var order = new Order(); order.setExecutionPlanRevision(-1);
+            assertTrue(factory.getValidator().validate(order).stream()
+                    .anyMatch(v -> v.getPropertyPath().toString().equals("executionPlanRevision")));
+            var assignment = new MissionChecklistAssignment(); assignment.setDisplayOrder(-1);
+            assertFalse(factory.getValidator().validate(assignment).isEmpty());
+        }
+    }
+}

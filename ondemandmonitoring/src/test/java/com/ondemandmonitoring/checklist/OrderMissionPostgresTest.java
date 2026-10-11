@@ -33,6 +33,21 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
     @Autowired MissionRepository missions;
     @Autowired IMissionService missionService;
 
+    static com.ondemandmonitoring.finance.repository.InvoiceRepository paidInvoices() {
+        var repository = mock(com.ondemandmonitoring.finance.repository.InvoiceRepository.class);
+        var invoice = mock(com.ondemandmonitoring.finance.domain.Invoice.class);
+        var quote = mock(com.ondemandmonitoring.finance.domain.Quote.class);
+        when(quote.getStatus()).thenReturn(com.ondemandmonitoring.finance.enums.QuoteStatus.ACCEPTED_BY_CUSTOMER);
+        when(invoice.getQuote()).thenReturn(quote);
+        when(repository.findByOrderId(anyString())).thenReturn(java.util.Optional.of(invoice));
+        return repository;
+    }
+    static com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService paidEligibility() {
+        var eligibility = mock(com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService.class);
+        when(eligibility.isDepositSatisfied(any())).thenReturn(true);
+        return eligibility;
+    }
+
     @Override @BeforeEach void prepare() {
         new JdbcTemplate(dataSource).execute("TRUNCATE missions CASCADE");
         super.prepare();
@@ -47,10 +62,43 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
     MissionCreateRequest request(String orderId) {
         var request = new MissionCreateRequest();
         request.setOrderId(orderId);
+        request.setIdempotencyKey(UUID.nameUUIDFromBytes(orderId.getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString());
+        request.setExpectedPlanRevision(0L);
+        request.setScopeLabel("Whole Order scope");
         var start = java.time.LocalDate.now().plusDays(1).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
         request.setScheduledStartAt(start);
         request.setScheduledEndAt(start.plusSeconds(3600));
         return request;
+    }
+
+    /** Explicit historical fixture, not the new planning creation command. */
+    MissionResponse legacyMission(MissionCreateRequest request) {
+        return transaction.execute(tx -> {
+            var mission = new com.ondemandmonitoring.mission.domain.Mission();
+            mission.setOrder(orders.findById(request.getOrderId()).orElseThrow());
+            mission.setMissionCode("legacy-" + UUID.randomUUID());
+            mission.setStatus(com.ondemandmonitoring.mission.enums.MissionStatus.RESOURCE_ASSIGNING);
+            mission.setTargetPoint(mission.getOrder().getPoint());
+            mission.setTargetArea(mission.getOrder().getTargetArea());
+            mission.setScheduledStartAt(request.getScheduledStartAt());
+            mission.setScheduledEndAt(request.getScheduledEndAt());
+            mission = missions.saveAndFlush(mission);
+            var executions = new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(
+                    org.springframework.orm.jpa.SharedEntityManagerCreator.createSharedEntityManager(entityManagerFactory))
+                    .getRepository(com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository.class);
+            var assignmentRepository = new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(entityManagerFactory))
+                    .getRepository(com.ondemandmonitoring.mission.repository.MissionChecklistAssignmentRepository.class);
+            // Explicit historical fixture only: production materializes selected Assignments, not whole Orders.
+            for (var item : snapshots.findAllByOrderIdInOrderByDisplayOrderAscIdAsc(java.util.List.of(mission.getOrder().getId()))) {
+                var assignment = new com.ondemandmonitoring.mission.domain.MissionChecklistAssignment();
+                assignment.setMissionId(mission.getId()); assignment.setOrderId(mission.getOrder().getId());
+                assignment.setOrderChecklistItemId(item.getId()); assignment.setOrderChecklistItem(item);
+                assignment.setDisplayOrder(item.getDisplayOrder()); assignment.setAssignedAt(java.time.Instant.now());
+                assignmentRepository.saveAndFlush(assignment);
+            }
+            new com.ondemandmonitoring.mission.service.impl.MissionChecklistMaterializationServiceImpl(assignmentRepository, executions).materialize(mission);
+            return MissionResponse.builder().id(mission.getId()).build();
+        });
     }
 
     long count(String orderId) {
@@ -74,9 +122,10 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
     @Test void bothCreationControllersUseSamePersistedMission() {
         String id = order(OrderStatus.APPROVED);
         var general = new MissionController(missionService, null, null);
-        var nested = new OrderMissionController(missionService);
+        var nested = new OrderMissionController(missionService, null);
         var first = general.createMission(request(id)).getBody().getData();
-        var second = nested.createMissionForOrder(id, request("ignored-body-id")).getBody().getData();
+        var retry = request(id); retry.setOrderId("ignored-body-id");
+        var second = nested.createMissionForOrder(id, retry).getBody().getData();
         assertEquals(first.getId(), second.getId());
         assertEquals(1, count(id));
     }
@@ -88,38 +137,41 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
         assertEquals(0, count(id));
     }
 
-    @Test void databaseRejectsDuplicateEvenWhenServiceIsBypassed() {
+    @Test void databaseRejectsDuplicateCreationKeyButAllowsSiblingMissions() {
         String id = order(OrderStatus.APPROVED);
         missionService.createMission(request(id));
         var jdbc = new JdbcTemplate(dataSource);
         var exception = assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
-                INSERT INTO missions(id, mission_code, order_id, status, scheduled_start_at, scheduled_end_at, created_at, version)
-                VALUES (?, ?, ?, 'RESOURCE_ASSIGNING', now(), now() + interval '1 hour', now(), 0)
+                INSERT INTO missions(id,mission_code,order_id,status,scheduled_start_at,scheduled_end_at,
+                    created_at,version,creation_idempotency_key,creation_request_hash)
+                SELECT ?,?,order_id,status,scheduled_start_at,scheduled_end_at,now(),0,
+                    creation_idempotency_key,creation_request_hash FROM missions WHERE order_id=?
                 """, UUID.randomUUID().toString(), "duplicate-code", id));
-        // Hibernate may generate an implicit OneToOne UNIQUE name; assert the
-        // actual violation and column rather than relying on the DDL naming strategy.
         assertEquals("23505", ((java.sql.SQLException) exception.getMostSpecificCause()).getSQLState());
-        assertTrue(exception.getMostSpecificCause().getMessage().contains("(order_id)"));
-        assertEquals(1, count(id));
+        assertTrue(exception.getMostSpecificCause().getMessage().contains("uk_mission_creation_command"));
+        var sibling = request(id);
+        sibling.setIdempotencyKey(UUID.randomUUID().toString());
+        sibling.setExpectedPlanRevision(1L);
+        assertNotEquals(missions.findAllByOrderIdOrderByScheduledStartAtAscIdAsc(id).getFirst().getId(),
+                missionService.createMission(sibling).getId());
+        assertEquals(2, count(id));
     }
 
-    @Test void activeMappingIsMandatoryLazyUnidirectionalOneToOne() throws Exception {
+    @Test void mappingIsMandatoryLazyManyToOne() throws Exception {
         var field = com.ondemandmonitoring.mission.domain.Mission.class.getDeclaredField("order");
-        var mapping = field.getAnnotation(jakarta.persistence.OneToOne.class);
+        var mapping = field.getAnnotation(jakarta.persistence.ManyToOne.class);
         assertNotNull(mapping);
-        assertNull(field.getAnnotation(jakarta.persistence.ManyToOne.class));
+        assertNull(field.getAnnotation(jakarta.persistence.OneToOne.class));
         assertEquals(jakarta.persistence.FetchType.LAZY, mapping.fetch());
         assertFalse(mapping.optional());
         assertEquals(0, mapping.cascade().length);
-        assertFalse(mapping.orphanRemoval());
-        assertEquals("", mapping.mappedBy());
         var join = field.getAnnotation(jakarta.persistence.JoinColumn.class);
-        assertFalse(join.nullable()); assertTrue(join.unique());
+        assertFalse(join.nullable()); assertFalse(join.unique());
         assertTrue(java.util.Arrays.stream(com.ondemandmonitoring.order.domain.Order.class.getDeclaredFields())
                 .noneMatch(f -> f.getType() == com.ondemandmonitoring.mission.domain.Mission.class));
         var attribute = entityManagerFactory.getMetamodel().entity(com.ondemandmonitoring.mission.domain.Mission.class)
                 .getSingularAttribute("order");
-        assertEquals(jakarta.persistence.metamodel.Attribute.PersistentAttributeType.ONE_TO_ONE,
+        assertEquals(jakarta.persistence.metamodel.Attribute.PersistentAttributeType.MANY_TO_ONE,
                 attribute.getPersistentAttributeType());
         assertFalse(attribute.isOptional());
         String id = order(OrderStatus.APPROVED);
@@ -155,50 +207,6 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
         assertEquals(1, count(id));
     }
 
-    @Test void manualMigrationIsSafeRepeatableAndRefusesExistingDuplicates() throws Exception {
-        String schema = SCHEMA + "_migration";
-        var jdbc = new JdbcTemplate(dataSource);
-        String sql = new org.springframework.core.io.ClassPathResource(
-                "seeddata/migrations/enforce_order_mission_one_to_one.sql")
-                .getContentAsString(java.nio.charset.StandardCharsets.UTF_8).replace("public.", schema + ".");
-        jdbc.execute("CREATE SCHEMA " + schema);
-        try {
-            jdbc.execute("CREATE TABLE " + schema + ".orders(id varchar PRIMARY KEY)");
-            jdbc.update("INSERT INTO " + schema + ".orders VALUES ('order-x')");
-            jdbc.execute("CREATE TABLE " + schema + ".missions(id varchar PRIMARY KEY, order_id varchar REFERENCES "
-                    + schema + ".orders(id))");
-            // Empty database, then repeat on an existing database with data: no loss.
-            jdbc.execute(sql);
-            assertEquals("NO", jdbc.queryForObject("SELECT is_nullable FROM information_schema.columns "
-                    + "WHERE table_schema = ? AND table_name = 'missions' AND column_name = 'order_id'", String.class, schema));
-            jdbc.update("INSERT INTO " + schema + ".missions VALUES ('first', 'order-x')");
-            jdbc.execute(sql);
-            assertThrows(DataIntegrityViolationException.class,
-                    () -> jdbc.update("INSERT INTO " + schema + ".missions VALUES ('second', 'order-x')"));
-            jdbc.execute("ALTER TABLE " + schema + ".missions DROP CONSTRAINT uk_missions_order");
-            jdbc.update("INSERT INTO " + schema + ".missions VALUES ('second', 'order-x')");
-            var duplicateGuard = assertThrows(org.springframework.dao.DataAccessException.class, () -> jdbc.execute(sql));
-            assertTrue(duplicateGuard.getMostSpecificCause().getMessage().contains("Duplicate missions per Order"));
-            assertEquals(2, jdbc.queryForObject("SELECT count(*) FROM " + schema + ".missions", Integer.class));
-            assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM pg_constraint WHERE conrelid = '"
-                    + schema + ".missions'::regclass AND contype = 'u'", Integer.class));
-            // A NULL legacy row must also abort without silently repairing data.
-            jdbc.execute("DELETE FROM " + schema + ".missions");
-            jdbc.execute("ALTER TABLE " + schema + ".missions ALTER COLUMN order_id DROP NOT NULL");
-            jdbc.update("INSERT INTO " + schema + ".missions VALUES ('without-order', NULL)");
-            var nullGuard = assertThrows(org.springframework.dao.DataAccessException.class, () -> jdbc.execute(sql));
-            assertTrue(nullGuard.getMostSpecificCause().getMessage().contains("Missions without an Order"));
-            assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM " + schema
-                    + ".missions WHERE order_id IS NULL", Integer.class));
-            assertEquals("YES", jdbc.queryForObject("SELECT is_nullable FROM information_schema.columns "
-                    + "WHERE table_schema = ? AND table_name = 'missions' AND column_name = 'order_id'", String.class, schema));
-            assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM pg_constraint WHERE conrelid = '"
-                    + schema + ".missions'::regclass AND contype = 'u'", Integer.class));
-        } finally {
-            // Explicit generated schema owned by this test only; never public or the database itself.
-            jdbc.execute("DROP SCHEMA " + schema + " CASCADE");
-        }
-    }
 
     @Test void concurrentCreationBlocksOnOrderAndReturnsSameMission() throws Exception {
         String id = order(OrderStatus.APPROVED);
@@ -221,7 +229,8 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
                 waiting = jdbc.queryForObject("""
                         SELECT count(*) FROM pg_stat_activity
                         WHERE datname = current_database() AND usename = current_user
-                          AND wait_event_type = 'Lock' AND query LIKE '%orders%' AND query LIKE '%for%'
+                          AND wait_event_type = 'Lock'
+                          AND cardinality(pg_blocking_pids(pid)) > 0
                         """, Integer.class);
                 Thread.sleep(20);
             }
@@ -256,8 +265,8 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
             when(eligibility.isDepositSatisfied(invoice)).thenReturn(true);
             // Unused lifecycle collaborators are not loaded: only the real transactional creation path is exercised.
             return new MissionService(null, missions, null, null, mapper, null, null, null, null, null,
-                    null, null, orders, invoiceRepository, eligibility, null, null, null, null, null, null, null,
-                    null, null, null, null, executions);
+                    null, null, orders, invoiceRepository, eligibility, null, null, null, null, null, null, null, null, null, null, null, executions,
+                    org.mockito.Mockito.mock(com.ondemandmonitoring.mission.service.IResourceReservationService.class), null);
         }
         @Bean com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository executions(EntityManagerFactory factory) {
             return new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory))
@@ -274,15 +283,23 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
             return auth;
         }
         @Bean com.ondemandmonitoring.mission.service.IMissionChecklistExecutionService executionService(
-                MissionRepository missions, OrderChecklistItemRepository items,
+                MissionRepository missions, com.ondemandmonitoring.mission.service.IMissionChecklistScopeService scope,
                 com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository executions,
                 com.ondemandmonitoring.mission.repository.MissionResultRepository results,
                 com.ondemandmonitoring.mission.service.IMissionAuthorizationService auth,
                 com.ondemandmonitoring.user.service.AuthenticatedUserResolver resolver,
                 com.ondemandmonitoring.mission.service.IChecklistEvidenceService evidenceService) {
             return new com.ondemandmonitoring.mission.service.impl.MissionChecklistExecutionServiceImpl(
-                    missions, items, executions, results, auth, resolver,
+                    missions, scope, executions, results, auth, resolver,
                     org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.mission.mapper.MissionChecklistExecutionMapper.class), evidenceService);
+        }
+        @Bean com.ondemandmonitoring.mission.repository.MissionChecklistAssignmentRepository missionAssignments(EntityManagerFactory factory) {
+            return new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory)).getRepository(com.ondemandmonitoring.mission.repository.MissionChecklistAssignmentRepository.class);
+        }
+        @Bean com.ondemandmonitoring.mission.service.IMissionChecklistScopeService checklistScope(
+                com.ondemandmonitoring.mission.repository.MissionChecklistAssignmentRepository assignments,
+                com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository executions) {
+            return new com.ondemandmonitoring.mission.service.impl.MissionChecklistScopeServiceImpl(assignments, executions);
         }
         @Bean com.ondemandmonitoring.mission.repository.MissionChecklistEvidenceRepository evidenceRepository(EntityManagerFactory factory) {
             return new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory)).getRepository(com.ondemandmonitoring.mission.repository.MissionChecklistEvidenceRepository.class);

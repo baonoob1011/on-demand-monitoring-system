@@ -21,7 +21,9 @@ public interface MissionDeviceAssignmentRepository extends JpaRepository<Mission
 
     Optional<MissionDeviceAssignment> findFirstByMissionIdOrderByCreatedAtDesc(String missionId);
 
-    Optional<MissionDeviceAssignment> findByMissionIdAndIsCurrentTrue(String missionId);
+    // MAIN is singular; current SUPPORT assignments may coexist with it.
+    Optional<MissionDeviceAssignment> findByMissionIdAndDeviceRoleAndIsCurrentTrue(
+            String missionId, DeviceRole deviceRole);
 
     List<MissionDeviceAssignment> findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc(String missionId);
 

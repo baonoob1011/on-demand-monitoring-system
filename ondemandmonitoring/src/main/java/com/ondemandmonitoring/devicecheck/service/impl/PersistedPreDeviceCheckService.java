@@ -38,10 +38,11 @@ public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckS
     @Override
     @PreAuthorize("@missionAuthorizationService.canOperatePayload(#missionId)")
     public PersistedPreDeviceCheckResponse start(String missionId) {
-        Mission mission = missionRepository.findById(missionId)
+        Mission mission = missionRepository.findByIdForUpdate(missionId)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.MISSION_NOT_FOUND,
                         "Mission not found: " + missionId));
+        com.ondemandmonitoring.mission.service.impl.MissionRuntimeGate.requireOperationalCommandsAllowed(mission);
         if (mission.getStatus() != com.ondemandmonitoring.mission.enums.MissionStatus.CONNECTED
                 && mission.getStatus() != com.ondemandmonitoring.mission.enums.MissionStatus.PREFLIGHT_CHECKING) {
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID, "Pre-device inspection requires a connected mission");
@@ -115,6 +116,12 @@ public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckS
     @Override
     @PreAuthorize("@deviceCheckAuthorizationService.canInspectPreCheck(#id)")
     public PersistedPreDeviceCheckResponse update(String id, String type, PreDeviceCheckItemUpdateRequest request) {
+        // Mission precedes the run lock, matching completion and safe-stop serialization.
+        PersistedPreDeviceCheck existing = runRepository.findById(id)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Preflight check not found: " + id));
+        Mission mission = missionRepository.findByIdForUpdate(existing.getMission().getId())
+                .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
+        com.ondemandmonitoring.mission.service.impl.MissionRuntimeGate.requireOperationalCommandsAllowed(mission);
         PersistedPreDeviceCheck run = runRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.RESOURCE_NOT_FOUND,

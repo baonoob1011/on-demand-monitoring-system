@@ -59,7 +59,9 @@ class DeviceConnectionServiceTest {
                 missionStaffAssignmentRepository,
                 deviceRepository,
                 missionMapper
-        );
+        , com.ondemandmonitoring.mission.service.ScopeTestFixture.validScope(),
+                mock(com.ondemandmonitoring.mission.service.IResourceReservationService.class));
+        lenient().when(missionRepository.findByIdForUpdate(anyString())).thenAnswer(call -> missionRepository.findById(call.getArgument(0)));
 
         lenient().when(missionMapper.toResponse(any())).thenAnswer(inv -> {
             Mission m = inv.getArgument(0);

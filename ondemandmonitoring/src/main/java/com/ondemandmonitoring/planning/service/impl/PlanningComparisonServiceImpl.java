@@ -7,6 +7,7 @@ import com.ondemandmonitoring.device.repository.DeviceTelemetryRepository;
 import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
+import com.ondemandmonitoring.mission.enums.DeviceRole;
 import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
 import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
@@ -223,7 +224,8 @@ public class PlanningComparisonServiceImpl implements PlanningComparisonService 
     }
 
     private Optional<Double> resolveAvailableBatteryPercent(String missionId) {
-        Optional<String> assignedDeviceId = missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue(missionId)
+        Optional<String> assignedDeviceId = missionDeviceAssignmentRepository
+                .findByMissionIdAndDeviceRoleAndIsCurrentTrue(missionId, DeviceRole.MAIN)
                 .map(MissionDeviceAssignment::getDevice)
                 .map(device -> device.getId())
                 .filter(deviceId -> deviceId != null && !deviceId.isBlank());

@@ -17,6 +17,7 @@ import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.domain.PlanWaypoint;
 import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
+import com.ondemandmonitoring.mission.enums.DeviceRole;
 import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
 import com.ondemandmonitoring.mission.enums.WaypointReason;
 import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
@@ -336,7 +337,8 @@ class MissionPlanningServiceTest {
         when(planningEnvironment.sample(0.0, -280.0)).thenReturn(homeSample(12.0));
         when(directRoutePlanner.plan(0.0, -280.0, 260.0, 230.0)).thenReturn(feasibleRoute());
         when(missionEnergyEstimator.estimate(Mockito.any())).thenReturn(energyEstimate());
-        when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1"))
+        when(missionDeviceAssignmentRepository.findByMissionIdAndDeviceRoleAndIsCurrentTrue(
+                "mission-1", DeviceRole.MAIN))
                 .thenReturn(Optional.of(assignment));
         when(deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc("mission-1", "CONNECTED"))
                 .thenReturn(Optional.of(connection));
@@ -388,7 +390,8 @@ class MissionPlanningServiceTest {
         assignment.setDevice(device);
 
         arrangeFeasiblePlanning(mission, energyEstimateWithBatteryUse(18.0));
-        when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1"))
+        when(missionDeviceAssignmentRepository.findByMissionIdAndDeviceRoleAndIsCurrentTrue(
+                "mission-1", DeviceRole.MAIN))
                 .thenReturn(Optional.of(assignment));
         when(deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc("mission-1", "CONNECTED"))
                 .thenReturn(Optional.empty());
@@ -737,7 +740,8 @@ class MissionPlanningServiceTest {
         telemetry.setBatteryPercent(batteryPercent);
 
         arrangeFeasiblePlanning(mission, estimate);
-        when(missionDeviceAssignmentRepository.findByMissionIdAndIsCurrentTrue("mission-1"))
+        when(missionDeviceAssignmentRepository.findByMissionIdAndDeviceRoleAndIsCurrentTrue(
+                "mission-1", DeviceRole.MAIN))
                 .thenReturn(Optional.of(assignment));
         when(deviceConnectionRepository.findTopByMissionIdAndConnectionStatusOrderByConnectedAtDesc("mission-1", "CONNECTED"))
                 .thenReturn(Optional.of(connection));

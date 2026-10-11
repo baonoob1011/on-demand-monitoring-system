@@ -25,5 +25,6 @@ public class CustomerMediaResponse {
     long fileSize;
     Instant capturedAt;
     Instant availableAt;
+    /** Null until full payment and Manager delivery; AVAILABLE metadata remains visible. */
     String downloadUrl;
 }

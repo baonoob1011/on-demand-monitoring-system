@@ -9,6 +9,7 @@ import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.domain.PlanWaypoint;
+import com.ondemandmonitoring.mission.enums.DeviceRole;
 import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
 import com.ondemandmonitoring.mission.enums.WaypointReason;
@@ -367,7 +368,7 @@ public class MissionPlanningServiceImpl implements MissionPlanningService {
             return new BatterySnapshot(false, Optional.empty());
         }
         Optional<MissionDeviceAssignment> assignment = missionDeviceAssignmentRepository
-                .findByMissionIdAndIsCurrentTrue(missionId);
+                .findByMissionIdAndDeviceRoleAndIsCurrentTrue(missionId, DeviceRole.MAIN);
         if (assignment.isEmpty()) {
             return new BatterySnapshot(false, Optional.empty());
         }

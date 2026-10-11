@@ -57,6 +57,7 @@ class MissionChecklistExecutionHttpTest {
         execution = new MissionChecklistExecution(); execution.setId("e"); execution.setVersion(0L);
         execution.setMissionId("m"); execution.setOrderId("o"); execution.setOrderChecklistItemId("i");
         execution.setMission(mission); execution.setOrderChecklistItem(item);
+        ScopeTestFixture.link(execution, mission);
         when(resolver.getCurrentUser()).thenReturn(actor); when(resolver.getCurrentUserId()).thenReturn("actor");
         when(missions.findById("m")).thenReturn(Optional.of(mission));
         when(missions.findByIdForUpdate("m")).thenReturn(Optional.of(mission));
@@ -139,7 +140,7 @@ class MissionChecklistExecutionHttpTest {
         @Bean IMissionChecklistExecutionService checklistService(MissionRepository missions,
                 OrderChecklistItemRepository items, MissionChecklistExecutionRepository executions,
                 MissionResultRepository results, IMissionAuthorizationService auth, AuthenticatedUserResolver resolver) {
-            return new MissionChecklistExecutionServiceImpl(missions, items, executions, results, auth, resolver,
+            return new MissionChecklistExecutionServiceImpl(missions, com.ondemandmonitoring.mission.service.ScopeTestFixture.validScope(), executions, results, auth, resolver,
                     org.mapstruct.factory.Mappers.getMapper(MissionChecklistExecutionMapper.class), com.ondemandmonitoring.mission.service.EvidenceTestFixture.emptyService());
         }
     }

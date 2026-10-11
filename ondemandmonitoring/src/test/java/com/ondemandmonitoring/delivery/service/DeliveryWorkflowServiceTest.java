@@ -47,8 +47,9 @@ class DeliveryWorkflowServiceTest {
     MediaAssetRepository media = mock(MediaAssetRepository.class);
     IMediaObjectStorage storage = mock(IMediaObjectStorage.class);
     AuthenticatedUserResolver users = mock(AuthenticatedUserResolver.class);
+    com.ondemandmonitoring.order.service.IOrderExecutionCompletionPolicy completion = mock(com.ondemandmonitoring.order.service.IOrderExecutionCompletionPolicy.class);
     DeliveryWorkflowServiceImpl service = new DeliveryWorkflowServiceImpl(
-            deliveries, orders, missions, missionResults, invoices, media, storage, users);
+            deliveries, orders, missions, missionResults, invoices, media, storage, users, completion);
     User customer; Order order; Mission mission; Invoice invoice; OrderDelivery delivery;
 
     @BeforeEach void setUp() {
@@ -62,9 +63,13 @@ class DeliveryWorkflowServiceTest {
         delivery = new OrderDelivery(); delivery.setOrder(order); delivery.setStatus(DeliveryStatus.CUSTOMER_REVIEW);
         when(users.getCurrentUser()).thenReturn(customer); when(users.getCurrentUserId()).thenReturn(customer.getId());
         when(orders.findById("order")).thenReturn(Optional.of(order));
-        when(missions.findByOrderId("order")).thenReturn(Optional.of(mission));
-        when(missionResults.existsByMission_Order_IdAndApprovalStatus(
-                "order", MissionResultApprovalStatus.APPROVED)).thenReturn(true);
+        when(orders.findByIdForUpdate("order")).thenReturn(Optional.of(order));
+        when(missions.findAllByOrderIdOrderByScheduledStartAtAscIdAsc("order")).thenReturn(List.of(mission));
+        var result = new com.ondemandmonitoring.mission.domain.MissionResult(); result.setMission(mission);
+        result.setApprovalStatus(MissionResultApprovalStatus.APPROVED);
+        when(missionResults.findByMissionIds(List.of("mission"))).thenReturn(List.of(result));
+        when(completion.lockAggregate("order")).thenReturn(new com.ondemandmonitoring.order.service.IOrderExecutionCompletionPolicy.LockedExecution(order, List.of(mission)));
+        when(completion.completeIfReady(any())).thenAnswer(call -> { order.setOrderStatus(OrderStatus.COMPLETED); return true; });
         when(invoices.findByOrderId("order")).thenReturn(Optional.of(invoice));
         when(deliveries.findByOrderIdForUpdate("order")).thenReturn(Optional.of(delivery));
         when(deliveries.findByOrderId("order")).thenReturn(Optional.of(delivery));
@@ -108,13 +113,23 @@ class DeliveryWorkflowServiceTest {
 
     @Test void managerCannotReleasePreviewBeforeResultApproval() {
         delivery.setStatus(DeliveryStatus.READY_FOR_MANAGER_REVIEW);
-        when(missionResults.existsByMission_Order_IdAndApprovalStatus(
-                "order", MissionResultApprovalStatus.APPROVED)).thenReturn(false);
+        when(missionResults.findByMissionIds(List.of("mission"))).thenReturn(List.of());
 
         assertThatThrownBy(() -> service.releasePreview("order",
                 new ReleasePreviewRequest(List.of("selected"), null)))
                 .isInstanceOf(ApiException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.DELIVERY_NOT_READY);
+    }
+
+    @Test void legacyDeliveryIsInitializedByValidatedReleaseCommandNotByGet() {
+        when(deliveries.findByOrderIdForUpdate("order")).thenReturn(Optional.empty());
+        when(users.getCurrentUser()).thenReturn(user("manager", RoleCode.MANAGER));
+        when(media.findByMissionIdOrderByCapturedAtDesc("mission")).thenReturn(List.of(asset("selected", MediaStatus.AVAILABLE)));
+        when(storage.createPresignedGetUrl(anyString(), anyString())).thenReturn("https://example.test/preview");
+        var response = service.releasePreview("order", new ReleasePreviewRequest(List.of("selected"), null));
+        assertThat(response.deliveryStatus()).isEqualTo(DeliveryStatus.CUSTOMER_REVIEW);
+        verify(deliveries).save(any(OrderDelivery.class));
+        verify(completion).completeIfReady(any());
     }
 
     @Test void originalsRequirePaidInvoiceAndManagerRelease() {
@@ -130,14 +145,15 @@ class DeliveryWorkflowServiceTest {
         assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.COMPLETED);
     }
 
-    @Test void completedLegacyMissionGetsDeliveryStateOnFirstRead() {
+    @Test void completedMissionGetsDeliveryReadModelWithoutMutationOnFirstRead() {
         when(deliveries.findByOrderId("order")).thenReturn(Optional.empty());
 
         var result = service.get("order");
 
         assertThat(result.deliveryStatus()).isEqualTo(DeliveryStatus.READY_FOR_MANAGER_REVIEW);
-        verify(deliveries).save(argThat(candidate -> candidate.getOrder() == order
-                && candidate.getStatus() == DeliveryStatus.READY_FOR_MANAGER_REVIEW));
+        verify(deliveries, never()).save(any());
+        verifyNoInteractions(completion);
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.IN_PROGRESS);
     }
 
     @Test void originalEligibilityFilteringDoesNotThrowForUndeliveredMissions() {
@@ -148,6 +164,34 @@ class DeliveryWorkflowServiceTest {
         invoice.setStatus(InvoiceStatus.PAID);
         delivery.setStatus(DeliveryStatus.DELIVERED);
         assertThat(service.originalAccessibleMissionIds(List.of("mission"))).containsExactly("mission");
+    }
+
+    @Test void oneApprovedResultCannotMakeMultiMissionDeliveryReady() {
+        delivery.setStatus(DeliveryStatus.PROCESSING);
+        var sibling = new Mission(); sibling.setId("sibling"); sibling.setOrder(order);
+        sibling.setStatus(MissionStatus.COMPLETED);
+        when(missions.findAllByOrderIdOrderByScheduledStartAtAscIdAsc("order")).thenReturn(List.of(mission, sibling));
+        var first = new com.ondemandmonitoring.mission.domain.MissionResult(); first.setMission(mission);
+        first.setApprovalStatus(MissionResultApprovalStatus.APPROVED);
+        when(missionResults.findByMissionIds(List.of("mission", "sibling"))).thenReturn(List.of(first));
+        service.markReadyForManagerReview("order");
+        assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.PROCESSING);
+        var second = new com.ondemandmonitoring.mission.domain.MissionResult(); second.setMission(sibling);
+        second.setApprovalStatus(MissionResultApprovalStatus.APPROVED);
+        when(missionResults.findByMissionIds(List.of("mission", "sibling"))).thenReturn(List.of(first, second));
+        service.markReadyForManagerReview("order");
+        assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.READY_FOR_MANAGER_REVIEW);
+        verifyNoInteractions(completion);
+    }
+
+    @Test void cancelledSiblingIsExcludedAndDeliveryCannotRegressCompletedOrder() {
+        var sibling = new Mission(); sibling.setId("cancelled"); sibling.setOrder(order);
+        sibling.setStatus(MissionStatus.CANCELLED);
+        when(missions.findAllByOrderIdOrderByScheduledStartAtAscIdAsc("order")).thenReturn(List.of(mission, sibling));
+        delivery.setStatus(DeliveryStatus.PROCESSING); order.setOrderStatus(OrderStatus.COMPLETED);
+        service.markReadyForManagerReview("order");
+        assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.READY_FOR_MANAGER_REVIEW);
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.COMPLETED);
     }
 
     private User user(String id, RoleCode code) {

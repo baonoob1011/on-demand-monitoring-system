@@ -10,12 +10,13 @@ import lombok.Setter;
 import lombok.experimental.FieldDefaults;
 
 import java.time.Instant;
+import org.locationtech.jts.geom.Point;
+import org.locationtech.jts.geom.Polygon;
 
 @Getter
 @Setter
 @Entity
 @Table(name = "missions", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_missions_order", columnNames = "order_id"),
         @UniqueConstraint(name = "uk_mission_id_order", columnNames = {"id", "order_id"})})
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class Mission extends BaseEntity {
@@ -28,9 +29,62 @@ public class Mission extends BaseEntity {
     MissionStatus status;
 
     // ===== Relationship to Order =====
-    @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "order_id", nullable = false, unique = true)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "order_id", nullable = false)
     Order order;
+
+    @Column(name = "scope_label", length = 255)
+    String scopeLabel;
+
+    @Column(name = "target_point", columnDefinition = "geometry(Point,4326)")
+    Point targetPoint;
+
+    @Column(name = "target_area", columnDefinition = "geometry(Polygon,4326)")
+    Polygon targetArea;
+
+    @jakarta.validation.constraints.PositiveOrZero
+    @Column(name = "finalized_plan_revision")
+    Long finalizedPlanRevision;
+
+    @Column(name = "creation_idempotency_key", length = 36, updatable = false)
+    String creationIdempotencyKey;
+
+    @Column(name = "creation_request_hash", length = 64, updatable = false)
+    String creationRequestHash;
+
+    @Column(name = "replaces_mission_id", length = 255)
+    String replacesMissionId;
+
+    @Column(name = "cancellation_at")
+    Instant cancellationAt;
+
+    @Column(name = "cancelled_by", length = 255)
+    String cancelledBy;
+
+    @Column(name = "cancellation_reason", length = 1000)
+    String cancellationReason;
+
+    @Column(name = "safe_stop_status", length = 40)
+    @Enumerated(EnumType.STRING)
+    com.ondemandmonitoring.mission.enums.MissionSafeStopStatus safeStopStatus;
+    @Column(name = "safe_stop_requested_at")
+    Instant safeStopRequestedAt;
+    @Column(name = "safe_stop_requested_by", length = 255)
+    String safeStopRequestedBy;
+    @Column(name = "safe_stop_reason", length = 1000)
+    String safeStopReason;
+    @Column(name = "safe_stop_requires_landing")
+    Boolean safeStopRequiresLanding;
+    @Column(name = "safe_stop_confirmed_at")
+    Instant safeStopConfirmedAt;
+    @Column(name = "safe_stop_confirmed_by", length = 255)
+    String safeStopConfirmedBy;
+    @Column(name = "safe_stop_confirmation", length = 1000)
+    String safeStopConfirmation;
+    @Column(name = "safe_stop_cleaned_at")
+    Instant safeStopCleanedAt;
+    @Column(name = "safe_stop_failure_reason", length = 1000)
+    String safeStopFailureReason;
 
     // ===== Schedule =====
 

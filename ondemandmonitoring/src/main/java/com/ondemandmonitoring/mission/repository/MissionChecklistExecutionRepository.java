@@ -7,6 +7,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface MissionChecklistExecutionRepository extends JpaRepository<MissionChecklistExecution, String> {
-    @Query("select e from MissionChecklistExecution e join fetch e.orderChecklistItem i where e.missionId = :missionId order by i.displayOrder, i.id")
+    @Query("select e from MissionChecklistExecution e join fetch e.orderChecklistItem join fetch e.missionChecklistAssignment a where e.missionId = :missionId order by a.displayOrder, a.id")
     List<MissionChecklistExecution> findOrderedByMissionId(@Param("missionId") String missionId);
 }

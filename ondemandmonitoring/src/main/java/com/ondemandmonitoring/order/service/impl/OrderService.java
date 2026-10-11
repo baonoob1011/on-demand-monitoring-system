@@ -2,7 +2,6 @@ package com.ondemandmonitoring.order.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.mission.repository.MissionResultRepository;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.domain.OrderDeliverable;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
@@ -60,7 +59,6 @@ public class OrderService implements IOrderService {
     PreferredTimeRepository preferredTimeRepository;
     AuthenticatedUserResolver authenticatedUserResolver;
     OrderMapper orderMapper;
-    MissionResultRepository missionResultRepository;
     IOrderChecklistSnapshotService checklistSnapshots;
 
     @Override
@@ -247,7 +245,7 @@ public class OrderService implements IOrderService {
     }
 
     @Override
-    @Transactional
+    @Transactional(readOnly = true)
     @PreAuthorize("@orderAuthorizationService.canViewOrder(#orderId)")
     public OrderCreateResponse getOrderById(String orderId) {
         Order order = orderRepository.findById(orderId)
@@ -287,7 +285,7 @@ public class OrderService implements IOrderService {
     }
 
     @Override
-    @Transactional
+    @Transactional(readOnly = true)
     @PreAuthorize("hasRole('CUSTOMER')")
     public List<OrderCreateResponse> getMyOrders(OrderStatus status) {
         User customer = authenticatedUserResolver.getCurrentUser();
@@ -321,7 +319,6 @@ public class OrderService implements IOrderService {
         if (values == null || values.isEmpty()) return new java.util.ArrayList<>(java.util.List.of(fallback));
         return new java.util.ArrayList<>(new java.util.LinkedHashSet<>(values));
     }
-
     private String generateUniqueOrderCode() {
         for (int attempt = 0; attempt < 10; attempt++) {
             String orderCode = generateOrderCode();
