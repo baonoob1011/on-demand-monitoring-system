@@ -91,6 +91,20 @@ class ChecklistEvidenceServiceTest {
         assertNotNull(old.getDetachedAt()); assertEquals("actor",old.getDetachedBy()); assertEquals("replace",old.getDetachReason()); verify(links,never()).delete(any());
         assertNotEquals("link",service.attach("m",request()).getFirst().getEvidenceId());
     }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"mission", "execution"})
+    void siblingEvidenceCannotBeDetachedThroughAnotherScope(String mismatch) {
+        var foreign = link();
+        if (mismatch.equals("mission")) foreign.setMissionId("sibling");
+        else {
+            var other = new MissionChecklistExecution(); other.setId("sibling-execution");
+            foreign.setMissionChecklistExecution(other);
+        }
+        when(links.findById("link")).thenReturn(Optional.of(foreign));
+        error(ErrorCode.ACCESS_DENIED, () -> service.detach("m", "e", "link", 0L, "wrong scope"));
+        assertNull(foreign.getDetachedAt()); assertNull(foreign.getDetachedBy());
+        verify(links, never()).saveAndFlush(any()); verify(executions, never()).saveAndFlush(any());
+    }
     @Test void pendingAndApprovedLockWhileRejectedReopens() {
         var result=new MissionResult(); when(results.findByMissionId("m")).thenReturn(Optional.of(result));
         for(var state:List.of(MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL,MissionResultApprovalStatus.APPROVED)) { result.setApprovalStatus(state); error(ErrorCode.CHECKLIST_EXECUTION_LOCKED,()->service.attach("m",request())); }

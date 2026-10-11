@@ -777,6 +777,7 @@ public class MissionService implements IMissionService {
     private boolean hasRequiredCrewAssigned(String missionId) {
         Set<MissionStaffRole> roles = missionStaffAssignmentRepository.findAllByMissionIdAndIsCurrentTrue(missionId)
                 .stream()
+                .filter(this::isUsablePlanningCrew)
                 .map(MissionStaffAssignment::getAssignedRole)
                 .collect(java.util.stream.Collectors.toSet());
         return roles.containsAll(REQUIRED_CREW_ROLES);
@@ -784,13 +785,19 @@ public class MissionService implements IMissionService {
 
     private boolean isRequiredCrewAccepted(String missionId) {
         List<MissionStaffAssignment> assignments =
-                missionStaffAssignmentRepository.findAllByMissionIdAndIsCurrentTrue(missionId);
+                missionStaffAssignmentRepository.findAllByMissionIdAndIsCurrentTrue(missionId).stream()
+                        .filter(this::isUsablePlanningCrew).toList();
         Set<MissionStaffRole> acceptedRoles = assignments.stream()
                 .filter(assignment -> assignment.getResponseStatus() == StaffResponseStatus.ACCEPTED)
                 .map(MissionStaffAssignment::getAssignedRole)
                 .collect(java.util.stream.Collectors.toSet());
         return acceptedRoles.containsAll(REQUIRED_CREW_ROLES)
                 && assignments.stream().allMatch(entry -> entry.getResponseStatus() == StaffResponseStatus.ACCEPTED);
+    }
+
+    private boolean isUsablePlanningCrew(MissionStaffAssignment assignment) {
+        return Boolean.TRUE.equals(assignment.getIsCurrent()) && assignment.getReleasedAt() == null
+                && assignment.getStaff() != null && Boolean.TRUE.equals(assignment.getStaff().getIsActive());
     }
 
     private void requireFeasiblePlan(MissionPlan plan, boolean allowRuntimePreflightBatteryFallback) {

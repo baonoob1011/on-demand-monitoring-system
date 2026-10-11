@@ -112,6 +112,16 @@ class MissionChecklistExecutionServiceTest {
         error(ErrorCode.INVALID_REQUEST, () -> service.update("m", "e", request));
     }
 
+    @Test void maximumObservationAndUnableReasonAreAccepted() {
+        var request = request(ChecklistExecutionStatus.UNABLE_TO_VERIFY);
+        request.setObservation("x".repeat(2000));
+        request.setUnableToVerifyReason("y".repeat(1000));
+        var response = service.update("m", "e", request);
+        assertEquals(request.getObservation(), response.getObservation());
+        assertEquals(request.getUnableToVerifyReason(), response.getUnableToVerifyReason());
+        assertTrue(service.isReadyForSubmission(mission));
+    }
+
     @Test void parentMismatchCrossOrderAndUnknownEntitiesAreDistinct() {
         execution.setMissionId("other"); error(ErrorCode.CHECKLIST_EXECUTION_PARENT_MISMATCH,
                 () -> service.update("m", "e", request(ChecklistExecutionStatus.COMPLETED)));

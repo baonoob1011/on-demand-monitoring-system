@@ -75,9 +75,14 @@ class MultiMissionCreationPostgresTest extends ChecklistPostgresTest {
         assertThrows(org.springframework.dao.DataIntegrityViolationException.class,()->jdbc.update("update missions set creation_request_hash=null where order_id=?",o));
     }
     @Test void failedInsertRollsBackPlanRevisionAtomically() {
-        String o=order(); jdbc.execute("alter table missions add constraint fixture_reject_new check (creation_idempotency_key is null)");
-        try {assertThrows(jakarta.persistence.PersistenceException.class,()->missionService.createMission(request(o,UUID.randomUUID().toString(),0))); assertEquals(0,revision(o)); assertEquals(0,count(o));}
+        String o=order(); var request=request(o,UUID.randomUUID().toString(),0);
+        jdbc.execute("alter table missions add constraint fixture_reject_new check (creation_idempotency_key is null)");
+        try {assertThrows(jakarta.persistence.PersistenceException.class,()->missionService.createMission(request)); assertEquals(0,revision(o)); assertEquals(0,count(o));}
         finally {jdbc.execute("alter table missions drop constraint fixture_reject_new");}
+        var retry=missionService.createMissionWithOutcome(request);
+        assertTrue(retry.created()); assertEquals(1,count(o)); assertEquals(1,revision(o));
+        assertEquals(retry.mission().getId(),missionService.createMissionWithOutcome(request).mission().getId());
+        assertEquals(1,count(o)); assertEquals(1,revision(o));
     }
     List<Object> concurrent(MissionCreateRequest a,MissionCreateRequest b) throws Exception {
         var locked=new CountDownLatch(1); var release=new CountDownLatch(1);

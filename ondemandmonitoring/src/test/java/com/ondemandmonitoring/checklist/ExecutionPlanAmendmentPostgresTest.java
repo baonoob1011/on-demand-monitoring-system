@@ -81,6 +81,7 @@ class ExecutionPlanAmendmentPostgresTest extends OrderAggregateCompletionPostgre
         // Existing operational lifecycle releases hardware before planning cancellation.
         jdbc.update("update mission_device_assignments set released_at=now(),is_current=false where mission_id=?", first);
         failFirst(); long oldRevision = finalizedRevision(second); var before = history(first);
+        var siblingExecutionIds = runtime.getByMissionId(second).executions().stream().map(rowEntry -> rowEntry.getId()).toList();
         amend(); cancel(first); assertEquals(before, history(first));
         assertEquals(2, plan.get(orderId).coverage().uncovered());
         error(ErrorCode.CHECKLIST_COVERAGE_INCOMPLETE, this::finalizePlan);
@@ -88,11 +89,35 @@ class ExecutionPlanAmendmentPostgresTest extends OrderAggregateCompletionPostgre
         assertEquals(0, jdbc.queryForObject("select count(*) from mission_checklist_executions where mission_id=?", Integer.class, third));
         transaction.executeWithoutResult(tx -> assertFalse(scope.isMaterialized(missions.findById(third).orElseThrow())));
         finalizePlan(); assertEquals(before, history(first)); assertEquals(oldRevision, finalizedRevision(second));
+        assertEquals(siblingExecutionIds, runtime.getByMissionId(second).executions().stream().map(rowEntry -> rowEntry.getId()).toList());
         assertEquals(revision(), finalizedRevision(third)); assertEquals(2, jdbc.queryForObject("select count(*) from mission_checklist_executions where mission_id=?", Integer.class, third));
         assertEquals(0, jdbc.queryForObject("select count(*) from mission_checklist_evidence where mission_id=?", Integer.class, third));
         assertFalse(resultRepository.existsByMissionId(third));
         long count = rows("mission_checklist_executions"); finalizePlan(); assertEquals(count, rows("mission_checklist_executions"));
     }
+    @Test void failedReplacementInsertDoesNotPoisonKeyOrMutateHistory() {
+        ready(0); amend(); cancel(first);
+        var request = replacementRequest(first);
+        long beforeRevision = revision();
+        var originalHistory = history(first);
+        var siblingHistory = history(second);
+        jdbc.execute("alter table missions add constraint fixture_reject_replacement check (replaces_mission_id is null)");
+        try {
+            assertThrows(jakarta.persistence.PersistenceException.class, () -> missionService.createMission(request));
+            assertEquals(beforeRevision, revision());
+            assertEquals(0, jdbc.queryForObject("select count(*) from missions where creation_idempotency_key=?", Integer.class, request.getIdempotencyKey()));
+            assertEquals(originalHistory, history(first));
+            assertEquals(siblingHistory, history(second));
+        } finally {
+            jdbc.execute("alter table missions drop constraint fixture_reject_replacement");
+        }
+        var retry = missionService.createMissionWithOutcome(request);
+        assertTrue(retry.created()); assertEquals(beforeRevision + 1, revision());
+        assertEquals(retry.mission().getId(), missionService.createMissionWithOutcome(request).mission().getId());
+        assertEquals(beforeRevision + 1, revision());
+        assertEquals(originalHistory, history(first)); assertEquals(siblingHistory, history(second));
+    }
+
     @Test void existingFinalizedRuntimeContinuesDuringDraftWhileNewMissionRemainsBlocked() {
         ready(0); amend(); String third = create();
         transaction.executeWithoutResult(tx -> {

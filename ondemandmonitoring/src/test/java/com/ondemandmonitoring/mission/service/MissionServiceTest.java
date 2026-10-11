@@ -792,7 +792,10 @@ class MissionServiceTest {
                     resultRepository, missionRepository, mock(com.ondemandmonitoring.media.repository.MediaAssetRepository.class),
                     mock(com.ondemandmonitoring.media.service.IMediaAssetService.class),
                     mock(com.ondemandmonitoring.mission.mapper.MissionResultMapper.class),
-                    new com.ondemandmonitoring.order.service.impl.OrderExecutionCompletionPolicy(orderRepository, missionRepository, resultRepository, checklist),
+                    new com.ondemandmonitoring.order.service.impl.OrderExecutionCompletionPolicy(orderRepository, missionRepository, resultRepository, checklist,
+                            mock(com.ondemandmonitoring.order.repository.OrderChecklistItemRepository.class),
+                            mock(com.ondemandmonitoring.mission.repository.MissionChecklistAssignmentRepository.class),
+                            new com.ondemandmonitoring.mission.service.impl.ExecutionPlanCoverageService()),
                     checklist, authenticatedUserResolver, auth);
             org.springframework.test.util.ReflectionTestUtils.setField(missionService, "missionResultService", results);
             org.springframework.test.util.ReflectionTestUtils.setField(missionService, "checklistExecutionService", checklist);
@@ -972,6 +975,37 @@ class MissionServiceTest {
                 missionService, "isRequiredCrewAccepted", "crew")).isFalse();
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"released", "inactive", "historical"})
+    void unusableAcceptedCrewMustNotScheduleMission(String state) {
+        var mission = buildMission("crew-invalid", MissionStatus.WAITING_CREW_CONFIRMATION);
+        var crew = java.util.Arrays.stream(MissionStaffRole.values())
+                .map(role -> staffAssignment(mission, role.name(), role, "ACCEPTED")).toList();
+        var operator = crew.stream().filter(entry -> entry.getAssignedRole() == MissionStaffRole.OPERATOR)
+                .findFirst().orElseThrow();
+        switch (state) {
+            case "released" -> operator.setReleasedAt(Instant.now());
+            case "inactive" -> operator.getStaff().setIsActive(false);
+            case "historical" -> operator.setIsCurrent(false);
+            default -> throw new AssertionError(state);
+        }
+        var pilot = crew.stream().filter(entry -> entry.getAssignedRole() == MissionStaffRole.PILOT)
+                .findFirst().orElseThrow();
+        pilot.setResponseStatus(StaffResponseStatus.PENDING);
+        when(missionRepository.findById("crew-invalid")).thenReturn(Optional.of(mission));
+        when(missionStaffAssignmentRepository.findAllByMissionIdAndStaffIdAndIsCurrentTrueOrderByAssignedAtDesc(
+                "crew-invalid", "PILOT")).thenReturn(List.of(pilot));
+        when(missionStaffAssignmentRepository.findAllByMissionIdAndIsCurrentTrue("crew-invalid"))
+                .thenReturn(crew);
+        when(missionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        assertThat(missionService.acceptMission("crew-invalid", "PILOT").getStatus())
+                .isEqualTo(MissionStatus.WAITING_CREW_CONFIRMATION);
+        assertThat((Boolean) org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                missionService, "hasRequiredCrewAssigned", "crew-invalid")).isFalse();
+        verifyNoInteractions(missionPlanningService);
+    }
+
     @Test
     void postflightAcceptanceReleaseAndNonCompliantBusinessReportRemainSeparate() {
         var mission = buildMission("integrated", MissionStatus.POSTFLIGHT_CHECKING);
@@ -1020,7 +1054,10 @@ class MissionServiceTest {
         var results = new com.ondemandmonitoring.mission.service.impl.MissionResultService(
                 resultRepo, missionRepository, mock(com.ondemandmonitoring.media.repository.MediaAssetRepository.class),
                 mock(com.ondemandmonitoring.media.service.IMediaAssetService.class), resultMapper,
-                new com.ondemandmonitoring.order.service.impl.OrderExecutionCompletionPolicy(orderRepository, missionRepository, resultRepo, checklist),
+                new com.ondemandmonitoring.order.service.impl.OrderExecutionCompletionPolicy(orderRepository, missionRepository, resultRepo, checklist,
+                        mock(com.ondemandmonitoring.order.repository.OrderChecklistItemRepository.class),
+                        mock(com.ondemandmonitoring.mission.repository.MissionChecklistAssignmentRepository.class),
+                        new com.ondemandmonitoring.mission.service.impl.ExecutionPlanCoverageService()),
                 checklist, authenticatedUserResolver, policy);
         when(resultRepo.save(any())).thenAnswer(call -> {
             com.ondemandmonitoring.mission.domain.MissionResult result = call.getArgument(0); result.setId("result");

@@ -74,6 +74,26 @@ class OrderAggregateCompletionPostgresTest extends MissionChecklistCutoverPostgr
         ready(0); resultService.approve(result(first, MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL), null);
         assertEquals(OrderStatus.APPROVED, status());
     }
+
+    @Test void finalizedPlanWithUncoveredSnapshotCannotCompleteAggregate() {
+        ready(0);
+        // Persist an inconsistent historical snapshot through JPA in this disposable fixture.
+        // FINALIZED alone is not proof that every Order requirement has effective coverage.
+        transaction.executeWithoutResult(tx -> {
+            var item = new com.ondemandmonitoring.order.domain.OrderChecklistItem();
+            item.setOrder(orders.findById(orderId).orElseThrow());
+            item.setContent("Uncovered historical requirement");
+            item.setSourceType(com.ondemandmonitoring.order.enums.OrderChecklistSourceType.CUSTOMER_CUSTOM);
+            item.setEvidencePolicyVersion(1);
+            item.setMinimumEvidenceCount(1);
+            snapshots.saveAndFlush(item);
+        });
+        result(first, MissionResultApprovalStatus.APPROVED);
+        result(second, MissionResultApprovalStatus.APPROVED);
+        assertEquals(1, plan.get(orderId).coverage().uncovered());
+        assertFalse(evaluate());
+        assertEquals(OrderStatus.APPROVED, status());
+    }
     @Test void rejectedSiblingResultBlocks() {
         ready(0); result(second, MissionResultApprovalStatus.REJECTED);
         resultService.approve(result(first, MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL), null);
@@ -223,8 +243,11 @@ class OrderAggregateCompletionPostgresTest extends MissionChecklistCutoverPostgr
     @Configuration @Import(MissionChecklistCutoverPostgresTest.Beans.class)
     static class Beans {
         @Bean IOrderExecutionCompletionPolicy completion(OrderRepository orders, MissionRepository missions,
-                MissionResultRepository results, IMissionChecklistExecutionService checklist) {
-            return new OrderExecutionCompletionPolicy(orders, missions, results, checklist);
+                MissionResultRepository results, IMissionChecklistExecutionService checklist,
+                com.ondemandmonitoring.order.repository.OrderChecklistItemRepository items,
+                MissionChecklistAssignmentRepository assignments) {
+            return new OrderExecutionCompletionPolicy(orders, missions, results, checklist, items, assignments,
+                    new com.ondemandmonitoring.mission.service.impl.ExecutionPlanCoverageService());
         }
         @Bean IMissionResultService aggregateResults(MissionResultRepository results, MissionRepository missions,
                 MediaAssetRepository media, IOrderExecutionCompletionPolicy completion,

@@ -40,6 +40,29 @@ class ResourceSafetyPostgresTest extends ExecutionPlanAmendmentPostgresTest {
     MissionService operational;
     DeviceConnectionService sessions;
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = MissionStatus.class, names = {"COMPLETED", "CANCELLED"})
+    void terminalMissionRejectsStructuralAndOperationalCommands(MissionStatus terminal) {
+        ready(0);
+        withMission(first, mission -> mission.setStatus(terminal));
+        var before = history(first);
+        long beforeRevision = revision();
+        var schedule = new MissionUpdateRequest(); schedule.setExpectedPlanRevision(beforeRevision);
+        var crew = new AssignStaffRequest(); crew.setStaffId(staff()); crew.setAssignedRole("PILOT");
+        var device = new AssignDeviceRequest(); device.setDeviceId(device()); device.setDeviceRole(DeviceRole.MAIN);
+
+        assertThrows(ApiException.class, () -> missionService.updateMission(first, schedule));
+        assertThrows(ApiException.class, () -> transaction.executeWithoutResult(tx -> operational.assignStaff(first, crew)));
+        assertThrows(ApiException.class, () -> transaction.executeWithoutResult(tx -> operational.assignDevice(first, device)));
+        assertThrows(ApiException.class, () -> choose(first));
+        assertThrows(ApiException.class, () -> transaction.executeWithoutResult(tx -> sessions.connectGcs(first)));
+        assertThrows(ApiException.class, () -> transaction.executeWithoutResult(tx -> operational.startMission(first)));
+        assertEquals(terminal, missions.findById(first).orElseThrow().getStatus());
+        assertEquals(beforeRevision, revision()); assertEquals(before, history(first));
+        assertEquals(0, rows("resource_time_locks"));
+        assertNotNull(plan.get(orderId));
+    }
+
     static <T> T repository(EntityManagerFactory factory, Class<T> type) {
         return new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory)).getRepository(type);
     }

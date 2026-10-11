@@ -205,7 +205,7 @@ class MissionChecklistCutoverPostgresTest extends ChecklistPostgresTest {
                 IMissionChecklistMaterializationService materializer,IMissionChecklistScopeService scope,
                 com.ondemandmonitoring.user.service.AuthenticatedUserResolver user,MissionResultRepository results,IMissionChecklistExecutionService checklist) {
             return new ExecutionPlanServiceImpl(orders,missions,items,a,materializer,scope,user,new ExecutionPlanCoverageService(),
-                    new com.ondemandmonitoring.order.service.impl.OrderExecutionCompletionPolicy(orders,missions,results,checklist));
+                    new com.ondemandmonitoring.order.service.impl.OrderExecutionCompletionPolicy(orders,missions,results,checklist,items,a,new ExecutionPlanCoverageService()));
         }
     }
 }

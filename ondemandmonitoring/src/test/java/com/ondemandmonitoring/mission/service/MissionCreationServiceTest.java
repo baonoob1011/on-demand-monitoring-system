@@ -117,7 +117,10 @@ class MissionCreationServiceTest {
         when(fixture.missionRepository.findByIdForUpdate("m")).thenReturn(Optional.of(mission));
         var checks=mock(IMissionChecklistExecutionService.class);
         var service=new com.ondemandmonitoring.mission.service.impl.MissionResultService(results,fixture.missionRepository,null,null,null,
-                new com.ondemandmonitoring.order.service.impl.OrderExecutionCompletionPolicy(fixture.orderRepository,fixture.missionRepository,results,checks),
+                new com.ondemandmonitoring.order.service.impl.OrderExecutionCompletionPolicy(fixture.orderRepository,fixture.missionRepository,results,checks,
+                        mock(com.ondemandmonitoring.order.repository.OrderChecklistItemRepository.class),
+                        mock(com.ondemandmonitoring.mission.repository.MissionChecklistAssignmentRepository.class),
+                        new com.ondemandmonitoring.mission.service.impl.ExecutionPlanCoverageService()),
                 checks,fixture.authenticatedUserResolver,null);
         error(ErrorCode.CHECKLIST_ASSIGNMENT_NOT_FINALIZED,()->service.approve("r",null));
         assertEquals(OrderStatus.APPROVED,order.getOrderStatus());verifyNoInteractions(checks);verify(fixture.orderRepository,never()).save(any());

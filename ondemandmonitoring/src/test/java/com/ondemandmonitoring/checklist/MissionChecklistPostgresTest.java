@@ -12,6 +12,7 @@ import com.ondemandmonitoring.mission.service.impl.MissionResultService;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.repository.OrderRepository;
+import com.ondemandmonitoring.order.repository.OrderChecklistItemRepository;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.IMediaAssetService;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
@@ -300,12 +301,14 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
     static class ExecutionConfig {
         @Bean IMissionResultService resultService(MissionResultRepository results, MissionRepository missions,
                 OrderRepository orders, IMissionChecklistExecutionService executions, AuthenticatedUserResolver resolver,
-                IMissionAuthorizationService auth) {
+                IMissionAuthorizationService auth, OrderChecklistItemRepository items,
+                MissionChecklistAssignmentRepository assignments) {
             var media = mock(MediaAssetRepository.class);
             when(media.findByMissionIdOrderByCapturedAtDesc(anyString())).thenReturn(List.of());
             return new MissionResultService(results, missions, media, mock(IMediaAssetService.class),
                     org.mapstruct.factory.Mappers.getMapper(MissionResultMapper.class),
-                    new com.ondemandmonitoring.order.service.impl.OrderExecutionCompletionPolicy(orders, missions, results, executions),
+                    new com.ondemandmonitoring.order.service.impl.OrderExecutionCompletionPolicy(orders, missions, results, executions,
+                            items, assignments, new com.ondemandmonitoring.mission.service.impl.ExecutionPlanCoverageService()),
                     executions, resolver, auth);
         }
     }

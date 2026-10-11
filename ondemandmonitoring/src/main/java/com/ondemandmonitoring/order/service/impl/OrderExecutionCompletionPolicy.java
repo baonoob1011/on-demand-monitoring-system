@@ -6,13 +6,16 @@ import com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus;
 import com.ondemandmonitoring.mission.enums.MissionResultStatus;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
+import com.ondemandmonitoring.mission.repository.MissionChecklistAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionResultRepository;
 import com.ondemandmonitoring.mission.service.IMissionChecklistExecutionService;
 import com.ondemandmonitoring.mission.service.impl.ExecutionPlanCoverageService;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.enums.ExecutionPlanStatus;
 import com.ondemandmonitoring.order.repository.OrderRepository;
+import com.ondemandmonitoring.order.repository.OrderChecklistItemRepository;
 import com.ondemandmonitoring.order.service.IOrderExecutionCompletionPolicy;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -27,6 +30,9 @@ public class OrderExecutionCompletionPolicy implements IOrderExecutionCompletion
     private final MissionRepository missions;
     private final MissionResultRepository results;
     private final IMissionChecklistExecutionService checklist;
+    private final OrderChecklistItemRepository items;
+    private final MissionChecklistAssignmentRepository assignments;
+    private final ExecutionPlanCoverageService coverage;
 
     @Override
     public LockedExecution lockAggregate(String orderId) {
@@ -48,6 +54,10 @@ public class OrderExecutionCompletionPolicy implements IOrderExecutionCompletion
                 && order.getOrderStatus() != OrderStatus.COMPLETED) return false;
         var effective = execution.missions().stream().filter(ExecutionPlanCoverageService::effective).toList();
         if (effective.isEmpty()) return false;
+        // Recheck the aggregate, not just each package: FINALIZED metadata cannot stand in
+        // for effective coverage of every historical Order requirement.
+        if (!coverage.evaluate(items.findAllByOrderIdInOrderByDisplayOrderAscIdAsc(List.of(order.getId())),
+                execution.missions(), assignments.findActiveByOrderId(order.getId())).coverageReady()) return false;
         for (var mission : effective) {
             if (mission.getStatus() != MissionStatus.COMPLETED) return false;
             var result = results.findByMissionId(mission.getId());

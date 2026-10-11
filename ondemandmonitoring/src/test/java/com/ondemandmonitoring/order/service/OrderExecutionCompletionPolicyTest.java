@@ -20,7 +20,9 @@ class OrderExecutionCompletionPolicyTest {
     MissionRepository missions = mock(MissionRepository.class);
     MissionResultRepository results = mock(MissionResultRepository.class);
     IMissionChecklistExecutionService checklist = mock(IMissionChecklistExecutionService.class);
-    OrderExecutionCompletionPolicy policy = new OrderExecutionCompletionPolicy(orders, missions, results, checklist);
+    OrderExecutionCompletionPolicy policy = new OrderExecutionCompletionPolicy(orders, missions, results, checklist,
+            mock(com.ondemandmonitoring.order.repository.OrderChecklistItemRepository.class),
+            mock(MissionChecklistAssignmentRepository.class), new com.ondemandmonitoring.mission.service.impl.ExecutionPlanCoverageService());
     Order order;
     Mission first, second;
 
