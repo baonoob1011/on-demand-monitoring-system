@@ -2,7 +2,7 @@ package com.ondemandmonitoring.environment.service;
 
 import com.ondemandmonitoring.environment.domain.AtmosphereProfile;
 import com.ondemandmonitoring.environment.repository.AtmosphereProfileRepository;
-import com.ondemandmonitoring.zone.config.SimulationZoneSeeder;
+import com.ondemandmonitoring.zone.config.SimulationCoordinateSystem;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -25,7 +25,7 @@ public class AirPressureSimulationService {
     @Transactional(readOnly = true)
     public double calculatePressurePa(double altitudeM) {
         AtmosphereProfile profile = atmosphereProfileRepository
-                .findFirstBySourceWorldAndActiveTrueOrderByCreatedAtDesc(SimulationZoneSeeder.SOURCE_WORLD)
+                .findFirstBySourceWorldAndActiveTrueOrderByCreatedAtDesc(SimulationCoordinateSystem.SOURCE_WORLD)
                 .orElseGet(this::defaultProfile);
         return calculatePressurePa(altitudeM, profile);
     }
@@ -43,7 +43,7 @@ public class AirPressureSimulationService {
 
     private AtmosphereProfile defaultProfile() {
         AtmosphereProfile profile = new AtmosphereProfile();
-        profile.setSourceWorld(SimulationZoneSeeder.SOURCE_WORLD);
+        profile.setSourceWorld(SimulationCoordinateSystem.SOURCE_WORLD);
         profile.setBasePressurePa(DEFAULT_BASE_PRESSURE_PA);
         profile.setBaseAltitudeM(DEFAULT_BASE_ALTITUDE_M);
         profile.setActive(true);

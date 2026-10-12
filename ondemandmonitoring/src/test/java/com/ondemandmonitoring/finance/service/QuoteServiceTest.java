@@ -18,6 +18,7 @@ import com.ondemandmonitoring.order.domain.*;
 import com.ondemandmonitoring.order.enums.*;
 import com.ondemandmonitoring.order.mapper.OrderChecklistItemMapper;
 import com.ondemandmonitoring.order.repository.*;
+import com.ondemandmonitoring.review.service.IOrderReadinessService;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.math.BigDecimal;
@@ -39,7 +40,8 @@ class QuoteServiceTest {
 
     @BeforeEach void setUp() {
         service = new QuoteService(orders, items, mock(OrderChecklistItemMapper.class), quotes, invoices, missions,
-                executions, users, new PaymentProperties(new BigDecimal("0.30")), deliveries);
+                executions, users, new PaymentProperties(new BigDecimal("0.30")), deliveries,
+                mock(IOrderReadinessService.class));
         order = new Order(); order.setId("o1"); order.setOrderStatus(OrderStatus.PENDING);
         var catalog = new com.ondemandmonitoring.service.domain.Service(); catalog.setName("Building inspection");
         order.setService(catalog);

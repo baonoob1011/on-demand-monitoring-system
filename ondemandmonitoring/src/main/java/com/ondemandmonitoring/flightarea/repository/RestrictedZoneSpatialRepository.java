@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.flightarea.repository;
 
-import com.ondemandmonitoring.zone.config.SimulationZoneSeeder;
+import com.ondemandmonitoring.zone.config.SimulationCoordinateSystem;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -82,6 +82,6 @@ public class RestrictedZoneSpatialRepository {
         return new MapSqlParameterSource(Map.of(
                 "latitude", latitude,
                 "longitude", longitude,
-                "coordinateSystem", SimulationZoneSeeder.GPS_COORDINATE_SYSTEM));
+                "coordinateSystem", SimulationCoordinateSystem.GPS_COORDINATE_SYSTEM));
     }
 }

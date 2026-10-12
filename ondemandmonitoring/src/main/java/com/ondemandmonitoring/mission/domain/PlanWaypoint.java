@@ -46,6 +46,13 @@ public class PlanWaypoint extends BaseEntity {
     @Column(name = "sim_y", nullable = false)
     Double simY;
 
+    /** Optional authoritative WGS84 coordinates used for real-world airspace validation. */
+    @Column(name = "longitude")
+    Double longitude;
+
+    @Column(name = "latitude")
+    Double latitude;
+
     /*
      * Planned Gazebo World Z in meters for the simulation planner.
      * This is not PX4 relative altitude, terrain-relative altitude, or NED Down.

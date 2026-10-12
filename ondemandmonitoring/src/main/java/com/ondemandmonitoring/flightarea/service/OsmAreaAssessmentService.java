@@ -60,7 +60,7 @@ public class OsmAreaAssessmentService {
         try {
             OverpassData data = cache.get(key).orElse(null);
             if (data == null) {
-                data = client.fetch(lat, lon, queryRadius, properties.getOsm().getAerodromeSearchRadiusM());
+                data = client.fetch(lat, lon, queryRadius);
                 cache.put(key, data, Duration.ofMinutes(properties.getCache().getOsmTtlMinutes()));
             }
             return summarize(data, lat, lon, queryRadius);

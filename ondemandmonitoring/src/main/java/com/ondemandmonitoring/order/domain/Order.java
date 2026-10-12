@@ -9,8 +9,10 @@ import com.ondemandmonitoring.order.enums.OrderRecurrenceType;
 import com.ondemandmonitoring.order.enums.OrderResultFormat;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.enums.ExecutionPlanStatus;
+import com.ondemandmonitoring.order.enums.OrderFlightPurpose;
 import com.ondemandmonitoring.order.enums.OrderUsagePurpose;
 import com.ondemandmonitoring.order.enums.OrderWeatherFallback;
+import com.ondemandmonitoring.order.enums.MonitoringRelationship;
 import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.warehouse.domain.PreferredTime;
@@ -98,6 +100,11 @@ public class Order extends BaseEntity {
     @Column(name = "usage_purpose", length = 30)
     private OrderUsagePurpose usagePurpose;
 
+    /** Purpose of the flight (Decree 288/2025/ND-CP, Article 4.3). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "flight_purpose", length = 30)
+    private OrderFlightPurpose flightPurpose;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "priority", length = 20)
     private OrderPriority priority;
@@ -123,6 +130,26 @@ public class Order extends BaseEntity {
 
     @Column(name = "permit_number", length = 80)
     private String permitNumber;
+
+    /** Last day the customer's permit is valid; must cover the preferred flight window. */
+    @Column(name = "permit_expires_on")
+    private LocalDate permitExpiresOn;
+
+    /** Permit files the customer attached (PDF or image). */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "permit_documents", columnDefinition = "jsonb")
+    private List<com.ondemandmonitoring.order.dto.OrderPermitDocument> permitDocuments;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "monitoring_relationship", length = 40)
+    private MonitoringRelationship monitoringRelationship;
+
+    @Column(name = "monitoring_authorization_confirmed", nullable = false)
+    private Boolean monitoringAuthorizationConfirmed = false;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "monitoring_authorization_documents", columnDefinition = "jsonb")
+    private List<com.ondemandmonitoring.order.dto.OrderAuthorizationDocument> monitoringAuthorizationDocuments;
 
     @Column(name = "permit_required")
     private Boolean permitRequired;

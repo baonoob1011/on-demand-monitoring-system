@@ -14,8 +14,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.ondemandmonitoring.common.exception.GlobalExceptionHandler;
 import com.ondemandmonitoring.flightarea.config.FlightAreaProperties;
+import com.ondemandmonitoring.flightarea.client.MinistryFlightBanClient;
 import com.ondemandmonitoring.flightarea.dto.FlightAreaAssessmentResponse;
 import com.ondemandmonitoring.flightarea.dto.FlightAreaAssessmentResponse.OsmContext;
+import com.ondemandmonitoring.flightarea.dto.FlightAreaAssessmentResponse.MinistryFlightBan;
 import com.ondemandmonitoring.flightarea.dto.FlightAreaAssessmentResponse.RestrictedZones;
 import com.ondemandmonitoring.flightarea.service.ElevationService;
 import com.ondemandmonitoring.flightarea.service.ElevationService.ElevationResult;
@@ -37,6 +39,7 @@ class FlightAreaAssessmentControllerTest {
     private ElevationService elevation;
     private RestrictedZoneAssessmentService zones;
     private OsmAreaAssessmentService osm;
+    private MinistryFlightBanClient ministry;
     private MockMvc mvc;
 
     @BeforeEach
@@ -44,9 +47,10 @@ class FlightAreaAssessmentControllerTest {
         elevation = mock(ElevationService.class);
         zones = mock(RestrictedZoneAssessmentService.class);
         osm = mock(OsmAreaAssessmentService.class);
+        ministry = mock(MinistryFlightBanClient.class);
         FlightAreaProperties properties = new FlightAreaProperties();
         var service = new FlightAreaAssessmentService(elevation, zones, osm, new FlightAreaRiskEvaluator(properties),
-                properties, Executors.newFixedThreadPool(2));
+                ministry, properties, Executors.newFixedThreadPool(3));
         mvc = MockMvcBuilders.standaloneSetup(new FlightAreaAssessmentController(service))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -56,6 +60,9 @@ class FlightAreaAssessmentControllerTest {
                 .thenReturn(new RestrictedZones(true, false, false, 850.0, List.of()));
         when(osm.assess(anyDouble(), anyDouble(), anyDouble()))
                 .thenReturn(new OsmContext(true, null, 300.0, 34, 1, 0, 2, false, false, List.of()));
+        when(ministry.check(anyDouble(), anyDouble(), anyDouble()))
+                .thenReturn(new MinistryFlightBan(true, 1000.0, 0.0, 1000.0, List.of(),
+                        MinistryFlightBanClient.SOURCE_URL, null));
     }
 
     private org.springframework.test.web.servlet.ResultActions call(String lat, String lon, String radius, String altitude)
@@ -168,7 +175,7 @@ class FlightAreaAssessmentControllerTest {
         FlightAreaProperties properties = new FlightAreaProperties();
         properties.setAggregateTimeoutMs(100);
         var slowService = new FlightAreaAssessmentService(elevation, zones, osm, new FlightAreaRiskEvaluator(properties),
-                properties, Executors.newFixedThreadPool(2));
+                ministry, properties, Executors.newFixedThreadPool(3));
         when(osm.assess(anyDouble(), anyDouble(), anyDouble())).thenAnswer(invocation -> {
             Thread.sleep(2000);
             return new OsmContext(true, null, 300.0, 1, 0, 0, 0, false, false, List.of());
@@ -184,7 +191,8 @@ class FlightAreaAssessmentControllerTest {
     @Test
     void theEndpointIsRestrictedToCustomersAndStaff() throws Exception {
         var method = FlightAreaAssessmentController.class.getMethod(
-                "assess", String.class, String.class, String.class, String.class);
-        assertEquals("hasAnyRole('CUSTOMER','STAFF')", method.getAnnotation(PreAuthorize.class).value());
+                "assess", String.class, String.class, String.class, String.class, boolean.class);
+        assertEquals("hasAnyRole('CUSTOMER','STAFF','MANAGER','ADMIN')",
+                method.getAnnotation(PreAuthorize.class).value());
     }
 }

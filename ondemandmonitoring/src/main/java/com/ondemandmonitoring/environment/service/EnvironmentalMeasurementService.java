@@ -5,7 +5,7 @@ import com.ondemandmonitoring.device.dto.request.TelemetryRequest;
 import com.ondemandmonitoring.environment.domain.EnvironmentalMeasurement;
 import com.ondemandmonitoring.environment.enums.MeasurementType;
 import com.ondemandmonitoring.environment.repository.EnvironmentalMeasurementRepository;
-import com.ondemandmonitoring.zone.config.SimulationZoneSeeder;
+import com.ondemandmonitoring.zone.config.SimulationCoordinateSystem;
 import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +36,7 @@ public class EnvironmentalMeasurementService {
         measurement.setAltitudeM(altitudeM);
         measurement.setSimX(request.getSimX());
         measurement.setSimY(request.getSimY());
-        measurement.setSourceWorld(SimulationZoneSeeder.SOURCE_WORLD);
+        measurement.setSourceWorld(SimulationCoordinateSystem.SOURCE_WORLD);
         measurement.setMeasuredAt(Instant.now());
         return environmentalMeasurementRepository.save(measurement);
     }

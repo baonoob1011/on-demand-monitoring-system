@@ -25,6 +25,7 @@ public class FlightAreaProperties {
 
     private Elevation elevation = new Elevation();
     private Osm osm = new Osm();
+    private MinistryFlightBan ministryFlightBan = new MinistryFlightBan();
     private Cache cache = new Cache();
     /** Upper bound on how long the aggregate call waits for external providers. */
     private int aggregateTimeoutMs = 25000;
@@ -52,13 +53,20 @@ public class FlightAreaProperties {
         private int retryDelayMs = 300;
         /** The Overpass query never uses a radius larger than this, whatever the customer picks. */
         private double queryMaxRadiusM = 1500;
-        /** Aerodromes and helipads are searched this far from the monitoring centre. */
-        private double aerodromeSearchRadiusM = 5000;
         /** At most this many important features are returned. */
         private int maxImportantFeatures = 15;
         /** Safety cap on elements requested per Overpass section. */
         private int maxElementsPerSection = 500;
         private String userAgent = "OnDemandMonitoring/1.0 (flight-area-assessment)";
+    }
+
+    @Data
+    public static class MinistryFlightBan {
+        private String baseUrl = "https://cambay.mod.gov.vn";
+        private String path = "/api/calculate-area";
+        private int connectTimeoutMs = 3000;
+        private int readTimeoutMs = 8000;
+        private int polygonPoints = 64;
     }
 
     @Data

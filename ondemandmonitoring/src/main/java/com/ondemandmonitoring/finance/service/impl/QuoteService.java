@@ -24,6 +24,7 @@ import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.mapper.OrderChecklistItemMapper;
 import com.ondemandmonitoring.order.repository.OrderChecklistItemRepository;
 import com.ondemandmonitoring.order.repository.OrderRepository;
+import com.ondemandmonitoring.review.service.IOrderReadinessService;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.math.BigDecimal;
@@ -49,6 +50,7 @@ public class QuoteService implements IQuoteService {
     private final AuthenticatedUserResolver currentUser;
     private final PaymentProperties paymentProperties;
     private final OrderDeliveryRepository deliveries;
+    private final IOrderReadinessService readiness;
 
     @Transactional(readOnly = true)
     public PricingReviewResponse getPricingReview(String orderId) {
@@ -134,6 +136,8 @@ public class QuoteService implements IQuoteService {
                 .anyMatch(item -> item.getReviewStatus() == null || item.getReviewStatus() == ChecklistReviewStatus.PENDING)) {
             throw new ApiException(ErrorCode.ORDER_CHECKLIST_REVIEW_INVALID);
         }
+        // Approval criteria: automatic checks + the manager's own answers.
+        readiness.requireApprovable(orderId);
         quote.setStatus(QuoteStatus.APPROVED);
         quote.setApprovedBy(currentUser.getCurrentUser());
         quote.setApprovedAt(Instant.now());

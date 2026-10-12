@@ -25,13 +25,14 @@ public class FlightAreaAssessmentController {
             description = "Aggregates terrain elevation, restricted zones (PostGIS) and OpenStreetMap context. "
                     + "Advisory only; the final flight conditions are confirmed during planning and pre-flight. "
                     + "Parameters are plain strings so malformed values return 400, not 500.")
-    @PreAuthorize("hasAnyRole('CUSTOMER','STAFF')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','STAFF','MANAGER','ADMIN')")
     @GetMapping
     public ApiResponse<FlightAreaAssessmentResponse> assess(
             @RequestParam String latitude,
             @RequestParam String longitude,
             @RequestParam String radiusMeters,
-            @RequestParam(required = false) String requestedAltitudeAgl) {
-        return ApiResponse.ok(service.assess(latitude, longitude, radiusMeters, requestedAltitudeAgl));
+            @RequestParam(required = false) String requestedAltitudeAgl,
+            @RequestParam(defaultValue = "true") boolean includeOsm) {
+        return ApiResponse.ok(service.assess(latitude, longitude, radiusMeters, requestedAltitudeAgl, includeOsm));
     }
 }
