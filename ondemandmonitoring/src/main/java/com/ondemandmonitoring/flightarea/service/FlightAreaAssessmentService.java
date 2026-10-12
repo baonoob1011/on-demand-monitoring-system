@@ -3,9 +3,11 @@ package com.ondemandmonitoring.flightarea.service;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.flightarea.config.FlightAreaProperties;
+import com.ondemandmonitoring.flightarea.client.MinistryFlightBanClient;
 import com.ondemandmonitoring.flightarea.dto.FlightAreaAssessmentResponse;
 import com.ondemandmonitoring.flightarea.dto.FlightAreaAssessmentResponse.Assessment;
 import com.ondemandmonitoring.flightarea.dto.FlightAreaAssessmentResponse.OsmContext;
+import com.ondemandmonitoring.flightarea.dto.FlightAreaAssessmentResponse.MinistryFlightBan;
 import com.ondemandmonitoring.flightarea.dto.FlightAreaAssessmentResponse.RestrictedZones;
 import com.ondemandmonitoring.flightarea.service.ElevationService.ElevationResult;
 import jakarta.annotation.PreDestroy;
@@ -34,6 +36,7 @@ public class FlightAreaAssessmentService {
     private final RestrictedZoneAssessmentService zoneService;
     private final OsmAreaAssessmentService osmService;
     private final FlightAreaRiskEvaluator evaluator;
+    private final MinistryFlightBanClient ministryFlightBanClient;
     private final FlightAreaProperties properties;
     private final ExecutorService executor;
 
@@ -43,8 +46,9 @@ public class FlightAreaAssessmentService {
             RestrictedZoneAssessmentService zoneService,
             OsmAreaAssessmentService osmService,
             FlightAreaRiskEvaluator evaluator,
+            MinistryFlightBanClient ministryFlightBanClient,
             FlightAreaProperties properties) {
-        this(elevationService, zoneService, osmService, evaluator, properties, Executors.newFixedThreadPool(4, runnable -> {
+        this(elevationService, zoneService, osmService, evaluator, ministryFlightBanClient, properties, Executors.newFixedThreadPool(4, runnable -> {
             Thread thread = new Thread(runnable, "flight-area-assessment");
             thread.setDaemon(true);
             return thread;
@@ -57,12 +61,14 @@ public class FlightAreaAssessmentService {
             RestrictedZoneAssessmentService zoneService,
             OsmAreaAssessmentService osmService,
             FlightAreaRiskEvaluator evaluator,
+            MinistryFlightBanClient ministryFlightBanClient,
             FlightAreaProperties properties,
             ExecutorService executor) {
         this.elevationService = elevationService;
         this.zoneService = zoneService;
         this.osmService = osmService;
         this.evaluator = evaluator;
+        this.ministryFlightBanClient = ministryFlightBanClient;
         this.properties = properties;
         this.executor = executor;
     }
@@ -75,19 +81,33 @@ public class FlightAreaAssessmentService {
     /** Plain strings so malformed values return 400, not 500 (same convention as the weather preview). */
     public FlightAreaAssessmentResponse assess(
             String latitudeText, String longitudeText, String radiusText, String altitudeText) {
+        return assess(latitudeText, longitudeText, radiusText, altitudeText, true);
+    }
+
+    public FlightAreaAssessmentResponse assess(
+            String latitudeText, String longitudeText, String radiusText, String altitudeText, boolean includeOsm) {
         double latitude = parse(latitudeText, "latitude");
         double longitude = parse(longitudeText, "longitude");
         double radius = parse(radiusText, "radiusMeters");
         Double altitude = altitudeText == null || altitudeText.isBlank() ? null : parse(altitudeText, "requestedAltitudeAgl");
         validate(latitude, longitude, radius, altitude);
-        return assess(latitude, longitude, radius, altitude);
+        return assess(latitude, longitude, radius, altitude, includeOsm);
     }
 
     public FlightAreaAssessmentResponse assess(double latitude, double longitude, double radius, Double altitudeAgl) {
+        return assess(latitude, longitude, radius, altitudeAgl, true);
+    }
+
+    public FlightAreaAssessmentResponse assess(
+            double latitude, double longitude, double radius, Double altitudeAgl, boolean includeOsm) {
         CompletableFuture<ElevationResult> elevationFuture =
                 CompletableFuture.supplyAsync(() -> elevationService.lookup(latitude, longitude), executor);
-        CompletableFuture<OsmContext> osmFuture =
-                CompletableFuture.supplyAsync(() -> osmService.assess(latitude, longitude, radius), executor);
+        CompletableFuture<OsmContext> osmFuture = includeOsm
+                ? CompletableFuture.supplyAsync(() -> osmService.assess(latitude, longitude, radius), executor)
+                : CompletableFuture.completedFuture(
+                        new OsmContext(false, "SKIPPED", null, 0, 0, 0, 0, false, false, List.of()));
+        CompletableFuture<MinistryFlightBan> ministryFuture =
+                CompletableFuture.supplyAsync(() -> ministryFlightBanClient.check(latitude, longitude, radius), executor);
 
         // Internal data: runs on the request thread while the providers work.
         RestrictedZones zones = zoneService.assess(latitude, longitude, radius);
@@ -97,6 +117,9 @@ public class FlightAreaAssessmentService {
                         properties.getElevation().getProviderName(), PROVIDER_TIMEOUT));
         OsmContext osm = await(osmFuture, new OsmContext(false, PROVIDER_TIMEOUT, null, 0, 0, 0, 0,
                 false, false, List.of()));
+        MinistryFlightBan ministry = await(ministryFuture,
+                new MinistryFlightBan(false, null, null, null, List.of(), MinistryFlightBanClient.SOURCE_URL,
+                        PROVIDER_TIMEOUT));
 
         Assessment assessment = evaluator.evaluate(elevation, zones, osm, radius, altitudeAgl);
         return new FlightAreaAssessmentResponse(
@@ -104,6 +127,7 @@ public class FlightAreaAssessmentService {
                 toElevation(elevation, altitudeAgl),
                 zones,
                 osm,
+                ministry,
                 assessment);
     }
 

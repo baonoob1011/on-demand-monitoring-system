@@ -6,7 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.environment.domain.AtmosphereProfile;
 import com.ondemandmonitoring.environment.repository.AtmosphereProfileRepository;
-import com.ondemandmonitoring.zone.config.SimulationZoneSeeder;
+import com.ondemandmonitoring.zone.config.SimulationCoordinateSystem;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,12 +20,12 @@ class AirPressureSimulationServiceTest {
     void setUp() {
         AtmosphereProfileRepository repository = mock(AtmosphereProfileRepository.class);
         AtmosphereProfile profile = new AtmosphereProfile();
-        profile.setSourceWorld(SimulationZoneSeeder.SOURCE_WORLD);
+        profile.setSourceWorld(SimulationCoordinateSystem.SOURCE_WORLD);
         profile.setBasePressurePa(101_325.0);
         profile.setBaseAltitudeM(0.0);
         profile.setActive(true);
 
-        when(repository.findFirstBySourceWorldAndActiveTrueOrderByCreatedAtDesc(SimulationZoneSeeder.SOURCE_WORLD))
+        when(repository.findFirstBySourceWorldAndActiveTrueOrderByCreatedAtDesc(SimulationCoordinateSystem.SOURCE_WORLD))
                 .thenReturn(Optional.of(profile));
         service = new AirPressureSimulationService(repository);
     }

@@ -4,7 +4,7 @@ import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.zone.domain.ThermalSource;
 import com.ondemandmonitoring.zone.domain.Zone;
-import com.ondemandmonitoring.zone.config.SimulationZoneSeeder;
+import com.ondemandmonitoring.zone.config.SimulationCoordinateSystem;
 import com.ondemandmonitoring.zone.dto.request.ThermalSourceRequest;
 import com.ondemandmonitoring.zone.dto.response.ThermalSourceResponse;
 import com.ondemandmonitoring.zone.repository.ThermalSourceRepository;
@@ -102,8 +102,8 @@ public class ThermalSourceService implements IThermalSourceService {
         source.setCenterYM(request.getCenterYM());
         source.setRadiusM(request.getRadiusM());
         source.setActive(request.getActive() == null || request.getActive());
-        source.setSourceWorld(SimulationZoneSeeder.SOURCE_WORLD);
-        source.setCoordinateSystem(SimulationZoneSeeder.COORDINATE_SYSTEM);
+        source.setSourceWorld(SimulationCoordinateSystem.SOURCE_WORLD);
+        source.setCoordinateSystem(SimulationCoordinateSystem.COORDINATE_SYSTEM);
     }
 
     private boolean isFinite(Double value) {

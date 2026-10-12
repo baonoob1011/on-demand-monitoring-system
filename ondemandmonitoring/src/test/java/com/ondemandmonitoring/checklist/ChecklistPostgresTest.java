@@ -524,9 +524,14 @@ class ChecklistPostgresTest {
         @Bean IOrderService orderService(OrderRepository orders, ServiceRepository services,
                 DeliverableTypeRepository deliverables, ServiceDeliverableRepository links,
                 PreferredTimeRepository times, AuthenticatedUserResolver resolver, MissionResultRepository results,
-                IOrderChecklistSnapshotService snapshots) {
+                IOrderChecklistSnapshotService snapshots,
+                com.ondemandmonitoring.review.service.OrderReviewRecordInitializer reviewRecords) {
             return new OrderService(orders, services, deliverables, links, times, resolver,
-                    Mappers.getMapper(OrderMapper.class), snapshots);
+                    Mappers.getMapper(OrderMapper.class), snapshots, reviewRecords);
+        }
+
+        @Bean com.ondemandmonitoring.review.service.OrderReviewRecordInitializer reviewRecords() {
+            return mock(com.ondemandmonitoring.review.service.OrderReviewRecordInitializer.class);
         }
     }
 }

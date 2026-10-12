@@ -98,6 +98,7 @@ public enum ErrorCode {
     ORDER_CHECKLIST_LOCKED("Order checklist snapshot is immutable", HttpStatus.CONFLICT),
     ORDER_CHECKLIST_TEMPLATE_CHANGED("Service checklist changed; refresh requirements and retry", HttpStatus.CONFLICT),
     ORDER_CHECKLIST_REVIEW_INVALID("Order checklist review is incomplete or invalid", HttpStatus.CONFLICT),
+    ORDER_REVIEW_INCOMPLETE("Order does not meet the approval criteria", HttpStatus.CONFLICT),
     QUOTE_NOT_FOUND("Quote not found", HttpStatus.NOT_FOUND),
     QUOTE_NOT_CURRENT("Quote is no longer current", HttpStatus.CONFLICT),
     QUOTE_NOT_APPROVED("Only an approved quote can be accepted", HttpStatus.CONFLICT),

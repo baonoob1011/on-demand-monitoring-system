@@ -46,6 +46,9 @@ public class OrderCreateRequest {
     @Schema(description = "Intended use of the result", example = "INTERNAL")
     OrderUsagePurpose usagePurpose;
 
+    @Schema(description = "Purpose of the flight (Decree 288/2025/ND-CP, Article 4.3); defaults to SURVEY_MONITORING")
+    com.ondemandmonitoring.order.enums.OrderFlightPurpose flightPurpose;
+
     @Schema(description = "Request priority, defaults to NORMAL", example = "NORMAL")
     OrderPriority priority;
 
@@ -76,6 +79,22 @@ public class OrderCreateRequest {
 
     @Size(max = 80, message = "Permit number must not exceed 80 characters")
     String permitNumber;
+
+    @Schema(description = "Last day the permit is valid; required with permitStatus HAVE_PERMIT")
+    LocalDate permitExpiresOn;
+
+    @Size(max = 3, message = "At most 3 permit files")
+    @Schema(description = "Permit files (PDF or image); required with permitStatus HAVE_PERMIT")
+    List<com.ondemandmonitoring.order.dto.OrderPermitDocument> permitDocuments;
+
+    @NotNull(message = "Monitoring relationship is required")
+    com.ondemandmonitoring.order.enums.MonitoringRelationship monitoringRelationship;
+
+    @NotNull(message = "Monitoring authorization confirmation is required")
+    Boolean monitoringAuthorizationConfirmed;
+
+    @Size(max = 10, message = "At most 10 authorization documents")
+    List<com.ondemandmonitoring.order.dto.OrderAuthorizationDocument> monitoringAuthorizationDocuments;
 
     @NotBlank(message = "Service ID is required")
     @Schema(description = "Service ID", example = "550e8400-e29b-41d4-a716-446655440000")

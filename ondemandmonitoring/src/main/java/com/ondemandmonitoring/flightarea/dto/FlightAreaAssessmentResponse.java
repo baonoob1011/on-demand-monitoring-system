@@ -8,6 +8,7 @@ public record FlightAreaAssessmentResponse(
         Elevation elevation,
         RestrictedZones restrictedZones,
         OsmContext osmContext,
+        MinistryFlightBan ministryFlightBan,
         Assessment assessment) {
 
     public record Location(double latitude, double longitude, double radiusMeters) {
@@ -58,6 +59,17 @@ public record FlightAreaAssessmentResponse(
             boolean aerodromeNearby,
             boolean helipadNearby,
             List<NearbyFeature> importantFeatures) {
+    }
+
+    /** Result returned by the Ministry of National Defence public flight-ban map. */
+    public record MinistryFlightBan(
+            boolean available,
+            Double totalAreaSquareMeters,
+            Double violatedAreaSquareMeters,
+            Double safeAreaSquareMeters,
+            List<String> violatedZones,
+            String sourceUrl,
+            String errorCode) {
     }
 
     /** {@code heightMeters} is only ever a value OpenStreetMap actually carries; otherwise null. */

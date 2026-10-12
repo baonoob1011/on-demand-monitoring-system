@@ -1,4 +1,6 @@
 spring:
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:default}
   application:
     name: ${SPRING_APPLICATION_NAME:ondemandmonitoring}
   config:
@@ -190,10 +192,10 @@ flight-area-assessment:
     max-attempts: 2
     retry-delay-ms: 300
     query-max-radius-m: ${FLIGHT_AREA_OSM_QUERY_MAX_RADIUS_M:1500}
-    aerodrome-search-radius-m: 5000
     max-important-features: 15
   cache:
     enabled: true
     elevation-ttl-minutes: 1440
     osm-ttl-minutes: 60
     max-entries: 500
+
