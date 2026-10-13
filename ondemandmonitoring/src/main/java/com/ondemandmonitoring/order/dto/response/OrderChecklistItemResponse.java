@@ -5,6 +5,7 @@ import com.ondemandmonitoring.order.enums.ChecklistReviewStatus;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.NoArgsConstructor;
+import com.ondemandmonitoring.pricing.enums.ChecklistDifficulty;
 
 @Getter
 @Setter
@@ -17,6 +18,7 @@ public class OrderChecklistItemResponse {
     private OrderChecklistSourceType sourceType;
     private ChecklistReviewStatus reviewStatus;
     private String managerNote;
+    private ChecklistDifficulty difficultySnapshot;
     private int evidencePolicyVersion;
     private int minimumEvidenceCount;
 }

@@ -1,6 +1,7 @@
 package com.ondemandmonitoring.checklist.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
+import com.ondemandmonitoring.pricing.enums.ChecklistDifficulty;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -20,4 +21,7 @@ public class ChecklistDefinition extends BaseEntity {
     private String normalizedContent;
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "difficulty", nullable = false, length = 20, columnDefinition = "varchar(20) default 'BASIC'")
+    private ChecklistDifficulty difficulty = ChecklistDifficulty.BASIC;
 }
