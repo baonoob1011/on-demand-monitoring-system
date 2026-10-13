@@ -13,6 +13,14 @@ public enum OrderFlightPurpose {
     SURVEY_MONITORING,
     /** Agricultural production support (crop monitoring). */
     AGRICULTURE,
+    /** Construction progress and site monitoring. */
+    CONSTRUCTION_MONITORING,
+    /** Factory, roof and industrial-facility inspection. */
+    INDUSTRIAL_INSPECTION,
+    /** General monitoring of a defined area. */
+    AREA_MONITORING,
+    /** Forest condition and forest-resource monitoring. */
+    FOREST_MONITORING,
     OTHER;
 
     public static final OrderFlightPurpose DEFAULT = SURVEY_MONITORING;

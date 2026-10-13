@@ -149,8 +149,8 @@ class OrderServiceTest {
                 .monitoringAuthorizationConfirmed(true)
                 .serviceId("srv-1")
                 .preferredTimeId("pt-1")
-                .preferredDateFrom(LocalDate.now())
-                .preferredDateTo(LocalDate.now().plusDays(2))
+                .preferredDateFrom(LocalDate.now().plusDays(7))
+                .preferredDateTo(LocalDate.now().plusDays(9))
                 .longitude(106.7005)
                 .latitude(10.7765)
                 .coverageArea(sampleCoverageAreaMap())
@@ -213,8 +213,8 @@ class OrderServiceTest {
                 .monitoringAuthorizationConfirmed(true)
                 .serviceId("srv-1")
                 .preferredTimeId("pt-1")
-                .preferredDateFrom(LocalDate.now())
-                .preferredDateTo(LocalDate.now().plusDays(2))
+                .preferredDateFrom(LocalDate.now().plusDays(7))
+                .preferredDateTo(LocalDate.now().plusDays(9))
                 .longitude(106.7)
                 .latitude(121.0)
                 .coverageArea(sampleCoverageAreaMap())
@@ -265,8 +265,8 @@ class OrderServiceTest {
                 .monitoringAuthorizationConfirmed(true)
                 .serviceId("srv-1")
                 .preferredTimeId("pt-1")
-                .preferredDateFrom(LocalDate.now())
-                .preferredDateTo(LocalDate.now().plusDays(1))
+                .preferredDateFrom(LocalDate.now().plusDays(7))
+                .preferredDateTo(LocalDate.now().plusDays(8))
                 .longitude(106.6605)
                 .latitude(10.8155)
                 .coverageArea(area)
@@ -294,7 +294,7 @@ class OrderServiceTest {
 
     @Test
     void createOrder_PermitExpiringBeforeTheFlightIsRejected() {
-        // The request flies on today+1; the permit ends today.
+        // The request flies on today+8; the permit ends today.
         var request = airportRequest(com.ondemandmonitoring.order.enums.OrderPermitStatus.HAVE_PERMIT, "GP-1",
                 List.of(permitFile()), LocalDate.now());
         assertThrows(ApiException.class, () -> orderService.createOrder(request));
@@ -365,8 +365,8 @@ class OrderServiceTest {
                 .monitoringAuthorizationConfirmed(true)
                 .serviceId("srv-1")
                 .preferredTimeId("pt-1")
-                .preferredDateFrom(LocalDate.now())
-                .preferredDateTo(LocalDate.now().plusDays(2))
+                .preferredDateFrom(LocalDate.now().plusDays(7))
+                .preferredDateTo(LocalDate.now().plusDays(9))
                 .longitude(106.7005)
                 .latitude(10.7765)
                 .coverageArea(sampleCoverageAreaMap())
@@ -379,6 +379,17 @@ class OrderServiceTest {
         OrderCreateRequest declined = deliveryRequest().termsAccepted(false).build();
         assertThrows(ApiException.class, () -> orderService.createOrder(missing));
         assertThrows(ApiException.class, () -> orderService.createOrder(declined));
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    void createOrder_RejectsFlightScheduledWithLessThanSevenDaysNotice() {
+        OrderCreateRequest request = deliveryRequest()
+                .preferredDateFrom(LocalDate.now().plusDays(6))
+                .preferredDateTo(LocalDate.now().plusDays(8))
+                .build();
+
+        assertThrows(ApiException.class, () -> orderService.createOrder(request));
         verify(orderRepository, never()).save(any(Order.class));
     }
 

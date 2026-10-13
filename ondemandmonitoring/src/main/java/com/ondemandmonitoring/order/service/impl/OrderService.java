@@ -53,6 +53,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class OrderService implements IOrderService {
 
     private static final DateTimeFormatter ORDER_CODE_DATE_FORMATTER = DateTimeFormatter.BASIC_ISO_DATE;
+    private static final int MINIMUM_FLIGHT_NOTICE_DAYS = 7;
 
     OrderRepository orderRepository;
     ServiceRepository serviceRepository;
@@ -109,6 +110,11 @@ public class OrderService implements IOrderService {
                         "Preferred time not found with id: " + request.getPreferredTimeId()));
 
         // 4. Validate Date Range
+        LocalDate earliestFlightDate = LocalDate.now().plusDays(MINIMUM_FLIGHT_NOTICE_DAYS);
+        if (request.getPreferredDateFrom().isBefore(earliestFlightDate)) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "preferredDateFrom must be at least 7 days after the request date");
+        }
         if (request.getPreferredDateFrom().isAfter(request.getPreferredDateTo())) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
                     "preferredDateFrom must be before or equal to preferredDateTo");
