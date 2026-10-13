@@ -88,6 +88,14 @@ class ServiceImageServiceTest {
     }
 
     @Test
+    void externalImageIsFallbackAndS3RemainsPreferred() {
+        Service externalOnly = Service.builder().imageUrl("https://images.example/service.jpg").build();
+        assertThat(images.getImageUrl(externalOnly)).isEqualTo("https://images.example/service.jpg");
+        assertThat(images.getImageUrl(service)).isEqualTo("signed-url");
+        verify(storage).createPresignedGetUrl("bucket", "old.png");
+    }
+
+    @Test
     void invalidAndOversizedFilesAreRejectedBeforeStorage() {
         assertThatThrownBy(() -> images.upload("service-1", new MockMultipartFile(
                 "file", "fake.png", "image/png", "not an image".getBytes())))
