@@ -3,6 +3,7 @@ package com.ondemandmonitoring.order.controller;
 import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.request.OrderAdditionalInformationRequest;
+import com.ondemandmonitoring.order.dto.request.FlightAreaReviewRequest;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.service.IOrderService;
@@ -85,6 +86,16 @@ public class OrderController {
     public ResponseEntity<ApiResponse<OrderCreateResponse>> approveOrder(@PathVariable String orderId) {
         OrderCreateResponse order = orderService.approveOrder(orderId);
         return ResponseEntity.ok(ApiResponse.ok("Order approved successfully", order));
+    }
+
+    @Operation(summary = "Record preliminary flight-area review")
+    @PostMapping("/{orderId}/flight-area-review")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<OrderCreateResponse>> reviewFlightArea(
+            @PathVariable String orderId,
+            @Valid @RequestBody FlightAreaReviewRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok("Flight-area review recorded",
+                orderService.reviewFlightArea(orderId, request)));
     }
 
     @Operation(summary = "Submit approval decision", description = "Manager submits rejection or need-info decision with reason")

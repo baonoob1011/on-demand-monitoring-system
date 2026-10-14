@@ -15,6 +15,7 @@ import com.ondemandmonitoring.order.enums.OrderFlightPurpose;
 import com.ondemandmonitoring.order.enums.OrderUsagePurpose;
 import com.ondemandmonitoring.order.enums.OrderWeatherFallback;
 import com.ondemandmonitoring.order.enums.MonitoringRelationship;
+import com.ondemandmonitoring.order.enums.FlightAreaReviewStatus;
 import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.warehouse.domain.PreferredTime;
@@ -231,6 +232,27 @@ public class Order extends BaseEntity {
 
     @Column(name = "review_at")
     private Instant reviewAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "flight_area_review_status", length = 30)
+    private FlightAreaReviewStatus flightAreaReviewStatus;
+
+    @Column(name = "flight_area_review_reason", length = 500)
+    private String flightAreaReviewReason;
+
+    @Column(name = "flight_area_review_note", columnDefinition = "TEXT")
+    private String flightAreaReviewNote;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "flight_area_reviewed_by")
+    private User flightAreaReviewedBy;
+
+    @Column(name = "flight_area_reviewed_at")
+    private Instant flightAreaReviewedAt;
+
+    @Builder.Default
+    @Column(name = "requires_flight_permission_review")
+    private Boolean requiresFlightPermissionReview = false;
 
     @Builder.Default
     @OneToMany(mappedBy = "order", fetch = FetchType.LAZY)

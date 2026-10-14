@@ -8,6 +8,7 @@ import com.ondemandmonitoring.order.enums.OrderResultFormat;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.enums.ExecutionPlanStatus;
 import com.ondemandmonitoring.order.enums.OrderUsagePurpose;
+import com.ondemandmonitoring.order.enums.FlightAreaReviewStatus;
 import com.ondemandmonitoring.order.enums.OrderWeatherFallback;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
@@ -94,6 +95,13 @@ public class OrderCreateResponse {
     String reviewById;
     String reviewByName;
     Instant reviewAt;
+    FlightAreaReviewStatus flightAreaReviewStatus;
+    String flightAreaReviewReason;
+    String flightAreaReviewNote;
+    String flightAreaReviewedById;
+    String flightAreaReviewedByName;
+    Instant flightAreaReviewedAt;
+    Boolean requiresFlightPermissionReview;
 
     // Deliverables
     List<OrderDeliverableResponse> deliverables;

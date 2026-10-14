@@ -28,6 +28,7 @@ public class OrderReviewRecordInitializer implements CommandLineRunner {
     @Transactional
     public void run(String... args) {
         long removed = records.deleteByCode(ReviewCriterionCode.PRICE_REASONABLE)
+                + records.deleteByCode(ReviewCriterionCode.FLIGHT_SCALE)
                 + records.deleteByCode(ReviewCriterionCode.SENSITIVE_AREA);
         if (removed > 0) {
             log.info("Removed {} obsolete order-review records", removed);

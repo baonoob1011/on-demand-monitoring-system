@@ -6,6 +6,7 @@ import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.domain.OrderDeliverable;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.request.OrderDeliverableRequest;
+import com.ondemandmonitoring.order.dto.request.FlightAreaReviewRequest;
 import com.ondemandmonitoring.order.dto.OrderAuthorizationDocument;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
 import com.ondemandmonitoring.order.enums.OrderDeliveryMethod;
@@ -16,6 +17,7 @@ import com.ondemandmonitoring.order.enums.OrderResultFormat;
 import com.ondemandmonitoring.order.enums.OrderWeatherFallback;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.enums.DocumentVerificationStatus;
+import com.ondemandmonitoring.order.enums.FlightAreaReviewStatus;
 import com.ondemandmonitoring.order.mapper.OrderMapper;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.IOrderService;
@@ -80,6 +82,11 @@ public class OrderService implements IOrderService {
         if (order.getOrderStatus() != OrderStatus.PENDING) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Only PENDING orders can be approved");
         }
+        if (order.getFlightAreaReviewStatus() != FlightAreaReviewStatus.PRELIMINARY_PASS
+                && order.getFlightAreaReviewStatus() != FlightAreaReviewStatus.RESTRICTED) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Flight area must be reviewed before the order can be approved");
+        }
 
         order.setOrderStatus(OrderStatus.APPROVED);
         order.setReviewBy(authenticatedUserResolver.getCurrentUser());
@@ -87,6 +94,29 @@ public class OrderService implements IOrderService {
         orderRepository.save(order);
 
         return toResponse(order);
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public OrderCreateResponse reviewFlightArea(String orderId, FlightAreaReviewRequest request) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+        if (order.getOrderStatus() != OrderStatus.PENDING) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Only PENDING orders can be reviewed");
+        }
+        String reason = trimToNull(request.reason());
+        String note = trimToNull(request.note());
+        if (request.status() == FlightAreaReviewStatus.UNSUITABLE && reason == null) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "A reason is required for an unsuitable area");
+        }
+        order.setFlightAreaReviewStatus(request.status());
+        order.setFlightAreaReviewReason(reason);
+        order.setFlightAreaReviewNote(note);
+        order.setFlightAreaReviewedBy(authenticatedUserResolver.getCurrentUser());
+        order.setFlightAreaReviewedAt(Instant.now());
+        order.setRequiresFlightPermissionReview(request.status() == FlightAreaReviewStatus.RESTRICTED);
+        return toResponse(orderRepository.save(order));
     }
 
     @Override
@@ -546,5 +576,10 @@ public class OrderService implements IOrderService {
                 .substring(0, 6)
                 .toUpperCase();
         return "ORD-" + datePart + "-" + suffix;
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null || value.isBlank()) return null;
+        return value.strip();
     }
 }
