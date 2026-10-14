@@ -2,6 +2,8 @@ package com.ondemandmonitoring.order.domain;
 
 import com.ondemandmonitoring.Consultation.domains.CustomerConsultation;
 import com.ondemandmonitoring.common.entity.BaseEntity;
+import com.ondemandmonitoring.order.dto.OrderAuthorizationDocument;
+import com.ondemandmonitoring.order.dto.OrderPermitDocument;
 import com.ondemandmonitoring.order.enums.OrderDeliveryMethod;
 import com.ondemandmonitoring.order.enums.OrderPermitStatus;
 import com.ondemandmonitoring.order.enums.OrderPriority;
@@ -138,7 +140,7 @@ public class Order extends BaseEntity {
     /** Permit files the customer attached (PDF or image). */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "permit_documents", columnDefinition = "jsonb")
-    private List<com.ondemandmonitoring.order.dto.OrderPermitDocument> permitDocuments;
+    private List<OrderPermitDocument> permitDocuments;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "monitoring_relationship", length = 40)
@@ -149,7 +151,7 @@ public class Order extends BaseEntity {
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "monitoring_authorization_documents", columnDefinition = "jsonb")
-    private List<com.ondemandmonitoring.order.dto.OrderAuthorizationDocument> monitoringAuthorizationDocuments;
+    private List<OrderAuthorizationDocument> monitoringAuthorizationDocuments;
 
     @Column(name = "permit_required")
     private Boolean permitRequired;

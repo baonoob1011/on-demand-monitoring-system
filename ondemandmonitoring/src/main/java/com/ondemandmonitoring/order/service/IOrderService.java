@@ -1,8 +1,12 @@
 package com.ondemandmonitoring.order.service;
 
+import com.ondemandmonitoring.order.dto.request.OrderAdditionalInformationRequest;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
+import com.ondemandmonitoring.order.dto.request.OrderCustomerUpdateRequest;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
 import com.ondemandmonitoring.order.enums.OrderStatus;
+
+import java.util.List;
 
 public interface IOrderService {
 
@@ -12,11 +16,19 @@ public interface IOrderService {
 
     void rejectOrder(String orderId, String reason);
 
+    void requestMoreInformation(String orderId, String reason);
+
+    OrderCreateResponse submitAdditionalInformation(String orderId,
+            OrderAdditionalInformationRequest request);
+
+    OrderCreateResponse updateCustomerOrder(String orderId,
+            OrderCustomerUpdateRequest request);
+
     OrderCreateResponse getOrderById(String orderId);
 
-    java.util.List<OrderCreateResponse> getPendingOrders();
+    List<OrderCreateResponse> getPendingOrders();
 
-    java.util.List<OrderCreateResponse> getApprovedOrders();
+    List<OrderCreateResponse> getApprovedOrders();
 
-    java.util.List<OrderCreateResponse> getMyOrders(OrderStatus status);
+    List<OrderCreateResponse> getMyOrders(OrderStatus status);
 }

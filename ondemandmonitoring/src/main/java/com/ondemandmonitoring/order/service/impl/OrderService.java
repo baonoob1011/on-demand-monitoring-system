@@ -64,6 +64,7 @@ public class OrderService implements IOrderService {
     OrderMapper orderMapper;
     IOrderChecklistSnapshotService checklistSnapshots;
     OrderReviewRecordInitializer reviewRecords;
+    com.ondemandmonitoring.finance.repository.QuoteRepository quoteRepository;
 
     @Override
     @Transactional
@@ -319,6 +320,124 @@ public class OrderService implements IOrderService {
         order.setRejectReason(reason);
         order.setReviewAt(java.time.Instant.now());
         orderRepository.save(order);
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public void requestMoreInformation(String orderId, String reason) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+
+        if (order.getOrderStatus() != OrderStatus.PENDING) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Only PENDING orders can request more information");
+        }
+
+        order.setOrderStatus(OrderStatus.NEEDS_INFO);
+        order.setRejectReason(reason);
+        order.setReviewAt(java.time.Instant.now());
+        orderRepository.save(order);
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public OrderCreateResponse submitAdditionalInformation(String orderId,
+            com.ondemandmonitoring.order.dto.request.OrderAdditionalInformationRequest request) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+        User customer = authenticatedUserResolver.getCurrentUser();
+        if (order.getCustomer() == null || !order.getCustomer().getId().equals(customer.getId())) {
+            throw new ApiException(ErrorCode.ACCESS_DENIED, "This order does not belong to the current customer");
+        }
+        if (order.getOrderStatus() != OrderStatus.NEEDS_INFO) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Order is not waiting for additional information");
+        }
+        if (request.siteContactName() != null) order.setSiteContactName(request.siteContactName());
+        if (request.siteContactPhone() != null) order.setSiteContactPhone(request.siteContactPhone());
+        if (request.accessNotes() != null) order.setAccessNotes(request.accessNotes());
+        if (request.monitoringRelationship() != null) {
+            order.setMonitoringRelationship(request.monitoringRelationship());
+        }
+        if (request.monitoringAuthorizationConfirmed() != null) {
+            order.setMonitoringAuthorizationConfirmed(request.monitoringAuthorizationConfirmed());
+        }
+        order.setDescription((order.getDescription() == null ? "" : order.getDescription().strip())
+                + "\n\nThông tin khách bổ sung: " + request.information().strip());
+        order.setOrderStatus(OrderStatus.PENDING);
+        order.setRejectReason(null);
+        order.setReviewAt(null);
+        reviewRecords.reopenFailed(order, request.information());
+        return toResponse(orderRepository.save(order));
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public OrderCreateResponse updateCustomerOrder(String orderId,
+            com.ondemandmonitoring.order.dto.request.OrderCustomerUpdateRequest request) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+        User customer = authenticatedUserResolver.getCurrentUser();
+        if (order.getCustomer() == null || !order.getCustomer().getId().equals(customer.getId()))
+            throw new ApiException(ErrorCode.ACCESS_DENIED, "This order does not belong to the current customer");
+        if (order.getOrderStatus() != OrderStatus.PENDING && order.getOrderStatus() != OrderStatus.NEEDS_INFO
+                && order.getOrderStatus() != OrderStatus.APPROVED)
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Only unpaid Orders can be edited");
+        var acceptedQuote = quoteRepository.findFirstByOrderIdAndStatusInOrderByQuoteVersionDesc(orderId,
+                java.util.List.of(com.ondemandmonitoring.finance.enums.QuoteStatus.ACCEPTED_BY_CUSTOMER));
+        if (acceptedQuote.isPresent())
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "An Order cannot be edited after its quote is accepted");
+
+        if (request.title() != null && !request.title().isBlank()) order.setTitle(request.title().strip());
+        if (request.description() != null) order.setDescription(request.description().strip());
+        if (request.address() != null) order.setAddress(request.address().strip());
+        if (request.usagePurpose() != null) order.setUsagePurpose(request.usagePurpose());
+        if (request.flightPurpose() != null) order.setFlightPurpose(request.flightPurpose());
+        if (request.priority() != null) order.setPriority(request.priority());
+        if (request.altitudeM() != null) order.setAltitudeM(request.altitudeM());
+        if (request.estimatedLengthM() != null) order.setEstimatedLengthM(request.estimatedLengthM());
+        if (request.siteContactName() != null) order.setSiteContactName(request.siteContactName().strip());
+        if (request.siteContactPhone() != null) order.setSiteContactPhone(request.siteContactPhone().strip());
+        if (request.accessNotes() != null) order.setAccessNotes(request.accessNotes().strip());
+        if (request.monitoringRelationship() != null) order.setMonitoringRelationship(request.monitoringRelationship());
+        if (request.monitoringAuthorizationConfirmed() != null) order.setMonitoringAuthorizationConfirmed(request.monitoringAuthorizationConfirmed());
+        if (request.permitStatus() != null) order.setPermitStatus(request.permitStatus());
+        if (request.permitNumber() != null) order.setPermitNumber(request.permitNumber().strip());
+        if (request.permitExpiresOn() != null) order.setPermitExpiresOn(request.permitExpiresOn());
+        if (request.preferredDateFrom() != null) order.setPreferredDateFrom(request.preferredDateFrom());
+        if (request.preferredDateTo() != null) order.setPreferredDateTo(request.preferredDateTo());
+        if (order.getPreferredDateFrom() != null && order.getPreferredDateTo() != null
+                && order.getPreferredDateTo().isBefore(order.getPreferredDateFrom()))
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "End date cannot be before start date");
+        if (request.recurrenceType() != null) order.setRecurrenceType(request.recurrenceType());
+        if (request.recurrenceOccurrences() != null) order.setRecurrenceOccurrences(request.recurrenceOccurrences());
+        if (request.weatherFallback() != null) order.setWeatherFallback(request.weatherFallback());
+        if (request.resultDeadline() != null) order.setResultDeadline(request.resultDeadline());
+        if (order.getResultDeadline() != null && order.getPreferredDateTo() != null
+                && order.getResultDeadline().isBefore(order.getPreferredDateTo()))
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Result deadline cannot be before the requested end date");
+        if (request.resultFormats() != null && !request.resultFormats().isEmpty()) order.setResultFormats(request.resultFormats());
+        if (request.deliveryMethods() != null && !request.deliveryMethods().isEmpty()) order.setDeliveryMethods(request.deliveryMethods());
+        if (request.dataRetentionDays() != null) {
+            if (!java.util.Set.of(30, 90, 180, 365).contains(request.dataRetentionDays()))
+                throw new ApiException(ErrorCode.INVALID_REQUEST, "Data retention must be 30, 90, 180 or 365 days");
+            order.setDataRetentionDays(request.dataRetentionDays());
+        }
+        if (order.getOrderStatus() == OrderStatus.APPROVED) {
+            quoteRepository.findFirstByOrderIdAndStatusInOrderByQuoteVersionDesc(orderId,
+                    java.util.List.of(com.ondemandmonitoring.finance.enums.QuoteStatus.DRAFT,
+                            com.ondemandmonitoring.finance.enums.QuoteStatus.PENDING_REVIEW,
+                            com.ondemandmonitoring.finance.enums.QuoteStatus.APPROVED))
+                    .ifPresent(quote -> {
+                        quote.setStatus(com.ondemandmonitoring.finance.enums.QuoteStatus.SUPERSEDED);
+                        quoteRepository.save(quote);
+                    });
+            order.setOrderStatus(OrderStatus.PENDING);
+            order.setReviewBy(null);
+            order.setReviewAt(null);
+        }
+        return toResponse(orderRepository.save(order));
     }
 
     @Override

@@ -25,13 +25,18 @@ class ExecutionPlanFinalizeTest {
     IMissionChecklistMaterializationService materializer=mock(IMissionChecklistMaterializationService.class);
     IMissionChecklistScopeService scope=mock(IMissionChecklistScopeService.class);
     AuthenticatedUserResolver actor=mock(AuthenticatedUserResolver.class);
-    ExecutionPlanServiceImpl service=new ExecutionPlanServiceImpl(orders,missions,items,assignments,materializer,scope,actor,new ExecutionPlanCoverageService(),mock(com.ondemandmonitoring.order.service.IOrderExecutionCompletionPolicy.class));
+    com.ondemandmonitoring.finance.repository.InvoiceRepository invoices=mock(com.ondemandmonitoring.finance.repository.InvoiceRepository.class);
+    com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService paymentEligibility=mock(com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService.class);
+    ExecutionPlanServiceImpl service=new ExecutionPlanServiceImpl(orders,missions,items,assignments,materializer,scope,actor,new ExecutionPlanCoverageService(),mock(com.ondemandmonitoring.order.service.IOrderExecutionCompletionPolicy.class),invoices,paymentEligibility);
     Order order; Mission first,second; OrderChecklistItem item;
     @BeforeEach void setup() {
         order=new Order(); order.setId("o"); order.setExecutionPlanRevision(3); order.setOrderStatus(OrderStatus.APPROVED);
         order.setPreferredDateFrom(LocalDate.of(2026,10,1)); order.setPreferredDateTo(LocalDate.of(2026,10,7));
         first=mission("a"); second=mission("b"); item=new OrderChecklistItem(); item.setId("i"); item.setOrder(order);
         when(orders.findByIdForUpdate("o")).thenReturn(Optional.of(order));
+        var invoice=mock(com.ondemandmonitoring.finance.domain.Invoice.class);
+        when(invoices.findByOrderId("o")).thenReturn(Optional.of(invoice));
+        when(paymentEligibility.isDepositSatisfied(invoice)).thenReturn(true);
         when(missions.findIdsByOrderIdOrderById("o")).thenReturn(List.of("b","a"));
         when(missions.findByIdForUpdate("a")).thenReturn(Optional.of(first)); when(missions.findByIdForUpdate("b")).thenReturn(Optional.of(second));
         when(items.findAllByOrderIdInOrderByDisplayOrderAscIdAsc(List.of("o"))).thenReturn(List.of(item));
@@ -71,6 +76,11 @@ class ExecutionPlanFinalizeTest {
     @Test void missingCoverageCannotFinalize() {
         when(assignments.findActiveByOrderId("o")).thenReturn(List.of());
         error(ErrorCode.CHECKLIST_COVERAGE_INCOMPLETE,this::finalizePlan); verifyNoInteractions(materializer);
+    }
+    @Test void unpaidDepositCannotFinalize() {
+        when(paymentEligibility.isDepositSatisfied(any())).thenReturn(false);
+        error(ErrorCode.INVOICE_NOT_PAID,this::finalizePlan);
+        verifyNoInteractions(materializer);
     }
     @Test void alreadyFinalizedReplayDoesNotRematerialize() {
         finalizePlan(); clearInvocations(materializer); var result=service.finalizePlan("o",new ExecutionPlanFinalizeRequest(3L,true));

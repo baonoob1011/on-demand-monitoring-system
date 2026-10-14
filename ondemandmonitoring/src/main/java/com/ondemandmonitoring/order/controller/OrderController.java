@@ -2,6 +2,7 @@ package com.ondemandmonitoring.order.controller;
 
 import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
+import com.ondemandmonitoring.order.dto.request.OrderAdditionalInformationRequest;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.service.IOrderService;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 
 import java.util.List;
 
@@ -93,16 +95,40 @@ public class OrderController {
             @RequestBody java.util.Map<String, String> body) {
         String decision = body != null ? body.get("decision") : null;
         String reason = body != null ? body.get("reason") : null;
-        if (!"REJECTED".equalsIgnoreCase(decision)) {
+        if (!"REJECTED".equalsIgnoreCase(decision) && !"NEED_INFO".equalsIgnoreCase(decision)) {
             throw new ApiException(
                     ErrorCode.INVALID_REQUEST,
-                    "Only REJECTED is currently supported");
+                    "Decision must be REJECTED or NEED_INFO");
         }
         if (reason == null || reason.isBlank()) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Rejection reason is required");
         }
-        orderService.rejectOrder(orderId, reason);
+        if ("NEED_INFO".equalsIgnoreCase(decision)) {
+            orderService.requestMoreInformation(orderId, reason);
+        } else {
+            orderService.rejectOrder(orderId, reason);
+        }
         return ResponseEntity.ok(ApiResponse.ok("Approval decision recorded successfully", null));
+    }
+
+    @Operation(summary = "Submit requested additional information")
+    @PostMapping("/{orderId}/additional-information")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ResponseEntity<ApiResponse<OrderCreateResponse>> submitAdditionalInformation(
+            @PathVariable String orderId,
+            @Valid @RequestBody OrderAdditionalInformationRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok("Additional information submitted",
+                orderService.submitAdditionalInformation(orderId, request)));
+    }
+
+    @Operation(summary = "Update my Order while it is still under review")
+    @PatchMapping("/{orderId}")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ResponseEntity<ApiResponse<OrderCreateResponse>> updateCustomerOrder(
+            @PathVariable String orderId,
+            @Valid @RequestBody com.ondemandmonitoring.order.dto.request.OrderCustomerUpdateRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok("Order updated successfully",
+                orderService.updateCustomerOrder(orderId, request)));
     }
 
     @Operation(summary = "Get pending orders", description = "Manager views pending orders")

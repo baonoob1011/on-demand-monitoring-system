@@ -29,6 +29,8 @@ public class ExecutionPlanServiceImpl implements IExecutionPlanService {
     private final com.ondemandmonitoring.user.service.AuthenticatedUserResolver currentUser;
     private final ExecutionPlanCoverageService coverage;
     private final com.ondemandmonitoring.order.service.IOrderExecutionCompletionPolicy completion;
+    private final com.ondemandmonitoring.finance.repository.InvoiceRepository invoices;
+    private final com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService paymentEligibility;
 
     @Override
     @Transactional(readOnly = true)
@@ -78,6 +80,12 @@ public class ExecutionPlanServiceImpl implements IExecutionPlanService {
         if (request == null || request.expectedPlanRevision() == null || request.expectedPlanRevision() < 0
                 || !Boolean.TRUE.equals(request.decompositionConfirmed())) throw new ApiException(ErrorCode.INVALID_REQUEST);
         var order = orders.findByIdForUpdate(orderId).orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND));
+        var invoice = invoices.findByOrderId(orderId)
+                .orElseThrow(() -> new ApiException(ErrorCode.INVOICE_NOT_PAID));
+        if (!paymentEligibility.isDepositSatisfied(invoice)) {
+            throw new ApiException(ErrorCode.INVOICE_NOT_PAID,
+                    "The required deposit must be paid before the execution plan can be finalized");
+        }
         // Order serializes creation, assignment mutation and finalization; Mission locks protect runtime.
         var children = missions.findIdsByOrderIdOrderById(orderId).stream().sorted()
                 .map(id -> missions.findByIdForUpdate(id).orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND))).toList();

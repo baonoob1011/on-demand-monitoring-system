@@ -60,4 +60,23 @@ public class OrderReviewRecordInitializer implements CommandLineRunner {
         }
         return created;
     }
+
+    /** Reopens only failed manager criteria after the customer supplies new information. */
+    @Transactional
+    public int reopenFailed(Order order, String customerInformation) {
+        int reopened = 0;
+        for (OrderReviewRecord record : records.findByOrderId(order.getId())) {
+            if (record.getType() != ReviewCriterionType.MANUAL
+                    || record.getResult() != CriterionResult.FAIL) {
+                continue;
+            }
+            record.setResult(CriterionResult.PENDING);
+            record.setNote("Khách bổ sung: " + customerInformation.strip());
+            record.setDecidedBy(null);
+            record.setDecidedAt(null);
+            records.save(record);
+            reopened++;
+        }
+        return reopened;
+    }
 }
