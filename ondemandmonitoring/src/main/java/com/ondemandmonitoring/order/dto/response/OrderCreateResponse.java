@@ -38,6 +38,11 @@ public class OrderCreateResponse {
     String customerId;
     String customerName;
     String customerEmail;
+    String customerPhoneNumber;
+    String customerAddress;
+    String customerCompanyName;
+    String customerCitizenIdentificationNumber;
+    String customerCompanyTaxCode;
 
     // General Info
     String title;
@@ -98,6 +103,7 @@ public class OrderCreateResponse {
     FlightAreaReviewStatus flightAreaReviewStatus;
     String flightAreaReviewReason;
     String flightAreaReviewNote;
+    Boolean requestedScopeFeasible;
     String flightAreaReviewedById;
     String flightAreaReviewedByName;
     Instant flightAreaReviewedAt;

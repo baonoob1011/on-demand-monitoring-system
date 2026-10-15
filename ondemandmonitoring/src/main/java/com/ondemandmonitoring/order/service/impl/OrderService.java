@@ -31,6 +31,7 @@ import com.ondemandmonitoring.service.repository.DeliverableTypeRepository;
 import com.ondemandmonitoring.service.repository.ServiceDeliverableRepository;
 import com.ondemandmonitoring.service.repository.ServiceRepository;
 import com.ondemandmonitoring.user.domain.User;
+import com.ondemandmonitoring.user.repository.CustomerProfileRepository;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import com.ondemandmonitoring.warehouse.domain.PreferredTime;
 import com.ondemandmonitoring.warehouse.repository.PreferredTimeRepository;
@@ -63,6 +64,7 @@ public class OrderService implements IOrderService {
     ServiceDeliverableRepository serviceDeliverableRepository;
     PreferredTimeRepository preferredTimeRepository;
     AuthenticatedUserResolver authenticatedUserResolver;
+    CustomerProfileRepository customerProfileRepository;
     OrderMapper orderMapper;
     IOrderChecklistSnapshotService checklistSnapshots;
     OrderReviewRecordInitializer reviewRecords;
@@ -113,6 +115,9 @@ public class OrderService implements IOrderService {
         order.setFlightAreaReviewStatus(request.status());
         order.setFlightAreaReviewReason(reason);
         order.setFlightAreaReviewNote(note);
+        if (request.requestedScopeFeasible() != null) {
+            order.setRequestedScopeFeasible(request.requestedScopeFeasible());
+        }
         order.setFlightAreaReviewedBy(authenticatedUserResolver.getCurrentUser());
         order.setFlightAreaReviewedAt(Instant.now());
         order.setRequiresFlightPermissionReview(request.status() == FlightAreaReviewStatus.RESTRICTED);
@@ -291,6 +296,7 @@ public class OrderService implements IOrderService {
         reviewRecords.initialize(savedOrder);
         orderRepository.flush();
         OrderCreateResponse response = orderMapper.toResponse(savedOrder);
+        enrichCustomerProfile(response, savedOrder);
         response.setChecklistItems(items);
         return response;
     }
@@ -504,9 +510,24 @@ public class OrderService implements IOrderService {
         var snapshots = checklistSnapshots.getByOrders(orders.stream().map(Order::getId).toList());
         return orders.stream().map(order -> {
             var response = orderMapper.toResponse(order);
+            enrichCustomerProfile(response, order);
             response.setChecklistItems(snapshots.getOrDefault(order.getId(), List.of()));
             return response;
         }).toList();
+    }
+
+    private void enrichCustomerProfile(OrderCreateResponse response, Order order) {
+        if (order.getCustomer() == null || order.getCustomer().getId() == null) {
+            return;
+        }
+        customerProfileRepository.findById(order.getCustomer().getId()).ifPresent(profile -> {
+            response.setCustomerPhoneNumber(profile.getPhoneNumber());
+            response.setCustomerAddress(profile.getAddress());
+            response.setCustomerCompanyName(profile.getCompanyName());
+            response.setCustomerCitizenIdentificationNumber(
+                    profile.getCitizenIdentificationNumber());
+            response.setCustomerCompanyTaxCode(profile.getCompanyTaxCode());
+        });
     }
 
     static final int MAX_PERMIT_FILES = 3;

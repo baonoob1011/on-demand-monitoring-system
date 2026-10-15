@@ -243,6 +243,9 @@ public class Order extends BaseEntity {
     @Column(name = "flight_area_review_note", columnDefinition = "TEXT")
     private String flightAreaReviewNote;
 
+    @Column(name = "requested_scope_feasible")
+    private Boolean requestedScopeFeasible;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "flight_area_reviewed_by")
     private User flightAreaReviewedBy;

@@ -39,7 +39,7 @@ class UserSeedDataInitializerTest {
     private CustomerProfileRepository customerProfileRepository;
 
     @Test
-    void run_provisionsOnlyMissingCustomerProfile() throws Exception {
+    void run_provisionsCompleteCustomerProfiles() throws Exception {
         when(roleRepository.findByCode(any())).thenAnswer(invocation -> Optional.of(
                 Role.builder()
                         .id(UUID.randomUUID())
@@ -56,8 +56,6 @@ class UserSeedDataInitializerTest {
             customer.setId(email);
             return Optional.of(customer);
         });
-        when(customerProfileRepository.existsById(anyString())).thenReturn(false);
-
         new UserSeedDataInitializer(
                 roleRepository, jdbcTemplate, userRepository, customerProfileRepository).run(null);
 
@@ -72,6 +70,14 @@ class UserSeedDataInitializerTest {
                         "seed.customer.3@odms.local",
                         "seed.customer.4@odms.local"
                 );
+        assertThat(profileCaptor.getAllValues())
+                .allSatisfy(profile -> {
+                    assertThat(profile.getPhoneNumber()).isNotBlank();
+                    assertThat(profile.getAddress()).isNotBlank();
+                    assertThat(profile.getCompanyName()).isNotBlank();
+                    assertThat(profile.getCitizenIdentificationNumber()).hasSize(12);
+                    assertThat(profile.getCompanyTaxCode()).isNotBlank();
+                });
 
         verify(jdbcTemplate).update(org.mockito.ArgumentMatchers.argThat(sql ->
                         sql.contains("ON CONFLICT DO NOTHING") && !sql.contains("UPDATE")),

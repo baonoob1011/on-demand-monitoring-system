@@ -29,7 +29,9 @@ public class UserSeedDataInitializer implements ApplicationRunner {
                     RoleCode.CUSTOMER,
                     "seed.customer@odms.local",
                     "20000000-0000-0000-0000-000000000001",
-                    "39ea75ec-c001-7087-152e-e76ebbf4740b"
+                    "39ea75ec-c001-7087-152e-e76ebbf4740b",
+                    new CustomerSeedProfile("0901234567", "123 Nguyễn Huệ, phường Sài Gòn, TP.HCM",
+                            "Công ty TNHH Xây dựng Minh Anh", "079203001234", "0317654321")
             ),
             new SeedUser(
                     "00000000-0000-0000-0000-000000000006",
@@ -37,7 +39,9 @@ public class UserSeedDataInitializer implements ApplicationRunner {
                     RoleCode.CUSTOMER,
                     "seed.customer.2@odms.local",
                     "20000000-0000-0000-0000-000000000006",
-                    "79cad52c-90e1-7069-5054-4d5073f30ea0"
+                    "79cad52c-90e1-7069-5054-4d5073f30ea0",
+                    new CustomerSeedProfile("0912345678", "45 Võ Văn Tần, phường Xuân Hòa, TP.HCM",
+                            "Công ty Cổ phần Khảo sát Địa Việt", "079198005678", "0318765432")
             ),
             new SeedUser(
                     "00000000-0000-0000-0000-000000000007",
@@ -45,7 +49,9 @@ public class UserSeedDataInitializer implements ApplicationRunner {
                     RoleCode.CUSTOMER,
                     "seed.customer.3@odms.local",
                     "20000000-0000-0000-0000-000000000007",
-                    "b9ba05cc-70c1-707b-37d6-12c83bd919ae"
+                    "b9ba05cc-70c1-707b-37d6-12c83bd919ae",
+                    new CustomerSeedProfile("0987654321", "88 Nguyễn Văn Linh, phường Tân Hưng, TP.HCM",
+                            "Công ty TNHH Nông nghiệp Xanh", "079205009876", "0319876543")
             ),
             new SeedUser(
                     "00000000-0000-0000-0000-000000000008",
@@ -53,7 +59,9 @@ public class UserSeedDataInitializer implements ApplicationRunner {
                     RoleCode.CUSTOMER,
                     "seed.customer.4@odms.local",
                     "20000000-0000-0000-0000-000000000008",
-                    "395a554c-9071-7082-89df-f0675ae6a6fe"
+                    "395a554c-9071-7082-89df-f0675ae6a6fe",
+                    new CustomerSeedProfile("0934567890", "16 Mai Chí Thọ, phường An Khánh, TP.HCM",
+                            "Công ty Cổ phần Hạ tầng Thành Phố", "079190004321", "0316543210")
             ),
             new SeedUser(
                     "00000000-0000-0000-0000-000000000002",
@@ -172,13 +180,18 @@ public class UserSeedDataInitializer implements ApplicationRunner {
                         )
                 );
 
-        if (!customerProfileRepository.existsById(user.getId())) {
-            customerProfileRepository.save(
-                    CustomerProfile.builder()
-                            .user(user)
-                            .build()
-            );
+        CustomerProfile profile = customerProfileRepository.findById(user.getId())
+                .orElseGet(() -> CustomerProfile.builder().user(user).build());
+        CustomerSeedProfile data = seed.customerProfile();
+        if (data == null) {
+            throw new IllegalStateException("Missing customer seed profile: " + seed.email());
         }
+        profile.setPhoneNumber(data.phoneNumber());
+        profile.setAddress(data.address());
+        profile.setCompanyName(data.companyName());
+        profile.setCitizenIdentificationNumber(data.citizenIdentificationNumber());
+        profile.setCompanyTaxCode(data.companyTaxCode());
+        customerProfileRepository.save(profile);
     }
 
     private void insertUser(SeedUser seed, Role role) {
@@ -244,7 +257,26 @@ public class UserSeedDataInitializer implements ApplicationRunner {
             RoleCode role,
             String email,
             String identityId,
-            String cognitoSub
+            String cognitoSub,
+            CustomerSeedProfile customerProfile
+    ) {
+        private SeedUser(
+                String userId,
+                String fullName,
+                RoleCode role,
+                String email,
+                String identityId,
+                String cognitoSub) {
+            this(userId, fullName, role, email, identityId, cognitoSub, null);
+        }
+    }
+
+    private record CustomerSeedProfile(
+            String phoneNumber,
+            String address,
+            String companyName,
+            String citizenIdentificationNumber,
+            String companyTaxCode
     ) {
     }
 }

@@ -187,7 +187,12 @@ public class OrderReadinessService implements IOrderReadinessService {
     private Verdict siteContact(Order order) {
         boolean hasName = order.getSiteContactName() != null && !order.getSiteContactName().isBlank();
         boolean hasPhone = order.getSiteContactPhone() != null && !order.getSiteContactPhone().isBlank();
-        if (hasName && hasPhone) return new Verdict(CriterionResult.PASS, "Có tên và số điện thoại liên hệ");
+        if (hasName && hasPhone) {
+            return new Verdict(
+                    CriterionResult.PASS,
+                    "Người liên hệ: " + order.getSiteContactName().strip()
+                            + " · SĐT: " + order.getSiteContactPhone().strip());
+        }
         if (hasName || hasPhone) return new Verdict(CriterionResult.WARN, "Thông tin liên hệ hiện trường chưa đầy đủ");
         return new Verdict(CriterionResult.WARN, "Chưa có người liên hệ tại hiện trường");
     }

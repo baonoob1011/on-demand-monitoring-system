@@ -74,7 +74,9 @@ public class UserProfileServiceImpl implements IUserProfileService {
         if (request.getFullName() == null
                 && request.getPhoneNumber() == null
                 && request.getAddress() == null
-                && request.getCompanyName() == null) {
+                && request.getCompanyName() == null
+                && request.getCitizenIdentificationNumber() == null
+                && request.getCompanyTaxCode() == null) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "At least one profile field is required");
         }
     }
@@ -82,7 +84,9 @@ public class UserProfileServiceImpl implements IUserProfileService {
     private boolean containsCustomerFields(UserProfileUpdateRequest request) {
         return request.getPhoneNumber() != null
                 || request.getAddress() != null
-                || request.getCompanyName() != null;
+                || request.getCompanyName() != null
+                || request.getCitizenIdentificationNumber() != null
+                || request.getCompanyTaxCode() != null;
     }
 
     private void applyCustomerUpdates(CustomerProfile customerProfile, UserProfileUpdateRequest request) {
@@ -94,6 +98,13 @@ public class UserProfileServiceImpl implements IUserProfileService {
         }
         if (request.getCompanyName() != null) {
             customerProfile.setCompanyName(trimToNull(request.getCompanyName()));
+        }
+        if (request.getCitizenIdentificationNumber() != null) {
+            customerProfile.setCitizenIdentificationNumber(
+                    trimToNull(request.getCitizenIdentificationNumber()));
+        }
+        if (request.getCompanyTaxCode() != null) {
+            customerProfile.setCompanyTaxCode(trimToNull(request.getCompanyTaxCode()));
         }
     }
 

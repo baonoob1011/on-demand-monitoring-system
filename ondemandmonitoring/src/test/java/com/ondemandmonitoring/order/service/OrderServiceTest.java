@@ -67,6 +67,7 @@ class OrderServiceTest {
                 serviceDeliverableRepository,
                 preferredTimeRepository,
                 authenticatedUserResolver,
+                mock(com.ondemandmonitoring.user.repository.CustomerProfileRepository.class),
                 orderMapper,
                 mock(IOrderChecklistSnapshotService.class),
                 mock(OrderReviewRecordInitializer.class),
