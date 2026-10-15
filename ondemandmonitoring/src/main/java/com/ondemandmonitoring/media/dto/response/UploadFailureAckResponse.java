@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.media.dto.response;
 
-import com.ondemandmonitoring.media.domain.MediaStatus;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.media.enums.UploadFailureCategory;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;

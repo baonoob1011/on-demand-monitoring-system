@@ -10,6 +10,7 @@ import com.ondemandmonitoring.device.domain.Device;
 import com.ondemandmonitoring.device.service.IDeviceService;
 import com.ondemandmonitoring.media.domain.*;
 import com.ondemandmonitoring.media.dto.request.PrepareMediaUploadRequest;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.media.repository.*;
 import com.ondemandmonitoring.media.service.impl.MediaUploadServiceImpl;
 import com.ondemandmonitoring.mission.domain.*;

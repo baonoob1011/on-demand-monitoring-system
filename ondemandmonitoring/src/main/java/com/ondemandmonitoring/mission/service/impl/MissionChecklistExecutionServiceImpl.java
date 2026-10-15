@@ -74,7 +74,9 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
                 || r.getApprovalStatus() == MissionResultApprovalStatus.APPROVED).orElse(false)) {
             throw new ApiException(ErrorCode.CHECKLIST_EXECUTION_LOCKED);
         }
-        MissionChecklistExecution execution = executions.findById(executionId)
+        // Keep the aggregate lock order (Mission, then its execution row) and make
+        // the expected-version check observe the latest committed execution state.
+        MissionChecklistExecution execution = executions.findByIdForUpdate(executionId)
                 .orElseThrow(() -> new ApiException(ErrorCode.CHECKLIST_EXECUTION_NOT_FOUND));
         if (!missionId.equals(execution.getMissionId()))
             throw new ApiException(ErrorCode.CHECKLIST_EXECUTION_PARENT_MISMATCH);
@@ -98,28 +100,38 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Unable to verify requires a non-blank reason");
         String observation = trimmed(request.getObservation(), 2000);
         Instant now = Instant.now();
-        if (next == ChecklistExecutionStatus.PENDING) execution.setStartedAt(null);
-        else if (execution.getStartedAt() == null) execution.setStartedAt(now);
-        execution.setCompletedAt(next.isTerminal()
-                ? (previous == next ? execution.getCompletedAt() : now) : null);
-        execution.setExecutionStatus(next);
-        execution.setAssessmentStatus(request.getAssessmentStatus());
-        execution.setObservation(observation);
-        execution.setUnableToVerifyReason(next == ChecklistExecutionStatus.UNABLE_TO_VERIFY ? reason : null);
+        Instant startedAt = next == ChecklistExecutionStatus.PENDING
+                ? null : execution.getStartedAt() == null ? now : execution.getStartedAt();
+        Instant completedAt = next.isTerminal()
+                ? (previous == next ? execution.getCompletedAt() : now) : null;
+        String unableToVerifyReason = next == ChecklistExecutionStatus.UNABLE_TO_VERIFY ? reason : null;
         if (next == ChecklistExecutionStatus.COMPLETED) {
             var activeEvidence = evidenceService.active(missionId);
-            if (!evidenceService.ready(execution, activeEvidence, false)) {
+            if (!evidenceService.evidenceRequirementsSatisfied(execution, activeEvidence, false)) {
                 String failure = evidenceService.readinessFailure(execution, activeEvidence, false);
                 throw new ApiException(ErrorCode.CHECKLIST_NOT_READY,
                         failure == null ? "Attach eligible evidence before completing this checklist item." : failure);
             }
         }
-        execution.setLastModifiedBy(currentUser.getCurrentUserId());
         // A repeated command still records an audit event and consumes its expected version.
-        execution.setUpdatedAt(now);
+        // Keep the managed entity clean until the atomic version compare-and-set runs;
+        // otherwise flushAutomatically would increment @Version before the CAS.
         try {
-            var saved = executions.saveAndFlush(execution);
-            return evidenceService.enrich(mapper.toResponse(saved), saved, evidenceService.active(missionId));
+            int updated = executions.updateIfVersionMatches(
+                    executionId,
+                    request.getExpectedVersion(),
+                    next.name(),
+                    request.getAssessmentStatus().name(),
+                    observation,
+                    unableToVerifyReason,
+                    startedAt,
+                    completedAt,
+                    currentUser.getCurrentUserId(),
+                    now);
+            if (updated != 1) throw new ApiException(ErrorCode.CONCURRENT_UPDATE);
+            MissionChecklistExecution updatedExecution = executions.findById(executionId)
+                    .orElseThrow(() -> new ApiException(ErrorCode.CHECKLIST_EXECUTION_NOT_FOUND));
+            return evidenceService.enrich(mapper.toResponse(updatedExecution), updatedExecution, evidenceService.active(missionId));
         } catch (org.springframework.dao.DataIntegrityViolationException | org.hibernate.exception.ConstraintViolationException exception) {
             throw new ApiException(ErrorCode.CHECKLIST_EXECUTION_INTEGRITY_INVALID);
         }

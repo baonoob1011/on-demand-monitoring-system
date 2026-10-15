@@ -2,6 +2,7 @@ package com.ondemandmonitoring.mission.service.impl;
 
 import com.ondemandmonitoring.common.exception.*;
 import com.ondemandmonitoring.media.domain.*;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import com.ondemandmonitoring.mission.domain.*;
@@ -136,6 +137,11 @@ public class ChecklistEvidenceServiceImpl implements IChecklistEvidenceService {
         if (execution.getExecutionStatus() == ChecklistExecutionStatus.UNABLE_TO_VERIFY)
             return execution.getUnableToVerifyReason() != null && !execution.getUnableToVerifyReason().isBlank();
         if (execution.getExecutionStatus() != ChecklistExecutionStatus.COMPLETED) return false;
+        return evidenceRequirementsSatisfied(execution, links, finalApproval);
+    }
+
+    @Override
+    public boolean evidenceRequirementsSatisfied(MissionChecklistExecution execution, List<MissionChecklistEvidence> links, boolean finalApproval) {
         var item = execution.getOrderChecklistItem();
         if (item.getEvidencePolicyVersion() == 0) return item.getMinimumEvidenceCount() == 0;
         if (item.getEvidencePolicyVersion() == 1) {

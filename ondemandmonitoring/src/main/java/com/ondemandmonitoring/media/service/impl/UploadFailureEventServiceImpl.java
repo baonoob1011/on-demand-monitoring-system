@@ -3,9 +3,9 @@ package com.ondemandmonitoring.media.service.impl;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.media.domain.MediaAsset;
-import com.ondemandmonitoring.media.domain.MediaStatus;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.media.domain.MediaUploadAttempt;
-import com.ondemandmonitoring.media.domain.UploadAttemptStatus;
+import com.ondemandmonitoring.media.enums.UploadAttemptStatus;
 import com.ondemandmonitoring.media.domain.UploadFailureEvent;
 import com.ondemandmonitoring.media.dto.request.ReportUploadFailureRequest;
 import com.ondemandmonitoring.media.dto.response.UploadFailureAckResponse;
@@ -25,7 +25,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.List;
 
 /**
  * Durable ingestion of client-journaled upload-failure events.

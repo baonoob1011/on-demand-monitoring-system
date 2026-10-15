@@ -3,7 +3,7 @@ package com.ondemandmonitoring.media.repository;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import java.util.List;
 import java.util.Optional;
-import com.ondemandmonitoring.media.domain.MediaStatus;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import jakarta.persistence.LockModeType;

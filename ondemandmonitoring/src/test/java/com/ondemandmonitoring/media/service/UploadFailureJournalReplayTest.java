@@ -8,6 +8,8 @@ import static org.mockito.Mockito.*;
 import com.ondemandmonitoring.media.domain.*;
 import com.ondemandmonitoring.media.dto.request.ReportUploadFailureRequest;
 import com.ondemandmonitoring.media.enums.ManualUploadTaskStatus;
+import com.ondemandmonitoring.media.enums.MediaStatus;
+import com.ondemandmonitoring.media.enums.UploadAttemptStatus;
 import com.ondemandmonitoring.media.enums.UploadFailureCategory;
 import com.ondemandmonitoring.media.policy.MediaUploadPolicy;
 import com.ondemandmonitoring.media.repository.*;

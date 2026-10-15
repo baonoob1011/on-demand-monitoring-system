@@ -3,12 +3,14 @@ package com.ondemandmonitoring.media.domain;
 import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.media.enums.UploadFailureCategory;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
+import org.hibernate.annotations.Check;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -38,6 +40,10 @@ import lombok.experimental.FieldDefaults;
 @NoArgsConstructor
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
+@Check(name = "ck_upload_failure_category",
+        constraints = "category IN ('TRANSFER_FAILED', 'TRANSFER_ACK_LOST')")
+@Check(name = "ck_upload_failure_outcome",
+        constraints = "processed_at IS NULL OR processing_outcome IS NOT NULL")
 @Table(name = "media_upload_failure_events", uniqueConstraints =
         @UniqueConstraint(name = "uk_media_upload_failure_event", columnNames = "event_key"))
 public class UploadFailureEvent extends BaseEntity {
@@ -50,6 +56,7 @@ public class UploadFailureEvent extends BaseEntity {
     String missionId;
 
     @Column(name = "media_id", nullable = false)
+    @Convert(converter = StringUuidConverter.class)
     String mediaId;
 
     @Column(name = "attempt_id", nullable = false)

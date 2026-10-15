@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.mission.service.impl;
 
 import com.ondemandmonitoring.media.domain.MediaAsset;
-import com.ondemandmonitoring.media.domain.MediaStatus;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.mission.domain.MissionChecklistEvidence;
 import com.ondemandmonitoring.order.enums.RequiredEvidenceType;
 import java.util.Collection;

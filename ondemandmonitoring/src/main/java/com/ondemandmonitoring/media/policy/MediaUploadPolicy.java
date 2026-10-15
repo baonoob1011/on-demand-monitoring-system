@@ -3,7 +3,7 @@ package com.ondemandmonitoring.media.policy;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.media.domain.MediaAsset;
-import com.ondemandmonitoring.media.domain.MediaStatus;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.media.dto.request.ManualMediaFileRequest;
 import com.ondemandmonitoring.media.dto.request.PrepareMediaUploadRequest;
 import lombok.AccessLevel;

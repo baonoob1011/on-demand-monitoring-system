@@ -133,6 +133,7 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
         assignments.assign(service, assignment(catalogId, 3));
         var request = orderRequest(service);
         String order = orderService.createOrder(request).getId();
+        new JdbcTemplate(dataSource).update("update order_checklist_items set evidence_policy_version=0, minimum_evidence_count=0, required_evidence_type='IMAGE_OR_VIDEO' where order_id=?", order);
         transaction.executeWithoutResult(tx -> orders.findById(order).orElseThrow().setOrderStatus(OrderStatus.APPROVED));
         String mission = legacyMission(request(order)).getId(); setStatus(mission, MissionStatus.IN_FLIGHT);
         var row = executionService.getByMissionId(mission).executions().getFirst();

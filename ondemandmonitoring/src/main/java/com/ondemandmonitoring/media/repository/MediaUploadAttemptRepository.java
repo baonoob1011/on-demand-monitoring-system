@@ -3,7 +3,7 @@ package com.ondemandmonitoring.media.repository;
 import com.ondemandmonitoring.media.domain.MediaUploadAttempt;
 import java.util.Optional;
 import java.util.List;
-import com.ondemandmonitoring.media.domain.UploadAttemptStatus;
+import com.ondemandmonitoring.media.enums.UploadAttemptStatus;
 import org.springframework.data.domain.Pageable;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.Lock;

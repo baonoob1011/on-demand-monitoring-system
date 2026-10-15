@@ -1,11 +1,11 @@
 package com.ondemandmonitoring.mission.service;
 import com.ondemandmonitoring.common.exception.*;
 import com.ondemandmonitoring.media.domain.*;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import com.ondemandmonitoring.mission.domain.*;
 import com.ondemandmonitoring.mission.dto.request.BatchChecklistEvidenceRequest;
-import com.ondemandmonitoring.mission.dto.response.ChecklistExecutionResponse;
 import com.ondemandmonitoring.order.enums.RequiredEvidenceType;
 import com.ondemandmonitoring.mission.enums.*;
 import com.ondemandmonitoring.mission.mapper.ChecklistEvidenceMapper;

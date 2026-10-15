@@ -6,6 +6,7 @@ import com.ondemandmonitoring.media.dto.response.MediaResponse;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.media.service.IMediaAssetService;
 import com.ondemandmonitoring.media.service.IMediaAssetService.MediaContent;
 import com.ondemandmonitoring.media.mapper.MediaAssetMapper;
@@ -85,9 +86,9 @@ public class MediaController {
                 .listByMission(canonicalId, mediaType)
                 .stream()
                 .filter(asset -> asset.getMediaStatus() == null || asset.getValidatedAt() != null
-                        && java.util.Set.of(com.ondemandmonitoring.media.domain.MediaStatus.PENDING_MANAGER_APPROVAL,
-                                com.ondemandmonitoring.media.domain.MediaStatus.AVAILABLE,
-                                com.ondemandmonitoring.media.domain.MediaStatus.REJECTED).contains(asset.getMediaStatus()))
+                        && java.util.Set.of(MediaStatus.PENDING_MANAGER_APPROVAL,
+                                MediaStatus.AVAILABLE,
+                                MediaStatus.REJECTED).contains(asset.getMediaStatus()))
                 .map(asset -> mediaAssetMapper.toMediaResponse(
                         asset,
                         mediaAssetService.createPresignedGetUrl(asset),

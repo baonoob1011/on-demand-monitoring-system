@@ -44,8 +44,21 @@ class MissionChecklistExecutionServiceTest {
         when(assignments.findByMissionIdAndRemovedAtIsNullOrderByDisplayOrderAscIdAsc("m")).thenReturn(List.of(assignment));
         when(missions.findByIdForUpdate("m")).thenReturn(Optional.of(mission));
         when(missions.findById("m")).thenReturn(Optional.of(mission));
+        when(executions.findByIdForUpdate("e")).thenReturn(Optional.of(execution));
         when(executions.findById("e")).thenReturn(Optional.of(execution));
-        when(executions.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
+        when(executions.updateIfVersionMatches(anyString(), anyLong(), anyString(), anyString(),
+                nullable(String.class), nullable(String.class), any(), nullable(java.time.Instant.class),
+                anyString(), any(java.time.Instant.class))).thenAnswer(call -> {
+                    execution.setExecutionStatus(ChecklistExecutionStatus.valueOf(call.getArgument(2)));
+                    execution.setAssessmentStatus(ChecklistAssessmentStatus.valueOf(call.getArgument(3)));
+                    execution.setObservation(call.getArgument(4));
+                    execution.setUnableToVerifyReason(call.getArgument(5));
+                    execution.setStartedAt(call.getArgument(6));
+                    execution.setCompletedAt(call.getArgument(7));
+                    execution.setLastModifiedBy(call.getArgument(8));
+                    execution.setVersion(execution.getVersion() + 1);
+                    return 1;
+                });
         when(auth.canExecuteMonitoringChecklist("m")).thenReturn(true);
         when(auth.canViewMission("m")).thenReturn(true);
         when(resolver.getCurrentUserId()).thenReturn("authenticated-actor");
@@ -53,12 +66,13 @@ class MissionChecklistExecutionServiceTest {
         when(executions.findOrderedByMissionId("m")).thenReturn(List.of(execution));
         when(evidence.active("m")).thenReturn(List.of());
         when(evidence.ready(execution, List.of(), false)).thenReturn(true);
+        when(evidence.evidenceRequirementsSatisfied(execution, List.of(), false)).thenReturn(true);
         when(evidence.enrich(any(), eq(execution), any())).thenAnswer(call -> call.getArgument(0));
         when(evidence.readinessFailure(execution, List.of(), false)).thenReturn("requirement not met");
     }
 
     ChecklistExecutionUpdateRequest request(ChecklistExecutionStatus status) {
-        var request = new ChecklistExecutionUpdateRequest(); request.setExpectedVersion(0L);
+        var request = new ChecklistExecutionUpdateRequest(); request.setExpectedVersion(execution.getVersion());
         request.setExecutionStatus(status); request.setAssessmentStatus(ChecklistAssessmentStatus.NOT_ASSESSED); return request;
     }
     void error(ErrorCode code, Runnable call) { assertEquals(code, assertThrows(ApiException.class, call::run).getErrorCode()); }

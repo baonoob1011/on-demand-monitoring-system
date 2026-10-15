@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.checklist;
 
 import com.ondemandmonitoring.common.exception.*;
-import com.ondemandmonitoring.media.domain.MediaStatus;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.media.mapper.MediaWorkflowMapper;
 import com.ondemandmonitoring.media.repository.*;
 import com.ondemandmonitoring.media.service.*;
@@ -44,8 +44,8 @@ class ChecklistEvidenceIntegrationPostgresTest extends OrderMissionPostgresTest 
     String mission(int count) {
         var request=orderRequest(service("Evidence service")); request.setChecklistItems(java.util.stream.IntStream.range(0,count).mapToObj(i->selected(null,"Historical evidence item "+i)).toList());
         String order=orderService.createOrder(request).getId();
-        String actorId = resolver.getCurrentUser().getId();
-        when(resolver.getCurrentUserId()).thenReturn(actorId);
+        var user = resolver.getCurrentUser();
+        when(resolver.getCurrentUserId()).thenReturn(user.getId());
         transaction.executeWithoutResult(tx->orders.findById(order).orElseThrow().setOrderStatus(OrderStatus.APPROVED));
         String mission=legacyMission(request(order)).getId(); setStatus(mission,MissionStatus.PENDING_REVIEW);return mission;
     }
@@ -71,9 +71,8 @@ class ChecklistEvidenceIntegrationPostgresTest extends OrderMissionPostgresTest 
         String mission=mission(1); assertEquals(2,row(mission).getEvidencePolicyVersion());
         assertEquals(1,row(mission).getMinimumEvidenceCount());
         assertEquals(com.ondemandmonitoring.order.enums.RequiredEvidenceType.IMAGE_OR_VIDEO,row(mission).getRequiredEvidenceType());
-        complete(mission);
         assertFalse(executionService.getByMissionId(mission).checklistEvidenceReady());String media=asset(mission,MediaStatus.PENDING_MANAGER_APPROVAL);
-        evidenceService.attach(mission,attachRequest(mission,media));assertTrue(executionService.getByMissionId(mission).readyForMissionCompletion());
+        evidenceService.attach(mission,attachRequest(mission,media));complete(mission);assertTrue(executionService.getByMissionId(mission).readyForMissionCompletion());
         setStatus(mission,MissionStatus.COMPLETED);var result=resultService.upsert(mission,new MissionResultRequest());
         assertThrows(ApiException.class, () -> resultService.approve(result.getId(),new MissionResultReviewRequest()));
         approvals.approve(mission, media);
@@ -83,7 +82,8 @@ class ChecklistEvidenceIntegrationPostgresTest extends OrderMissionPostgresTest 
     }
     @Test void configuredImageRequirementPropagatesToEveryMissionAndFinalApprovalRechecksIt() {
         var request = orderRequest(service("multi-mission evidence service"));
-        when(resolver.getCurrentUserId()).thenReturn(resolver.getCurrentUser().getId());
+        var user = resolver.getCurrentUser();
+        when(resolver.getCurrentUserId()).thenReturn(user.getId());
         var selection = selected(null, "Two images required");
         selection.setMinimumEvidenceCount(2);
         selection.setRequiredEvidenceType(com.ondemandmonitoring.order.enums.RequiredEvidenceType.IMAGE);
@@ -98,7 +98,6 @@ class ChecklistEvidenceIntegrationPostgresTest extends OrderMissionPostgresTest 
         setStatus(first, MissionStatus.PENDING_REVIEW); setStatus(second, MissionStatus.PENDING_REVIEW);
         assertEquals(2, row(first).getMinimumEvidenceCount());
         assertEquals(2, row(second).getMinimumEvidenceCount());
-        complete(first);
         String video = asset(first, MediaStatus.PENDING_MANAGER_APPROVAL, "VIDEO");
         assertEquals(ErrorCode.EVIDENCE_NOT_ELIGIBLE, assertThrows(ApiException.class,
                 () -> evidenceService.attach(first, attachRequest(first, video))).getErrorCode());
@@ -109,6 +108,7 @@ class ChecklistEvidenceIntegrationPostgresTest extends OrderMissionPostgresTest 
         String image2 = asset(first, MediaStatus.PENDING_MANAGER_APPROVAL, "IMAGE");
         evidenceService.attach(first, new BatchChecklistEvidenceRequest(image2, List.of(
                 new BatchChecklistEvidenceRequest.Target(row(first).getId(), row(first).getVersion())), null));
+        complete(first);
         assertTrue(executionService.getByMissionId(first).readyForSubmission());
         var submitted = resultService.upsert(first, new MissionResultRequest());
         assertThrows(ApiException.class, () -> resultService.approve(submitted.getId(), new MissionResultReviewRequest()));
@@ -129,7 +129,7 @@ class ChecklistEvidenceIntegrationPostgresTest extends OrderMissionPostgresTest 
         assertEquals(1,row(mission).getEvidence().size());assertEquals(1L,row(mission).getVersion());
     }
     @Test void rejectionInvalidatesSubmittedPackageAndExplicitResultRejectReopens() throws Exception {
-        String mission=mission(1),media=asset(mission,MediaStatus.PENDING_MANAGER_APPROVAL);complete(mission);evidenceService.attach(mission,attachRequest(mission,media));setStatus(mission,MissionStatus.COMPLETED);
+String mission=mission(1),media=asset(mission,MediaStatus.PENDING_MANAGER_APPROVAL);evidenceService.attach(mission,attachRequest(mission,media));complete(mission);setStatus(mission,MissionStatus.COMPLETED);
         var calls=new AtomicInteger();race(()->calls.getAndIncrement()==0?resultService.upsert(mission,new MissionResultRequest()):approvals.reject(mission,media));
         assertFalse(executionService.getByMissionId(mission).checklistEvidenceReady());
         var jdbc=new JdbcTemplate(dataSource);var pending=jdbc.queryForList("select id from mission_results where mission_id=? and approval_status='PENDING_MANAGER_APPROVAL'",String.class,mission);
@@ -137,12 +137,12 @@ class ChecklistEvidenceIntegrationPostgresTest extends OrderMissionPostgresTest 
         var current=row(mission);evidenceService.detach(mission,current.getId(),current.getEvidence().getFirst().getEvidenceId(),current.getVersion(),"replace");assertTrue(row(mission).getEvidence().isEmpty());
     }
     @Test void detachAndSubmitSerializeWithoutSilentlyApprovingIncompletePackage() throws Exception {
-        String mission=mission(1),media=asset(mission,MediaStatus.PENDING_MANAGER_APPROVAL);complete(mission);evidenceService.attach(mission,attachRequest(mission,media));setStatus(mission,MissionStatus.COMPLETED);
+        String mission=mission(1),media=asset(mission,MediaStatus.PENDING_MANAGER_APPROVAL);evidenceService.attach(mission,attachRequest(mission,media));complete(mission);setStatus(mission,MissionStatus.COMPLETED);
         var row=row(mission);var calls=new AtomicInteger();var outcomes=race(()->{if(calls.getAndIncrement()==0)return resultService.upsert(mission,new MissionResultRequest());evidenceService.detach(mission,row.getId(),row.getEvidence().getFirst().getEvidenceId(),row.getVersion(),null);return "detached";});
         assertEquals(1,outcomes.stream().filter(ApiException.class::isInstance).count());
     }
     @Test void finalResultApprovalRequiresPerMediaApprovalAndDoesNotPromoteMediaImplicitly() {
-        String mission=mission(1),media=asset(mission,MediaStatus.PENDING_MANAGER_APPROVAL);complete(mission);evidenceService.attach(mission,attachRequest(mission,media));setStatus(mission,MissionStatus.COMPLETED);
+        String mission=mission(1),media=asset(mission,MediaStatus.PENDING_MANAGER_APPROVAL);evidenceService.attach(mission,attachRequest(mission,media));complete(mission);setStatus(mission,MissionStatus.COMPLETED);
         var result=resultService.upsert(mission,new MissionResultRequest());
         assertThrows(ApiException.class, () -> resultService.approve(result.getId(),new MissionResultReviewRequest()));
         assertEquals(MediaStatus.PENDING_MANAGER_APPROVAL,mediaRepository.findById(media).orElseThrow().getMediaStatus());

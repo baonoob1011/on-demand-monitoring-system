@@ -2,6 +2,7 @@ package com.ondemandmonitoring.media.service;
 
 import com.ondemandmonitoring.media.domain.*;
 import com.ondemandmonitoring.media.enums.ManualUploadTaskStatus;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.media.mapper.MediaWorkflowMapper;
 import com.ondemandmonitoring.media.policy.MediaUploadPolicy;
 import org.junit.jupiter.api.Test;
