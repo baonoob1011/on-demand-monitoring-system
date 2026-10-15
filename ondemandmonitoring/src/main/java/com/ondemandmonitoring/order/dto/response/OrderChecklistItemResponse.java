@@ -2,6 +2,7 @@ package com.ondemandmonitoring.order.dto.response;
 
 import com.ondemandmonitoring.order.enums.OrderChecklistSourceType;
 import com.ondemandmonitoring.order.enums.ChecklistReviewStatus;
+import com.ondemandmonitoring.order.enums.RequiredEvidenceType;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.NoArgsConstructor;
@@ -19,4 +20,5 @@ public class OrderChecklistItemResponse {
     private String managerNote;
     private int evidencePolicyVersion;
     private int minimumEvidenceCount;
+    private RequiredEvidenceType requiredEvidenceType;
 }

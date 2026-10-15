@@ -7,9 +7,11 @@ import com.ondemandmonitoring.mission.dto.request.ChecklistExecutionUpdateReques
 import com.ondemandmonitoring.mission.mapper.MissionChecklistExecutionMapper;
 import com.ondemandmonitoring.mission.repository.*;
 import com.ondemandmonitoring.mission.service.impl.MissionChecklistExecutionServiceImpl;
+import com.ondemandmonitoring.mission.service.IChecklistEvidenceService;
 import com.ondemandmonitoring.order.domain.*;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.repository.OrderChecklistItemRepository;
+import com.ondemandmonitoring.order.enums.RequiredEvidenceType;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.util.*;
 import org.junit.jupiter.api.*;
@@ -24,15 +26,17 @@ class MissionChecklistExecutionServiceTest {
     MissionResultRepository results = mock(MissionResultRepository.class);
     IMissionAuthorizationService auth = mock(IMissionAuthorizationService.class);
     AuthenticatedUserResolver resolver = mock(AuthenticatedUserResolver.class);
+    IChecklistEvidenceService evidence = mock(IChecklistEvidenceService.class);
     MissionChecklistExecutionServiceImpl service = new MissionChecklistExecutionServiceImpl(missions,
             new com.ondemandmonitoring.mission.service.impl.MissionChecklistScopeServiceImpl(assignments, executions),
-            executions, results, auth, resolver, org.mapstruct.factory.Mappers.getMapper(MissionChecklistExecutionMapper.class), com.ondemandmonitoring.mission.service.EvidenceTestFixture.emptyService());
+            executions, results, auth, resolver, org.mapstruct.factory.Mappers.getMapper(MissionChecklistExecutionMapper.class), evidence);
     Mission mission; Order order; OrderChecklistItem item; MissionChecklistExecution execution;
 
     @BeforeEach void prepare() {
         order = new Order(); order.setId("o");
         mission = new Mission(); mission.setId("m"); mission.setOrder(order); mission.setStatus(MissionStatus.IN_FLIGHT);
         item = new OrderChecklistItem(); item.setId("i"); item.setOrder(order); item.setContent("Historical");
+        item.setEvidencePolicyVersion(0); item.setMinimumEvidenceCount(0); item.setRequiredEvidenceType(RequiredEvidenceType.IMAGE_OR_VIDEO);
         execution = new MissionChecklistExecution(); execution.setId("e"); execution.setVersion(0L);
         execution.setMission(mission); execution.setMissionId("m"); execution.setOrderId("o");
         execution.setOrderChecklistItem(item); execution.setOrderChecklistItemId("i");
@@ -47,6 +51,10 @@ class MissionChecklistExecutionServiceTest {
         when(resolver.getCurrentUserId()).thenReturn("authenticated-actor");
         when(items.findAllByOrderIdInOrderByDisplayOrderAscIdAsc(List.of("o"))).thenReturn(List.of(item));
         when(executions.findOrderedByMissionId("m")).thenReturn(List.of(execution));
+        when(evidence.active("m")).thenReturn(List.of());
+        when(evidence.ready(execution, List.of(), false)).thenReturn(true);
+        when(evidence.enrich(any(), eq(execution), any())).thenAnswer(call -> call.getArgument(0));
+        when(evidence.readinessFailure(execution, List.of(), false)).thenReturn("requirement not met");
     }
 
     ChecklistExecutionUpdateRequest request(ChecklistExecutionStatus status) {
@@ -56,6 +64,7 @@ class MissionChecklistExecutionServiceTest {
     void error(ErrorCode code, Runnable call) { assertEquals(code, assertThrows(ApiException.class, call::run).getErrorCode()); }
 
     @Test void progressesCompletesWithoutChangingSnapshotOrMissionAndClearsReason() {
+        when(evidence.ready(execution, List.of(), false)).thenReturn(true);
         service.update("m", "e", request(ChecklistExecutionStatus.IN_PROGRESS));
         assertNotNull(execution.getStartedAt()); assertNull(execution.getCompletedAt());
         var request = request(ChecklistExecutionStatus.COMPLETED); request.setAssessmentStatus(ChecklistAssessmentStatus.NON_COMPLIANT);
@@ -68,12 +77,14 @@ class MissionChecklistExecutionServiceTest {
     }
 
     @Test void atomicCompletionWithNoAssessmentIsAllowed() {
+        when(evidence.ready(execution, List.of(), false)).thenReturn(true);
         var response = service.update("m", "e", request(ChecklistExecutionStatus.COMPLETED));
         assertEquals(ChecklistAssessmentStatus.NOT_ASSESSED, response.getAssessmentStatus());
         assertNotNull(response.getStartedAt()); assertNotNull(response.getCompletedAt());
     }
 
     @Test void unableRequiresReasonAndTrimsIt() {
+        when(evidence.ready(execution, List.of(), false)).thenReturn(true);
         var request = request(ChecklistExecutionStatus.UNABLE_TO_VERIFY);
         error(ErrorCode.INVALID_REQUEST, () -> service.update("m", "e", request));
         request.setUnableToVerifyReason("   "); error(ErrorCode.INVALID_REQUEST, () -> service.update("m", "e", request));
@@ -85,6 +96,7 @@ class MissionChecklistExecutionServiceTest {
     }
 
     @Test void reverseIsRejectedUntilManagerRejectsResult() {
+        when(evidence.ready(execution, List.of(), false)).thenReturn(true);
         service.update("m", "e", request(ChecklistExecutionStatus.COMPLETED));
         error(ErrorCode.CHECKLIST_EXECUTION_TRANSITION_INVALID, () -> service.update("m", "e", request(ChecklistExecutionStatus.PENDING)));
         var result = new MissionResult(); result.setApprovalStatus(MissionResultApprovalStatus.REJECTED);
@@ -113,6 +125,7 @@ class MissionChecklistExecutionServiceTest {
     }
 
     @Test void maximumObservationAndUnableReasonAreAccepted() {
+        when(evidence.ready(execution, List.of(), false)).thenReturn(true);
         var request = request(ChecklistExecutionStatus.UNABLE_TO_VERIFY);
         request.setObservation("x".repeat(2000));
         request.setUnableToVerifyReason("y".repeat(1000));

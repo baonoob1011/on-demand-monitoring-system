@@ -106,6 +106,14 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
         execution.setAssessmentStatus(request.getAssessmentStatus());
         execution.setObservation(observation);
         execution.setUnableToVerifyReason(next == ChecklistExecutionStatus.UNABLE_TO_VERIFY ? reason : null);
+        if (next == ChecklistExecutionStatus.COMPLETED) {
+            var activeEvidence = evidenceService.active(missionId);
+            if (!evidenceService.ready(execution, activeEvidence, false)) {
+                String failure = evidenceService.readinessFailure(execution, activeEvidence, false);
+                throw new ApiException(ErrorCode.CHECKLIST_NOT_READY,
+                        failure == null ? "Attach eligible evidence before completing this checklist item." : failure);
+            }
+        }
         execution.setLastModifiedBy(currentUser.getCurrentUserId());
         // A repeated command still records an audit event and consumes its expected version.
         execution.setUpdatedAt(now);
@@ -150,7 +158,7 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
     @Override
     @Transactional(readOnly = true)
     public void requireReadyForSubmission(Mission mission) {
-        if (!isReadyForSubmission(mission)) throw new ApiException(ErrorCode.CHECKLIST_NOT_READY);
+        if (!isReadyForSubmission(mission)) throw new ApiException(ErrorCode.CHECKLIST_NOT_READY, readinessMessage(mission, false));
     }
 
     @Override
@@ -169,10 +177,43 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
         if (!scope.isMaterialized(mission)) throw new ApiException(ErrorCode.CHECKLIST_NOT_READY);
         var actual = executions.findOrderedByMissionId(mission.getId());
         var links = evidenceService.active(mission.getId());
-        if (!operationalReady(mission, actual, links)) throw new ApiException(ErrorCode.CHECKLIST_NOT_READY);
-        if (!actual.stream().allMatch(e -> evidenceService.ready(e, links, true)))
-            throw new ApiException(ErrorCode.CHECKLIST_NOT_READY, "Approve required evidence media first; remove rejected/pending evidence from required items");
+        if (!operationalReady(mission, actual, links)) {
+            String reason = actual.stream().map(e -> evidenceService.readinessFailure(e, links, false))
+                    .filter(Objects::nonNull).findFirst().orElse("Checklist execution is not operationally ready.");
+            throw new ApiException(ErrorCode.CHECKLIST_NOT_READY, reason);
+        }
+        if (!actual.stream().allMatch(e -> evidenceService.ready(e, links, true))) {
+            String reason = actual.stream().filter(e -> !evidenceService.ready(e, links, true))
+                    .map(e -> {
+                        String failure = evidenceService.readinessFailure(e, links, true);
+                        if (failure != null) return failure;
+                        var item = e.getOrderChecklistItem();
+                        return "Checklist item '" + item.getContent() + "' is not eligible for final approval.";
+                    }).filter(Objects::nonNull).findFirst().orElse("Evidence is not ready for final approval.");
+            throw new ApiException(ErrorCode.CHECKLIST_NOT_READY, reason);
+        }
     }
+
+    private String readinessMessage(Mission mission, boolean finalApproval) {
+        var rows = executions.findOrderedByMissionId(mission.getId());
+        var links = evidenceService.active(mission.getId());
+        return rows.stream()
+                .filter(execution -> !evidenceService.ready(execution, links, finalApproval))
+                .filter(execution -> execution.getExecutionStatus() != ChecklistExecutionStatus.UNABLE_TO_VERIFY)
+                .map(execution -> {
+                    String failure = evidenceService.readinessFailure(execution, links, finalApproval);
+                    if (failure != null) return failure;
+                    var item = execution.getOrderChecklistItem();
+                    return "Checklist item '" + item.getContent() + "' execution status "
+                            + execution.getExecutionStatus() + " is not terminal.";
+                })
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(finalApproval
+                        ? "Approve eligible evidence media before final MissionResult approval."
+                        : "Checklist execution or eligible evidence does not satisfy the saved Order requirement.");
+    }
+
 
     private void requireSameOrder(Mission mission, OrderChecklistItem item) {
         if (item == null || !Objects.equals(mission.getOrder().getId(), item.getOrder().getId()))

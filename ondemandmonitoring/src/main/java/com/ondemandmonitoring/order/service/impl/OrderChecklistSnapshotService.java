@@ -13,6 +13,7 @@ import com.ondemandmonitoring.order.dto.response.OrderChecklistItemResponse;
 import com.ondemandmonitoring.order.enums.OrderChecklistSourceType;
 import com.ondemandmonitoring.order.enums.ChecklistReviewStatus;
 import com.ondemandmonitoring.order.enums.OrderStatus;
+import com.ondemandmonitoring.order.enums.RequiredEvidenceType;
 import com.ondemandmonitoring.order.mapper.OrderChecklistItemMapper;
 import com.ondemandmonitoring.order.repository.OrderChecklistItemRepository;
 import com.ondemandmonitoring.order.service.IOrderChecklistSnapshotService;
@@ -96,9 +97,16 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
             }
             if (source != null && !defaults && !Objects.equals(source.getVersion(), item.getExpectedChecklistVersion()))
                 throw new ApiException(ErrorCode.ORDER_CHECKLIST_TEMPLATE_CHANGED);
+            int minimumEvidenceCount = item.getMinimumEvidenceCount() == null ? 1 : item.getMinimumEvidenceCount();
+            RequiredEvidenceType requiredEvidenceType = item.getRequiredEvidenceType() == null
+                    ? RequiredEvidenceType.IMAGE_OR_VIDEO : item.getRequiredEvidenceType();
+            if (minimumEvidenceCount < 1 || minimumEvidenceCount > 50) {
+                throw invalid("Checklist item '" + (item.getContentOverride() == null ? "selected requirement" : item.getContentOverride()) + "' minimumEvidenceCount must be between 1 and 50");
+            }
             var entity = new OrderChecklistItem();
-            entity.setEvidencePolicyVersion(1);
-            entity.setMinimumEvidenceCount(1);
+            entity.setEvidencePolicyVersion(2);
+            entity.setMinimumEvidenceCount(minimumEvidenceCount);
+            entity.setRequiredEvidenceType(requiredEvidenceType);
             entity.setOrder(order);
             entity.setSourceChecklist(source);
             entity.setSourceType(source == null ? OrderChecklistSourceType.CUSTOMER_CUSTOM : OrderChecklistSourceType.SERVICE_TEMPLATE);

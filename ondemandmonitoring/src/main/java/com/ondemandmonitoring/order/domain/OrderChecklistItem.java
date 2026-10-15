@@ -4,6 +4,7 @@ import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.checklist.domain.ChecklistDefinition;
 import com.ondemandmonitoring.order.enums.ChecklistReviewStatus;
 import com.ondemandmonitoring.order.enums.OrderChecklistSourceType;
+import com.ondemandmonitoring.order.enums.RequiredEvidenceType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -55,5 +56,9 @@ public class OrderChecklistItem extends BaseEntity {
     @Column(name = "evidence_policy_version", nullable = false, updatable = false)
     private int evidencePolicyVersion;
     @Column(name = "minimum_evidence_count", nullable = false, updatable = false)
-    private int minimumEvidenceCount;
+    private int minimumEvidenceCount = 1;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "required_evidence_type", nullable = false, length = 30, updatable = false)
+    private RequiredEvidenceType requiredEvidenceType = RequiredEvidenceType.IMAGE_OR_VIDEO;
 }

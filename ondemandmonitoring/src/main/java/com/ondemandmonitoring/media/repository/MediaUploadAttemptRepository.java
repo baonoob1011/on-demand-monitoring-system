@@ -26,7 +26,12 @@ public interface MediaUploadAttemptRepository extends JpaRepository<MediaUploadA
     @Query("select a from MediaUploadAttempt a where a.storageKey = :key")
     Optional<MediaUploadAttempt> findByStorageKeyForUpdate(@Param("key") String key);
 
-    long countByMediaIdAndManualAttemptFalse(String mediaId);
+    /**
+     * Counts automatic attempts that actually FAILED a transfer or failed object validation.
+     * Prepares, abandoned presigned URLs and retries that were never transferred stay PENDING
+     * and are therefore never counted as failed uploads.
+     */
+    long countByMediaIdAndManualAttemptFalseAndStatus(String mediaId, UploadAttemptStatus status);
 
     List<MediaUploadAttempt> findByStatusOrderByUpdatedAtAsc(
             UploadAttemptStatus status, Pageable pageable);

@@ -281,6 +281,10 @@ class ChecklistPostgresTest {
         var result = orderService.createOrder(orderRequest(s));
         assertNotNull(result.getChecklistSnapshotAt());
         assertEquals("Original", result.getChecklistItems().getFirst().getContent());
+        assertEquals(2, result.getChecklistItems().getFirst().getEvidencePolicyVersion());
+        assertEquals(1, result.getChecklistItems().getFirst().getMinimumEvidenceCount());
+        assertEquals(com.ondemandmonitoring.order.enums.RequiredEvidenceType.IMAGE_OR_VIDEO,
+                result.getChecklistItems().getFirst().getRequiredEvidenceType());
         String stableId = result.getChecklistItems().getFirst().getId();
         var edit = new ChecklistRequest(); edit.setContent("Changed");
         catalog.update(c, edit);

@@ -10,4 +10,5 @@ public interface IChecklistEvidenceService {
     List<MissionChecklistEvidence> active(String missionId);
     ChecklistExecutionResponse enrich(ChecklistExecutionResponse response, MissionChecklistExecution execution, List<MissionChecklistEvidence> evidence);
     boolean ready(MissionChecklistExecution execution, List<MissionChecklistEvidence> evidence, boolean finalApproval);
+    String readinessFailure(MissionChecklistExecution execution, List<MissionChecklistEvidence> evidence, boolean finalApproval);
 }

@@ -12,6 +12,7 @@ import com.ondemandmonitoring.media.dto.request.ReportUploadFailureRequest;
 import com.ondemandmonitoring.media.dto.request.ManualMediaFileRequest;
 import com.ondemandmonitoring.media.dto.response.ManualMediaUploadResponse;
 import com.ondemandmonitoring.media.dto.response.MediaUploadResponse;
+import com.ondemandmonitoring.media.policy.MediaUploadPolicy;
 import com.ondemandmonitoring.media.repository.*;
 import com.ondemandmonitoring.media.service.IMediaUploadService;
 import com.ondemandmonitoring.mission.dto.response.MissionMediaContext;
@@ -32,16 +33,17 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
 
     private static final long PART_SIZE = 8L * 1024 * 1024;
     private static final long MULTIPART_THRESHOLD = 16L * 1024 * 1024;
-    private static final int MAX_AUTOMATIC_ATTEMPTS = 3;
     private final IMissionMediaAccessService missionAccess;
     private final IDeviceService devices;
     private final MediaAssetRepository media;
     private final MediaUploadAttemptRepository attempts;
     private final ManualUploadTaskRepository manualTasks;
+    private final ManualUploadTaskServiceImpl manualTaskService;
     private final MediaAuditLogRepository auditLogs;
     private final IMediaObjectStorage storage;
     private final AuthenticatedUserResolver currentUser;
     private final IMissionMediaEvidenceGuard missionLock;
+    private final MediaUploadPolicy policy;
 
     @Value("${app.media.max-image-bytes:26214400}")
     private long maxImageBytes;
@@ -151,7 +153,8 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
                     "Media is not ready for retry");
         }
 
-        if (!manual && attempts.countByMediaIdAndManualAttemptFalse(mediaId) >= MAX_AUTOMATIC_ATTEMPTS) {
+        // Only genuine failures escalate; a retry that is merely prepared must never consume budget.
+        if (!manual && policy.failedAutomaticAttemptsExhausted(failedAutomaticAttempts(mediaId))) {
             return requireManualUpload(captured,
                     "Automatic attempts exhausted");
         }
@@ -195,7 +198,8 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
 
         captured.setValidationError(request.getMessage());
         audit(captured, attempt, "UPLOAD_FAILED", request.getCode());
-        if (attempts.countByMediaIdAndManualAttemptFalse(mediaId) >= MAX_AUTOMATIC_ATTEMPTS) {
+        // The attempt was just persisted as FAILED, so it is already part of the tally.
+        if (policy.failedAutomaticAttemptsExhausted(failedAutomaticAttempts(mediaId))) {
             return requireManualUpload(captured, request.getMessage());
         }
 
@@ -444,19 +448,17 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
                 null);
     }
 
+    private long failedAutomaticAttempts(String mediaId) {
+        return attempts.countByMediaIdAndManualAttemptFalseAndStatus(
+                mediaId, UploadAttemptStatus.FAILED);
+    }
+
     private MediaUploadResponse requireManualUpload(MediaAsset captured, String reason) {
 
         captured.setMediaStatus(MediaStatus.MANUAL_UPLOAD_REQUIRED);
         captured.setValidationError(reason);
         media.save(captured);
-        ManualUploadTask task = manualTasks.findByMediaId(captured.getId()).orElseGet(() -> {
-            ManualUploadTask created = new ManualUploadTask();
-            created.setMedia(captured);
-            created.setAssignedOperatorId(captured.getOperatorId());
-            return created;
-        });
-        task.setReason(reason);
-        manualTasks.save(task);
+        manualTaskService.requireOpen(captured, reason);
         audit(captured, null, "MANUAL_UPLOAD_REQUIRED", reason);
 
         return status(captured.getId());

@@ -50,13 +50,16 @@ class ChecklistEvidenceIntegrationPostgresTest extends OrderMissionPostgresTest 
         String mission=legacyMission(request(order)).getId(); setStatus(mission,MissionStatus.PENDING_REVIEW);return mission;
     }
     void setStatus(String mission,MissionStatus status) { transaction.executeWithoutResult(tx->{Mission entity=missions.findByIdForUpdate(mission).orElseThrow();entity.setStatus(status);if(status==MissionStatus.COMPLETED)entity.setCompletedAt(java.time.Instant.now());}); }
-    String asset(String mission,MediaStatus status) {
+    String asset(String mission,MediaStatus status) { return asset(mission,status,"IMAGE"); }
+    String asset(String mission,MediaStatus status,String mediaType) {
         String id=UUID.randomUUID().toString(),device=UUID.randomUUID().toString(),model=UUID.randomUUID().toString();var jdbc=new JdbcTemplate(dataSource);
         jdbc.update("insert into device_models(id,created_at,version,code,model_name) values (?,now(),0,?,'Test model')",model,model);
         jdbc.update("insert into devices(id,created_at,version,serial_number,name,model_id,status) values (?,now(),0,?,'Test camera',?,'AVAILABLE')",device,device,model);
         String deviceRole = jdbc.queryForObject("select count(*) from mission_device_assignments where mission_id=? and is_current and device_role='MAIN'", Integer.class, mission) == 0 ? "MAIN" : "SUPPORT";
         jdbc.update("insert into mission_device_assignments(id,created_at,version,mission_id,device_id,device_role,checkup_status,is_current) values (?,now(),0,?,?,?,'PENDING',true)",UUID.randomUUID().toString(),mission,device,deviceRole);
-        jdbc.update("insert into drone_media(id,created_at,version,mission_id,device_id,media_type,storage_provider,original_file_name,content_type,file_size,s3_bucket,s3_key,s3_url,captured_at,media_status,source_type,validated_at,preview_selected) values (?,now(),0,?,?,'IMAGE','S3','capture.jpg','image/jpeg',20,'test',?,?,now(),?,'DRONE_CAMERA',now(),false)",id,mission,device,id,"s3://test/"+id,status.name());return id;
+        String contentType = mediaType.equals("VIDEO") ? "video/mp4" : "image/jpeg";
+        String filename = mediaType.equals("VIDEO") ? "capture.mp4" : "capture.jpg";
+        jdbc.update("insert into drone_media(id,created_at,version,mission_id,device_id,media_type,storage_provider,original_file_name,content_type,file_size,s3_bucket,s3_key,s3_url,captured_at,media_status,source_type,validated_at,preview_selected) values (?,now(),0,?,?,?,'S3',?,?,20,'test',?,?,now(),?,'DRONE_CAMERA',now(),false)",id,mission,device,mediaType,filename,contentType,id,"s3://test/"+id,status.name());return id;
     }
     ChecklistExecutionResponse row(String mission) {return executionService.getByMissionId(mission).executions().getFirst();}
     void complete(String mission) {
@@ -65,7 +68,10 @@ class ChecklistEvidenceIntegrationPostgresTest extends OrderMissionPostgresTest 
     }
     BatchChecklistEvidenceRequest attachRequest(String mission,String asset) {var row=row(mission);return new BatchChecklistEvidenceRequest(asset,List.of(new BatchChecklistEvidenceRequest.Target(row.getId(),row.getVersion())),null);}
     @Test void newSnapshotSubmitsValidatedEvidenceButFinalResultRequiresMediaApproval() {
-        String mission=mission(1); assertEquals(1,row(mission).getEvidencePolicyVersion());complete(mission);
+        String mission=mission(1); assertEquals(2,row(mission).getEvidencePolicyVersion());
+        assertEquals(1,row(mission).getMinimumEvidenceCount());
+        assertEquals(com.ondemandmonitoring.order.enums.RequiredEvidenceType.IMAGE_OR_VIDEO,row(mission).getRequiredEvidenceType());
+        complete(mission);
         assertFalse(executionService.getByMissionId(mission).checklistEvidenceReady());String media=asset(mission,MediaStatus.PENDING_MANAGER_APPROVAL);
         evidenceService.attach(mission,attachRequest(mission,media));assertTrue(executionService.getByMissionId(mission).readyForMissionCompletion());
         setStatus(mission,MissionStatus.COMPLETED);var result=resultService.upsert(mission,new MissionResultRequest());
@@ -75,6 +81,42 @@ class ChecklistEvidenceIntegrationPostgresTest extends OrderMissionPostgresTest 
         assertThrows(ApiException.class,()->evidenceService.attach(mission,attachRequest(mission,media)));
         assertEquals(ErrorCode.CHECKLIST_EXECUTION_LOCKED, assertThrows(ApiException.class, () -> approvals.reject(mission, media)).getErrorCode());
     }
+    @Test void configuredImageRequirementPropagatesToEveryMissionAndFinalApprovalRechecksIt() {
+        var request = orderRequest(service("multi-mission evidence service"));
+        when(resolver.getCurrentUserId()).thenReturn(resolver.getCurrentUser().getId());
+        var selection = selected(null, "Two images required");
+        selection.setMinimumEvidenceCount(2);
+        selection.setRequiredEvidenceType(com.ondemandmonitoring.order.enums.RequiredEvidenceType.IMAGE);
+        request.setChecklistItems(List.of(selection));
+        String order = orderService.createOrder(request).getId();
+        var item = orderService.getOrderById(order).getChecklistItems().getFirst();
+        assertEquals(2, item.getMinimumEvidenceCount());
+        assertEquals(com.ondemandmonitoring.order.enums.RequiredEvidenceType.IMAGE, item.getRequiredEvidenceType());
+        transaction.executeWithoutResult(tx -> orders.findById(order).orElseThrow().setOrderStatus(OrderStatus.APPROVED));
+        String first = legacyMission(request(order)).getId();
+        String second = legacyMission(request(order)).getId();
+        setStatus(first, MissionStatus.PENDING_REVIEW); setStatus(second, MissionStatus.PENDING_REVIEW);
+        assertEquals(2, row(first).getMinimumEvidenceCount());
+        assertEquals(2, row(second).getMinimumEvidenceCount());
+        complete(first);
+        String video = asset(first, MediaStatus.PENDING_MANAGER_APPROVAL, "VIDEO");
+        assertEquals(ErrorCode.EVIDENCE_NOT_ELIGIBLE, assertThrows(ApiException.class,
+                () -> evidenceService.attach(first, attachRequest(first, video))).getErrorCode());
+        String image1 = asset(first, MediaStatus.PENDING_MANAGER_APPROVAL, "IMAGE");
+        evidenceService.attach(first, attachRequest(first, image1));
+        setStatus(first, MissionStatus.COMPLETED);
+        assertThrows(ApiException.class, () -> resultService.upsert(first, new MissionResultRequest()));
+        String image2 = asset(first, MediaStatus.PENDING_MANAGER_APPROVAL, "IMAGE");
+        evidenceService.attach(first, new BatchChecklistEvidenceRequest(image2, List.of(
+                new BatchChecklistEvidenceRequest.Target(row(first).getId(), row(first).getVersion())), null));
+        assertTrue(executionService.getByMissionId(first).readyForSubmission());
+        var submitted = resultService.upsert(first, new MissionResultRequest());
+        assertThrows(ApiException.class, () -> resultService.approve(submitted.getId(), new MissionResultReviewRequest()));
+        approvals.approve(first, image1); approvals.approve(first, image2);
+        assertEquals(MissionResultApprovalStatus.APPROVED, resultService.approve(submitted.getId(), new MissionResultReviewRequest()).getApprovalStatus());
+        assertFalse(executionService.getByMissionId(second).readyForSubmission());
+    }
+
     @Test void batchIsAtomicAndSameMediaSupportsManyExecutions() {
         String mission=mission(2),media=asset(mission,MediaStatus.PENDING_MANAGER_APPROVAL);var rows=executionService.getByMissionId(mission).executions();
         var bad=new BatchChecklistEvidenceRequest(media,List.of(new BatchChecklistEvidenceRequest.Target(rows.getFirst().getId(),0L),new BatchChecklistEvidenceRequest.Target(rows.getLast().getId(),9L)),null);

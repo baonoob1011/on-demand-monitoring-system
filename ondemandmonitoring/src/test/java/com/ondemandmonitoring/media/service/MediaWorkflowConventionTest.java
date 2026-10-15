@@ -15,9 +15,16 @@ class MediaWorkflowConventionTest {
 
     @Test
     void retryBoundaryAndManualFailureUseOnePolicy() {
+        // Escalation requires STRICTLY MORE THAN three failed automatic attempts.
+        assertThat(policy.failureStatus(false, 1)).isEqualTo(MediaStatus.RETRY_REQUIRED);
         assertThat(policy.failureStatus(false, 2)).isEqualTo(MediaStatus.RETRY_REQUIRED);
-        assertThat(policy.failureStatus(false, 3)).isEqualTo(MediaStatus.MANUAL_UPLOAD_REQUIRED);
+        assertThat(policy.failureStatus(false, 3)).isEqualTo(MediaStatus.RETRY_REQUIRED);
+        assertThat(policy.failureStatus(false, 4)).isEqualTo(MediaStatus.MANUAL_UPLOAD_REQUIRED);
+        // A manual attempt escalates immediately regardless of the automatic tally.
         assertThat(policy.failureStatus(true, 1)).isEqualTo(MediaStatus.MANUAL_UPLOAD_REQUIRED);
+        assertThat(policy.failureStatus(true, 0)).isEqualTo(MediaStatus.MANUAL_UPLOAD_REQUIRED);
+        assertThat(policy.failedAutomaticAttemptsExhausted(3)).isFalse();
+        assertThat(policy.failedAutomaticAttemptsExhausted(4)).isTrue();
     }
 
     @Test

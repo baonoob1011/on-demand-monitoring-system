@@ -36,6 +36,7 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
     MediaAssetRepository media;
     StorageEventInboxRepository inbox;
     ManualUploadTaskRepository manualTasks;
+    ManualUploadTaskServiceImpl manualTaskService;
     IMediaAuditService auditService;
     MediaUploadPolicy policy;
     MediaNotificationOutboxRepository outbox;
@@ -97,8 +98,10 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
             attempt.setCompletedAt(Instant.now());
             attempts.save(attempt);
             captured.setValidationError(failure);
-            if (policy.failureStatus(attempt.isManualAttempt(),
-                    attempts.countByMediaIdAndManualAttemptFalse(captured.getId()))
+            // A manual attempt always escalates. An automatic attempt escalates only once the
+            // explicit tally of FAILED non-manual attempts is exhausted; prepares and abandoned
+            // retries stay PENDING and can never contribute.
+            if (policy.failureStatus(attempt.isManualAttempt(), failedAutomaticAttempts(captured.getId()))
                     == MediaStatus.MANUAL_UPLOAD_REQUIRED) {
                 requireManualUpload(captured, failure);
             } else {
@@ -155,16 +158,15 @@ public class MediaValidationServiceImpl implements IMediaValidationService {
         }
     }
 
+    private long failedAutomaticAttempts(String mediaId) {
+        return attempts.countByMediaIdAndManualAttemptFalseAndStatus(
+                mediaId, UploadAttemptStatus.FAILED);
+    }
+
     private void requireManualUpload(MediaAsset captured, String reason) {
         captured.setMediaStatus(MediaStatus.MANUAL_UPLOAD_REQUIRED);
-        ManualUploadTask task = manualTasks.findByMediaId(captured.getId()).orElseGet(() -> {
-            ManualUploadTask created = new ManualUploadTask();
-            created.setMedia(captured);
-            created.setAssignedOperatorId(captured.getOperatorId());
-            return created;
-        });
-        task.setReason(reason);
-        manualTasks.save(task);
+        // Shared with the transfer-failure path so both always produce a visible OPEN task.
+        manualTaskService.requireOpen(captured, reason);
     }
 
     private void audit(MediaAsset captured, MediaUploadAttempt attempt,
