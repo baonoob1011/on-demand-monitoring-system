@@ -50,7 +50,7 @@ class RuleBasedPricingEngineTest {
     }
 
     private PricingPolicy policy() { PricingPolicy p = new PricingPolicy(); p.setId("p1"); p.setPolicyVersion(3); p.setStatus(PricingPolicyStatus.ACTIVE); p.setCurrency("VND"); return p; }
-    private Order order(String price) { var service = new com.ondemandmonitoring.service.domain.Service(); service.setName("Inspection"); service.setBasePrice(new BigDecimal(price)); Order o = new Order(); o.setId("o1"); o.setService(service); o.setServiceBasePriceSnapshot(new BigDecimal(price)); o.setPriority(OrderPriority.NORMAL); return o; }
+    private Order order(String price) { var service = new com.ondemandmonitoring.service.domain.Service(); service.setName("Inspection"); service.setBasePrice(new BigDecimal(price)); Order o = new Order(); o.setId("o1"); o.setService(service); o.setServiceBasePriceSnapshot(new BigDecimal(price)); return o; }
     private PricingRule fixed(PricingCategory c, String key, String text, String amount, int priority) { PricingRule r = base(c, key, text, PricingCalculationType.FIXED, priority); r.setFixedAmount(new BigDecimal(amount)); return r; }
     private PricingRule percent(PricingCategory c, String key, String text, String min, String max, String value, int priority) { PricingRule r = base(c, key, text, PricingCalculationType.PERCENT_OF_BASE, priority); r.setMinValue(new BigDecimal(min)); r.setMaxValue(new BigDecimal(max)); r.setPercentage(new BigDecimal(value)); return r; }
     private PricingRule multiplier(String key, String text, String value, int priority) { PricingRule r = base(PricingCategory.TERRAIN, key, text, PricingCalculationType.MULTIPLIER, priority); r.setMultiplier(new BigDecimal(value)); return r; }

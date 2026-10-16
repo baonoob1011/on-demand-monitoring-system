@@ -104,7 +104,7 @@ class ManualUploadRecoveryWorkflowTest {
 
         // Recovery is asserted through the ticket lifecycle and the real validation pipeline.
         validationService = new MediaValidationServiceImpl(attempts, media, inbox, manualTasks,
-                manualTaskService, auditService, new MediaUploadPolicy(), outbox, storage,
+                manualTaskService, auditService, new MediaUploadPolicy(), storage,
                 new MediaObjectVerificationServiceImpl(storage),
                 mock(com.ondemandmonitoring.mission.service.IMissionMediaEvidenceGuard.class));
     }

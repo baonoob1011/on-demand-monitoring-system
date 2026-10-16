@@ -316,7 +316,7 @@ class ManualUploadEscalationPolicyTest {
 
     private MediaValidationServiceImpl validationService() {
         return new MediaValidationServiceImpl(attempts, media, inbox, manualTasks, manualTaskService,
-                auditService, new MediaUploadPolicy(), outbox, storage,
+                auditService, new MediaUploadPolicy(), storage,
                 new MediaObjectVerificationServiceImpl(storage), missionLock);
     }
 
