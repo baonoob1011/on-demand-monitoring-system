@@ -87,6 +87,7 @@ class OrderAggregateCompletionPostgresTest extends MissionChecklistCutoverPostgr
             item.setSourceType(com.ondemandmonitoring.order.enums.OrderChecklistSourceType.CUSTOMER_CUSTOM);
             item.setEvidencePolicyVersion(1);
             item.setMinimumEvidenceCount(1);
+            item.setRequiredEvidenceType(com.ondemandmonitoring.order.enums.RequiredEvidenceType.IMAGE_OR_VIDEO);
             snapshots.saveAndFlush(item);
         });
         result(first, MissionResultApprovalStatus.APPROVED);

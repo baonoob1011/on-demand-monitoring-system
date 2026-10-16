@@ -65,7 +65,7 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
         request.setIdempotencyKey(UUID.nameUUIDFromBytes(orderId.getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString());
         request.setExpectedPlanRevision(0L);
         request.setScopeLabel("Whole Order scope");
-        var start = java.time.LocalDate.now().plusDays(1).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
+        var start = java.time.LocalDate.now().plusDays(7).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
         request.setScheduledStartAt(start);
         request.setScheduledEndAt(start.plusSeconds(3600));
         return request;

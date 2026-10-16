@@ -41,7 +41,11 @@ class OrderChecklistSnapshotServiceTest {
         when(definitions.findByIdForUpdate("c2")).thenReturn(Optional.of(c2));
         when(snapshots.saveAllAndFlush(any())).thenAnswer(invocation -> {
             List<OrderChecklistItem> items = invocation.getArgument(0);
-            items.forEach(item -> { assertEquals(1, item.getEvidencePolicyVersion()); assertEquals(1, item.getMinimumEvidenceCount()); });
+            items.forEach(item -> {
+                assertEquals(2, item.getEvidencePolicyVersion());
+                assertTrue(item.getMinimumEvidenceCount() >= 1 && item.getMinimumEvidenceCount() <= 50);
+                assertNotNull(item.getRequiredEvidenceType());
+            });
             items.forEach(item -> item.setId(UUID.randomUUID().toString())); return items;
         });
         useCase = new OrderChecklistSnapshotService(services, definitions, assignments, snapshots,
@@ -62,6 +66,29 @@ class OrderChecklistSnapshotServiceTest {
         locks.verify(services).findByIdForUpdate("s1");
         locks.verify(definitions).findByIdForUpdate("c1"); locks.verify(definitions).findByIdForUpdate("c2");
     }
+    @Test void configurableEvidenceRequirementIsSnapshottedAndReturned() {
+        var configured = item("c1", "Check exits");
+        configured.setMinimumEvidenceCount(2);
+        configured.setRequiredEvidenceType(RequiredEvidenceType.IMAGE);
+        doAnswer(invocation -> {
+            List<OrderChecklistItem> saved = invocation.getArgument(0);
+            saved.forEach(item -> item.setId(UUID.randomUUID().toString()));
+            return saved;
+        }).when(snapshots).saveAllAndFlush(any());
+        var result = useCase.capture(order, List.of(configured));
+        assertEquals(2, result.getFirst().getEvidencePolicyVersion());
+        assertEquals(2, result.getFirst().getMinimumEvidenceCount());
+        assertEquals(RequiredEvidenceType.IMAGE, result.getFirst().getRequiredEvidenceType());
+    }
+
+    @Test void invalidEvidenceRequirementIsRejected() {
+        var invalid = item("c1", "Check exits");
+        invalid.setMinimumEvidenceCount(51);
+        assertThrows(ApiException.class, () -> useCase.capture(order, List.of(invalid)));
+        invalid.setMinimumEvidenceCount(0);
+        assertThrows(ApiException.class, () -> useCase.capture(order, List.of(invalid)));
+    }
+
     @Test void supportsSubsetEditedAndCustomWithoutChangingCatalog() {
         var result = useCase.capture(order, List.of(item("c1", " Edited  exits "), item(null, "Customer custom")));
         assertEquals("Edited exits", result.getFirst().getContent());

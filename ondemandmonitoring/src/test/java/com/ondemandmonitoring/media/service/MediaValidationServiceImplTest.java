@@ -7,18 +7,17 @@ import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.domain.MediaNotificationOutbox;
-import com.ondemandmonitoring.media.domain.MediaStatus;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.media.domain.MediaUploadAttempt;
 import com.ondemandmonitoring.media.domain.StorageEventInbox;
-import com.ondemandmonitoring.media.domain.UploadAttemptStatus;
+import com.ondemandmonitoring.media.enums.UploadAttemptStatus;
 import com.ondemandmonitoring.media.repository.ManualUploadTaskRepository;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
-import com.ondemandmonitoring.media.repository.MediaAuditLogRepository;
 import com.ondemandmonitoring.media.repository.MediaNotificationOutboxRepository;
 import com.ondemandmonitoring.media.repository.MediaUploadAttemptRepository;
 import com.ondemandmonitoring.media.repository.StorageEventInboxRepository;
 import com.ondemandmonitoring.media.service.impl.MediaValidationServiceImpl;
-import com.ondemandmonitoring.media.service.IMediaObjectStorage;
+
 import java.io.ByteArrayInputStream;
 import java.security.MessageDigest;
 import java.util.HexFormat;
@@ -27,7 +26,6 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -47,6 +45,7 @@ class MediaValidationServiceImplTest {
     @org.junit.jupiter.api.BeforeEach
     void setUp() {
         service = new MediaValidationServiceImpl(attempts, media, inbox, manualTasks,
+                new com.ondemandmonitoring.media.service.impl.ManualUploadTaskServiceImpl(manualTasks),
                 auditService, policy, outbox, storage,
                 new com.ondemandmonitoring.media.service.impl.MediaObjectVerificationServiceImpl(storage), org.mockito.Mockito.mock(com.ondemandmonitoring.mission.service.IMissionMediaEvidenceGuard.class));
     }

@@ -77,9 +77,18 @@ END $$;
 
 -- Additional prerequisites: bootstrap markers and Phase 5/6 execution/evidence.
 -- JPA already owns base columns/tables and enum/reason/timing checks.
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid='public.order_checklist_items'::regclass
+        AND attname='required_evidence_type' AND NOT attisdropped) THEN
+        ALTER TABLE public.order_checklist_items ADD COLUMN required_evidence_type varchar(30);
+        UPDATE public.order_checklist_items SET required_evidence_type='IMAGE_OR_VIDEO';
+        ALTER TABLE public.order_checklist_items ALTER COLUMN required_evidence_type SET NOT NULL;
+    END IF;
+END $$;
 ALTER TABLE public.services ALTER COLUMN checklist_defaults_initialized SET DEFAULT false;
 ALTER TABLE public.order_checklist_items ALTER COLUMN evidence_policy_version SET DEFAULT 0;
 ALTER TABLE public.order_checklist_items ALTER COLUMN minimum_evidence_count SET DEFAULT 0;
+ALTER TABLE public.order_checklist_items ALTER COLUMN required_evidence_type SET DEFAULT 'IMAGE_OR_VIDEO';
 
 -- SECTION 1: Current multi-Mission identity and planning invariants.
 ALTER TABLE public.orders ALTER COLUMN execution_plan_status SET DEFAULT 'DRAFT';
@@ -116,7 +125,7 @@ DO $$ DECLARE entry record; actual text; expected text; BEGIN
         ('mission_checklist_executions','fk_execution_item_order',
          'FOREIGN KEY (order_checklist_item_id,order_id) REFERENCES public.order_checklist_items(id,order_id)'),
         ('order_checklist_items','ck_snapshot_evidence_policy',
-         'CHECK ((evidence_policy_version=0 AND minimum_evidence_count=0) OR (evidence_policy_version=1 AND minimum_evidence_count=1))'),
+         'CHECK ((evidence_policy_version=0 AND minimum_evidence_count=0) OR (evidence_policy_version=1 AND minimum_evidence_count=1 AND required_evidence_type=''IMAGE_OR_VIDEO'') OR (evidence_policy_version=2 AND minimum_evidence_count BETWEEN 1 AND 50 AND required_evidence_type IN (''IMAGE'',''VIDEO'',''IMAGE_OR_VIDEO'')))'),
         ('mission_checklist_executions','uk_execution_id_mission','UNIQUE(id,mission_id)'),
         ('drone_media','uk_media_id_mission','UNIQUE(id,mission_id)'),
         ('mission_checklist_evidence','fk_evidence_execution_mission',
@@ -185,6 +194,32 @@ ALTER TABLE public.mission_checklist_executions ALTER COLUMN mission_checklist_a
 -- not the obsolete global uk_mission_direct_replacement index.
 -- SECTION 5: Resource concurrency and safe-stop (JPA owns safe-stop columns).
 CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA public;
+
+-- SECTION 5a: Durable upload-failure event ledger.
+-- Separate from media_storage_event_inbox on purpose: a client-reported failed transfer has
+-- no object key, and asserting one would claim an object exists that never did.
+CREATE TABLE IF NOT EXISTS public.media_upload_failure_events (
+    id uuid PRIMARY KEY,
+    event_key varchar(64) NOT NULL,
+    mission_id uuid NOT NULL,
+    media_id uuid NOT NULL,
+    attempt_id uuid NOT NULL,
+    attempt_number integer NOT NULL,
+    category varchar(40) NOT NULL,
+    occurred_at timestamptz NOT NULL,
+    failure_code varchar(100),
+    failure_message varchar(1000),
+    processed_at timestamptz,
+    processing_outcome varchar(40),
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz,
+    version bigint NOT NULL,
+    CONSTRAINT uk_media_upload_failure_event UNIQUE (event_key),
+    CONSTRAINT ck_upload_failure_category CHECK (category IN ('TRANSFER_FAILED','TRANSFER_ACK_LOST')),
+    CONSTRAINT ck_upload_failure_outcome CHECK (processed_at IS NULL OR processing_outcome IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS ix_upload_failure_pending
+    ON public.media_upload_failure_events (occurred_at) WHERE processed_at IS NULL;
 CREATE TABLE IF NOT EXISTS public.resource_reservation_mutex(resource_id varchar(100) PRIMARY KEY);
 DO $$ BEGIN
     IF (SELECT count(*) FROM pg_attribute WHERE attrelid='public.resource_reservation_mutex'::regclass

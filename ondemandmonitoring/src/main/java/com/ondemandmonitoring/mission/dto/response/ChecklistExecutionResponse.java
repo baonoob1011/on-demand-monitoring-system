@@ -3,6 +3,7 @@ package com.ondemandmonitoring.mission.dto.response;
 import com.ondemandmonitoring.mission.enums.ChecklistExecutionStatus;
 import com.ondemandmonitoring.mission.enums.ChecklistAssessmentStatus;
 import com.ondemandmonitoring.order.enums.OrderChecklistSourceType;
+import com.ondemandmonitoring.order.enums.RequiredEvidenceType;
 import java.time.Instant;
 import lombok.Data;
 
@@ -25,6 +26,7 @@ public class ChecklistExecutionResponse {
     private Long version;
     private int evidencePolicyVersion;
     private int minimumEvidenceCount;
+    private RequiredEvidenceType requiredEvidenceType;
     private int eligibleEvidenceCount;
     private boolean evidenceRequirementSatisfied;
     private boolean evidenceReady;

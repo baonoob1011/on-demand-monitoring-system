@@ -9,7 +9,8 @@ public interface IQuoteService {
     OrderChecklistItemResponse reviewChecklist(String orderId, String itemId, ChecklistReviewRequest request);
     QuoteResponse saveDraft(String orderId, QuoteDraftRequest request);
     QuoteResponse approve(String orderId, String quoteId);
-    QuoteResponse getCurrentForCustomer(String orderId);
+    QuoteResponse decidePricingAdjustment(String orderId, String quoteId, PricingApprovalRequest request);
+    CustomerQuoteResponse getCurrentForCustomer(String orderId);
     InvoiceResponse accept(String orderId, String quoteId);
     InvoiceResponse getInvoiceByOrder(String orderId);
 }

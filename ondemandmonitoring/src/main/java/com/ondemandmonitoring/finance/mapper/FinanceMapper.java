@@ -13,12 +13,28 @@ public final class FinanceMapper {
                 quote.getAdjustmentAmount(), quote.getTotalAmount(), quote.getManagerNote(),
                 quote.getApprovedBy() == null ? null : quote.getApprovedBy().getFullName(),
                 quote.getApprovedAt(), quote.getAcceptedAt(), quote.getItems().stream()
-                .sorted(Comparator.comparingInt(QuoteItem::getDisplayOrder)).map(FinanceMapper::quoteItem).toList());
+                .sorted(Comparator.comparingInt(QuoteItem::getDisplayOrder)).map(FinanceMapper::quoteItem).toList(),
+                quote.getPricingPolicyId(), quote.getPricingPolicyVersion(), quote.getSystemCalculatedAmount(),
+                quote.getManagerAdjustmentAmount(), quote.getAdjustmentType(), quote.getAdjustmentReason(),
+                quote.getAdjustmentRequestedBy() == null ? null : quote.getAdjustmentRequestedBy().getId(),
+                quote.getAdjustmentRequestedBy() == null ? null : quote.getAdjustmentRequestedBy().getFullName(),
+                quote.getAdjustmentRequestedAt(), quote.getPricingApprovalStatus(),
+                quote.getPricingApprovedBy() == null ? null : quote.getPricingApprovedBy().getFullName(),
+                quote.getPricingApprovedAt(), quote.getPricingApprovalNote(), quote.getPricingRevision(),
+                quote.getPricingRiskFlags() == null ? java.util.List.of() : quote.getPricingRiskFlags());
     }
 
     public static QuoteItemResponse quoteItem(QuoteItem item) {
         return new QuoteItemResponse(item.getId(), item.getOrderChecklistItem() == null ? null : item.getOrderChecklistItem().getId(),
                 item.getType(), item.getDescription(), item.getQuantity(), item.getUnitPrice(), item.getAmount(), item.getDisplayOrder());
+    }
+
+    public static CustomerQuoteResponse customerQuote(Quote quote) {
+        return new CustomerQuoteResponse(quote.getId(), quote.getOrder().getId(), quote.getQuoteVersion(), quote.getStatus(),
+                quote.getPackagePrice(), quote.getAdditionalAmount(), quote.getDiscountAmount(), quote.getAdjustmentAmount(),
+                quote.getTotalAmount(), quote.getManagerNote(), quote.getApprovedAt(), quote.getAcceptedAt(),
+                quote.getItems().stream().sorted(Comparator.comparingInt(QuoteItem::getDisplayOrder))
+                        .map(FinanceMapper::quoteItem).toList());
     }
 
     public static InvoiceResponse invoice(Invoice invoice, boolean finalPaymentAllowed) {
