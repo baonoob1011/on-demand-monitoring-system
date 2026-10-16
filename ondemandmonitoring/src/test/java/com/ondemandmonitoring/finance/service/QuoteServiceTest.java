@@ -25,6 +25,7 @@ import com.ondemandmonitoring.pricing.domain.PricingPolicy;
 import com.ondemandmonitoring.pricing.dto.*;
 import com.ondemandmonitoring.pricing.enums.*;
 import com.ondemandmonitoring.pricing.repository.PricingPolicyRepository;
+import com.ondemandmonitoring.pricing.repository.ChecklistPricingAuditRepository;
 import com.ondemandmonitoring.pricing.service.PricingEngine;
 import java.math.BigDecimal;
 import java.util.*;
@@ -42,13 +43,14 @@ class QuoteServiceTest {
     OrderDeliveryRepository deliveries = mock(OrderDeliveryRepository.class);
     PricingEngine pricingEngine = mock(PricingEngine.class);
     PricingPolicyRepository pricingPolicies = mock(PricingPolicyRepository.class);
+    ChecklistPricingAuditRepository pricingAudits = mock(ChecklistPricingAuditRepository.class);
     QuoteService service;
     Order order;
 
     @BeforeEach void setUp() {
         service = new QuoteService(orders, items, mock(OrderChecklistItemMapper.class), quotes, invoices, missions,
                 executions, users, new PaymentProperties(new BigDecimal("0.30")), deliveries,
-                mock(IOrderReadinessService.class), pricingEngine, pricingPolicies);
+                mock(IOrderReadinessService.class), pricingEngine, pricingPolicies, pricingAudits);
         order = new Order(); order.setId("o1"); order.setOrderStatus(OrderStatus.PENDING);
         var catalog = new com.ondemandmonitoring.service.domain.Service(); catalog.setName("Building inspection");
         order.setService(catalog);
@@ -94,8 +96,9 @@ class QuoteServiceTest {
                 .thenReturn(List.of(item("thermal", ChecklistReviewStatus.ADDITIONAL)));
         when(pricingEngine.calculate(eq(order), anyList())).thenReturn(breakdown("6500000", List.of(
                 new PricingBreakdownItem(PricingCategory.PACKAGE, "Package", BigDecimal.ONE, new BigDecimal("5000000"), new BigDecimal("5000000")),
-                new PricingBreakdownItem(PricingCategory.OUTPUT, "Thermal", BigDecimal.ONE, new BigDecimal("1500000"), new BigDecimal("1500000")))));
-        var result = service.saveDraft("o1", request("1", "200000", "0", Map.of("thermal", new BigDecimal("1"))));
+                new PricingBreakdownItem(PricingCategory.OUTPUT, "Thermal", BigDecimal.ONE, new BigDecimal("1500000"),
+                        new BigDecimal("1500000"), "thermal"))));
+        var result = service.saveDraft("o1", request("1", "200000", "0", Map.of("thermal", new BigDecimal("1500000"))));
         assertThat(result.additionalAmount()).isEqualByComparingTo("1500000");
         assertThat(result.totalAmount()).isEqualByComparingTo("6500000");
     }
@@ -104,7 +107,9 @@ class QuoteServiceTest {
         var custom = item("custom", ChecklistReviewStatus.ADDITIONAL); custom.setManagerQuoteRequired(true);
         var catalog = item("catalog", ChecklistReviewStatus.INCLUDED);
         when(items.findAllByOrderIdOrderByDisplayOrderAscIdAsc("o1")).thenReturn(List.of(custom, catalog));
-        service.saveDraft("o1", request("1", "0", "0", Map.of("custom", new BigDecimal("450000"), "catalog", new BigDecimal("999"))));
+        service.saveDraft("o1", new QuoteDraftRequest(BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ZERO, null,
+                Map.of("custom", new BigDecimal("450000"), "catalog", new BigDecimal("999")),
+                "Manager adjusted this checklist price", PricingAdjustmentType.CORRECTION, null));
         assertThat(custom.getManagerQuotedPrice()).isEqualByComparingTo("450000");
         assertThat(catalog.getManagerQuotedPrice()).as("a policy-priced checklist can never be overwritten by a client").isNull();
     }
@@ -136,14 +141,14 @@ class QuoteServiceTest {
                 .isInstanceOf(ApiException.class).extracting("errorCode").isEqualTo(ErrorCode.QUOTE_PRICING_INVALID);
     }
 
-    @Test void nonZeroAdjustmentKeepsSystemAmountAndRequiresAnotherManager() {
+    @Test void nonZeroAdjustmentKeepsSystemAmountAndIsApprovedByTheReviewingManager() {
         User manager = user("m1", "Manager A"); when(users.getCurrentUser()).thenReturn(manager);
         var result = service.saveDraft("o1", overrideRequest("-250000", "Shared route reduces travel cost"));
         assertThat(result.systemCalculatedAmount()).isEqualByComparingTo("5000000");
         assertThat(result.managerAdjustmentAmount()).isEqualByComparingTo("-250000");
         assertThat(result.totalAmount()).isEqualByComparingTo("4750000");
-        assertThat(result.pricingApprovalStatus()).isEqualTo(PricingApprovalStatus.PENDING_SECOND_MANAGER);
-        assertThat(result.status()).isEqualTo(QuoteStatus.PENDING_REVIEW);
+        assertThat(result.pricingApprovalStatus()).isEqualTo(PricingApprovalStatus.APPROVED);
+        assertThat(result.status()).isEqualTo(QuoteStatus.DRAFT);
     }
 
     @Test void adjustmentWithoutMeaningfulReasonIsRejected() {

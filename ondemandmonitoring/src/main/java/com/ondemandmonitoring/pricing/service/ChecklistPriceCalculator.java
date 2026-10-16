@@ -30,7 +30,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class ChecklistPriceCalculator {
     public static final String DEFAULT_PROFILE = "DEFAULT";
-    public static final String CUSTOM_PROFILE = "CUSTOM";
+    /** Pricing profile used for free-text requirements added by a customer. */
+    public static final String GENERIC_CUSTOMER_ADDED_PROFILE = "GENERIC_CUSTOMER_ADDED";
+    /** Kept only so policies published before the profile rename can still price historical orders. */
+    public static final String LEGACY_CUSTOM_PROFILE = "CUSTOM";
     public static final int MAX_MEDIA_COUNT = 500;
 
     /**
@@ -66,7 +69,9 @@ public class ChecklistPriceCalculator {
     }
 
     public ChecklistPriceBreakdown price(PricingPolicy policy, Input in) {
-        String profile = in.custom() ? CUSTOM_PROFILE : normalizeProfile(in.pricingProfile());
+        String profile = in.custom()
+                ? normalizeProfile(in.pricingProfile() == null ? GENERIC_CUSTOMER_ADDED_PROFILE : in.pricingProfile())
+                : normalizeProfile(in.pricingProfile());
         List<Line> lines = new ArrayList<>();
 
         BigDecimal base = in.custom() ? customBase(policy, profile) : money(in.catalogBasePrice());
@@ -118,7 +123,10 @@ public class ChecklistPriceCalculator {
 
     /** True when the policy itself prices checklists outside the catalog (a CUSTOM profile CHECKLIST_BASE rule). */
     public boolean hasCustomRule(PricingPolicy policy) {
-        return policy != null && !rules(policy, PricingCategory.MEDIA, CUSTOM_PROFILE, MediaPricingComponent.CHECKLIST_BASE).isEmpty();
+        return policy != null && (!rules(policy, PricingCategory.MEDIA, GENERIC_CUSTOMER_ADDED_PROFILE,
+                MediaPricingComponent.CHECKLIST_BASE).isEmpty()
+                || !rules(policy, PricingCategory.MEDIA, LEGACY_CUSTOM_PROFILE,
+                MediaPricingComponent.CHECKLIST_BASE).isEmpty());
     }
 
     /**
@@ -130,21 +138,23 @@ public class ChecklistPriceCalculator {
         BigDecimal amount = quotedPrice == null ? BigDecimal.ZERO : money(quotedPrice);
         if (quotedPrice != null) lines.add(new Line("MANAGER_QUOTE", PricingCategory.CHECKLIST, "Giá do Manager báo", BigDecimal.ONE, amount, amount,
                 null, null, null, null));
-        return new ChecklistPriceBreakdown(null, content, CUSTOM_PROFILE, true, 0, 0, requestedImages == null ? 0 : requestedImages,
+        return new ChecklistPriceBreakdown(null, content, GENERIC_CUSTOMER_ADDED_PROFILE, true, 0, 0, requestedImages == null ? 0 : requestedImages,
                 requestedVideos == null ? 0 : requestedVideos, 0, 0, null, List.copyOf(lines), amount, quotedPrice == null);
     }
 
     /** Allowance a custom checklist gets from policy; used when the order snapshot is captured. */
     public int customAllowance(PricingPolicy policy, MediaPricingComponent component) {
-        return allowance(policy, CUSTOM_PROFILE, component, null);
+        return allowance(policy, GENERIC_CUSTOMER_ADDED_PROFILE, component, null);
     }
 
     private BigDecimal customBase(PricingPolicy policy, String profile) {
-        Optional<PricingRule> rule = rules(policy, PricingCategory.MEDIA, profile, MediaPricingComponent.CHECKLIST_BASE).stream().findFirst();
+        Optional<PricingRule> rule = profileRules(policy, PricingCategory.MEDIA, profile,
+                MediaPricingComponent.CHECKLIST_BASE).stream().findFirst();
         if (rule.isPresent()) return money(rule.get().getFixedAmount());
         // No CUSTOM rule means policy configuration is incomplete; a Manager never invents the baseline amount.
         throw new ApiException(ErrorCode.CUSTOM_CHECKLIST_PRICING_NOT_CONFIGURED,
-                "Custom checklist pricing is not configured. An administrator must publish a CUSTOM checklist base rule.");
+                "Customer-added checklist pricing is not configured. An administrator must publish a "
+                        + GENERIC_CUSTOMER_ADDED_PROFILE + " checklist base rule.");
     }
 
     private int allowance(PricingPolicy policy, String profile, MediaPricingComponent component, Integer configured) {
@@ -152,14 +162,14 @@ public class ChecklistPriceCalculator {
             if (configured < 0 || configured > MAX_MEDIA_COUNT) throw new ApiException(ErrorCode.PRICING_CALCULATION_FAILED);
             return configured;
         }
-        if (!CUSTOM_PROFILE.equals(profile)) return 0;
-        return rules(policy, PricingCategory.MEDIA, profile, component).stream().findFirst()
+        if (!GENERIC_CUSTOMER_ADDED_PROFILE.equals(profile) && !LEGACY_CUSTOM_PROFILE.equals(profile)) return 0;
+        return profileRules(policy, PricingCategory.MEDIA, profile, component).stream().findFirst()
                 .map(PricingRule::getIncludedQuantity).orElse(0);
     }
 
     private Optional<Line> includedLine(PricingPolicy policy, String profile, MediaPricingComponent component, int allowance, String noun) {
         if (allowance <= 0) return Optional.empty();
-        return rules(policy, PricingCategory.MEDIA, profile, component).stream().findFirst().flatMap(rule -> {
+        return profileRules(policy, PricingCategory.MEDIA, profile, component).stream().findFirst().flatMap(rule -> {
             BigDecimal amount = money(rule.getFixedAmount());
             if (amount.signum() == 0) return Optional.empty();
             return Optional.of(new Line(component.name(), PricingCategory.MEDIA, "Đã bao gồm " + allowance + " " + noun,
@@ -169,7 +179,7 @@ public class ChecklistPriceCalculator {
 
     private void tierLines(PricingPolicy policy, String profile, MediaPricingComponent component, int extra, String noun, List<Line> out) {
         if (extra <= 0) return;
-        List<PricingRule> tiers = rules(policy, PricingCategory.MEDIA, profile, component).stream()
+        List<PricingRule> tiers = profileRules(policy, PricingCategory.MEDIA, profile, component).stream()
                 .sorted(Comparator.comparing((PricingRule r) -> nz(r.getMinValue())).thenComparingInt(PricingRule::getPriority)).toList();
         if (tiers.isEmpty()) throw new ApiException(ErrorCode.MEDIA_PRICING_NOT_CONFIGURED,
                 "Cannot price " + extra + " " + noun + ": pricing profile " + profile + " has no price tier for it. "
@@ -281,6 +291,13 @@ public class ChecklistPriceCalculator {
         return policy.getRules().stream().filter(PricingRule::isEnabled).filter(r -> r.getCategory() == category)
                 .filter(r -> profile == null || profile.equalsIgnoreCase(r.getPricingProfile()))
                 .filter(r -> component == null || r.getMediaComponent() == component).toList();
+    }
+
+    private List<PricingRule> profileRules(PricingPolicy policy, PricingCategory category, String profile,
+            MediaPricingComponent component) {
+        List<PricingRule> configured = rules(policy, category, profile, component);
+        if (!configured.isEmpty() || !GENERIC_CUSTOMER_ADDED_PROFILE.equals(profile)) return configured;
+        return rules(policy, category, LEGACY_CUSTOM_PROFILE, component);
     }
 
     public static String normalizeProfile(String profile) {

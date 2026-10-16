@@ -110,10 +110,17 @@ public class OrderChecklistItem extends BaseEntity {
             columnDefinition = "numeric(10,2) default 0")
     private BigDecimal includedAltitudeMSnapshot = BigDecimal.ZERO;
 
-    /** Legacy compatibility flag; new snapshots use structured assessment and policy pricing. */
+    /** True for customer-added rows that require an explicit Manager pricing review. */
     @Column(name = "manager_quote_required", nullable = false, updatable = false, columnDefinition = "boolean default false")
     private boolean managerQuoteRequired;
-    /** Legacy compatibility value; never populated by the new Manager UI. */
+    /** Manager-approved final price for this checklist (equal to system price when approved unchanged). */
     @Column(name = "manager_quoted_price", precision = 19, scale = 0)
     private BigDecimal managerQuotedPrice;
+
+    /** Immutable first system calculation captured when Manager pricing starts. */
+    @Column(name = "system_calculated_price", precision = 19, scale = 0)
+    private BigDecimal systemCalculatedPrice;
+
+    @Column(name = "manager_price_adjustment_reason", length = 1000)
+    private String managerPriceAdjustmentReason;
 }

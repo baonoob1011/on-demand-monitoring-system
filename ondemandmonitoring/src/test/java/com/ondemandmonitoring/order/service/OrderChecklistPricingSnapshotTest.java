@@ -155,7 +155,7 @@ class OrderChecklistPricingSnapshotTest {
 
         assertEquals(OrderChecklistSourceType.CUSTOMER_SELECTED, saved.getFirst().getSourceType());
         assertEquals(ChecklistReviewStatus.PENDING, saved.getFirst().getReviewStatus());
-        assertFalse(saved.getFirst().isManagerQuoteRequired());
+        assertTrue(saved.getFirst().isManagerQuoteRequired());
     }
 
     @Test void catalogEditsAfterCaptureDoNotChangeTheStoredSnapshot() {
@@ -226,24 +226,22 @@ class OrderChecklistPricingSnapshotTest {
         assertTrue(saved.isEmpty());
     }
 
-    @Test void customChecklistIsSnapshottedForStructuredAssessmentAndNeverGetsAManagerBaselinePrice() {
+    @Test void customChecklistUsesGenericPricingAndRequiresManagerReview() {
         var custom = new OrderChecklistItemRequest();
         custom.setContentOverride("Check the antenna mast"); custom.setRequestedImageCount(4);
         useCase.capture(order, List.of(custom));
         OrderChecklistItem item = saved.getFirst();
         assertEquals(OrderChecklistSourceType.CUSTOMER_CUSTOM, item.getSourceType());
-        assertEquals("CUSTOM", item.getPricingProfileSnapshot());
+        assertEquals("GENERIC_CUSTOMER_ADDED", item.getPricingProfileSnapshot());
         assertEquals(1, item.getPricingSnapshotVersion());
         assertNull(item.getSourceChecklist());
-        assertFalse(item.isManagerQuoteRequired(), "the test policy has a CUSTOM rule -> priced automatically");
+        assertTrue(item.isManagerQuoteRequired(), "customer-added work always requires Manager price review");
 
         saved.clear();
         order.setChecklistSnapshotAt(null);
         policy(rule(MediaPricingComponent.INCLUDED_IMAGE, "STANDARD", "50000", null, null));
-        assertDoesNotThrow(() -> useCase.capture(order, List.of(custom)));
-        assertFalse(saved.getFirst().isManagerQuoteRequired(), "Manager classifies inputs; policy calculates the baseline");
-        assertNull(saved.getFirst().getManagerQuotedPrice());
-        assertEquals(4, saved.getFirst().getRequestedImageCount());
+        assertThrows(ApiException.class, () -> useCase.capture(order, List.of(custom)),
+                "a customer-added checklist must have a configured system baseline");
     }
 
     @Test void checklistPricedServiceDropsTheLegacyCatalogPriceFromTheOrder() {

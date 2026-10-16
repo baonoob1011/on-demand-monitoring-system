@@ -29,9 +29,11 @@ import com.ondemandmonitoring.review.service.IOrderReadinessService;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import com.ondemandmonitoring.pricing.domain.PricingPolicy;
+import com.ondemandmonitoring.pricing.domain.ChecklistPricingAudit;
 import com.ondemandmonitoring.pricing.dto.*;
 import com.ondemandmonitoring.pricing.enums.*;
 import com.ondemandmonitoring.pricing.repository.PricingPolicyRepository;
+import com.ondemandmonitoring.pricing.repository.ChecklistPricingAuditRepository;
 import com.ondemandmonitoring.pricing.service.PricingEngine;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -59,6 +61,7 @@ public class QuoteService implements IQuoteService {
     private final IOrderReadinessService readiness;
     private final PricingEngine pricingEngine;
     private final PricingPolicyRepository pricingPolicies;
+    private final ChecklistPricingAuditRepository pricingAudits;
 
     @Transactional(readOnly = true)
     public PricingReviewResponse getPricingReview(String orderId) {
@@ -121,14 +124,14 @@ public class QuoteService implements IQuoteService {
                     "Review every customer-added checklist before saving the quote: " + String.join("; ", pendingReviews));
         }
         validateMoney(request.adjustmentAmount(), "adjustmentAmount", true);
-        applyManagerQuotes(reviewed, request.additionalUnitPrices());
         PricingBreakdown calculation = pricingEngine.calculate(order, reviewed);
         if (!calculation.pendingQuoteItems().isEmpty())
             throw new ApiException(ErrorCode.CUSTOM_WORK_PRICING_INCOMPLETE,
                     "Complete the structured assessment before pricing these custom checklist items: "
                             + String.join("; ", calculation.pendingQuoteItems()));
-        if (calculation.customWork() && !calculation.assessmentComplete())
-            throw new ApiException(ErrorCode.CUSTOM_WORK_PRICING_INCOMPLETE);
+        Map<String, BigDecimal> systemChecklistPrices = checklistSystemPrices(calculation);
+        applyManagerQuotes(reviewed, request.additionalUnitPrices(), systemChecklistPrices,
+                trimToNull(request.adjustmentReason()));
 
         Optional<Quote> active = quotes.findFirstByOrderIdAndStatusInOrderByQuoteVersionDesc(orderId,
                 List.of(QuoteStatus.DRAFT, QuoteStatus.PENDING_REVIEW, QuoteStatus.APPROVED));
@@ -150,7 +153,12 @@ public class QuoteService implements IQuoteService {
             quote.setStatus(QuoteStatus.DRAFT);
         }
 
-        BigDecimal adjustment = vnd(request.adjustmentAmount());
+        BigDecimal checklistAdjustment = reviewed.stream()
+                .filter(item -> item.getReviewStatus() == ChecklistReviewStatus.ADDITIONAL)
+                .filter(item -> item.getSourceType() != OrderChecklistSourceType.SERVICE_TEMPLATE)
+                .map(item -> item.getManagerQuotedPrice().subtract(systemChecklistPrices.getOrDefault(item.getId(), ZERO)))
+                .reduce(ZERO, BigDecimal::add);
+        BigDecimal adjustment = vnd(request.adjustmentAmount()).add(checklistAdjustment);
         String reason = trimToNull(request.adjustmentReason());
         if (adjustment.signum() != 0 && (reason == null || reason.length() < 10))
             throw new ApiException(ErrorCode.PRICING_ADJUSTMENT_REASON_REQUIRED);
@@ -158,7 +166,8 @@ public class QuoteService implements IQuoteService {
                 .orElseThrow(() -> new ApiException(ErrorCode.PRICING_POLICY_NOT_FOUND));
         List<PricingRiskFlag> risks = evaluateGuardrails(policy, calculation.systemCalculatedAmount(), adjustment,
                 calculation.customWork(), orderId);
-        List<QuoteItem> lines = buildLines(calculation, adjustment, reviewed);
+        List<QuoteItem> lines = buildLines(calculation, vnd(request.adjustmentAmount()), reviewed,
+                systemChecklistPrices);
         BigDecimal packagePrice = lines.stream().filter(l -> l.getType() == QuoteItemType.PACKAGE)
                 .map(QuoteItem::getAmount).findFirst().orElse(ZERO);
         BigDecimal discount = lines.stream().filter(l -> l.getType() == QuoteItemType.DISCOUNT)
@@ -187,9 +196,11 @@ public class QuoteService implements IQuoteService {
             quote.setAdjustmentRequestedBy(null); quote.setAdjustmentRequestedAt(null);
             quote.setStatus(QuoteStatus.DRAFT);
         } else {
-            quote.setPricingApprovalStatus(PricingApprovalStatus.PENDING_SECOND_MANAGER);
+            // A single Manager owns this review. Guardrails above are authoritative; there is no second-manager hop.
+            quote.setPricingApprovalStatus(PricingApprovalStatus.APPROVED);
             quote.setAdjustmentRequestedBy(currentUser.getCurrentUser()); quote.setAdjustmentRequestedAt(Instant.now());
-            quote.setStatus(QuoteStatus.PENDING_REVIEW);
+            quote.setPricingApprovedBy(currentUser.getCurrentUser()); quote.setPricingApprovedAt(Instant.now());
+            quote.setStatus(QuoteStatus.DRAFT);
         }
         quote.replaceItems(lines);
         return FinanceMapper.quote(quotes.saveAndFlush(quote));
@@ -202,7 +213,8 @@ public class QuoteService implements IQuoteService {
         if (!quote.getOrder().getId().equals(orderId) || quote.getStatus() != QuoteStatus.DRAFT) {
             throw new ApiException(ErrorCode.QUOTE_NOT_CURRENT);
         }
-        if (quote.getPricingApprovalStatus() != PricingApprovalStatus.NOT_REQUIRED)
+        if (quote.getPricingApprovalStatus() != PricingApprovalStatus.NOT_REQUIRED
+                && quote.getPricingApprovalStatus() != PricingApprovalStatus.APPROVED)
             throw new ApiException(ErrorCode.QUOTE_HAS_UNAPPROVED_PRICING);
         List<OrderChecklistItem> reviewed = checklistItems.findAllByOrderIdOrderByDisplayOrderAscIdAsc(orderId);
         normalizeServiceTemplateReviews(reviewed);
@@ -215,6 +227,7 @@ public class QuoteService implements IQuoteService {
         quote.setStatus(QuoteStatus.APPROVED);
         quote.setApprovedBy(currentUser.getCurrentUser());
         quote.setApprovedAt(Instant.now());
+        writeChecklistPricingAudits(quote, reviewed);
         if (order.getOrderStatus() == OrderStatus.PENDING) order.setOrderStatus(OrderStatus.APPROVED);
         return FinanceMapper.quote(quote);
     }
@@ -306,14 +319,64 @@ public class QuoteService implements IQuoteService {
      * Keys are order checklist item ids; entries for items that are priced by the policy are ignored, so a client can never
      * overwrite a policy price.
      */
-    private void applyManagerQuotes(List<OrderChecklistItem> items, Map<String, BigDecimal> quotes) {
-        if (quotes == null || quotes.isEmpty()) return;
+    private void applyManagerQuotes(List<OrderChecklistItem> items, Map<String, BigDecimal> quotes,
+            Map<String, BigDecimal> systemPrices, String adjustmentReason) {
+        Map<String, BigDecimal> submitted = quotes == null ? Map.of() : quotes;
+        List<String> missing = new ArrayList<>();
         for (OrderChecklistItem item : items) {
-            BigDecimal quoted = quotes.get(item.getId());
-            if (quoted == null || !item.isManagerQuoteRequired()) continue;
+            if (item.getSourceType() == OrderChecklistSourceType.SERVICE_TEMPLATE
+                    || item.getReviewStatus() != ChecklistReviewStatus.ADDITIONAL) continue;
+            BigDecimal system = systemPrices.getOrDefault(item.getId(), ZERO);
+            if (item.getSystemCalculatedPrice() == null) item.setSystemCalculatedPrice(system);
+            BigDecimal quoted = submitted.get(item.getId());
+            if (quoted == null) quoted = item.getManagerQuotedPrice();
+            if (quoted == null) {
+                missing.add(item.getContent());
+                continue;
+            }
             validateMoney(quoted, "additionalUnitPrices", false);
-            item.setManagerQuotedPrice(quoted.setScale(0, RoundingMode.HALF_UP));
+            BigDecimal approved = quoted.setScale(0, RoundingMode.HALF_UP);
+            if (approved.compareTo(system) != 0 && (adjustmentReason == null || adjustmentReason.length() < 10))
+                throw new ApiException(ErrorCode.PRICING_ADJUSTMENT_REASON_REQUIRED);
+            item.setManagerQuotedPrice(approved);
+            item.setManagerPriceAdjustmentReason(approved.compareTo(system) == 0 ? null : adjustmentReason);
         }
+        if (!missing.isEmpty()) throw new ApiException(ErrorCode.CUSTOM_WORK_PRICING_INCOMPLETE,
+                "Enter an approved price for: " + String.join("; ", missing));
+    }
+
+    private Map<String, BigDecimal> checklistSystemPrices(PricingBreakdown calculation) {
+        Map<String, BigDecimal> totals = new HashMap<>();
+        for (PricingBreakdownItem line : calculation.items()) {
+            if (line.orderChecklistItemId() != null)
+                totals.merge(line.orderChecklistItemId(), line.amount(), BigDecimal::add);
+        }
+        return totals;
+    }
+
+    private void writeChecklistPricingAudits(Quote quote, List<OrderChecklistItem> items) {
+        User reviewer = currentUser.getCurrentUser();
+        Instant reviewedAt = Instant.now();
+        List<ChecklistPricingAudit> audits = items.stream()
+                .filter(item -> item.getSourceType() != OrderChecklistSourceType.SERVICE_TEMPLATE)
+                .filter(item -> item.getReviewStatus() == ChecklistReviewStatus.ADDITIONAL)
+                .map(item -> {
+                    ChecklistPricingAudit audit = new ChecklistPricingAudit();
+                    BigDecimal system = Optional.ofNullable(item.getSystemCalculatedPrice()).orElse(ZERO);
+                    BigDecimal approved = Optional.ofNullable(item.getManagerQuotedPrice()).orElse(system);
+                    audit.setQuote(quote);
+                    audit.setOrderChecklistItem(item);
+                    audit.setSystemAmount(system);
+                    audit.setApprovedAmount(approved);
+                    audit.setDifferenceAmount(approved.subtract(system));
+                    audit.setAdjustmentReason(item.getManagerPriceAdjustmentReason());
+                    audit.setPricingPolicyId(quote.getPricingPolicyId());
+                    audit.setPricingPolicyVersion(quote.getPricingPolicyVersion());
+                    audit.setReviewedBy(reviewer);
+                    audit.setReviewedAt(reviewedAt);
+                    return audit;
+                }).toList();
+        pricingAudits.saveAll(audits);
     }
 
     /** Backward-compatible repair for snapshots created before package checklists became auto-included. */
@@ -324,8 +387,8 @@ public class QuoteService implements IQuoteService {
                 .forEach(item -> item.setReviewStatus(ChecklistReviewStatus.INCLUDED));
     }
 
-    private List<QuoteItem> buildLines(PricingBreakdown calculation, BigDecimal adjustment,
-            List<OrderChecklistItem> checklistRows) {
+    private List<QuoteItem> buildLines(PricingBreakdown calculation, BigDecimal orderAdjustment,
+            List<OrderChecklistItem> checklistRows, Map<String, BigDecimal> systemChecklistPrices) {
         List<QuoteItem> lines = new ArrayList<>();
         Map<String, OrderChecklistItem> itemsById = checklistRows.stream()
                 .collect(java.util.stream.Collectors.toMap(OrderChecklistItem::getId, item -> item));
@@ -334,9 +397,26 @@ public class QuoteService implements IQuoteService {
                     itemsById.get(item.orderChecklistItemId()), lines.size());
             line.setQuantity(item.quantity()); line.setAmount(item.amount()); lines.add(line);
         }
-        if (adjustment.signum() != 0)
-            lines.add(line(QuoteItemType.MANAGER_ADJUSTMENT, "Approved manager adjustment", adjustment, null, lines.size()));
+        checklistRows.stream()
+                .filter(item -> item.getSourceType() != OrderChecklistSourceType.SERVICE_TEMPLATE)
+                .filter(item -> item.getReviewStatus() == ChecklistReviewStatus.ADDITIONAL)
+                .filter(item -> item.getManagerQuotedPrice() != null)
+                .forEach(item -> {
+                    BigDecimal difference = item.getManagerQuotedPrice()
+                            .subtract(systemChecklistPrices.getOrDefault(item.getId(), ZERO));
+                    if (difference.signum() != 0) lines.add(line(QuoteItemType.MANAGER_ADJUSTMENT,
+                            "Manager price adjustment · " + shortenDescription(item.getContent()), difference,
+                            item, lines.size()));
+                });
+        if (orderAdjustment.signum() != 0)
+            lines.add(line(QuoteItemType.MANAGER_ADJUSTMENT, "Approved order adjustment", orderAdjustment, null,
+                    lines.size()));
         return lines;
+    }
+
+    private String shortenDescription(String value) {
+        if (value == null) return "";
+        return value.length() <= 440 ? value : value.substring(0, 437) + "...";
     }
 
     private List<PricingRiskFlag> evaluateGuardrails(PricingPolicy policy, BigDecimal system, BigDecimal adjustment,

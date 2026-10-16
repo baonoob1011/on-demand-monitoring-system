@@ -132,7 +132,7 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
             int includedVideos = custom ? (policy == null ? 0 : priceCalculator.customAllowance(policy, MediaPricingComponent.INCLUDED_VIDEO))
                     : (override != null && override.getIncludedVideoCountOverride() != null
                     ? override.getIncludedVideoCountOverride() : source.getIncludedVideoCount());
-            String profile = custom ? ChecklistPriceCalculator.CUSTOM_PROFILE : ChecklistPriceCalculator.normalizeProfile(
+            String profile = custom ? ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE : ChecklistPriceCalculator.normalizeProfile(
                     override != null && override.getPricingProfileOverride() != null
                             ? override.getPricingProfileOverride() : source.getPricingProfile());
             int requestedImages = item.getRequestedImageCount() == null ? includedImages : item.getRequestedImageCount();
@@ -141,8 +141,8 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
                 throw invalid("A checklist needs at least one image or video");
             var entity = new OrderChecklistItem();
             entity.setPricingSnapshotVersion(1);
-            // Baseline money always comes from policy. Custom work is resolved by structured assessment, never a typed quote.
-            entity.setManagerQuoteRequired(false);
+            // Customer-added work is priced by policy first, then explicitly reviewed by a Manager.
+            entity.setManagerQuoteRequired(!packageChecklist);
             entity.setBasePriceSnapshot(basePrice == null ? BigDecimal.ZERO : basePrice);
             entity.setIncludedImageCountSnapshot(includedImages);
             entity.setIncludedVideoCountSnapshot(includedVideos);
@@ -190,7 +190,7 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
             if (!contents.add(entity.getContent().toLowerCase(Locale.ROOT))) throw invalid("Duplicate checklist content");
             entity.setDisplayOrder(entities.size());
             // Fail fast: a selection the policy cannot price must not become a snapshot.
-            if (policy != null && !custom) priceCalculator.price(policy, new ChecklistPriceCalculator.Input(
+            if (policy != null) priceCalculator.price(policy, new ChecklistPriceCalculator.Input(
                     source == null ? null : source.getId(), entity.getContent(), entity.getDifficultySnapshot(), custom,
                     entity.getBasePriceSnapshot(), custom ? null : includedImages, custom ? null : includedVideos,
                     requestedImages, requestedVideos, profile, entity.getStandardVideoDurationSnapshot(), false));

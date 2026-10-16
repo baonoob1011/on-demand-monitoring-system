@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class RuleBasedPricingEngine implements PricingEngine {
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(0);
     private final PricingPolicyRepository policies;
+    /** Retained as a constructor dependency for binary/test compatibility; assessments no longer affect pricing. */
     private final CustomWorkAssessmentRepository assessments;
     private final ChecklistPriceCalculator checklistPrices;
 
@@ -36,14 +37,13 @@ public class RuleBasedPricingEngine implements PricingEngine {
                 ? order.getServiceBasePriceSnapshot() : order.getService().getBasePrice());
         add(result, PricingCategory.PACKAGE, order.getService().getName(), BigDecimal.ONE, base, base);
 
-        Optional<CustomWorkAssessment> assessment = assessments.findByOrderId(order.getId());
         // Legacy snapshots (version 0) keep the single order-level custom charge; new snapshots price each custom item.
         boolean legacyCustom = checklistItems.stream().anyMatch(i -> i.getSourceType() == OrderChecklistSourceType.CUSTOMER_CUSTOM
                 && i.getPricingSnapshotVersion() == 0
                 && i.getReviewStatus() != ChecklistReviewStatus.REJECTED && i.getReviewStatus() != ChecklistReviewStatus.DUPLICATE);
         boolean customWork = checklistItems.stream().anyMatch(i -> i.getSourceType() == OrderChecklistSourceType.CUSTOMER_CUSTOM
                 && i.getReviewStatus() != ChecklistReviewStatus.REJECTED && i.getReviewStatus() != ChecklistReviewStatus.DUPLICATE);
-        boolean assessmentComplete = !customWork || assessment.map(CustomWorkAssessment::isAssessmentComplete).orElse(false);
+        boolean assessmentComplete = true;
         if (legacyCustom) keyed(policy, PricingCategory.RESOURCE, "CUSTOM_BASE").ifPresent(r -> addFixed(result, r, BigDecimal.ONE));
 
         BigDecimal distanceKm = decimal(order.getEstimatedLengthM()).divide(new BigDecimal("1000"), 4, RoundingMode.HALF_UP);
@@ -51,10 +51,9 @@ public class RuleBasedPricingEngine implements PricingEngine {
         BigDecimal altitudeM = decimal(order.getAltitudeM());
         boolean legacyDimensions = checklistItems.stream().allMatch(i -> i.getPricingSnapshotVersion() == 0);
         if (legacyDimensions) {
-            BigDecimal legacyDistance = assessment.map(CustomWorkAssessment::getEstimatedDistanceKm).filter(Objects::nonNull)
-                    .orElse(distanceKm);
+            BigDecimal legacyDistance = distanceKm;
             ranged(policy, PricingCategory.DISTANCE, legacyDistance).ifPresent(rule -> applyRule(result, rule, legacyDistance, base));
-            BigDecimal legacyArea = assessment.map(CustomWorkAssessment::getEstimatedAreaHa).filter(Objects::nonNull).orElse(areaHa);
+            BigDecimal legacyArea = areaHa;
             ranged(policy, PricingCategory.AREA, legacyArea).ifPresent(rule -> applyRule(result, rule, legacyArea, base));
         }
 
@@ -70,25 +69,13 @@ public class RuleBasedPricingEngine implements PricingEngine {
             boolean customItem = item.getSourceType() == OrderChecklistSourceType.CUSTOMER_CUSTOM;
             String label = shorten(item.getContent());
             ChecklistPriceBreakdown priced;
-            if (customItem && !assessmentComplete) {
-                pendingQuotes.add(label);
-                continue;
-            } else {
+            {
                 ChecklistPriceCalculator.PricingDimensions dimensions = new ChecklistPriceCalculator.PricingDimensions(
                         item.isAreaPricingEnabledSnapshot(), item.isLengthPricingEnabledSnapshot(),
                         item.isAltitudePricingEnabledSnapshot(), item.getIncludedAreaHaSnapshot(),
                         item.getIncludedLengthKmSnapshot(), item.getIncludedAltitudeMSnapshot());
                 ChecklistPriceCalculator.RequestContext itemContext = new ChecklistPriceCalculator.RequestContext(
                         areaHa, distanceKm, altitudeM);
-                if (customItem) {
-                    BigDecimal assessedArea = assessment.map(CustomWorkAssessment::getEstimatedAreaHa)
-                            .filter(Objects::nonNull).orElse(BigDecimal.ZERO);
-                    BigDecimal assessedLength = assessment.map(CustomWorkAssessment::getEstimatedDistanceKm)
-                            .filter(Objects::nonNull).orElse(BigDecimal.ZERO);
-                    dimensions = new ChecklistPriceCalculator.PricingDimensions(assessedArea.signum() > 0,
-                            assessedLength.signum() > 0, false, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
-                    itemContext = new ChecklistPriceCalculator.RequestContext(assessedArea, assessedLength, altitudeM);
-                }
                 priced = checklistPrices.price(policy, new ChecklistPriceCalculator.Input(
                         item.getSourceChecklist() == null ? null : item.getSourceChecklist().getId(), item.getContent(),
                         item.getDifficultySnapshot(), customItem, item.getBasePriceSnapshot(),
@@ -111,20 +98,12 @@ public class RuleBasedPricingEngine implements PricingEngine {
         BigDecimal highResolutionVideo = requestedQualityQuantity(order, "VIDEO", "4K");
         if (highResolutionVideo.signum() > 0)
             keyed(policy, PricingCategory.OUTPUT, "4K_VIDEO").ifPresent(rule -> applyRule(result, rule, highResolutionVideo, base));
-        assessment.ifPresent(a -> {
-            resource(result, policy, "PILOT", a.getPilotCount());
-            resource(result, policy, "DRONE", a.getDroneCount());
-            resource(result, policy, "BATTERY", a.getBatteryUnits());
-            if (a.isThermalRequired()) keyed(policy, PricingCategory.OUTPUT, "THERMAL").ifPresent(r -> addFixed(result, r, BigDecimal.ONE));
-            if (a.isMultispectralRequired()) keyed(policy, PricingCategory.OUTPUT, "MULTISPECTRAL").ifPresent(r -> addFixed(result, r, BigDecimal.ONE));
-            if (a.isAiReportRequired()) keyed(policy, PricingCategory.OUTPUT, "AI_REPORT").ifPresent(r -> addFixed(result, r, BigDecimal.ONE));
-        });
         keyed(policy, PricingCategory.CONDITION, Optional.ofNullable(order.getPriority()).orElse(OrderPriority.NORMAL).name())
                 .ifPresent(rule -> applyRule(result, rule, BigDecimal.ONE, subtotal(result)));
         if (Boolean.TRUE.equals(order.getPermitRequired()) || order.getPermitStatus() == OrderPermitStatus.NEED_SUPPORT)
             keyed(policy, PricingCategory.PERMIT, "REQUIRED").ifPresent(rule -> addFixed(result, rule, BigDecimal.ONE));
-        TerrainType terrain = assessment.map(CustomWorkAssessment::getTerrain).orElse(TerrainType.FLAT);
-        keyed(policy, PricingCategory.TERRAIN, terrain.name()).ifPresent(rule -> applyRule(result, rule, BigDecimal.ONE, subtotal(result)));
+        keyed(policy, PricingCategory.TERRAIN, TerrainType.FLAT.name())
+                .ifPresent(rule -> applyRule(result, rule, BigDecimal.ONE, subtotal(result)));
         for (PricingRule discount : enabled(policy, PricingCategory.DISCOUNT)) applyRule(result, discount, BigDecimal.ONE, subtotal(result));
 
         BigDecimal total = subtotal(result);

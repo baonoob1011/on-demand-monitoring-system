@@ -112,7 +112,9 @@ public class PricingPolicyService {
                 throw invalid("Only extra-media tiers have ranges, block sizes and rounding");
             r.setCalculationType(PricingCalculationType.FIXED);
             boolean included = r.getMediaComponent() == MediaPricingComponent.INCLUDED_IMAGE || r.getMediaComponent() == MediaPricingComponent.INCLUDED_VIDEO;
-            if (r.getIncludedQuantity() != null && !(included && ChecklistPriceCalculator.CUSTOM_PROFILE.equals(r.getPricingProfile())))
+            if (r.getIncludedQuantity() != null && !(included
+                    && (ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE.equals(r.getPricingProfile())
+                    || ChecklistPriceCalculator.LEGACY_CUSTOM_PROFILE.equals(r.getPricingProfile()))))
                 throw invalid("An allowance is configured on the checklist, except for the CUSTOM profile");
         }
     }

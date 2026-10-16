@@ -136,7 +136,7 @@ class FlexibleChecklistPricingEngineTest {
         assertThat(v2.policyVersion()).isEqualTo(2);
     }
 
-    @Test void customSnapshotIsPricedByThePolicyWhenItHasACustomRuleOtherwiseByTheManager() {
+    @Test void historicalCustomSnapshotIsPricedByItsFrozenLegacyProfile() {
         OrderChecklistItem custom = new OrderChecklistItem();
         custom.setId("custom-1");
         custom.setContent("Check antenna"); custom.setSourceType(OrderChecklistSourceType.CUSTOMER_CUSTOM);
@@ -147,17 +147,7 @@ class FlexibleChecklistPricingEngineTest {
         var priced = engine.calculate(order("0"), List.of(custom));
         assertThat(priced.systemCalculatedAmount()).isEqualByComparingTo("300000");
         assertThat(priced.pendingQuoteItems()).isEmpty();
-        assertThat(priced.customWork()).isFalse();
-
-        // no CUSTOM rule: pending, never silently 0 and never a failure; the Manager's price becomes the whole price
-        policy(2);
-        var pending = engine.calculate(order("0"), List.of(custom));
-        assertThat(pending.pendingQuoteItems()).containsExactly("Check antenna");
-        assertThat(pending.systemCalculatedAmount()).isZero();
-        custom.setManagerQuoteRequired(true); custom.setManagerQuotedPrice(new BigDecimal("450000"));
-        var quoted = engine.calculate(order("0"), List.of(custom));
-        assertThat(quoted.pendingQuoteItems()).isEmpty();
-        assertThat(quoted.systemCalculatedAmount()).isEqualByComparingTo("450000");
+        assertThat(priced.customWork()).isTrue();
     }
 
     @Test void managerQuotedItemsAreStillSkippedWhenRejectedAndDoNotAffectCatalogItems() {

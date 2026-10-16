@@ -39,7 +39,9 @@ public class OrderChecklistItemResponse {
     private java.math.BigDecimal includedAreaHaSnapshot;
     private java.math.BigDecimal includedLengthKmSnapshot;
     private java.math.BigDecimal includedAltitudeMSnapshot;
-    /** Legacy compatibility only. New custom work uses structured assessment and policy pricing. */
+    /** Customer-added rows require an explicit Manager price review. */
     private boolean managerQuoteRequired;
     private java.math.BigDecimal managerQuotedPrice;
+    private java.math.BigDecimal systemCalculatedPrice;
+    private String managerPriceAdjustmentReason;
 }

@@ -37,7 +37,7 @@ class RuleBasedPricingEngineTest {
                 PricingCategory.PACKAGE, PricingCategory.DISTANCE, PricingCategory.CHECKLIST, PricingCategory.OUTPUT);
     }
 
-    @Test void customWorkGetsConfiguredBaseAndRequiresCompletedAssessment() {
+    @Test void legacyCustomWorkNoLongerRequiresACompletedAssessment() {
         PricingPolicy policy = policy(); policy.replaceRules(List.of(fixed(PricingCategory.RESOURCE, "CUSTOM_BASE", "Custom base", "2000000", 1)));
         when(policies.findEffectiveActive(any())).thenReturn(List.of(policy));
         Order order = order("3000000");
@@ -45,7 +45,7 @@ class RuleBasedPricingEngineTest {
         custom.setReviewStatus(ChecklistReviewStatus.ADDITIONAL); custom.setDifficultySnapshot(ChecklistDifficulty.BASIC);
         when(assessments.findByOrderId("o1")).thenReturn(Optional.empty());
         var result = engine.calculate(order, List.of(custom));
-        assertThat(result.customWork()).isTrue(); assertThat(result.assessmentComplete()).isFalse();
+        assertThat(result.customWork()).isTrue(); assertThat(result.assessmentComplete()).isTrue();
         assertThat(result.systemCalculatedAmount()).isEqualByComparingTo("5000000");
     }
 
