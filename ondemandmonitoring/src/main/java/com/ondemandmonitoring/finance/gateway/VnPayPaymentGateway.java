@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 import org.springframework.http.MediaType;
 import org.springframework.http.RequestEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
@@ -29,10 +30,15 @@ public class VnPayPaymentGateway implements PaymentGateway, PaymentStatusGateway
     private final VnPaySigner signer;
     private final RestTemplate restTemplate;
 
+    @Autowired
     VnPayPaymentGateway(VnPayProperties properties, VnPaySigner signer) {
+        this(properties, signer, buildRestTemplate(properties));
+    }
+
+    VnPayPaymentGateway(VnPayProperties properties, VnPaySigner signer, RestTemplate restTemplate) {
         this.properties = properties;
         this.signer = signer;
-        this.restTemplate = buildRestTemplate(properties);
+        this.restTemplate = restTemplate;
     }
 
     @Override

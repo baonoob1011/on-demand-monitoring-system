@@ -20,7 +20,7 @@ public class CustomerFinanceController {
     private final IPaymentService paymentService;
 
     @GetMapping("/orders/{orderId}/quote")
-    public ApiResponse<QuoteResponse> quote(@PathVariable String orderId) {
+    public ApiResponse<CustomerQuoteResponse> quote(@PathVariable String orderId) {
         return ApiResponse.ok(quoteService.getCurrentForCustomer(orderId));
     }
 

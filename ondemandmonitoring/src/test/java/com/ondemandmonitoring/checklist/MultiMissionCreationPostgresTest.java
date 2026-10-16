@@ -38,7 +38,7 @@ class MultiMissionCreationPostgresTest extends ChecklistPostgresTest {
     MissionCreateRequest request(String order,String key,long revision) {
         var r=new MissionCreateRequest(); r.setOrderId(order); r.setIdempotencyKey(key); r.setExpectedPlanRevision(revision);
         r.setScopeLabel("Whole Order scope");
-        var start=java.time.LocalDate.now().plusDays(1).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
+        var start=java.time.LocalDate.now().plusDays(7).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
         r.setScheduledStartAt(start); r.setScheduledEndAt(start.plusSeconds(3600)); return r;
     }
     long revision(String order) {return jdbc.queryForObject("select execution_plan_revision from orders where id=?",Long.class,order);}

@@ -74,7 +74,7 @@ class VnPayPaymentGatewayTest {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
         VnPaySigner signer = new VnPaySigner(properties);
-        VnPayPaymentGateway queryGateway = new VnPayPaymentGateway(properties, signer);
+        VnPayPaymentGateway queryGateway = new VnPayPaymentGateway(properties, signer, restTemplate);
         String signedData = String.join("|", "response-1", "querydr", "00", "Success", "TESTCODE",
                 "123456", "30000000", "NCB", "20261007090000", "14587452", "01", "00",
                 "Query transaction 123456", "", "");

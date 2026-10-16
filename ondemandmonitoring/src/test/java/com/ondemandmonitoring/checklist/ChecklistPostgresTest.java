@@ -259,7 +259,9 @@ class ChecklistPostgresTest {
         var timeId = new JdbcTemplate(dataSource).queryForObject("select id from preferred_times", String.class);
         var typeId = new JdbcTemplate(dataSource).queryForObject("select id from deliverable_types", String.class);
         return OrderCreateRequest.builder().title("Snapshot order").termsAccepted(true).serviceId(serviceId).preferredTimeId(timeId)
-                .preferredDateFrom(java.time.LocalDate.now()).preferredDateTo(java.time.LocalDate.now().plusDays(2))
+                .monitoringAuthorizationConfirmed(true)
+                .monitoringRelationship(com.ondemandmonitoring.order.enums.MonitoringRelationship.OWNER)
+                .preferredDateFrom(java.time.LocalDate.now().plusDays(7)).preferredDateTo(java.time.LocalDate.now().plusDays(9))
                 .longitude(106.7005).latitude(10.7765)
                 .coverageArea(Map.of("type", "Polygon", "coordinates", List.of(List.of(
                         List.of(106.7000, 10.7760), List.of(106.7010, 10.7760),
@@ -281,6 +283,10 @@ class ChecklistPostgresTest {
         var result = orderService.createOrder(orderRequest(s));
         assertNotNull(result.getChecklistSnapshotAt());
         assertEquals("Original", result.getChecklistItems().getFirst().getContent());
+        assertEquals(2, result.getChecklistItems().getFirst().getEvidencePolicyVersion());
+        assertEquals(1, result.getChecklistItems().getFirst().getMinimumEvidenceCount());
+        assertEquals(com.ondemandmonitoring.order.enums.RequiredEvidenceType.IMAGE_OR_VIDEO,
+                result.getChecklistItems().getFirst().getRequiredEvidenceType());
         String stableId = result.getChecklistItems().getFirst().getId();
         var edit = new ChecklistRequest(); edit.setContent("Changed");
         catalog.update(c, edit);
@@ -470,7 +476,7 @@ class ChecklistPostgresTest {
     }
 
     @Configuration
-    @EnableTransactionManagement
+    @EnableTransactionManagement(proxyTargetClass = true)
     @EnableJpaAuditing
     @EnableJpaRepositories(basePackageClasses = {ChecklistDefinitionRepository.class, OrderRepository.class})
     static class Config {

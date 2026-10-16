@@ -21,6 +21,11 @@ import com.ondemandmonitoring.order.repository.*;
 import com.ondemandmonitoring.review.service.IOrderReadinessService;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
+import com.ondemandmonitoring.pricing.domain.PricingPolicy;
+import com.ondemandmonitoring.pricing.dto.*;
+import com.ondemandmonitoring.pricing.enums.*;
+import com.ondemandmonitoring.pricing.repository.PricingPolicyRepository;
+import com.ondemandmonitoring.pricing.service.PricingEngine;
 import java.math.BigDecimal;
 import java.util.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,13 +40,15 @@ class QuoteServiceTest {
     AuthenticatedUserResolver users = mock(AuthenticatedUserResolver.class);
     IMissionChecklistExecutionService executions = mock(IMissionChecklistExecutionService.class);
     OrderDeliveryRepository deliveries = mock(OrderDeliveryRepository.class);
+    PricingEngine pricingEngine = mock(PricingEngine.class);
+    PricingPolicyRepository pricingPolicies = mock(PricingPolicyRepository.class);
     QuoteService service;
     Order order;
 
     @BeforeEach void setUp() {
         service = new QuoteService(orders, items, mock(OrderChecklistItemMapper.class), quotes, invoices, missions,
                 executions, users, new PaymentProperties(new BigDecimal("0.30")), deliveries,
-                mock(IOrderReadinessService.class));
+                mock(IOrderReadinessService.class), pricingEngine, pricingPolicies);
         order = new Order(); order.setId("o1"); order.setOrderStatus(OrderStatus.PENDING);
         var catalog = new com.ondemandmonitoring.service.domain.Service(); catalog.setName("Building inspection");
         order.setService(catalog);
@@ -50,6 +57,13 @@ class QuoteServiceTest {
         when(quotes.findFirstByOrderIdAndStatusInOrderByQuoteVersionDesc(eq("o1"), any())).thenReturn(Optional.empty());
         when(quotes.countByOrderId("o1")).thenReturn(0);
         when(quotes.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
+        var policy = new PricingPolicy(); policy.setId("p1"); policy.setMinimumPriceRatio(new BigDecimal("0.75"));
+        policy.setMinimumPrice(new BigDecimal("100000")); policy.setHighRiskDiscountPercent(new BigDecimal("10"));
+        policy.setManagerMaxDiscountPercent(new BigDecimal("25")); policy.setManagerMaxMarkupPercent(new BigDecimal("25"));
+        when(pricingPolicies.findById("p1")).thenReturn(Optional.of(policy));
+        when(pricingEngine.calculate(eq(order), anyList())).thenReturn(breakdown("5000000", List.of(
+                new PricingBreakdownItem(PricingCategory.PACKAGE, "Building inspection", BigDecimal.ONE,
+                        new BigDecimal("5000000"), new BigDecimal("5000000")))));
     }
 
     @Test void includedDuplicateAndRejectedItemsContributeZero() {
@@ -58,8 +72,8 @@ class QuoteServiceTest {
                 item("rejected", ChecklistReviewStatus.REJECTED)));
         var result = service.saveDraft("o1", request("5000000", "200000", "0", Map.of()));
         assertThat(result.additionalAmount()).isEqualByComparingTo("0");
-        assertThat(result.totalAmount()).isEqualByComparingTo("4800000");
-        assertThat(result.items()).allMatch(line -> line.amount().signum() == 0 || line.type() == QuoteItemType.PACKAGE || line.type() == QuoteItemType.ADJUSTMENT);
+        assertThat(result.totalAmount()).isEqualByComparingTo("5000000");
+        assertThat(result.items()).allMatch(line -> line.type() == QuoteItemType.PACKAGE);
     }
 
     @Test void pricingReviewUsesOrderPriceSnapshotInsteadOfCurrentCatalogPrice() {
@@ -69,6 +83,7 @@ class QuoteServiceTest {
         when(orders.findById("o1")).thenReturn(Optional.of(order));
         when(items.findAllByOrderIdOrderByDisplayOrderAscIdAsc("o1")).thenReturn(List.of());
         when(quotes.findHistory("o1")).thenReturn(List.of());
+        when(pricingEngine.calculate(eq(order), anyList())).thenReturn(breakdown("2800000", List.of()));
 
         assertThat(service.getPricingReview("o1").basePackagePrice())
                 .isEqualByComparingTo("2800000");
@@ -77,14 +92,66 @@ class QuoteServiceTest {
     @Test void additionalItemContributesAndBackendCalculatesTotal() {
         when(items.findAllByOrderIdOrderByDisplayOrderAscIdAsc("o1"))
                 .thenReturn(List.of(item("thermal", ChecklistReviewStatus.ADDITIONAL)));
-        var result = service.saveDraft("o1", request("5000000", "200000", "0", Map.of("thermal", new BigDecimal("1500000"))));
+        when(pricingEngine.calculate(eq(order), anyList())).thenReturn(breakdown("6500000", List.of(
+                new PricingBreakdownItem(PricingCategory.PACKAGE, "Package", BigDecimal.ONE, new BigDecimal("5000000"), new BigDecimal("5000000")),
+                new PricingBreakdownItem(PricingCategory.OUTPUT, "Thermal", BigDecimal.ONE, new BigDecimal("1500000"), new BigDecimal("1500000")))));
+        var result = service.saveDraft("o1", request("1", "200000", "0", Map.of("thermal", new BigDecimal("1"))));
         assertThat(result.additionalAmount()).isEqualByComparingTo("1500000");
-        assertThat(result.totalAmount()).isEqualByComparingTo("6300000");
+        assertThat(result.totalAmount()).isEqualByComparingTo("6500000");
     }
 
-    @Test void rejectsFractionalVnd() {
-        assertThatThrownBy(() -> service.saveDraft("o1", request("1.5", "0", "0", Map.of())))
+    @Test void rejectsFractionalManagerAdjustment() {
+        assertThatThrownBy(() -> service.saveDraft("o1", request("1", "0", "1.5", Map.of())))
                 .isInstanceOf(ApiException.class).extracting("errorCode").isEqualTo(ErrorCode.QUOTE_PRICING_INVALID);
+    }
+
+    @Test void nonZeroAdjustmentKeepsSystemAmountAndRequiresAnotherManager() {
+        User manager = user("m1", "Manager A"); when(users.getCurrentUser()).thenReturn(manager);
+        var result = service.saveDraft("o1", overrideRequest("-250000", "Shared route reduces travel cost"));
+        assertThat(result.systemCalculatedAmount()).isEqualByComparingTo("5000000");
+        assertThat(result.managerAdjustmentAmount()).isEqualByComparingTo("-250000");
+        assertThat(result.totalAmount()).isEqualByComparingTo("4750000");
+        assertThat(result.pricingApprovalStatus()).isEqualTo(PricingApprovalStatus.PENDING_SECOND_MANAGER);
+        assertThat(result.status()).isEqualTo(QuoteStatus.PENDING_REVIEW);
+    }
+
+    @Test void adjustmentWithoutMeaningfulReasonIsRejected() {
+        assertThatThrownBy(() -> service.saveDraft("o1", overrideRequest("-100000", "short")))
+                .isInstanceOf(ApiException.class).extracting("errorCode")
+                .isEqualTo(ErrorCode.PRICING_ADJUSTMENT_REASON_REQUIRED);
+    }
+
+    @Test void requesterCannotApproveOwnAdjustment() {
+        User manager = user("m1", "Manager A"); when(users.getCurrentUser()).thenReturn(manager);
+        Quote quote = pendingAdjustment(manager); when(quotes.findByIdForUpdate("q1")).thenReturn(Optional.of(quote));
+        assertThatThrownBy(() -> service.decidePricingAdjustment("o1", "q1", new com.ondemandmonitoring.finance.dto.PricingApprovalRequest(1L, true, null)))
+                .isInstanceOf(ApiException.class).extracting("errorCode")
+                .isEqualTo(ErrorCode.PRICING_SELF_APPROVAL_NOT_ALLOWED);
+    }
+
+    @Test void anotherManagerCanApproveCurrentRevision() {
+        User requester = user("m1", "Manager A"), approver = user("m2", "Manager B");
+        when(users.getCurrentUser()).thenReturn(approver);
+        Quote quote = pendingAdjustment(requester); when(quotes.findByIdForUpdate("q1")).thenReturn(Optional.of(quote));
+        var result = service.decidePricingAdjustment("o1", "q1", new com.ondemandmonitoring.finance.dto.PricingApprovalRequest(1L, true, "Reviewed"));
+        assertThat(result.status()).isEqualTo(QuoteStatus.APPROVED);
+        assertThat(result.pricingApprovalStatus()).isEqualTo(PricingApprovalStatus.APPROVED);
+        assertThat(result.pricingApprovedByName()).isEqualTo("Manager B");
+    }
+
+    @Test void stalePricingRevisionCannotBeApproved() {
+        User requester = user("m1", "Manager A"); when(users.getCurrentUser()).thenReturn(user("m2", "Manager B"));
+        Quote quote = pendingAdjustment(requester); quote.setPricingRevision(2);
+        when(quotes.findByIdForUpdate("q1")).thenReturn(Optional.of(quote));
+        assertThatThrownBy(() -> service.decidePricingAdjustment("o1", "q1", new com.ondemandmonitoring.finance.dto.PricingApprovalRequest(1L, true, null)))
+                .isInstanceOf(ApiException.class).extracting("errorCode").isEqualTo(ErrorCode.STALE_PRICING_REVISION);
+    }
+
+    @Test void normalOverrideCannotReachZero() {
+        when(users.getCurrentUser()).thenReturn(user("m1", "Manager A"));
+        assertThatThrownBy(() -> service.saveDraft("o1", overrideRequest("-5000000", "Attempt to make ordinary work free")))
+                .isInstanceOf(ApiException.class).extracting("errorCode")
+                .isEqualTo(ErrorCode.ZERO_PRICE_NOT_ALLOWED);
     }
 
     @Test void customerCannotAcceptUnapprovedQuote() {
@@ -122,5 +189,22 @@ class QuoteServiceTest {
     }
     private QuoteDraftRequest request(String pack, String discount, String adjustment, Map<String, BigDecimal> prices) {
         return new QuoteDraftRequest(new BigDecimal(pack), new BigDecimal(discount), new BigDecimal(adjustment), null, prices);
+    }
+    private PricingBreakdown breakdown(String total, List<PricingBreakdownItem> lines) {
+        return new PricingBreakdown("p1", 1, "VND", new BigDecimal(total), false, true, lines);
+    }
+    private QuoteDraftRequest overrideRequest(String amount, String reason) {
+        return new QuoteDraftRequest(BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal(amount), null, Map.of(),
+                reason, PricingAdjustmentType.CORRECTION, null);
+    }
+    private User user(String id, String name) { User user = new User(); user.setId(id); user.setFullName(name); return user; }
+    private Quote pendingAdjustment(User requester) {
+        Quote quote = new Quote(); quote.setId("q1"); quote.setOrder(order); quote.setQuoteVersion(1);
+        quote.setStatus(QuoteStatus.PENDING_REVIEW); quote.setPricingApprovalStatus(PricingApprovalStatus.PENDING_SECOND_MANAGER);
+        quote.setPricingRevision(1); quote.setAdjustmentRequestedBy(requester); quote.setSystemCalculatedAmount(new BigDecimal("5000000"));
+        quote.setManagerAdjustmentAmount(new BigDecimal("-250000")); quote.setAdjustmentAmount(new BigDecimal("-250000"));
+        quote.setTotalAmount(new BigDecimal("4750000")); quote.setPackagePrice(new BigDecimal("5000000"));
+        quote.setAdditionalAmount(BigDecimal.ZERO); quote.setDiscountAmount(BigDecimal.ZERO); quote.setPricingRiskFlags(new ArrayList<>());
+        quote.setPricingPolicyId("p1"); quote.setPricingPolicyVersion(1); return quote;
     }
 }

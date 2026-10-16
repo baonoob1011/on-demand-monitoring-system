@@ -6,17 +6,18 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.media.domain.MediaAsset;
-import com.ondemandmonitoring.media.domain.MediaStatus;
+import com.ondemandmonitoring.media.domain.MediaNotificationOutbox;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.media.domain.MediaUploadAttempt;
 import com.ondemandmonitoring.media.domain.StorageEventInbox;
-import com.ondemandmonitoring.media.domain.UploadAttemptStatus;
+import com.ondemandmonitoring.media.enums.UploadAttemptStatus;
 import com.ondemandmonitoring.media.repository.ManualUploadTaskRepository;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
-import com.ondemandmonitoring.media.repository.MediaAuditLogRepository;
+import com.ondemandmonitoring.media.repository.MediaNotificationOutboxRepository;
 import com.ondemandmonitoring.media.repository.MediaUploadAttemptRepository;
 import com.ondemandmonitoring.media.repository.StorageEventInboxRepository;
 import com.ondemandmonitoring.media.service.impl.MediaValidationServiceImpl;
-import com.ondemandmonitoring.media.service.IMediaObjectStorage;
+
 import java.io.ByteArrayInputStream;
 import java.security.MessageDigest;
 import java.util.HexFormat;
@@ -25,7 +26,6 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -38,13 +38,15 @@ class MediaValidationServiceImplTest {
     @Mock ManualUploadTaskRepository manualTasks;
     @Mock IMediaAuditService auditService;
     @org.mockito.Spy com.ondemandmonitoring.media.policy.MediaUploadPolicy policy;
+    @Mock MediaNotificationOutboxRepository outbox;
     @Mock IMediaObjectStorage storage;
     MediaValidationServiceImpl service;
 
     @org.junit.jupiter.api.BeforeEach
     void setUp() {
         service = new MediaValidationServiceImpl(attempts, media, inbox, manualTasks,
-                auditService, policy, storage,
+                new com.ondemandmonitoring.media.service.impl.ManualUploadTaskServiceImpl(manualTasks),
+                auditService, policy, outbox, storage,
                 new com.ondemandmonitoring.media.service.impl.MediaObjectVerificationServiceImpl(storage), org.mockito.Mockito.mock(com.ondemandmonitoring.mission.service.IMissionMediaEvidenceGuard.class));
     }
 
@@ -116,11 +118,17 @@ class MediaValidationServiceImplTest {
 
         service.processObjectCreated(bucket, stagingKey, "event-1");
 
+        ArgumentCaptor<MediaNotificationOutbox> notification =
+                ArgumentCaptor.forClass(MediaNotificationOutbox.class);
+        verify(outbox).save(notification.capture());
+        assertThat(notification.getValue().getMissionId()).isEqualTo("mission-1");
+        assertThat(notification.getValue().getMedia()).isSameAs(captured);
+
         ArgumentCaptor<StorageEventInbox> event = ArgumentCaptor.forClass(StorageEventInbox.class);
         verify(inbox).save(event.capture());
         assertThat(event.getValue().getBucket()).isEqualTo(bucket);
-        assertThat(captured.getMediaStatus()).isEqualTo(MediaStatus.AVAILABLE);
-        assertThat(captured.getAvailableAt()).isNotNull();
+        assertThat(captured.getMediaStatus()).isEqualTo(MediaStatus.PENDING_MANAGER_APPROVAL);
+        assertThat(captured.getAvailableAt()).isNull();
         assertThat(attempt.getStatus()).isEqualTo(UploadAttemptStatus.SUCCEEDED);
         verify(storage).copy(bucket, stagingKey, stagingKey.replace("/staging/", "/final/"));
     }

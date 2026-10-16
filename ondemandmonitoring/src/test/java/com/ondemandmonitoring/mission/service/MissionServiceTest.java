@@ -1,6 +1,7 @@
 package com.ondemandmonitoring.mission.service;
 
 import com.ondemandmonitoring.common.exception.ApiException;
+import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.device.domain.Device;
 import com.ondemandmonitoring.devicecheck.domain.PersistedPostDeviceCheck;
 import com.ondemandmonitoring.device.enums.DeviceStatus;
@@ -811,7 +812,10 @@ class MissionServiceTest {
             org.springframework.test.util.ReflectionTestUtils.setField(missionService, "missionResultService", results);
             org.springframework.test.util.ReflectionTestUtils.setField(missionService, "checklistExecutionService", checklist);
 
-            assertThatThrownBy(() -> missionService.completeMission(mission.getId())).isInstanceOf(ApiException.class).hasMessageContaining("not ready");
+            assertThatThrownBy(() -> missionService.completeMission(mission.getId()))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(exception -> ((ApiException) exception).getErrorCode())
+                    .isEqualTo(ErrorCode.CHECKLIST_NOT_READY);
             assertThat(deviceAssignment.getReleasedAt()).isNull();
             assertThat(staffAssignment.getReleasedAt()).isNull();
             verify(resultRepository, never()).save(any());
@@ -1053,6 +1057,7 @@ class MissionServiceTest {
         var executions = mock(com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository.class);
         var resultRepo = mock(com.ondemandmonitoring.mission.repository.MissionResultRepository.class);
         var item = new com.ondemandmonitoring.order.domain.OrderChecklistItem(); item.setId("item"); item.setOrder(order);
+        item.setEvidencePolicyVersion(0); item.setMinimumEvidenceCount(0);
         var execution = new com.ondemandmonitoring.mission.domain.MissionChecklistExecution();
         execution.setId("execution"); execution.setVersion(0L); execution.setMissionId(mission.getId());
         execution.setMission(mission); execution.setOrderId(order.getId()); execution.setOrderChecklistItemId(item.getId());
@@ -1061,6 +1066,21 @@ class MissionServiceTest {
         when(items.findAllByOrderIdInOrderByDisplayOrderAscIdAsc(List.of("order"))).thenReturn(List.of(item));
         when(executions.findOrderedByMissionId(mission.getId())).thenReturn(List.of(execution));
         when(executions.findById(execution.getId())).thenReturn(Optional.of(execution));
+        when(executions.findByIdForUpdate(execution.getId())).thenReturn(Optional.of(execution));
+        when(executions.updateIfVersionMatches(anyString(), anyLong(), anyString(), anyString(),
+                nullable(String.class), nullable(String.class), nullable(Instant.class), nullable(Instant.class),
+                nullable(String.class), any(Instant.class))).thenAnswer(call -> {
+                    execution.setExecutionStatus(com.ondemandmonitoring.mission.enums.ChecklistExecutionStatus.valueOf(call.getArgument(2)));
+                    execution.setAssessmentStatus(com.ondemandmonitoring.mission.enums.ChecklistAssessmentStatus.valueOf(call.getArgument(3)));
+                    execution.setObservation(call.getArgument(4));
+                    execution.setUnableToVerifyReason(call.getArgument(5));
+                    execution.setStartedAt(call.getArgument(6));
+                    execution.setCompletedAt(call.getArgument(7));
+                    execution.setLastModifiedBy(call.getArgument(8));
+                    execution.setUpdatedAt(call.getArgument(9));
+                    execution.setVersion(execution.getVersion() + 1);
+                    return 1;
+                });
         when(executions.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
         var checklist = new com.ondemandmonitoring.mission.service.impl.MissionChecklistExecutionServiceImpl(
                 missionRepository, ScopeTestFixture.validScope(), executions, resultRepo, policy, authenticatedUserResolver,

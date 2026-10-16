@@ -5,6 +5,7 @@ import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService;
 import com.ondemandmonitoring.media.domain.MediaAsset;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.IMediaAssetService;
 import com.ondemandmonitoring.mission.domain.Mission;
@@ -127,8 +128,8 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID);
         boolean unfinishedMediaReview = mediaAssetRepository
                 .findByMissionIdOrderByCapturedAtDesc(result.getMission().getId()).stream()
-                .anyMatch(asset -> asset.getMediaStatus() != com.ondemandmonitoring.media.domain.MediaStatus.AVAILABLE
-                        && asset.getMediaStatus() != com.ondemandmonitoring.media.domain.MediaStatus.REJECTED);
+                .anyMatch(asset -> asset.getMediaStatus() != MediaStatus.AVAILABLE
+                        && asset.getMediaStatus() != MediaStatus.REJECTED);
         if (unfinishedMediaReview) {
             throw new ApiException(ErrorCode.DELIVERY_NOT_READY,
                     "Approve or reject every mission media file before approving the mission result");

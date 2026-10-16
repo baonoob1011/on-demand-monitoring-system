@@ -1,7 +1,11 @@
 package com.ondemandmonitoring.mission.service.impl;
 
 import com.ondemandmonitoring.media.domain.MediaAsset;
-import com.ondemandmonitoring.media.domain.MediaStatus;
+import com.ondemandmonitoring.media.enums.MediaStatus;
+import com.ondemandmonitoring.mission.domain.MissionChecklistEvidence;
+import com.ondemandmonitoring.order.enums.RequiredEvidenceType;
+import java.util.Collection;
+import java.util.Objects;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 
@@ -9,6 +13,27 @@ import org.springframework.stereotype.Component;
 @Component
 public class ChecklistEvidencePolicy {
     private static final Set<String> ELIGIBLE_SOURCE_TYPES = Set.of("DRONE_CAMERA", "SATELLITE_SNAPSHOT");
+
+    public int eligibleDistinctCount(Collection<MissionChecklistEvidence> links, String executionId,
+            RequiredEvidenceType requiredType, boolean finalApproval) {
+        return (int) links.stream()
+                .filter(link -> link.getDetachedAt() == null)
+                .filter(link -> Objects.equals(executionId, link.getMissionChecklistExecution().getId()))
+                .filter(link -> mediaTypeMatches(requiredType, link.getMediaAsset().getType()))
+                .filter(link -> ineligibilityReason(link.getMediaAsset(), finalApproval) == null)
+                .map(link -> link.getMediaAsset().getId())
+                .distinct()
+                .count();
+    }
+
+    public boolean mediaTypeMatches(RequiredEvidenceType requiredType, String mediaType) {
+        if (requiredType == null) return false;
+        return switch (requiredType) {
+            case IMAGE -> "IMAGE".equals(mediaType);
+            case VIDEO -> "VIDEO".equals(mediaType);
+            case IMAGE_OR_VIDEO -> Set.of("IMAGE", "VIDEO").contains(mediaType);
+        };
+    }
 
     public String ineligibilityReason(MediaAsset media, boolean finalApproval) {
         if (!isEligibleSource(media)) return "EVIDENCE_SOURCE_NOT_ELIGIBLE";

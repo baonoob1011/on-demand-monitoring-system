@@ -81,7 +81,12 @@ class PlanningResearchAnalysisE2ETest {
         Set<String> keys = new HashSet<>();
         records.subList(1, records.size()).forEach(record -> assertThat(keys.add(record.get(1) + "|" + record.get(7))).isTrue());
         for (PlanningExperimentScenario scenario : definition().scenarios()) {
-            for (PlanningAlgorithm algorithm : PlanningAlgorithm.values()) {
+            // GPS_DIRECT is a mission planning algorithm, but the experiment
+            // contract compares the three algorithms returned by PlanningComparisonService.
+            for (PlanningAlgorithm algorithm : List.of(
+                    PlanningAlgorithm.DIRECT,
+                    PlanningAlgorithm.ASTAR_SHORTEST,
+                    PlanningAlgorithm.ASTAR_ENERGY_AWARE)) {
                 assertThat(keys).contains(scenario.scenarioId() + "|" + algorithm.name());
             }
         }

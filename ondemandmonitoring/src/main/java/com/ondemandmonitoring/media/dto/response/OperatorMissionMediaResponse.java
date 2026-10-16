@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.media.dto.response;
 
 import java.time.Instant;
-import com.ondemandmonitoring.media.domain.MediaStatus;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
