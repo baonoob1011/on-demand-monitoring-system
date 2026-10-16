@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class ManagerPricingController {
     private final IQuoteService quoteService;
+    private final com.ondemandmonitoring.finance.service.IPaymentService paymentService;
 
     @GetMapping("/pricing")
     public ApiResponse<PricingReviewResponse> pricing(@PathVariable String orderId) {
@@ -23,6 +24,17 @@ public class ManagerPricingController {
     @GetMapping("/invoice")
     public ApiResponse<InvoiceResponse> invoice(@PathVariable String orderId) {
         return ApiResponse.ok(quoteService.getInvoiceByOrder(orderId));
+    }
+
+    /**
+     * Re-checks the order's pending VNPAY payments directly with VNPAY (QueryDR) and returns the up-to-date invoice. Used when
+     * the payment notification cannot reach the server (for example a development machine).
+     */
+    @org.springframework.web.bind.annotation.PostMapping("/payments/refresh")
+    public ApiResponse<InvoiceResponse> refreshPayments(@PathVariable String orderId,
+            jakarta.servlet.http.HttpServletRequest request) {
+        paymentService.refreshOrderPayments(orderId, request.getRemoteAddr());
+        return ApiResponse.ok("Payment status reconciled", quoteService.getInvoiceByOrder(orderId));
     }
 
     @PatchMapping("/checklist-items/{itemId}")

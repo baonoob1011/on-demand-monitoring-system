@@ -18,6 +18,12 @@ public interface IPaymentService {
     PaymentResponse get(String paymentId);
     PaymentResponse getByReference(String transactionReference);
     PaymentResponse refreshByReference(String transactionReference, String requestIp);
+
+    /**
+     * Manager/Admin: reconciles every still-pending payment of the order with VNPAY, for when the IPN could not reach
+     * the server. Returns how many payments were re-checked.
+     */
+    int refreshOrderPayments(String orderId, String requestIp);
     List<PaymentResponse> list(String invoiceId);
     PaymentWebhookResult processVnPayWebhook(Map<String, String> payload);
     VerifiedWebhook verifyVnPayReturn(Map<String, String> payload);

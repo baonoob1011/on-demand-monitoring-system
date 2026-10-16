@@ -491,6 +491,17 @@ public class OrderService implements IOrderService {
 
     @Override
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public List<OrderCreateResponse> getManagedOrders(OrderStatus status) {
+        List<Order> orders = status == null
+                ? orderRepository.findAll(org.springframework.data.domain.Sort.by(
+                        org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))
+                : orderRepository.findByOrderStatusOrderByCreatedAtAsc(status).reversed();
+        return toResponses(orders);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     @PreAuthorize("hasRole('CUSTOMER')")
     public List<OrderCreateResponse> getMyOrders(OrderStatus status) {
         User customer = authenticatedUserResolver.getCurrentUser();

@@ -33,5 +33,8 @@ public interface IOrderService {
 
     List<OrderCreateResponse> getApprovedOrders();
 
+    /** Manager/Admin: every order, newest first, optionally limited to one status. */
+    List<OrderCreateResponse> getManagedOrders(OrderStatus status);
+
     List<OrderCreateResponse> getMyOrders(OrderStatus status);
 }
