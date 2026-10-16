@@ -342,11 +342,10 @@ class ManualUploadRecoveryWorkflowTest {
     }
 
     @Test
-    void mediaMarkedAsManualUploadOriginWouldBeIneligibleEvidence() {
-        // Documents WHY the recovery path must not rewrite the capture origin.
+    void mediaUploadedManuallyIsOfficialEvidenceOnceItPassesTheSameChecks() {
+        // Manual upload is the fallback when the drone cannot upload; it is reviewed like any other media.
         captured.setSourceType("MANUAL_UPLOAD");
-        assertThat(evidencePolicy.attachable(captured)).isFalse();
-        assertThat(evidencePolicy.ineligibilityReason(captured, false))
-                .isEqualTo("EVIDENCE_SOURCE_NOT_ELIGIBLE");
+        assertThat(evidencePolicy.attachable(captured)).isTrue();
+        assertThat(evidencePolicy.ineligibilityReason(captured, false)).isNotEqualTo("EVIDENCE_SOURCE_NOT_ELIGIBLE");
     }
 }

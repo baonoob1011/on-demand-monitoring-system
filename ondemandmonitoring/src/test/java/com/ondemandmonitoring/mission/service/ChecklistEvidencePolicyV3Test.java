@@ -27,7 +27,7 @@ class ChecklistEvidencePolicyV3Test {
         item = new OrderChecklistItem();
         item.setId("i"); item.setContent("Check roof"); item.setEvidencePolicyVersion(3);
         item.setMinimumImageCount(2); item.setMinimumVideoCount(1); item.setMinimumEvidenceCount(3);
-        item.setRequiredEvidenceType(RequiredEvidenceType.IMAGE_OR_VIDEO);
+        item.setRequiredEvidenceType(RequiredEvidenceType.IMAGE_AND_VIDEO);
         execution = new MissionChecklistExecution();
         execution.setId("e"); execution.setMissionId("m"); execution.setOrderId("o"); execution.setOrderChecklistItem(item);
         execution.setExecutionStatus(ChecklistExecutionStatus.COMPLETED); execution.setVersion(0L);
@@ -52,6 +52,15 @@ class ChecklistEvidencePolicyV3Test {
         assertFalse(service.ready(execution, links("IMAGE", "IMAGE", "IMAGE"), true), "enough files, but no video");
         assertFalse(service.ready(execution, links("VIDEO", "VIDEO", "VIDEO"), true), "enough files, but too few images");
         assertFalse(service.ready(execution, links("IMAGE", "VIDEO"), true));
+    }
+
+    @Test void theSameFileUploadedTwiceCountsOnce() {
+        var list = links("IMAGE", "IMAGE", "VIDEO");
+        list.get(0).getMediaAsset().setChecksumSha256("A".repeat(64));
+        list.get(1).getMediaAsset().setChecksumSha256("a".repeat(64)); // same content, different media row
+        assertFalse(service.ready(execution, list, true), "two identical images are one image");
+        list.get(1).getMediaAsset().setChecksumSha256("b".repeat(64));
+        assertTrue(service.ready(execution, list, true));
     }
 
     @Test void extraFilesOfEitherTypeDoNotHurtOnceThresholdsAreMet() {

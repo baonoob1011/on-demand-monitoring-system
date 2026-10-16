@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 /** Immutable policy V1: provenance is never inferred from filename, storage key or upload method. */
 @Component
 public class ChecklistEvidencePolicy {
-    private static final Set<String> ELIGIBLE_SOURCE_TYPES = Set.of("DRONE_CAMERA", "SATELLITE_SNAPSHOT");
+    private static final Set<String> ELIGIBLE_SOURCE_TYPES = Set.of("DRONE_CAMERA", "SATELLITE_SNAPSHOT", "MANUAL_UPLOAD");
 
     public int eligibleDistinctCount(Collection<MissionChecklistEvidence> links, String executionId,
             RequiredEvidenceType requiredType, boolean finalApproval) {
@@ -21,9 +21,15 @@ public class ChecklistEvidencePolicy {
                 .filter(link -> Objects.equals(executionId, link.getMissionChecklistExecution().getId()))
                 .filter(link -> mediaTypeMatches(requiredType, link.getMediaAsset().getType()))
                 .filter(link -> ineligibilityReason(link.getMediaAsset(), finalApproval) == null)
-                .map(link -> link.getMediaAsset().getId())
+                .map(link -> contentKey(link.getMediaAsset()))
                 .distinct()
                 .count();
+    }
+
+    /** Identical files count once, however many times they were uploaded. */
+    private static String contentKey(MediaAsset media) {
+        String checksum = media.getChecksumSha256();
+        return checksum == null || checksum.isBlank() ? "id:" + media.getId() : "sha:" + checksum.toLowerCase();
     }
 
     public boolean mediaTypeMatches(RequiredEvidenceType requiredType, String mediaType) {
@@ -31,7 +37,7 @@ public class ChecklistEvidencePolicy {
         return switch (requiredType) {
             case IMAGE -> "IMAGE".equals(mediaType);
             case VIDEO -> "VIDEO".equals(mediaType);
-            case IMAGE_OR_VIDEO -> Set.of("IMAGE", "VIDEO").contains(mediaType);
+            case IMAGE_OR_VIDEO, IMAGE_AND_VIDEO -> Set.of("IMAGE", "VIDEO").contains(mediaType);
         };
     }
 

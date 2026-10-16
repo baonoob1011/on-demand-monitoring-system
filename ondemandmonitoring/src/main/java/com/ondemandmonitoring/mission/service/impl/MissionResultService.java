@@ -134,6 +134,7 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
             throw new ApiException(ErrorCode.DELIVERY_NOT_READY,
                     "Approve or reject every mission media file before approving the mission result");
         }
+        requireOrderMediaQuantity(aggregate, result, request);
         Instant now = Instant.now();
         result.setApprovalStatus(MissionResultApprovalStatus.APPROVED);
         result.setApprovedAt(now);
@@ -145,6 +146,56 @@ public class MissionResultService implements com.ondemandmonitoring.mission.serv
         completionPolicy.completeIfReady(aggregate);
         if (deliveryWorkflow != null) deliveryWorkflow.markReadyForManagerReview(result.getMission().getOrder().getId());
         return toResponse(saved);
+    }
+
+    /**
+     * Order-level check: a photo may legitimately serve several checklists, so every checklist can be "complete" while fewer
+     * distinct files exist than the customer ordered. On the approval that closes the order, compare the distinct delivered
+     * files with the ordered quantities; a shortfall is allowed only with a written reason (at least 10 characters).
+     */
+    private void requireOrderMediaQuantity(
+            com.ondemandmonitoring.order.service.IOrderExecutionCompletionPolicy.LockedExecution aggregate,
+            MissionResult result, MissionResultReviewRequest request) {
+        var order = aggregate.order();
+        long orderedImages = 0, orderedVideos = 0;
+        boolean quantified = false;
+        for (var deliverable : order.getDeliverables()) {
+            var requirement = deliverable.getRequirement();
+            if (requirement == null) continue;
+            if (requirement.containsKey("imageQuantity") || requirement.containsKey("videoQuantity")) quantified = true;
+            orderedImages += quantity(requirement.get("imageQuantity"));
+            orderedVideos += quantity(requirement.get("videoQuantity"));
+        }
+        if (!quantified) return; // orders created before per-type quantities are not checked
+        var effective = aggregate.missions().stream().filter(ExecutionPlanCoverageService::effective).toList();
+        boolean lastOpenResult = effective.stream()
+                .filter(m -> !m.getId().equals(result.getMission().getId()))
+                .allMatch(m -> missionResultRepository.existsByMissionIdAndApprovalStatus(
+                        m.getId(), MissionResultApprovalStatus.APPROVED));
+        if (!lastOpenResult) return;
+        var images = new java.util.HashSet<String>();
+        var videos = new java.util.HashSet<String>();
+        for (var mission : effective) {
+            for (MediaAsset asset : mediaAssetRepository.findByMissionIdOrderByCapturedAtDesc(mission.getId())) {
+                if (asset.getMediaStatus() != MediaStatus.AVAILABLE) continue;
+                String key = asset.getChecksumSha256() == null || asset.getChecksumSha256().isBlank()
+                        ? "id:" + asset.getId() : asset.getChecksumSha256().toLowerCase();
+                if ("IMAGE".equals(asset.getType())) images.add(key);
+                else if ("VIDEO".equals(asset.getType())) videos.add(key);
+            }
+        }
+        if (images.size() >= orderedImages && videos.size() >= orderedVideos) return;
+        String note = request == null || request.getNote() == null ? "" : request.getNote().strip();
+        if (note.length() >= 10) return;
+        throw new ApiException(ErrorCode.ORDER_MEDIA_QUANTITY_NOT_MET,
+                "Mới có " + images.size() + "/" + orderedImages + " ảnh và " + videos.size() + "/" + orderedVideos
+                        + " video so với đơn đặt. Nhập lý do (ít nhất 10 ký tự) để vẫn duyệt.");
+    }
+
+    private static long quantity(Object value) {
+        if (value instanceof Number number) return number.longValue();
+        try { return value == null ? 0 : Long.parseLong(value.toString()); }
+        catch (NumberFormatException ignored) { return 0; }
     }
 
     @Override

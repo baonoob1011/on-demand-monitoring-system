@@ -81,4 +81,43 @@ class MissionResultAggregateApprovalTest {
         service.getByMissionId("m"); assertSame(original, result.getMediaFiles());
         verifyNoInteractions(completion); verify(results, never()).saveAndFlush(any());
     }
+
+    private void ordered(int images, int videos) {
+        var deliverable = com.ondemandmonitoring.order.domain.OrderDeliverable.builder()
+                .requirement(Map.of("imageQuantity", images, "videoQuantity", videos)).build();
+        order.setDeliverables(new ArrayList<>(List.of(deliverable)));
+    }
+    private com.ondemandmonitoring.media.domain.MediaAsset asset(String id, String type, String checksum) {
+        var a = new com.ondemandmonitoring.media.domain.MediaAsset();
+        a.setId(id); a.setType(type); a.setChecksumSha256(checksum);
+        a.setMediaStatus(com.ondemandmonitoring.media.enums.MediaStatus.AVAILABLE);
+        return a;
+    }
+    @Test void shortfallAgainstTheOrderedMediaNeedsAWrittenReason() {
+        ordered(10, 1);
+        when(media.findByMissionIdOrderByCapturedAtDesc("m")).thenReturn(List.of(
+                asset("a1", "IMAGE", "sha-1"), asset("a2", "IMAGE", "sha-1"), asset("a3", "IMAGE", "sha-2")));
+        var ex = assertThrows(ApiException.class, () -> service.approve("r", null));
+        assertEquals(ErrorCode.ORDER_MEDIA_QUANTITY_NOT_MET, ex.getErrorCode());
+        assertEquals(MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL, result.getApprovalStatus());
+    }
+    @Test void shortfallIsAllowedWithAReason() {
+        ordered(10, 1);
+        var review = new MissionResultReviewRequest(); review.setNote("Khach dong y giao thieu");
+        service.approve("r", review);
+        assertEquals(MissionResultApprovalStatus.APPROVED, result.getApprovalStatus());
+    }
+    @Test void enoughDistinctFilesNeedNoReason() {
+        ordered(2, 1);
+        when(media.findByMissionIdOrderByCapturedAtDesc("m")).thenReturn(List.of(
+                asset("a1", "IMAGE", "sha-1"), asset("a2", "IMAGE", "sha-2"), asset("v1", "VIDEO", "sha-3")));
+        service.approve("r", null);
+        assertEquals(MissionResultApprovalStatus.APPROVED, result.getApprovalStatus());
+    }
+    @Test void ordersWithoutPerTypeQuantitiesAreNotChecked() {
+        order.setDeliverables(new ArrayList<>(List.of(com.ondemandmonitoring.order.domain.OrderDeliverable.builder()
+                .requirement(Map.of("mediaType", "IMAGE", "quantity", 10)).build())));
+        service.approve("r", null);
+        assertEquals(MissionResultApprovalStatus.APPROVED, result.getApprovalStatus());
+    }
 }
