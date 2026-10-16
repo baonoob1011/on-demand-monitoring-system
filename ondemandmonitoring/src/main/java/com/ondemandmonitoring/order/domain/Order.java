@@ -2,6 +2,8 @@ package com.ondemandmonitoring.order.domain;
 
 import com.ondemandmonitoring.Consultation.domains.CustomerConsultation;
 import com.ondemandmonitoring.common.entity.BaseEntity;
+import com.ondemandmonitoring.order.dto.OrderAuthorizationDocument;
+import com.ondemandmonitoring.order.dto.OrderPermitDocument;
 import com.ondemandmonitoring.order.enums.OrderDeliveryMethod;
 import com.ondemandmonitoring.order.enums.OrderPermitStatus;
 import com.ondemandmonitoring.order.enums.OrderPriority;
@@ -13,6 +15,7 @@ import com.ondemandmonitoring.order.enums.OrderFlightPurpose;
 import com.ondemandmonitoring.order.enums.OrderUsagePurpose;
 import com.ondemandmonitoring.order.enums.OrderWeatherFallback;
 import com.ondemandmonitoring.order.enums.MonitoringRelationship;
+import com.ondemandmonitoring.order.enums.FlightAreaReviewStatus;
 import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.warehouse.domain.PreferredTime;
@@ -138,7 +141,7 @@ public class Order extends BaseEntity {
     /** Permit files the customer attached (PDF or image). */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "permit_documents", columnDefinition = "jsonb")
-    private List<com.ondemandmonitoring.order.dto.OrderPermitDocument> permitDocuments;
+    private List<OrderPermitDocument> permitDocuments;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "monitoring_relationship", length = 40)
@@ -149,7 +152,7 @@ public class Order extends BaseEntity {
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "monitoring_authorization_documents", columnDefinition = "jsonb")
-    private List<com.ondemandmonitoring.order.dto.OrderAuthorizationDocument> monitoringAuthorizationDocuments;
+    private List<OrderAuthorizationDocument> monitoringAuthorizationDocuments;
 
     @Column(name = "permit_required")
     private Boolean permitRequired;
@@ -229,6 +232,30 @@ public class Order extends BaseEntity {
 
     @Column(name = "review_at")
     private Instant reviewAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "flight_area_review_status", length = 30)
+    private FlightAreaReviewStatus flightAreaReviewStatus;
+
+    @Column(name = "flight_area_review_reason", length = 500)
+    private String flightAreaReviewReason;
+
+    @Column(name = "flight_area_review_note", columnDefinition = "TEXT")
+    private String flightAreaReviewNote;
+
+    @Column(name = "requested_scope_feasible")
+    private Boolean requestedScopeFeasible;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "flight_area_reviewed_by")
+    private User flightAreaReviewedBy;
+
+    @Column(name = "flight_area_reviewed_at")
+    private Instant flightAreaReviewedAt;
+
+    @Builder.Default
+    @Column(name = "requires_flight_permission_review")
+    private Boolean requiresFlightPermissionReview = false;
 
     @Builder.Default
     @OneToMany(mappedBy = "order", fetch = FetchType.LAZY)

@@ -109,6 +109,18 @@ class OrderReadinessServiceTest {
     }
 
     @Test
+    void siteContactCriterionShowsTheActualContactForManagerVerification() {
+        order.setSiteContactName("Nguyễn Văn An");
+        order.setSiteContactPhone("0901234567");
+
+        var criterion = find(service.evaluate("o1"), ReviewCriterionCode.SITE_CONTACT);
+
+        assertThat(criterion.result()).isEqualTo(CriterionResult.PASS);
+        assertThat(criterion.reason()).isEqualTo(
+                "Người liên hệ: Nguyễn Văn An · SĐT: 0901234567");
+    }
+
+    @Test
     void failedRequiredManualCriterionBlocksApprovalAndSuggestsRejecting() {
         answerRequired(CriterionResult.PASS);
         service.answer("o1", ReviewCriterionCode.CAPABILITY,
@@ -170,13 +182,14 @@ class OrderReadinessServiceTest {
     }
 
     @Test
-    void flightThresholdComesFromMatchedDatabasePolicy() {
+    void flightScaleCriterionIsNoLongerPartOfReview() {
         order.setAltitudeM(130.0);
         policy.setMaxAltitudeM(150);
 
         var result = service.evaluate("o1");
 
-        assertThat(find(result, ReviewCriterionCode.FLIGHT_SCALE).result()).isEqualTo(CriterionResult.PASS);
+        assertThat(result.criteria()).noneMatch(
+                criterion -> criterion.code() == ReviewCriterionCode.FLIGHT_SCALE);
     }
 
     @Test

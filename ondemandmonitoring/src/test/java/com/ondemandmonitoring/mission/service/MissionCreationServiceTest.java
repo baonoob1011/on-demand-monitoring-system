@@ -70,14 +70,10 @@ class MissionCreationServiceTest {
         error(ErrorCode.IDEMPOTENCY_KEY_REUSED,()->fixture.missionService.createMission(r));
     }
     @Test void staleRevisionDoesNotCreate() { var r=request(); r.setExpectedPlanRevision(2L); error(ErrorCode.EXECUTION_PLAN_REVISION_CONFLICT,()->fixture.missionService.createMission(r)); verify(fixture.missionRepository,never()).saveAndFlush(any()); }
-    @Test void acceptedQuoteWithoutDepositCreatesWaitingMissionWithoutChangingScope() {
+    @Test void acceptedQuoteWithoutDepositBlocksMissionCreation() {
         when(fixture.missionPaymentEligibilityService.isDepositSatisfied(any())).thenReturn(false);
-        fixture.missionService.createMission(request());
-        var captured = org.mockito.ArgumentCaptor.forClass(Mission.class);
-        verify(fixture.missionRepository).saveAndFlush(captured.capture());
-        assertEquals(com.ondemandmonitoring.mission.enums.MissionStatus.WAITING_DEPOSIT, captured.getValue().getStatus());
-        assertEquals("o", captured.getValue().getOrder().getId());
-        assertEquals(order.getPoint(), captured.getValue().getTargetPoint());
+        error(ErrorCode.INVOICE_NOT_PAID, () -> fixture.missionService.createMission(request()));
+        verify(fixture.missionRepository, never()).saveAndFlush(any());
     }
     @Test void missingAcceptedInvoiceBlocksCreationWithoutSavingMission() {
         when(fixture.invoiceRepository.findByOrderId("o")).thenReturn(Optional.empty());

@@ -159,7 +159,6 @@ public class OrderReadinessService implements IOrderReadinessService {
             case CHECKLIST_REVIEWED -> checklistReviewed(order);
             case SITE_CONTACT -> siteContact(order);
             case SCHEDULE_DATE -> scheduleDate(order, policy);
-            case FLIGHT_SCALE -> flightScale(order, policy);
             default -> throw new IllegalStateException("Not an automatic criterion: " + code);
         };
         return new OrderReadinessResponse.Criterion(code, code.getType(), code.getTitle(), code.getDescription(),
@@ -188,7 +187,12 @@ public class OrderReadinessService implements IOrderReadinessService {
     private Verdict siteContact(Order order) {
         boolean hasName = order.getSiteContactName() != null && !order.getSiteContactName().isBlank();
         boolean hasPhone = order.getSiteContactPhone() != null && !order.getSiteContactPhone().isBlank();
-        if (hasName && hasPhone) return new Verdict(CriterionResult.PASS, "Có tên và số điện thoại liên hệ");
+        if (hasName && hasPhone) {
+            return new Verdict(
+                    CriterionResult.PASS,
+                    "Người liên hệ: " + order.getSiteContactName().strip()
+                            + " · SĐT: " + order.getSiteContactPhone().strip());
+        }
         if (hasName || hasPhone) return new Verdict(CriterionResult.WARN, "Thông tin liên hệ hiện trường chưa đầy đủ");
         return new Verdict(CriterionResult.WARN, "Chưa có người liên hệ tại hiện trường");
     }
@@ -208,24 +212,6 @@ public class OrderReadinessService implements IOrderReadinessService {
             return new Verdict(CriterionResult.WARN, "Hạn nhận kết quả rất sát ngày thực hiện");
         }
         return new Verdict(CriterionResult.PASS, "Thời gian thực hiện hợp lệ");
-    }
-
-    private Verdict flightScale(Order order, java.util.Optional<ReviewRegionPolicy> policy) {
-        if (policy.isEmpty()) {
-            return new Verdict(CriterionResult.WARN, "Không xác định được ngưỡng bay vì chưa có policy vùng phù hợp");
-        }
-        ReviewRegionPolicy region = policy.get();
-        List<String> concerns = new ArrayList<>();
-        if (order.getAltitudeM() != null && order.getAltitudeM() > region.getMaxAltitudeM()) {
-            concerns.add("độ cao " + order.getAltitudeM().intValue() + " m vượt "
-                    + (int) region.getMaxAltitudeM() + " m");
-        }
-        if (order.getEstimatedLengthM() != null && order.getEstimatedLengthM() > region.getLongRouteM()) {
-            concerns.add("tuyến dài " + order.getEstimatedLengthM().intValue() + " m, cân nhắc chia nhiều nhiệm vụ");
-        }
-        return concerns.isEmpty()
-                ? new Verdict(CriterionResult.PASS, "Trong ngưỡng một chuyến bay thông thường")
-                : new Verdict(CriterionResult.WARN, String.join("; ", concerns));
     }
 
     private void snapshotAutomatic(Order order, OrderReadinessResponse readiness) {

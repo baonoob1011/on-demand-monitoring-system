@@ -238,10 +238,13 @@ public class MissionService implements IMissionService {
                 .filter(value -> value.getQuote().getStatus() == QuoteStatus.ACCEPTED_BY_CUSTOMER)
                 .orElseThrow(() -> new ApiException(ErrorCode.INVOICE_NOT_PAYABLE,
                         "An accepted quote and invoice are required before mission creation"));
+        if (!missionPaymentEligibilityService.isDepositSatisfied(invoice)) {
+            throw new ApiException(ErrorCode.INVOICE_NOT_PAID,
+                    "The required deposit must be paid before mission planning can begin");
+        }
         Mission mission = new Mission();
         mission.setMissionCode(generateMissionCode());
-        mission.setStatus(missionPaymentEligibilityService.isDepositSatisfied(invoice)
-                ? MissionStatus.RESOURCE_ASSIGNING : MissionStatus.WAITING_DEPOSIT);
+        mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
         mission.setOrder(order);
         mission.setScheduledStartAt(intent.start()); mission.setScheduledEndAt(intent.end());
         mission.setScopeLabel(intent.label());
