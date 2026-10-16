@@ -12,6 +12,7 @@ import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -72,38 +73,30 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
                 new ServiceSeed(
                         "CONSTRUCTION_MONITORING",
                         "Giám sát công trình",
-                        """
-                        Chụp ảnh và video hiện trạng công trình, hỗ trợ theo dõi và đối chiếu
-                        tiến độ thi công theo từng thời điểm.
-                        """.strip(),
-                        3_500_000L
+                        "Ghi nhận hiện trạng và tiến độ thi công bằng hình ảnh, video từ drone.",
+                        3_500_000L,
+                        "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?w=1200&auto=format&fit=crop&q=80"
                 ),
                 new ServiceSeed(
                         "FACTORY_INSPECTION",
                         "Kiểm tra nhà xưởng",
-                        """
-                        Quan sát mái, bề mặt và các khu vực khó tiếp cận của nhà xưởng bằng
-                        hình ảnh và video từ drone.
-                        """.strip(),
-                        3_000_000L
+                        "Kiểm tra mái, kết cấu bên ngoài và các vị trí khó tiếp cận bằng drone.",
+                        3_000_000L,
+                        "https://images.unsplash.com/photo-1565793298595-6a879b1d9492?w=1200&auto=format&fit=crop&q=80"
                 ),
                 new ServiceSeed(
                         "AREA_MONITORING",
                         "Giám sát khu vực",
-                        """
-                        Chụp ảnh và video tổng quan một khu vực theo vị trí và phạm vi giám sát
-                        do khách hàng yêu cầu.
-                        """.strip(),
-                        2_500_000L
+                        "Quan sát tổng thể, ghi nhận hiện trạng và các vị trí cần theo dõi trong khu vực.",
+                        2_500_000L,
+                        "https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=1200&auto=format&fit=crop&q=80"
                 ),
                 new ServiceSeed(
                         "FOREST_MONITORING",
                         "Giám sát rừng",
-                        """
-                        Chụp ảnh và video khu vực rừng, ghi nhận hiện trạng và hỗ trợ quan sát
-                        các khu vực có dấu hiệu bất thường.
-                        """.strip(),
-                        4_000_000L
+                        "Quan sát hiện trạng rừng, theo dõi thảm thực vật và ghi nhận khu vực bất thường.",
+                        4_000_000L,
+                        "https://images.unsplash.com/photo-1448375240586-882707db888b?w=1200&auto=format&fit=crop&q=80"
                 )
         );
     }
@@ -129,6 +122,10 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
         BigDecimal price = BigDecimal.valueOf(seed.basePrice());
         if (!price.equals(service.getBasePrice())) {
             service.setBasePrice(price);
+            changed = true;
+        }
+        if (!Objects.equals(seed.imageUrl(), service.getImageUrl())) {
+            service.setImageUrl(seed.imageUrl());
             changed = true;
         }
         if (!Boolean.TRUE.equals(service.getIsActive())) {
@@ -411,7 +408,7 @@ public class ServiceCatalogSeedDataInitializer implements ApplicationRunner {
         return false;
     }
 
-    private record ServiceSeed(String code, String name, String description, long basePrice) {
+    private record ServiceSeed(String code, String name, String description, long basePrice, String imageUrl) {
     }
 
     private record DeliverableTypeSeed(String name, String defaultFormat) {

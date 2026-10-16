@@ -64,8 +64,8 @@ public class OverpassClient {
         return ProviderRestTemplates.create(config.getConnectTimeoutMs(), config.getReadTimeoutMs());
     }
 
-    public OverpassData fetch(double latitude, double longitude, double radiusMeters, double aerodromeRadiusMeters) {
-        String query = buildQuery(latitude, longitude, radiusMeters, aerodromeRadiusMeters);
+    public OverpassData fetch(double latitude, double longitude, double radiusMeters) {
+        String query = buildQuery(latitude, longitude, radiusMeters);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
         headers.set(HttpHeaders.ACCEPT, "application/json");
@@ -107,10 +107,8 @@ public class OverpassClient {
         }
     }
 
-    String buildQuery(double latitude, double longitude, double radiusMeters, double aerodromeRadiusMeters) {
+    String buildQuery(double latitude, double longitude, double radiusMeters) {
         String around = String.format(Locale.ROOT, "(around:%.0f,%.6f,%.6f)", radiusMeters, latitude, longitude);
-        String aerodromeAround = String.format(Locale.ROOT, "(around:%.0f,%.6f,%.6f)",
-                aerodromeRadiusMeters, latitude, longitude);
         int limit = config.getMaxElementsPerSection();
         return String.join("\n",
                 String.format(Locale.ROOT, "[out:json][timeout:%d];", config.getServerTimeoutSeconds()),
@@ -122,7 +120,7 @@ public class OverpassClient {
                 "out tags center " + limit + ";",
                 "node[\"power\"=\"tower\"]" + around + ";",
                 "out tags center " + limit + ";",
-                "nwr[\"aeroway\"~\"^(aerodrome|helipad)$\"]" + aerodromeAround + ";",
+                "nwr[\"aeroway\"~\"^(aerodrome|helipad)$\"]" + around + ";",
                 "out tags center " + limit + ";");
     }
 

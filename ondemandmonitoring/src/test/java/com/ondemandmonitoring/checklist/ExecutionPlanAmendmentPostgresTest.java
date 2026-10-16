@@ -29,7 +29,7 @@ class ExecutionPlanAmendmentPostgresTest extends OrderAggregateCompletionPostgre
     MissionCreateRequest replacementRequest(String original) {
         var r = new MissionCreateRequest(); r.setOrderId(orderId); r.setExpectedPlanRevision(revision());
         r.setIdempotencyKey(UUID.randomUUID().toString()); r.setScopeLabel("Replacement scope"); r.setReplacesMissionId(original);
-        var start = java.time.LocalDate.now().plusDays(1).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
+        var start = java.time.LocalDate.now().plusDays(7).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
         r.setScheduledStartAt(start); r.setScheduledEndAt(start.plusSeconds(3600)); return r;
     }
     String replacement(String original) { return missionService.createMission(replacementRequest(original)).getId(); }

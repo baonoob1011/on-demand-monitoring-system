@@ -45,6 +45,7 @@ public class OrderCreateResponse {
     BigDecimal serviceBasePriceSnapshot;
     String description;
     OrderUsagePurpose usagePurpose;
+    com.ondemandmonitoring.order.enums.OrderFlightPurpose flightPurpose;
     OrderPriority priority;
     Double altitudeM;
     Double estimatedLengthM;
@@ -53,6 +54,11 @@ public class OrderCreateResponse {
     String accessNotes;
     OrderPermitStatus permitStatus;
     String permitNumber;
+    LocalDate permitExpiresOn;
+    List<com.ondemandmonitoring.order.dto.OrderPermitDocument> permitDocuments;
+    com.ondemandmonitoring.order.enums.MonitoringRelationship monitoringRelationship;
+    Boolean monitoringAuthorizationConfirmed;
+    List<com.ondemandmonitoring.order.dto.OrderAuthorizationDocument> monitoringAuthorizationDocuments;
     Boolean permitRequired;
     String permitZoneName;
 

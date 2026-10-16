@@ -62,8 +62,10 @@ public class ServiceImageServiceImpl implements IServiceImageService {
 
     @Override
     public String getImageUrl(Service service) {
-        if (service.getImageS3Key() == null) return null;
-        return storage.createPresignedGetUrl(service.getImageS3Bucket(), service.getImageS3Key());
+        if (service.getImageS3Key() != null) {
+            return storage.createPresignedGetUrl(service.getImageS3Bucket(), service.getImageS3Key());
+        }
+        return service.getImageUrl();
     }
 
     private Service locked(String id) {
@@ -74,6 +76,7 @@ public class ServiceImageServiceImpl implements IServiceImageService {
     private ServiceResponse response(Service service) {
         ServiceResponse response = mapper.toResponse(service);
         response.setImageUrl(getImageUrl(service));
+        response.setFallbackImageUrl(service.getImageS3Key() == null ? null : service.getImageUrl());
         return response;
     }
 

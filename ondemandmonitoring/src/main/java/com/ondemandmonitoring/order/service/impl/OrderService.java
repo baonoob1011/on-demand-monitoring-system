@@ -6,6 +6,7 @@ import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.domain.OrderDeliverable;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.request.OrderDeliverableRequest;
+import com.ondemandmonitoring.order.dto.OrderAuthorizationDocument;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
 import com.ondemandmonitoring.order.enums.OrderDeliveryMethod;
 import com.ondemandmonitoring.order.enums.OrderPermitStatus;
@@ -14,13 +15,14 @@ import com.ondemandmonitoring.order.enums.OrderRecurrenceType;
 import com.ondemandmonitoring.order.enums.OrderResultFormat;
 import com.ondemandmonitoring.order.enums.OrderWeatherFallback;
 import com.ondemandmonitoring.order.enums.OrderStatus;
+import com.ondemandmonitoring.order.enums.DocumentVerificationStatus;
 import com.ondemandmonitoring.order.mapper.OrderMapper;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.IOrderService;
 import com.ondemandmonitoring.order.service.IOrderChecklistSnapshotService;
-import com.ondemandmonitoring.order.util.AirspacePolicy;
 import com.ondemandmonitoring.order.util.GeoReader;
 import com.ondemandmonitoring.order.util.ServiceAreaPolicy;
+import com.ondemandmonitoring.review.service.OrderReviewRecordInitializer;
 import com.ondemandmonitoring.service.domain.DeliverableType;
 import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.service.repository.DeliverableTypeRepository;
@@ -51,6 +53,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class OrderService implements IOrderService {
 
     private static final DateTimeFormatter ORDER_CODE_DATE_FORMATTER = DateTimeFormatter.BASIC_ISO_DATE;
+    private static final int MINIMUM_FLIGHT_NOTICE_DAYS = 7;
 
     OrderRepository orderRepository;
     ServiceRepository serviceRepository;
@@ -60,6 +63,7 @@ public class OrderService implements IOrderService {
     AuthenticatedUserResolver authenticatedUserResolver;
     OrderMapper orderMapper;
     IOrderChecklistSnapshotService checklistSnapshots;
+    OrderReviewRecordInitializer reviewRecords;
 
     @Override
     @Transactional
@@ -106,6 +110,11 @@ public class OrderService implements IOrderService {
                         "Preferred time not found with id: " + request.getPreferredTimeId()));
 
         // 4. Validate Date Range
+        LocalDate earliestFlightDate = LocalDate.now().plusDays(MINIMUM_FLIGHT_NOTICE_DAYS);
+        if (request.getPreferredDateFrom().isBefore(earliestFlightDate)) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "preferredDateFrom must be at least 7 days after the request date");
+        }
         if (request.getPreferredDateFrom().isAfter(request.getPreferredDateTo())) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
                     "preferredDateFrom must be before or equal to preferredDateTo");
@@ -130,6 +139,12 @@ public class OrderService implements IOrderService {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
                     "Terms and data-security commitment must be accepted");
         }
+        if (!Boolean.TRUE.equals(request.getMonitoringAuthorizationConfirmed())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Monitoring authorization must be confirmed");
+        }
+        List<OrderAuthorizationDocument> authorizationDocuments =
+                validateAuthorizationDocuments(request.getMonitoringAuthorizationDocuments());
         int retentionDays = request.getDataRetentionDays() == null
                 ? DEFAULT_RETENTION_DAYS
                 : request.getDataRetentionDays();
@@ -153,21 +168,16 @@ public class OrderService implements IOrderService {
         }
         ServiceAreaPolicy.assertSupported(location, targetArea);
 
-        // 5b. Airspace permit (airports etc.) must be answered by the customer
-        var permitZone = AirspacePolicy.findPermitZone(location, targetArea);
+        // 5b. The customer self-checks the official portal and declares the result.
         OrderPermitStatus permitStatus = request.getPermitStatus() == null
                 ? OrderPermitStatus.NONE : request.getPermitStatus();
-        if (permitZone.isPresent()) {
-            if (permitStatus == OrderPermitStatus.NONE) {
-                throw new ApiException(ErrorCode.INVALID_REQUEST,
-                        "Area is inside airspace requiring a permit (" + permitZone.get().name()
-                                + "). Provide permitStatus HAVE_PERMIT or NEED_SUPPORT.");
-            }
-            if (permitStatus == OrderPermitStatus.HAVE_PERMIT
-                    && (request.getPermitNumber() == null || request.getPermitNumber().isBlank())) {
-                throw new ApiException(ErrorCode.INVALID_REQUEST,
-                        "permitNumber is required when permitStatus is HAVE_PERMIT");
-            }
+        if (permitStatus == OrderPermitStatus.HAVE_PERMIT
+                && (request.getPermitNumber() == null || request.getPermitNumber().isBlank())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "permitNumber is required when permitStatus is HAVE_PERMIT");
+        }
+        if (permitStatus == OrderPermitStatus.HAVE_PERMIT) {
+            validatePermitEvidence(request);
         }
 
         // 6. Validate Deliverables requirement
@@ -207,10 +217,16 @@ public class OrderService implements IOrderService {
         order.setTargetArea(targetArea);
         order.setOrderStatus(OrderStatus.PENDING);
         order.setPermitStatus(permitStatus);
-        order.setPermitRequired(permitZone.isPresent());
-        order.setPermitZoneName(permitZone.map(AirspacePolicy.PermitZone::name).orElse(null));
+        order.setPermitRequired(permitStatus != OrderPermitStatus.NONE);
+        order.setPermitZoneName(null);
+        order.setMonitoringAuthorizationConfirmed(true);
+        order.setMonitoringAuthorizationDocuments(authorizationDocuments);
         if (permitStatus != OrderPermitStatus.HAVE_PERMIT) {
             order.setPermitNumber(null);
+        }
+        if (permitStatus != OrderPermitStatus.HAVE_PERMIT) {
+            order.setPermitExpiresOn(null);
+            order.setPermitDocuments(null);
         }
         order.setRecurrenceType(recurrenceType);
         if (recurrenceType == OrderRecurrenceType.NONE) {
@@ -221,6 +237,9 @@ public class OrderService implements IOrderService {
         }
         if (order.getPriority() == null) {
             order.setPriority(OrderPriority.NORMAL);
+        }
+        if (order.getFlightPurpose() == null) {
+            order.setFlightPurpose(com.ondemandmonitoring.order.enums.OrderFlightPurpose.DEFAULT);
         }
         order.setResultFormats(distinctOrDefault(request.getResultFormats(), OrderResultFormat.PHOTO));
         order.setDeliveryMethods(distinctOrDefault(request.getDeliveryMethods(), OrderDeliveryMethod.DOWNLOAD));
@@ -238,10 +257,42 @@ public class OrderService implements IOrderService {
 
         Order savedOrder = orderRepository.save(order);
         var items = checklistSnapshots.capture(savedOrder, request.getChecklistItems());
+        reviewRecords.initialize(savedOrder);
         orderRepository.flush();
         OrderCreateResponse response = orderMapper.toResponse(savedOrder);
         response.setChecklistItems(items);
         return response;
+    }
+
+    private static List<OrderAuthorizationDocument> validateAuthorizationDocuments(
+            List<OrderAuthorizationDocument> documents) {
+        if (documents == null || documents.isEmpty()) return List.of();
+        if (documents.size() > 10) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "At most 10 authorization documents are allowed");
+        }
+        return documents.stream().map(document -> {
+            if (document == null || document.documentType() == null
+                    || document.documentName() == null || document.documentName().isBlank()
+                    || document.documentName().length() > 160
+                    || document.fileName() == null || document.fileName().isBlank()
+                    || document.contentType() == null
+                    || !(document.contentType().equals("application/pdf")
+                        || document.contentType().equals("image/jpeg")
+                        || document.contentType().equals("image/png"))
+                    || document.sizeBytes() <= 0 || document.sizeBytes() > 5 * 1024 * 1024
+                    || document.dataUrl() == null || document.dataUrl().isBlank()) {
+                throw new ApiException(ErrorCode.INVALID_REQUEST,
+                        "Invalid monitoring authorization document");
+            }
+            return new OrderAuthorizationDocument(
+                    document.id(), document.documentType(), document.documentName().trim(),
+                    document.fileName(), document.contentType(), document.sizeBytes(),
+                    document.dataUrl(),
+                    document.notes() == null || document.notes().isBlank()
+                            ? null : document.notes().trim(),
+                    DocumentVerificationStatus.PENDING, null, null, null);
+        }).toList();
     }
 
     @Override
@@ -307,6 +358,46 @@ public class OrderService implements IOrderService {
             response.setChecklistItems(snapshots.getOrDefault(order.getId(), List.of()));
             return response;
         }).toList();
+    }
+
+    static final int MAX_PERMIT_FILES = 3;
+    static final long MAX_PERMIT_FILE_BYTES = 5L * 1024 * 1024;
+    /** base64 inflates ~4/3; keep the stored string bounded too. */
+    static final int MAX_PERMIT_DATA_URL_CHARS = 7_500_000;
+
+    /**
+     * A permit number alone is unverifiable: the customer must attach the permit file
+     * and state until when it is valid, and that must cover the flight window.
+     */
+    private static void validatePermitEvidence(OrderCreateRequest request) {
+        var documents = request.getPermitDocuments();
+        if (documents == null || documents.isEmpty()) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Attach the flight permit file when permitStatus is HAVE_PERMIT");
+        }
+        if (documents.size() > MAX_PERMIT_FILES) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "At most " + MAX_PERMIT_FILES + " permit files");
+        }
+        for (var document : documents) {
+            String type = document.contentType() == null ? "" : document.contentType().toLowerCase();
+            boolean allowedType = type.equals("application/pdf") || type.startsWith("image/");
+            if (document.fileName() == null || document.fileName().isBlank() || !allowedType) {
+                throw new ApiException(ErrorCode.INVALID_REQUEST, "Permit files must be PDF or image");
+            }
+            if (document.sizeBytes() <= 0 || document.sizeBytes() > MAX_PERMIT_FILE_BYTES
+                    || document.dataUrl() == null || document.dataUrl().isBlank()
+                    || document.dataUrl().length() > MAX_PERMIT_DATA_URL_CHARS) {
+                throw new ApiException(ErrorCode.INVALID_REQUEST, "Permit file is empty or larger than 5 MB");
+            }
+        }
+        if (request.getPermitExpiresOn() == null) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "permitExpiresOn is required when permitStatus is HAVE_PERMIT");
+        }
+        if (request.getPermitExpiresOn().isBefore(request.getPreferredDateTo())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "The permit expires before the preferred flight date");
+        }
     }
 
     /** Version recorded with the customer's acceptance of the terms and security commitment. */

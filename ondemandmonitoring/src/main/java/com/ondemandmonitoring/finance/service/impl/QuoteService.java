@@ -24,8 +24,14 @@ import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.mapper.OrderChecklistItemMapper;
 import com.ondemandmonitoring.order.repository.OrderChecklistItemRepository;
 import com.ondemandmonitoring.order.repository.OrderRepository;
+import com.ondemandmonitoring.review.service.IOrderReadinessService;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
+import com.ondemandmonitoring.pricing.domain.PricingPolicy;
+import com.ondemandmonitoring.pricing.dto.*;
+import com.ondemandmonitoring.pricing.enums.*;
+import com.ondemandmonitoring.pricing.repository.PricingPolicyRepository;
+import com.ondemandmonitoring.pricing.service.PricingEngine;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.*;
@@ -49,6 +55,9 @@ public class QuoteService implements IQuoteService {
     private final AuthenticatedUserResolver currentUser;
     private final PaymentProperties paymentProperties;
     private final OrderDeliveryRepository deliveries;
+    private final IOrderReadinessService readiness;
+    private final PricingEngine pricingEngine;
+    private final PricingPolicyRepository pricingPolicies;
 
     @Transactional(readOnly = true)
     public PricingReviewResponse getPricingReview(String orderId) {
@@ -61,8 +70,11 @@ public class QuoteService implements IQuoteService {
         BigDecimal basePackagePrice = order.getServiceBasePriceSnapshot() != null
                 ? order.getServiceBasePriceSnapshot()
                 : order.getService().getBasePrice();
+        PricingBreakdown calculation = pricingEngine.calculate(order,
+                checklistItems.findAllByOrderIdOrderByDisplayOrderAscIdAsc(orderId));
         return new PricingReviewResponse(orderId, order.getOrderCode(), order.getCustomer().getFullName(),
-                order.getService().getName(), basePackagePrice, items, current, history);
+                order.getService().getName(), basePackagePrice, items, current, history, calculation,
+                currentUser.getCurrentUserId());
     }
 
     @Transactional
@@ -86,12 +98,17 @@ public class QuoteService implements IQuoteService {
             throw new ApiException(ErrorCode.QUOTE_PRICING_INVALID, "Order can no longer be priced");
         }
         List<OrderChecklistItem> reviewed = checklistItems.findAllByOrderIdOrderByDisplayOrderAscIdAsc(orderId);
-        validateMoney(request.packagePrice(), "packagePrice", false);
-        validateMoney(request.discountAmount(), "discountAmount", false);
         validateMoney(request.adjustmentAmount(), "adjustmentAmount", true);
+        PricingBreakdown calculation = pricingEngine.calculate(order, reviewed);
+        if (calculation.customWork() && !calculation.assessmentComplete())
+            throw new ApiException(ErrorCode.CUSTOM_WORK_PRICING_INCOMPLETE);
 
         Optional<Quote> active = quotes.findFirstByOrderIdAndStatusInOrderByQuoteVersionDesc(orderId,
                 List.of(QuoteStatus.DRAFT, QuoteStatus.PENDING_REVIEW, QuoteStatus.APPROVED));
+        if (active.isPresent() && request.expectedPricingRevision() != null
+                && request.expectedPricingRevision() != active.get().getPricingRevision())
+            throw new ApiException(ErrorCode.STALE_PRICING_REVISION);
+        long nextPricingRevision = active.map(Quote::getPricingRevision).orElse(0L) + 1;
         Quote quote;
         if (active.isPresent() && active.get().getStatus() == QuoteStatus.DRAFT) {
             quote = quotes.findByIdForUpdate(active.get().getId()).orElseThrow();
@@ -106,19 +123,47 @@ public class QuoteService implements IQuoteService {
             quote.setStatus(QuoteStatus.DRAFT);
         }
 
-        List<QuoteItem> lines = buildLines(order, reviewed, request);
-        BigDecimal additional = lines.stream().filter(line -> line.getType() == QuoteItemType.ADDITIONAL)
-                .map(QuoteItem::getAmount).reduce(ZERO, BigDecimal::add);
-        BigDecimal total = request.packagePrice().add(additional).subtract(request.discountAmount())
-                .add(request.adjustmentAmount()).setScale(0, RoundingMode.UNNECESSARY);
-        if (total.signum() <= 0) throw new ApiException(ErrorCode.QUOTE_PRICING_INVALID, "Quote total must be positive");
+        BigDecimal adjustment = vnd(request.adjustmentAmount());
+        String reason = trimToNull(request.adjustmentReason());
+        if (adjustment.signum() != 0 && (reason == null || reason.length() < 10))
+            throw new ApiException(ErrorCode.PRICING_ADJUSTMENT_REASON_REQUIRED);
+        PricingPolicy policy = pricingPolicies.findById(calculation.policyId())
+                .orElseThrow(() -> new ApiException(ErrorCode.PRICING_POLICY_NOT_FOUND));
+        List<PricingRiskFlag> risks = evaluateGuardrails(policy, calculation.systemCalculatedAmount(), adjustment,
+                calculation.customWork(), orderId);
+        List<QuoteItem> lines = buildLines(calculation, adjustment);
+        BigDecimal packagePrice = lines.stream().filter(l -> l.getType() == QuoteItemType.PACKAGE)
+                .map(QuoteItem::getAmount).findFirst().orElse(ZERO);
+        BigDecimal discount = lines.stream().filter(l -> l.getType() == QuoteItemType.DISCOUNT)
+                .map(QuoteItem::getAmount).reduce(ZERO, BigDecimal::add).abs();
+        BigDecimal additional = calculation.systemCalculatedAmount().subtract(packagePrice).add(discount);
+        BigDecimal total = calculation.systemCalculatedAmount().add(adjustment);
 
-        quote.setPackagePrice(vnd(request.packagePrice()));
+        quote.setPackagePrice(packagePrice);
         quote.setAdditionalAmount(additional);
-        quote.setDiscountAmount(vnd(request.discountAmount()));
-        quote.setAdjustmentAmount(vnd(request.adjustmentAmount()));
+        quote.setDiscountAmount(discount);
+        quote.setAdjustmentAmount(adjustment);
+        quote.setManagerAdjustmentAmount(adjustment);
+        quote.setSystemCalculatedAmount(calculation.systemCalculatedAmount());
+        quote.setPricingPolicyId(calculation.policyId());
+        quote.setPricingPolicyVersion(calculation.policyVersion());
         quote.setTotalAmount(total);
         quote.setManagerNote(trimToNull(request.managerNote()));
+        quote.setAdjustmentReason(reason);
+        quote.setAdjustmentType(adjustment.signum() == 0 ? null
+                : Optional.ofNullable(request.adjustmentType()).orElse(PricingAdjustmentType.CORRECTION));
+        quote.setPricingRiskFlags(risks);
+        quote.setPricingRevision(nextPricingRevision);
+        quote.setPricingApprovedBy(null); quote.setPricingApprovedAt(null); quote.setPricingApprovalNote(null);
+        if (adjustment.signum() == 0) {
+            quote.setPricingApprovalStatus(PricingApprovalStatus.NOT_REQUIRED);
+            quote.setAdjustmentRequestedBy(null); quote.setAdjustmentRequestedAt(null);
+            quote.setStatus(QuoteStatus.DRAFT);
+        } else {
+            quote.setPricingApprovalStatus(PricingApprovalStatus.PENDING_SECOND_MANAGER);
+            quote.setAdjustmentRequestedBy(currentUser.getCurrentUser()); quote.setAdjustmentRequestedAt(Instant.now());
+            quote.setStatus(QuoteStatus.PENDING_REVIEW);
+        }
         quote.replaceItems(lines);
         return FinanceMapper.quote(quotes.saveAndFlush(quote));
     }
@@ -130,10 +175,14 @@ public class QuoteService implements IQuoteService {
         if (!quote.getOrder().getId().equals(orderId) || quote.getStatus() != QuoteStatus.DRAFT) {
             throw new ApiException(ErrorCode.QUOTE_NOT_CURRENT);
         }
+        if (quote.getPricingApprovalStatus() != PricingApprovalStatus.NOT_REQUIRED)
+            throw new ApiException(ErrorCode.QUOTE_HAS_UNAPPROVED_PRICING);
         if (checklistItems.findAllByOrderIdOrderByDisplayOrderAscIdAsc(orderId).stream()
                 .anyMatch(item -> item.getReviewStatus() == null || item.getReviewStatus() == ChecklistReviewStatus.PENDING)) {
             throw new ApiException(ErrorCode.ORDER_CHECKLIST_REVIEW_INVALID);
         }
+        // Approval criteria: automatic checks + the manager's own answers.
+        readiness.requireApprovable(orderId);
         quote.setStatus(QuoteStatus.APPROVED);
         quote.setApprovedBy(currentUser.getCurrentUser());
         quote.setApprovedAt(Instant.now());
@@ -141,12 +190,39 @@ public class QuoteService implements IQuoteService {
         return FinanceMapper.quote(quote);
     }
 
+    @Transactional
+    public QuoteResponse decidePricingAdjustment(String orderId, String quoteId, PricingApprovalRequest request) {
+        Order order = orders.findByIdForUpdate(orderId).orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND));
+        Quote quote = quotes.findByIdForUpdate(quoteId).orElseThrow(() -> new ApiException(ErrorCode.QUOTE_NOT_FOUND));
+        if (!quote.getOrder().getId().equals(orderId) || quote.getStatus() != QuoteStatus.PENDING_REVIEW
+                || quote.getPricingApprovalStatus() != PricingApprovalStatus.PENDING_SECOND_MANAGER)
+            throw new ApiException(ErrorCode.QUOTE_NOT_CURRENT);
+        if (request.pricingRevision() != quote.getPricingRevision())
+            throw new ApiException(ErrorCode.STALE_PRICING_REVISION);
+        User approver = currentUser.getCurrentUser();
+        if (quote.getAdjustmentRequestedBy() != null
+                && Objects.equals(quote.getAdjustmentRequestedBy().getId(), approver.getId()))
+            throw new ApiException(ErrorCode.PRICING_SELF_APPROVAL_NOT_ALLOWED);
+        quote.setPricingApprovedBy(approver); quote.setPricingApprovedAt(Instant.now());
+        quote.setPricingApprovalNote(trimToNull(request.note()));
+        if (!request.approved()) {
+            quote.setPricingApprovalStatus(PricingApprovalStatus.REJECTED);
+            quote.setStatus(QuoteStatus.REJECTED);
+            return FinanceMapper.quote(quote);
+        }
+        readiness.requireApprovable(orderId);
+        quote.setPricingApprovalStatus(PricingApprovalStatus.APPROVED);
+        quote.setStatus(QuoteStatus.APPROVED); quote.setApprovedBy(approver); quote.setApprovedAt(Instant.now());
+        if (order.getOrderStatus() == OrderStatus.PENDING) order.setOrderStatus(OrderStatus.APPROVED);
+        return FinanceMapper.quote(quote);
+    }
+
     @Transactional(readOnly = true)
-    public QuoteResponse getCurrentForCustomer(String orderId) {
+    public CustomerQuoteResponse getCurrentForCustomer(String orderId) {
         assertOwner(orderId);
         return quotes.findFirstByOrderIdAndStatusInOrderByQuoteVersionDesc(orderId,
                         List.of(QuoteStatus.APPROVED, QuoteStatus.ACCEPTED_BY_CUSTOMER))
-                .map(FinanceMapper::quote).orElseThrow(() -> new ApiException(ErrorCode.QUOTE_NOT_FOUND));
+                .map(FinanceMapper::customerQuote).orElseThrow(() -> new ApiException(ErrorCode.QUOTE_NOT_FOUND));
     }
 
     @Transactional
@@ -196,30 +272,42 @@ public class QuoteService implements IQuoteService {
         return FinanceMapper.invoice(invoice, finalPaymentAllowed);
     }
 
-    private List<QuoteItem> buildLines(Order order, List<OrderChecklistItem> reviewed, QuoteDraftRequest request) {
+    private List<QuoteItem> buildLines(PricingBreakdown calculation, BigDecimal adjustment) {
         List<QuoteItem> lines = new ArrayList<>();
-        lines.add(line(QuoteItemType.PACKAGE, order.getService().getName(), request.packagePrice(), null, lines.size()));
-        Map<String, BigDecimal> prices = request.additionalUnitPrices() == null ? Map.of() : request.additionalUnitPrices();
-        for (OrderChecklistItem item : reviewed) {
-            ChecklistReviewStatus status = item.getReviewStatus() == null ? ChecklistReviewStatus.PENDING : item.getReviewStatus();
-            if (status == ChecklistReviewStatus.PENDING) continue;
-            BigDecimal price = ZERO;
-            QuoteItemType type = QuoteItemType.INCLUDED;
-            if (status == ChecklistReviewStatus.ADDITIONAL) {
-                price = prices.get(item.getId());
-                validateMoney(price, "additionalUnitPrices[" + item.getId() + "]", false);
-                type = QuoteItemType.ADDITIONAL;
-            }
-            QuoteItem line = line(type, item.getContent(), price, item, lines.size());
-            lines.add(line);
+        for (PricingBreakdownItem item : calculation.items()) {
+            QuoteItem line = line(QuoteItemType.valueOf(item.category().name()), item.description(), item.unitPrice(), null, lines.size());
+            line.setQuantity(item.quantity()); line.setAmount(item.amount()); lines.add(line);
         }
-        if (request.discountAmount().signum() > 0) {
-            lines.add(line(QuoteItemType.ADJUSTMENT, "Discount", request.discountAmount().negate(), null, lines.size()));
-        }
-        if (request.adjustmentAmount().signum() != 0) {
-            lines.add(line(QuoteItemType.ADJUSTMENT, "Manager adjustment", request.adjustmentAmount(), null, lines.size()));
-        }
+        if (adjustment.signum() != 0)
+            lines.add(line(QuoteItemType.MANAGER_ADJUSTMENT, "Approved manager adjustment", adjustment, null, lines.size()));
         return lines;
+    }
+
+    private List<PricingRiskFlag> evaluateGuardrails(PricingPolicy policy, BigDecimal system, BigDecimal adjustment,
+                                                      boolean customWork, String orderId) {
+        List<PricingRiskFlag> flags = new ArrayList<>();
+        BigDecimal finalAmount = system.add(adjustment);
+        if (adjustment.signum() == 0) return flags;
+        if (finalAmount.signum() == 0) {
+            flags.add(PricingRiskFlag.ZERO_PRICE);
+            throw new ApiException(ErrorCode.ZERO_PRICE_NOT_ALLOWED);
+        }
+        BigDecimal percent = adjustment.abs().multiply(new BigDecimal("100"))
+                .divide(system.max(BigDecimal.ONE), 4, RoundingMode.HALF_UP);
+        if (adjustment.signum() < 0) {
+            if (percent.compareTo(policy.getHighRiskDiscountPercent()) >= 0) flags.add(PricingRiskFlag.HIGH_DISCOUNT);
+            if (percent.compareTo(policy.getManagerMaxDiscountPercent()) > 0)
+                throw new ApiException(ErrorCode.PRICING_OVERRIDE_EXCEEDS_LIMIT);
+        } else if (percent.compareTo(policy.getManagerMaxMarkupPercent()) > 0) {
+            flags.add(PricingRiskFlag.LARGE_MARKUP);
+            throw new ApiException(ErrorCode.PRICING_OVERRIDE_EXCEEDS_LIMIT);
+        }
+        BigDecimal floor = system.multiply(policy.getMinimumPriceRatio()).setScale(0, RoundingMode.CEILING)
+                .max(policy.getMinimumPrice());
+        if (finalAmount.compareTo(floor) < 0) { flags.add(PricingRiskFlag.BELOW_MINIMUM_PRICE); throw new ApiException(ErrorCode.PRICE_BELOW_ALLOWED_MINIMUM); }
+        if (customWork) flags.add(PricingRiskFlag.CUSTOM_WORK_OVERRIDE);
+        if (quotes.countByOrderId(orderId) > 1) flags.add(PricingRiskFlag.REPEATED_OVERRIDE);
+        return flags;
     }
 
     private QuoteItem line(QuoteItemType type, String description, BigDecimal unitPrice,

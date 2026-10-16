@@ -18,6 +18,7 @@ import com.ondemandmonitoring.order.mapper.OrderChecklistItemMapper;
 import com.ondemandmonitoring.order.repository.OrderChecklistItemRepository;
 import com.ondemandmonitoring.order.service.IOrderChecklistSnapshotService;
 import com.ondemandmonitoring.service.repository.ServiceRepository;
+import com.ondemandmonitoring.pricing.enums.ChecklistDifficulty;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -109,6 +110,8 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
             entity.setRequiredEvidenceType(requiredEvidenceType);
             entity.setOrder(order);
             entity.setSourceChecklist(source);
+            entity.setDifficultySnapshot(source == null || source.getDifficulty() == null
+                    ? ChecklistDifficulty.BASIC : source.getDifficulty());
             entity.setSourceType(source == null ? OrderChecklistSourceType.CUSTOMER_CUSTOM : OrderChecklistSourceType.SERVICE_TEMPLATE);
             entity.setReviewStatus(ChecklistReviewStatus.PENDING);
             String content = item.getContentOverride();

@@ -100,6 +100,7 @@ public class ServiceServiceImpl implements IServiceService {
     private ServiceResponse toResponse(Service service) {
         ServiceResponse response = serviceMapper.toResponse(service);
         response.setImageUrl(serviceImageService.getImageUrl(service));
+        response.setFallbackImageUrl(service.getImageS3Key() == null ? null : service.getImageUrl());
         return response;
     }
 

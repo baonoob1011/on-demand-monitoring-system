@@ -37,6 +37,8 @@ public class ChecklistServiceImpl implements IChecklistService {
         ChecklistDefinition entity = mapper.toEntity(request);
         entity.setContent(content);
         entity.setNormalizedContent(normalized);
+        entity.setDifficulty(request.getDifficulty() == null
+                ? com.ondemandmonitoring.pricing.enums.ChecklistDifficulty.BASIC : request.getDifficulty());
         return mapper.toResponse(repository.saveAndFlush(entity));
     }
 
@@ -82,6 +84,7 @@ public class ChecklistServiceImpl implements IChecklistService {
         }
         entity.setContent(content);
         entity.setNormalizedContent(normalized);
+        if (request.getDifficulty() != null) entity.setDifficulty(request.getDifficulty());
         return mapper.toResponse(repository.saveAndFlush(entity));
     }
 

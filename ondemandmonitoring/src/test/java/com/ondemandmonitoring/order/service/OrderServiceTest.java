@@ -14,12 +14,14 @@ import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.request.OrderDeliverableRequest;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
+import com.ondemandmonitoring.order.enums.MonitoringRelationship;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.mapper.OrderMapper;
 import org.mapstruct.factory.Mappers;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.impl.OrderService;
 import com.ondemandmonitoring.order.service.IOrderChecklistSnapshotService;
+import com.ondemandmonitoring.review.service.OrderReviewRecordInitializer;
 import com.ondemandmonitoring.service.domain.DeliverableType;
 import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.service.repository.DeliverableTypeRepository;
@@ -66,7 +68,8 @@ class OrderServiceTest {
                 preferredTimeRepository,
                 authenticatedUserResolver,
                 orderMapper,
-                mock(IOrderChecklistSnapshotService.class)
+                mock(IOrderChecklistSnapshotService.class),
+                mock(OrderReviewRecordInitializer.class)
         );
 
         String userId = UUID.randomUUID().toString();
@@ -142,10 +145,12 @@ class OrderServiceTest {
         OrderCreateRequest request = OrderCreateRequest.builder()
                 .title("Survey Forest")
                 .termsAccepted(true)
+                .monitoringRelationship(MonitoringRelationship.OWNER)
+                .monitoringAuthorizationConfirmed(true)
                 .serviceId("srv-1")
                 .preferredTimeId("pt-1")
-                .preferredDateFrom(LocalDate.now())
-                .preferredDateTo(LocalDate.now().plusDays(2))
+                .preferredDateFrom(LocalDate.now().plusDays(7))
+                .preferredDateTo(LocalDate.now().plusDays(9))
                 .longitude(106.7005)
                 .latitude(10.7765)
                 .coverageArea(sampleCoverageAreaMap())
@@ -204,10 +209,12 @@ class OrderServiceTest {
         OrderCreateRequest request = OrderCreateRequest.builder()
                 .title("Outside Point")
                 .termsAccepted(true)
+                .monitoringRelationship(MonitoringRelationship.OWNER)
+                .monitoringAuthorizationConfirmed(true)
                 .serviceId("srv-1")
                 .preferredTimeId("pt-1")
-                .preferredDateFrom(LocalDate.now())
-                .preferredDateTo(LocalDate.now().plusDays(2))
+                .preferredDateFrom(LocalDate.now().plusDays(7))
+                .preferredDateTo(LocalDate.now().plusDays(9))
                 .longitude(106.7)
                 .latitude(121.0)
                 .coverageArea(sampleCoverageAreaMap())
@@ -218,6 +225,16 @@ class OrderServiceTest {
     }
 
     private OrderCreateRequest airportRequest(com.ondemandmonitoring.order.enums.OrderPermitStatus status, String number) {
+        return airportRequest(status, number, null, null);
+    }
+
+    private static com.ondemandmonitoring.order.dto.OrderPermitDocument permitFile() {
+        return new com.ondemandmonitoring.order.dto.OrderPermitDocument(
+                "p1", "permit.pdf", "application/pdf", 1024, "data:application/pdf;base64,AAAA");
+    }
+
+    private OrderCreateRequest airportRequest(com.ondemandmonitoring.order.enums.OrderPermitStatus status, String number,
+            List<com.ondemandmonitoring.order.dto.OrderPermitDocument> documents, LocalDate expiresOn) {
         Service service = Service.builder().name("Airport Check").build();
         service.setId("srv-1");
         PreferredTime preferredTime = PreferredTime.builder().name("Morning").build();
@@ -244,23 +261,69 @@ class OrderServiceTest {
         return OrderCreateRequest.builder()
                 .title("Runway check")
                 .termsAccepted(true)
+                .monitoringRelationship(MonitoringRelationship.OWNER)
+                .monitoringAuthorizationConfirmed(true)
                 .serviceId("srv-1")
                 .preferredTimeId("pt-1")
-                .preferredDateFrom(LocalDate.now())
-                .preferredDateTo(LocalDate.now().plusDays(1))
+                .preferredDateFrom(LocalDate.now().plusDays(7))
+                .preferredDateTo(LocalDate.now().plusDays(8))
                 .longitude(106.6605)
                 .latitude(10.8155)
                 .coverageArea(area)
                 .permitStatus(status)
                 .permitNumber(number)
+                .permitDocuments(documents)
+                .permitExpiresOn(expiresOn)
                 .deliverables(List.of(OrderDeliverableRequest.builder().deliverableTypeId("dt-1").requirement(Map.of()).build()))
                 .build();
     }
 
     @Test
-    void createOrder_NearAirportWithoutPermitAnswerIsRejected() {
-        OrderCreateRequest request = airportRequest(null, null);
+    void createOrder_HavePermitNeedsTheFile() {
+        var request = airportRequest(com.ondemandmonitoring.order.enums.OrderPermitStatus.HAVE_PERMIT, "GP-1",
+                null, LocalDate.now().plusDays(30));
         assertThrows(ApiException.class, () -> orderService.createOrder(request));
+    }
+
+    @Test
+    void createOrder_HavePermitNeedsAnExpiryDate() {
+        var request = airportRequest(com.ondemandmonitoring.order.enums.OrderPermitStatus.HAVE_PERMIT, "GP-1",
+                List.of(permitFile()), null);
+        assertThrows(ApiException.class, () -> orderService.createOrder(request));
+    }
+
+    @Test
+    void createOrder_PermitExpiringBeforeTheFlightIsRejected() {
+        // The request flies on today+8; the permit ends today.
+        var request = airportRequest(com.ondemandmonitoring.order.enums.OrderPermitStatus.HAVE_PERMIT, "GP-1",
+                List.of(permitFile()), LocalDate.now());
+        assertThrows(ApiException.class, () -> orderService.createOrder(request));
+    }
+
+    @Test
+    void createOrder_PermitFileMustBePdfOrImage() {
+        var bad = new com.ondemandmonitoring.order.dto.OrderPermitDocument(
+                "p1", "permit.exe", "application/x-msdownload", 1024, "data:application/x-msdownload;base64,AAAA");
+        var request = airportRequest(com.ondemandmonitoring.order.enums.OrderPermitStatus.HAVE_PERMIT, "GP-1",
+                List.of(bad), LocalDate.now().plusDays(30));
+        assertThrows(ApiException.class, () -> orderService.createOrder(request));
+    }
+
+    @Test
+    void createOrder_HavePermitWithFileAndValidityIsAcceptedAndStored() {
+        OrderCreateResponse response = orderService.createOrder(airportRequest(
+                com.ondemandmonitoring.order.enums.OrderPermitStatus.HAVE_PERMIT, "GP-1",
+                List.of(permitFile()), LocalDate.now().plusDays(30)));
+        assertEquals(1, response.getPermitDocuments().size());
+        assertEquals(LocalDate.now().plusDays(30), response.getPermitExpiresOn());
+    }
+
+    @Test
+    void createOrder_DoesNotInferPermitRequirementFromCoordinates() {
+        OrderCreateRequest request = airportRequest(null, null);
+        OrderCreateResponse response = orderService.createOrder(request);
+        assertEquals(Boolean.FALSE, response.getPermitRequired());
+        assertEquals(null, response.getPermitZoneName());
     }
 
     @Test
@@ -274,7 +337,7 @@ class OrderServiceTest {
         OrderCreateResponse response = orderService.createOrder(
                 airportRequest(com.ondemandmonitoring.order.enums.OrderPermitStatus.NEED_SUPPORT, null));
         assertEquals(Boolean.TRUE, response.getPermitRequired());
-        assertEquals("Tan Son Nhat Airport", response.getPermitZoneName());
+        assertEquals(null, response.getPermitZoneName());
         assertEquals(com.ondemandmonitoring.order.enums.OrderPermitStatus.NEED_SUPPORT, response.getPermitStatus());
     }
 
@@ -298,10 +361,12 @@ class OrderServiceTest {
         return OrderCreateRequest.builder()
                 .title("Delivery options")
                 .termsAccepted(true)
+                .monitoringRelationship(MonitoringRelationship.OWNER)
+                .monitoringAuthorizationConfirmed(true)
                 .serviceId("srv-1")
                 .preferredTimeId("pt-1")
-                .preferredDateFrom(LocalDate.now())
-                .preferredDateTo(LocalDate.now().plusDays(2))
+                .preferredDateFrom(LocalDate.now().plusDays(7))
+                .preferredDateTo(LocalDate.now().plusDays(9))
                 .longitude(106.7005)
                 .latitude(10.7765)
                 .coverageArea(sampleCoverageAreaMap())
@@ -318,10 +383,34 @@ class OrderServiceTest {
     }
 
     @Test
+    void createOrder_RejectsFlightScheduledWithLessThanSevenDaysNotice() {
+        OrderCreateRequest request = deliveryRequest()
+                .preferredDateFrom(LocalDate.now().plusDays(6))
+                .preferredDateTo(LocalDate.now().plusDays(8))
+                .build();
+
+        assertThrows(ApiException.class, () -> orderService.createOrder(request));
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
     void createOrder_RejectsUnsupportedRetentionPeriod() {
         OrderCreateRequest request = deliveryRequest().dataRetentionDays(45).build();
         assertThrows(ApiException.class, () -> orderService.createOrder(request));
         verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    void createOrder_FlightPurposeDefaultsToSurveyAndMonitoring() {
+        OrderCreateResponse response = orderService.createOrder(deliveryRequest().build());
+        assertEquals(com.ondemandmonitoring.order.enums.OrderFlightPurpose.SURVEY_MONITORING, response.getFlightPurpose());
+    }
+
+    @Test
+    void createOrder_KeepsTheFlightPurposeTheCustomerChose() {
+        OrderCreateResponse response = orderService.createOrder(deliveryRequest()
+                .flightPurpose(com.ondemandmonitoring.order.enums.OrderFlightPurpose.AGRICULTURE).build());
+        assertEquals(com.ondemandmonitoring.order.enums.OrderFlightPurpose.AGRICULTURE, response.getFlightPurpose());
     }
 
     @Test

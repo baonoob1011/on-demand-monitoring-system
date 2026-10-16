@@ -4,6 +4,9 @@ import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.finance.enums.QuoteStatus;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.user.domain.User;
+import com.ondemandmonitoring.pricing.enums.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -38,6 +41,30 @@ public class Quote extends BaseEntity {
     private BigDecimal adjustmentAmount;
     @Column(name = "total_amount", nullable = false, precision = 19, scale = 0)
     private BigDecimal totalAmount;
+    @Column(name = "pricing_policy_id", length = 36)
+    private String pricingPolicyId;
+    @Column(name = "pricing_policy_version")
+    private int pricingPolicyVersion;
+    @Column(name = "system_calculated_amount", precision = 19, scale = 0)
+    private BigDecimal systemCalculatedAmount;
+    @Column(name = "manager_adjustment_amount", precision = 19, scale = 0)
+    private BigDecimal managerAdjustmentAmount;
+    @Enumerated(EnumType.STRING) @Column(name = "adjustment_type", length = 30)
+    private PricingAdjustmentType adjustmentType;
+    @Column(name = "adjustment_reason", length = 2000)
+    private String adjustmentReason;
+    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "adjustment_requested_by")
+    private User adjustmentRequestedBy;
+    @Column(name = "adjustment_requested_at") private Instant adjustmentRequestedAt;
+    @Enumerated(EnumType.STRING) @Column(name = "pricing_approval_status", length = 40)
+    private PricingApprovalStatus pricingApprovalStatus = PricingApprovalStatus.NOT_REQUIRED;
+    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "pricing_approved_by")
+    private User pricingApprovedBy;
+    @Column(name = "pricing_approved_at") private Instant pricingApprovedAt;
+    @Column(name = "pricing_approval_note", length = 2000) private String pricingApprovalNote;
+    @Column(name = "pricing_revision") private long pricingRevision;
+    @JdbcTypeCode(SqlTypes.JSON) @Column(name = "pricing_risk_flags", columnDefinition = "jsonb")
+    private List<PricingRiskFlag> pricingRiskFlags = new ArrayList<>();
     @Column(name = "manager_note", length = 2000)
     private String managerNote;
 

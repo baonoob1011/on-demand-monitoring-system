@@ -24,6 +24,7 @@ public class ServiceResponse {
     String description;
     BigDecimal basePrice;
     String imageUrl;
+    String fallbackImageUrl;
     Boolean isActive;
     Instant createdAt;
     Instant updatedAt;

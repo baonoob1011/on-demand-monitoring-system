@@ -5,6 +5,7 @@ import com.ondemandmonitoring.checklist.domain.ChecklistDefinition;
 import com.ondemandmonitoring.order.enums.ChecklistReviewStatus;
 import com.ondemandmonitoring.order.enums.OrderChecklistSourceType;
 import com.ondemandmonitoring.order.enums.RequiredEvidenceType;
+import com.ondemandmonitoring.pricing.enums.ChecklistDifficulty;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -52,6 +53,11 @@ public class OrderChecklistItem extends BaseEntity {
 
     @Column(name = "manager_note", length = 1000)
     private String managerNote;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "difficulty_snapshot", nullable = false, length = 20, updatable = false,
+            columnDefinition = "varchar(20) default 'BASIC'")
+    private ChecklistDifficulty difficultySnapshot = ChecklistDifficulty.BASIC;
 
     @Column(name = "evidence_policy_version", nullable = false, updatable = false)
     private int evidencePolicyVersion;
