@@ -44,4 +44,8 @@ public class OrderChecklistItemResponse {
     private java.math.BigDecimal managerQuotedPrice;
     private java.math.BigDecimal systemCalculatedPrice;
     private String managerPriceAdjustmentReason;
+    private java.math.BigDecimal managerApprovedAmount;
+    private java.math.BigDecimal finalAmount;
+    private java.math.BigDecimal priceDifferenceAmount;
+    private java.math.BigDecimal priceDifferencePercent;
 }

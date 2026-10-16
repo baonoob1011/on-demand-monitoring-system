@@ -4,6 +4,7 @@ import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.finance.domain.Quote;
 import com.ondemandmonitoring.order.domain.OrderChecklistItem;
 import com.ondemandmonitoring.user.domain.User;
+import com.ondemandmonitoring.pricing.enums.ChecklistPricingAuditAction;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -18,6 +19,8 @@ import lombok.Setter;
 @Getter
 @Setter
 public class ChecklistPricingAudit extends BaseEntity {
+    @Column(name = "order_id", nullable = false, length = 36, updatable = false)
+    private String orderId;
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "quote_id", nullable = false, updatable = false)
     private Quote quote;
@@ -28,8 +31,12 @@ public class ChecklistPricingAudit extends BaseEntity {
     private BigDecimal systemAmount;
     @Column(name = "approved_amount", nullable = false, precision = 19, scale = 0, updatable = false)
     private BigDecimal approvedAmount;
+    @Column(name = "final_amount", nullable = false, precision = 19, scale = 0, updatable = false)
+    private BigDecimal finalAmount;
     @Column(name = "difference_amount", nullable = false, precision = 19, scale = 0, updatable = false)
     private BigDecimal differenceAmount;
+    @Column(name = "difference_percent", precision = 12, scale = 6, updatable = false)
+    private BigDecimal differencePercent;
     @Column(name = "adjustment_reason", length = 1000, updatable = false)
     private String adjustmentReason;
     @Column(name = "pricing_policy_id", length = 36, updatable = false)
@@ -41,4 +48,7 @@ public class ChecklistPricingAudit extends BaseEntity {
     private User reviewedBy;
     @Column(name = "reviewed_at", nullable = false, updatable = false)
     private Instant reviewedAt;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "action", nullable = false, length = 40, updatable = false)
+    private ChecklistPricingAuditAction action;
 }

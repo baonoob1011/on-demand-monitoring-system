@@ -324,8 +324,7 @@ public class QuoteService implements IQuoteService {
         Map<String, BigDecimal> submitted = quotes == null ? Map.of() : quotes;
         List<String> missing = new ArrayList<>();
         for (OrderChecklistItem item : items) {
-            if (item.getSourceType() == OrderChecklistSourceType.SERVICE_TEMPLATE
-                    || item.getReviewStatus() != ChecklistReviewStatus.ADDITIONAL) continue;
+            if (!requiresManagerPrice(item)) continue;
             BigDecimal system = systemPrices.getOrDefault(item.getId(), ZERO);
             if (item.getSystemCalculatedPrice() == null) item.setSystemCalculatedPrice(system);
             BigDecimal quoted = submitted.get(item.getId());
@@ -339,6 +338,11 @@ public class QuoteService implements IQuoteService {
             if (approved.compareTo(system) != 0 && (adjustmentReason == null || adjustmentReason.length() < 10))
                 throw new ApiException(ErrorCode.PRICING_ADJUSTMENT_REASON_REQUIRED);
             item.setManagerQuotedPrice(approved);
+            item.setManagerApprovedAmount(approved);
+            item.setFinalAmount(approved);
+            BigDecimal difference = approved.subtract(system);
+            item.setPriceDifferenceAmount(difference);
+            item.setPriceDifferencePercent(differencePercent(difference, system));
             item.setManagerPriceAdjustmentReason(approved.compareTo(system) == 0 ? null : adjustmentReason);
         }
         if (!missing.isEmpty()) throw new ApiException(ErrorCode.CUSTOM_WORK_PRICING_INCOMPLETE,
@@ -358,25 +362,43 @@ public class QuoteService implements IQuoteService {
         User reviewer = currentUser.getCurrentUser();
         Instant reviewedAt = Instant.now();
         List<ChecklistPricingAudit> audits = items.stream()
-                .filter(item -> item.getSourceType() != OrderChecklistSourceType.SERVICE_TEMPLATE)
-                .filter(item -> item.getReviewStatus() == ChecklistReviewStatus.ADDITIONAL)
+                .filter(this::requiresManagerPrice)
                 .map(item -> {
                     ChecklistPricingAudit audit = new ChecklistPricingAudit();
                     BigDecimal system = Optional.ofNullable(item.getSystemCalculatedPrice()).orElse(ZERO);
                     BigDecimal approved = Optional.ofNullable(item.getManagerQuotedPrice()).orElse(system);
                     audit.setQuote(quote);
+                    audit.setOrderId(quote.getOrder().getId());
                     audit.setOrderChecklistItem(item);
                     audit.setSystemAmount(system);
                     audit.setApprovedAmount(approved);
+                    audit.setFinalAmount(approved);
                     audit.setDifferenceAmount(approved.subtract(system));
+                    audit.setDifferencePercent(differencePercent(approved.subtract(system), system));
                     audit.setAdjustmentReason(item.getManagerPriceAdjustmentReason());
                     audit.setPricingPolicyId(quote.getPricingPolicyId());
                     audit.setPricingPolicyVersion(quote.getPricingPolicyVersion());
                     audit.setReviewedBy(reviewer);
                     audit.setReviewedAt(reviewedAt);
+                    audit.setAction(approved.compareTo(system) == 0
+                            ? ChecklistPricingAuditAction.SYSTEM_PRICE_APPROVED
+                            : ChecklistPricingAuditAction.PRICE_ADJUSTED_AND_APPROVED);
                     return audit;
                 }).toList();
         pricingAudits.saveAll(audits);
+    }
+
+    private boolean requiresManagerPrice(OrderChecklistItem item) {
+        return item.getSourceType() != OrderChecklistSourceType.SERVICE_TEMPLATE
+                && item.getReviewStatus() != ChecklistReviewStatus.REJECTED
+                && item.getReviewStatus() != ChecklistReviewStatus.DUPLICATE
+                && (item.isManagerQuoteRequired()
+                    || item.getReviewStatus() == ChecklistReviewStatus.ADDITIONAL);
+    }
+
+    private BigDecimal differencePercent(BigDecimal difference, BigDecimal system) {
+        if (system == null || system.signum() == 0) return null;
+        return difference.multiply(new BigDecimal("100")).divide(system, 6, RoundingMode.HALF_UP);
     }
 
     /** Backward-compatible repair for snapshots created before package checklists became auto-included. */

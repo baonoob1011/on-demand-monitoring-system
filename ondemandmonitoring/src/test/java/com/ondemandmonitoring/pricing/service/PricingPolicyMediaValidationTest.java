@@ -111,6 +111,78 @@ class PricingPolicyMediaValidationTest {
                 .isInstanceOf(ApiException.class).hasMessageContaining("immutable");
     }
 
+    @Test void draftRulesCanBeUpdatedAndRemainOnThePersistedAggregate() {
+        PricingPolicy draft = new PricingPolicy();
+        draft.setId("draft-1"); draft.setStatus(PricingPolicyStatus.DRAFT); draft.setPolicyVersion(2);
+        when(repository.findById("draft-1")).thenReturn(Optional.of(draft));
+
+        var updated = service.updateDraft("draft-1", request(dimensionTier("AREA_UPDATED", "0", null)));
+
+        assertThat(updated.rules()).singleElement().satisfies(rule -> {
+            assertThat(rule.ruleKey()).isEqualTo("AREA_UPDATED");
+            assertThat(rule.fixedAmount()).isEqualByComparingTo("1000");
+            assertThat(rule.roundingMode()).isEqualTo(PricingRounding.CEILING);
+        });
+        assertThat(draft.getRules()).hasSize(1);
+    }
+
+    @Test void activePolicyIsDeepClonedIntoTheNextDraftVersion() {
+        PricingPolicy active = new PricingPolicy();
+        active.setId("active-1"); active.setName("Active pricing"); active.setPolicyVersion(4);
+        active.setStatus(PricingPolicyStatus.ACTIVE); active.setCurrency("VND");
+        active.setManagerMaxDiscountPercent(new BigDecimal("25"));
+        active.setManagerMaxMarkupPercent(new BigDecimal("30"));
+        active.setHighRiskDiscountPercent(new BigDecimal("10"));
+        active.setMinimumPriceRatio(new BigDecimal("0.75"));
+        active.setMinimumPrice(new BigDecimal("100000"));
+        when(repository.findById("active-1")).thenReturn(Optional.of(active));
+        when(repository.findAllByOrderByPolicyVersionDesc()).thenReturn(List.of(active));
+        when(repository.save(any(PricingPolicy.class))).thenAnswer(i -> i.getArgument(0));
+
+        var cloned = service.cloneAsDraft("active-1");
+
+        assertThat(cloned.status()).isEqualTo(PricingPolicyStatus.DRAFT);
+        assertThat(cloned.version()).isEqualTo(5);
+        assertThat(cloned.managerMaxMarkupPercent()).isEqualByComparingTo("30");
+        assertThat(active.getStatus()).isEqualTo(PricingPolicyStatus.ACTIVE);
+    }
+
+    @Test void onlyAnActivePolicyCanBeCloned() {
+        PricingPolicy draft = new PricingPolicy();
+        draft.setId("draft-1"); draft.setStatus(PricingPolicyStatus.DRAFT);
+        when(repository.findById("draft-1")).thenReturn(Optional.of(draft));
+
+        assertThatThrownBy(() -> service.cloneAsDraft("draft-1"))
+                .isInstanceOf(ApiException.class).hasMessageContaining("active");
+    }
+
+    @Test void dimensionBlockRulesSupportRoundingAndRejectOverlappingTiers() {
+        var first = dimensionTier("A1", "0", "10");
+        var second = dimensionTier("A2", "10", null);
+        when(repository.findAllByOrderByPolicyVersionDesc()).thenReturn(List.of());
+        when(repository.save(any(PricingPolicy.class))).thenAnswer(i -> i.getArgument(0));
+        assertThat(service.createDraft(request(first, second)).rules()).hasSize(2);
+
+        assertInvalid(request(first, dimensionTier("A2", "5", null)), "overlap");
+    }
+
+    @Test void invalidOrdinaryRuleValuesAreRejected() {
+        var noBlockSize = new PricingRuleRequest(PricingCategory.AREA, PricingCalculationType.PER_BLOCK,
+                "AREA", "area", BigDecimal.ZERO, null, BigDecimal.TEN, null, null, null, null,
+                0, true, null, null, null, PricingRounding.CEILING);
+        assertInvalid(request(noBlockSize), "block size");
+        var negativePercent = new PricingRuleRequest(PricingCategory.DISCOUNT,
+                PricingCalculationType.PERCENT_OF_BASE, "DISCOUNT", "discount", null, null, null,
+                null, new BigDecimal("-1"), null, null, 0, true, null, null, null, null);
+        assertInvalid(request(negativePercent), "non-negative percentage");
+    }
+
+    PricingRuleRequest dimensionTier(String key, String from, String to) {
+        return new PricingRuleRequest(PricingCategory.AREA, PricingCalculationType.PER_BLOCK, key, key,
+                new BigDecimal(from), to == null ? null : new BigDecimal(to), new BigDecimal("1000"),
+                null, null, BigDecimal.ONE, null, 0, true, null, null, null, PricingRounding.CEILING);
+    }
+
     void assertInvalid(PricingPolicyRequest request, String fragment) {
         when(repository.findAllByOrderByPolicyVersionDesc()).thenReturn(new ArrayList<>());
         assertThatThrownBy(() -> service.createDraft(request)).isInstanceOf(ApiException.class)

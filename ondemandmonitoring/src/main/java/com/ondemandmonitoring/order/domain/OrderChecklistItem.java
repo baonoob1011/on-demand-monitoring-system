@@ -123,4 +123,16 @@ public class OrderChecklistItem extends BaseEntity {
 
     @Column(name = "manager_price_adjustment_reason", length = 1000)
     private String managerPriceAdjustmentReason;
+
+    @Column(name = "manager_approved_amount", precision = 19, scale = 0)
+    private BigDecimal managerApprovedAmount;
+
+    @Column(name = "final_amount", precision = 19, scale = 0)
+    private BigDecimal finalAmount;
+
+    @Column(name = "price_difference_amount", precision = 19, scale = 0)
+    private BigDecimal priceDifferenceAmount;
+
+    @Column(name = "price_difference_percent", precision = 12, scale = 6)
+    private BigDecimal priceDifferencePercent;
 }
