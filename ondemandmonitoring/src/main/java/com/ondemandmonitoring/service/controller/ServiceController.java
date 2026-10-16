@@ -49,10 +49,6 @@ public class ServiceController {
     ServiceRequirementSuggestionRepository suggestionRepository;
     ServicePriceResolver priceResolver;
 
-    @NonFinal
-    @Value("${odm.pricing.addons.ai-image-analysis:500000}")
-    BigDecimal aiImageAnalysisPrice;
-
     @Operation(summary = "Create service", description = "Creates a new monitoring service")
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
@@ -119,7 +115,8 @@ public class ServiceController {
             additionalRequirements.add(ServicePricingEstimateResponse.AdditionalRequirementPrice.builder()
                     .type("AI_IMAGE_ANALYSIS")
                     .description("Phân tích hình ảnh và đánh dấu dấu hiệu bất thường")
-                    .additionalPrice(aiImageAnalysisPrice)
+                    .additionalPrice(priceResolver.aiImageAnalysisPrice().orElseThrow(() -> new ApiException(
+                            ErrorCode.PRICING_RULE_NOT_FOUND, "AI image analysis is not priced in the active pricing policy")))
                     .build());
         }
 

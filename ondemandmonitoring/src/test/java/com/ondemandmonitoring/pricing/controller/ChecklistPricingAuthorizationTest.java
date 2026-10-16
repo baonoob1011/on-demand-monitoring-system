@@ -52,8 +52,8 @@ class ChecklistPricingAuthorizationTest {
     @BeforeEach void setup() {
         reset(preview, resolver);
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
-        var response = new ServicePricePreviewResponse("s1", "Inspection", "VND", "p1", 3, false, "LEGACY_BASE_PRICE", new BigDecimal("1000000"),
-                List.of(), BigDecimal.ZERO, new BigDecimal("1000000"), true, List.of());
+        var response = new ServicePricePreviewResponse("s1", "Inspection", "VND", "p1", 3, false, "CHECKLISTS", BigDecimal.ZERO,
+                List.of(), new BigDecimal("1000000"), new BigDecimal("1000000"), true, List.of());
         when(preview.defaultPrice("s1")).thenReturn(response);
         when(preview.adminPreview(any())).thenReturn(response);
         when(preview.customerQuote(any())).thenReturn(response);
@@ -80,7 +80,7 @@ class ChecklistPricingAuthorizationTest {
     @Test void adminGetsTheBreakdownContract() throws Exception {
         role(RoleCode.ADMIN);
         mvc.perform(get("/api/admin/pricing/services/s1/default-price").with(jwt().authorities(() -> "ROLE_ADMIN")))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.packageFee").value(1000000))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.packageFee").value(0))
                 .andExpect(jsonPath("$.data.total").value(1000000)).andExpect(jsonPath("$.data.checklists").isArray())
                 .andExpect(jsonPath("$.data.complete").value(true)).andExpect(jsonPath("$.data.policyVersion").value(3));
     }

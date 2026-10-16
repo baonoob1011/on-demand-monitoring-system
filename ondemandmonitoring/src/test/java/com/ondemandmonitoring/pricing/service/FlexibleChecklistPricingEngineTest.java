@@ -165,4 +165,32 @@ class FlexibleChecklistPricingEngineTest {
         policy(1, media("STANDARD", MediaPricingComponent.INCLUDED_IMAGE, "50000"));
         assertThatThrownBy(() -> engine.calculate(order("1000000"), List.of(snapshot("0", 10, 0, 11, 0)))).isInstanceOf(ApiException.class);
     }
+
+    @Test void newOrderHasNoPackageLineBecauseTheChecklistsAreTheWholePrice() {
+        policy(4);
+        Order o = order("1000000");
+        o.setServiceBasePriceSnapshot(null);
+        var result = engine.calculate(o, List.of(snapshot("200000", 0, 0, 0, 0)));
+        assertThat(result.systemCalculatedAmount()).isEqualByComparingTo("200000");
+        assertThat(result.items()).extracting(i -> i.category()).doesNotContain(PricingCategory.PACKAGE);
+    }
+
+    private Order withAiAnalysis(Order o) {
+        o.setServiceBasePriceSnapshot(null);
+        o.setDeliverables(new java.util.ArrayList<>(List.of(com.ondemandmonitoring.order.domain.OrderDeliverable.builder()
+                .requirement(java.util.Map.of("aiAnalysisRequested", true)).build())));
+        return o;
+    }
+
+    @Test void aiImageAnalysisIsPricedByThePolicyRuleWhenRequested() {
+        policy(4, rule(PricingCategory.OUTPUT, "AI_IMAGE_ANALYSIS", PricingCalculationType.FIXED, "500000"));
+        var result = engine.calculate(withAiAnalysis(order("0")), List.of(snapshot("200000", 0, 0, 0, 0)));
+        assertThat(result.systemCalculatedAmount()).isEqualByComparingTo("700000");
+    }
+
+    @Test void aiImageAnalysisWithoutAPolicyPriceFailsInsteadOfBeingFree() {
+        policy(4);
+        assertThatThrownBy(() -> engine.calculate(withAiAnalysis(order("0")), List.of(snapshot("200000", 0, 0, 0, 0))))
+                .isInstanceOf(ApiException.class);
+    }
 }

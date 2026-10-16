@@ -19,29 +19,26 @@ import org.springframework.transaction.annotation.Transactional;
  * <pre>
  * default price = sum(price of each active default checklist at its included allowance)
  * </pre>
- * {@code services.base_price} is the pre-checklist price of the catalog. It is used ONLY as a fallback while the
- * default checklists carry no price at all (a service not migrated to checklist pricing yet), so the two sources can
- * never be added together. The chosen source is always reported.
+ * The checklists are the only price source: {@code services.base_price} is no longer a fallback. A service whose default
+ * checklists add up to nothing is reported as {@link #UNPRICED} so the UI can say so and orders can be refused.
  */
 @Component
 @RequiredArgsConstructor
 public class ServicePriceResolver {
     public static final String CHECKLISTS = "CHECKLISTS";
-    public static final String LEGACY_BASE_PRICE = "LEGACY_BASE_PRICE";
+    public static final String UNPRICED = "UNPRICED";
 
     private final ServiceChecklistRepository assignments;
     private final PricingPolicyRepository policies;
     private final ChecklistPriceCalculator calculator;
 
-    /** @param packageFee 0 for {@link #CHECKLISTS}; the legacy catalog price for {@link #LEGACY_BASE_PRICE}. */
+    /** @param packageFee always 0: the checklists are the whole price. Kept for response compatibility. */
     public record Resolved(String source, BigDecimal packageFee, BigDecimal checklistSubtotal, BigDecimal total) {}
 
     /** Decision from the amount the default checklists add up to. */
-    public static Resolved of(BigDecimal checklistSubtotal, BigDecimal legacyBasePrice) {
+    public static Resolved of(BigDecimal checklistSubtotal) {
         BigDecimal subtotal = whole(checklistSubtotal);
-        if (subtotal.signum() > 0) return new Resolved(CHECKLISTS, BigDecimal.ZERO, subtotal, subtotal);
-        BigDecimal legacy = whole(legacyBasePrice);
-        return new Resolved(LEGACY_BASE_PRICE, legacy, subtotal, legacy.add(subtotal));
+        return new Resolved(subtotal.signum() > 0 ? CHECKLISTS : UNPRICED, BigDecimal.ZERO, subtotal, subtotal);
     }
 
     /** Strict: pricing problems of a default checklist surface as {@link ApiException}. */
@@ -58,7 +55,7 @@ public class ServicePriceResolver {
                     null, null, row.getPricingProfileOverride() != null ? row.getPricingProfileOverride() : d.getPricingProfile(),
                     d.getStandardVideoDurationSeconds(), true)).subtotal());
         }
-        return of(subtotal, service.getBasePrice());
+        return of(subtotal);
     }
 
     /**
@@ -67,13 +64,13 @@ public class ServicePriceResolver {
      */
     @Transactional(readOnly = true)
     public Resolved forDisplay(Service service) {
-        if (service.getDefaultPrice() != null) return of(service.getDefaultPrice(), service.getBasePrice());
+        if (service.getDefaultPrice() != null) return of(service.getDefaultPrice());
         return resolveOrLegacy(service);
     }
 
     /**
      * Lenient variant for read-only listings and estimates: without an active policy, or when a default checklist cannot
-     * be priced, the legacy catalog price is shown instead of failing the whole screen.
+     * be priced, the service is shown as unpriced instead of failing the whole screen.
      */
     @Transactional(readOnly = true)
     public Resolved resolveOrLegacy(Service service) {
@@ -81,9 +78,18 @@ public class ServicePriceResolver {
             PricingPolicy policy = policies.findEffectiveActive(Instant.now()).stream().findFirst().orElse(null);
             if (policy != null) return resolve(service, policy);
         } catch (ApiException ignored) {
-            // fall through to the legacy price
+            // fall through to unpriced
         }
-        return of(BigDecimal.ZERO, service.getBasePrice());
+        return of(BigDecimal.ZERO);
+    }
+
+    /** Price of the AI image analysis add-on in the active policy; empty when the policy does not price it. */
+    @Transactional(readOnly = true)
+    public java.util.Optional<BigDecimal> aiImageAnalysisPrice() {
+        return policies.findEffectiveActive(Instant.now()).stream().findFirst().flatMap(policy -> policy.getRules().stream()
+                .filter(r -> r.isEnabled() && r.getCategory() == com.ondemandmonitoring.pricing.enums.PricingCategory.OUTPUT
+                        && com.ondemandmonitoring.pricing.config.PricingPolicyInitializer.AI_IMAGE_ANALYSIS_KEY.equalsIgnoreCase(r.getRuleKey()))
+                .findFirst()).map(r -> whole(r.getFixedAmount()));
     }
 
     private static BigDecimal whole(BigDecimal v) { return v == null ? BigDecimal.ZERO : v.setScale(0, RoundingMode.HALF_UP); }

@@ -244,7 +244,7 @@ class OrderChecklistPricingSnapshotTest {
                 "a customer-added checklist must have a configured system baseline");
     }
 
-    @Test void checklistPricedServiceDropsTheLegacyCatalogPriceFromTheOrder() {
+    @Test void newOrderNeverCarriesAPackageSnapshotBecauseTheChecklistsAreThePrice() {
         order.setServiceBasePriceSnapshot(new BigDecimal("3200000"));
         var row = new com.ondemandmonitoring.checklist.domain.ServiceChecklist();
         row.setService(order.getService()); row.setChecklist(roof);
@@ -252,14 +252,14 @@ class OrderChecklistPricingSnapshotTest {
 
         useCase.capture(order, List.of(template("c1", null, null)));
 
-        assertEquals(0, BigDecimal.ZERO.compareTo(order.getServiceBasePriceSnapshot()));
+        assertNull(order.getServiceBasePriceSnapshot());
     }
 
-    @Test void serviceWithoutPricedDefaultChecklistsKeepsItsLegacyCatalogPrice() {
-        order.setServiceBasePriceSnapshot(new BigDecimal("3200000"));
-        // nothing is stubbed for the default checklist rows -> no priced checklist
-        useCase.capture(order, List.of(template("c1", null, null)));
-        assertEquals(0, new BigDecimal("3200000").compareTo(order.getServiceBasePriceSnapshot()));
+    @Test void selectionThatPricesToNothingOnAnUnpricedServiceIsRefused() {
+        roof.setBasePrice(BigDecimal.ZERO); roof.setIncludedImageCount(0); roof.setIncludedVideoCount(0);
+        // nothing is stubbed for the default checklist rows -> the service has no priced default checklist
+        var e = assertThrows(ApiException.class, () -> useCase.capture(order, List.of(template("c1", null, null))));
+        assertEquals(ErrorCode.SERVICE_NOT_PRICED, e.getErrorCode());
     }
 
     @Test void theRequestHasNoFieldThatCouldCarryAClientSidePrice() {

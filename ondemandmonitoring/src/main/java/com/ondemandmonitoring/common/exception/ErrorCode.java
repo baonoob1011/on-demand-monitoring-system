@@ -142,6 +142,7 @@ public enum ErrorCode {
     MEDIA_ACCESS_DENIED("Media access is denied", HttpStatus.FORBIDDEN),
     INVALID_DELIVERY_STATE("Invalid delivery state transition", HttpStatus.CONFLICT),
     SERVICE_INACTIVE("Service is inactive", HttpStatus.CONFLICT),
+    SERVICE_NOT_PRICED("Service has no priced checklists yet; ask an administrator to price its default checklists", HttpStatus.CONFLICT),
     CHECKLIST_NOT_FOUND("Checklist not found", HttpStatus.NOT_FOUND),
     CHECKLIST_ALREADY_EXISTS("Checklist content already exists", HttpStatus.CONFLICT),
     CHECKLIST_INACTIVE("Checklist is inactive", HttpStatus.CONFLICT),

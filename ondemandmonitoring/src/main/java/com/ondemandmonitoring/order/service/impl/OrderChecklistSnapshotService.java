@@ -108,6 +108,7 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
         List<OrderChecklistItem> entities = new ArrayList<>();
         Set<String> contents = new HashSet<>();
         PricingPolicy policy = pricingPolicies.findEffectiveActive(Instant.now()).stream().findFirst().orElse(null);
+        BigDecimal pricedTotal = BigDecimal.ZERO;
         for (var item : items) {
             ChecklistDefinition source = locked.get(item.getSourceChecklistId());
             if (source != null && !Boolean.TRUE.equals(source.getIsActive())) {
@@ -190,16 +191,20 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
             if (!contents.add(entity.getContent().toLowerCase(Locale.ROOT))) throw invalid("Duplicate checklist content");
             entity.setDisplayOrder(entities.size());
             // Fail fast: a selection the policy cannot price must not become a snapshot.
-            if (policy != null) priceCalculator.price(policy, new ChecklistPriceCalculator.Input(
+            if (policy != null) pricedTotal = pricedTotal.add(priceCalculator.price(policy, new ChecklistPriceCalculator.Input(
                     source == null ? null : source.getId(), entity.getContent(), entity.getDifficultySnapshot(), custom,
                     entity.getBasePriceSnapshot(), custom ? null : includedImages, custom ? null : includedVideos,
-                    requestedImages, requestedVideos, profile, entity.getStandardVideoDurationSnapshot(), false));
+                    requestedImages, requestedVideos, profile, entity.getStandardVideoDurationSnapshot(), false)).subtotal());
             entities.add(entity);
         }
         if (entities.size() > 100) throw invalid("At most 100 checklist items are allowed");
-        // Checklist-priced service: the checklists are the whole default price, so the legacy catalog price must not be added.
-        if (policy != null && ServicePriceResolver.CHECKLISTS.equals(servicePrices.resolveOrLegacy(service).source()))
-            order.setServiceBasePriceSnapshot(BigDecimal.ZERO);
+        // The checklists are the whole price: an order whose checklists add up to nothing on a service that has no priced
+        // default checklists would be free, so it is refused. (Customer-added checklists awaiting a Manager quote are priced by the Manager.)
+        if (policy != null && pricedTotal.signum() == 0
+                && ServicePriceResolver.UNPRICED.equals(servicePrices.resolveOrLegacy(service).source())
+                && entities.stream().noneMatch(e -> e.getSourceType() == OrderChecklistSourceType.CUSTOMER_CUSTOM))
+            throw new ApiException(ErrorCode.SERVICE_NOT_PRICED);
+        order.setServiceBasePriceSnapshot(null);
         List<OrderChecklistItem> saved = snapshots.saveAllAndFlush(entities);
         order.setChecklistSnapshotAt(Instant.now());
         return saved.stream().map(mapper::toResponse).toList();

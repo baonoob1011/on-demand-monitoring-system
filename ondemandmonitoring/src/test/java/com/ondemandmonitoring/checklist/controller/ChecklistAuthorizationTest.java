@@ -59,7 +59,8 @@ class ChecklistAuthorizationTest {
 
     @BeforeEach void setup() {
         reset(catalog, assignments, services, resolver, priceResolver);
-        when(priceResolver.forDisplay(any())).thenReturn(ServicePriceResolver.of(BigDecimal.ZERO, new BigDecimal("3200000")));
+        when(priceResolver.forDisplay(any())).thenReturn(ServicePriceResolver.of(new BigDecimal("3200000")));
+        when(priceResolver.aiImageAnalysisPrice()).thenReturn(java.util.Optional.of(new BigDecimal("500000")));
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         var response = new ChecklistResponse(); response.setId("c1"); response.setContent("Check exits");
         when(catalog.create(any())).thenReturn(response);
@@ -138,7 +139,7 @@ class ChecklistAuthorizationTest {
 
     @Test void pricingEstimateKeepsItsShapeButFollowsTheChecklistDefaultPrice() throws Exception {
         role(RoleCode.CUSTOMER);
-        when(priceResolver.forDisplay(any())).thenReturn(ServicePriceResolver.of(new BigDecimal("470000"), new BigDecimal("3200000")));
+        when(priceResolver.forDisplay(any())).thenReturn(ServicePriceResolver.of(new BigDecimal("470000")));
         mvc.perform(get("/api/services/pricing-estimate").param("serviceId", "s1").param("aiImageAnalysis", "true")
                         .with(jwt().authorities(() -> "ROLE_CUSTOMER")))
                 .andExpect(status().isOk())
@@ -154,7 +155,7 @@ class ChecklistAuthorizationTest {
         var response = ServiceResponse.builder().id("s1").name("Service").basePrice(new BigDecimal("3200000")).build();
         when(services.getById("s1")).thenReturn(response);
         when(services.getAllActive()).thenReturn(List.of(ServiceResponse.builder().id("s1").name("Service").basePrice(new BigDecimal("3200000")).build()));
-        when(priceResolver.forDisplay(any())).thenReturn(ServicePriceResolver.of(new BigDecimal("470000"), new BigDecimal("3200000")));
+        when(priceResolver.forDisplay(any())).thenReturn(ServicePriceResolver.of(new BigDecimal("470000")));
         mvc.perform(get("/api/services/s1").with(jwt().authorities(() -> "ROLE_CUSTOMER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.basePrice").value(3200000))

@@ -247,7 +247,6 @@ public class OrderService implements IOrderService {
         Order order = orderMapper.toEntity(request);
         order.setCustomer(customer);
         order.setService(service);
-        order.setServiceBasePriceSnapshot(service.getBasePrice());
         order.setPreferredTime(preferredTime);
         order.setPoint(location);
         order.setTargetArea(targetArea);

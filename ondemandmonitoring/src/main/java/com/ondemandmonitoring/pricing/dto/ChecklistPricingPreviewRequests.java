@@ -12,7 +12,7 @@ public final class ChecklistPricingPreviewRequests {
      * Admin what-if: unsaved candidate configuration. Null item fields inherit the stored checklist definition.
      * A null {@code items} list previews the service's stored default checklist set.
      */
-    public record Admin(@NotBlank String serviceId, @DecimalMin("0") BigDecimal packageFee, String policyId,
+    public record Admin(@NotBlank String serviceId, String policyId,
             @Size(max = 100) List<@Valid AdminItem> items) {}
 
     public record AdminItem(@NotBlank String checklistId, @DecimalMin("0") BigDecimal basePrice,
@@ -23,9 +23,12 @@ public final class ChecklistPricingPreviewRequests {
     /** Customer selection. No prices are accepted from the client, only choices and quantities. */
     public record Customer(@NotBlank String serviceId, @Size(max = 100) List<@Valid CustomerItem> items,
             @DecimalMin("0") BigDecimal areaHa, @DecimalMin("0") BigDecimal lengthKm,
-            @DecimalMin("0") BigDecimal altitudeM) {
+            @DecimalMin("0") BigDecimal altitudeM, Boolean aiAnalysisRequested) {
         public Customer(String serviceId, List<CustomerItem> items) {
-            this(serviceId, items, null, null, null);
+            this(serviceId, items, null, null, null, null);
+        }
+        public Customer(String serviceId, List<CustomerItem> items, BigDecimal areaHa, BigDecimal lengthKm, BigDecimal altitudeM) {
+            this(serviceId, items, areaHa, lengthKm, altitudeM, null);
         }
     }
 

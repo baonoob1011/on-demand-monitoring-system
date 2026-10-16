@@ -18,6 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Component
 @RequiredArgsConstructor
 public class PricingPolicyInitializer implements ApplicationRunner {
+    public static final String AI_IMAGE_ANALYSIS_KEY = "AI_IMAGE_ANALYSIS";
+
     private final PricingPolicyRepository policies;
 
     @Override @Transactional
@@ -57,6 +59,7 @@ public class PricingPolicyInitializer implements ApplicationRunner {
         rules.add(fixed(PricingCategory.OUTPUT, "THERMAL", "Dữ liệu ảnh nhiệt", "500000", i++));
         rules.add(fixed(PricingCategory.OUTPUT, "MULTISPECTRAL", "Dữ liệu đa phổ", "700000", i++));
         rules.add(fixed(PricingCategory.OUTPUT, "AI_REPORT", "Báo cáo phân tích bằng AI", "400000", i++));
+        rules.add(fixed(PricingCategory.OUTPUT, AI_IMAGE_ANALYSIS_KEY, "Phân tích hình ảnh và đánh dấu dấu hiệu bất thường", "500000", i++));
         rules.add(fixed(PricingCategory.RESOURCE, "CUSTOM_BASE", "Chi phí cơ sở cho công việc tùy chỉnh", "2000000", i++));
         rules.add(fixed(PricingCategory.RESOURCE, "PILOT", "Nhân sự điều khiển", "800000", i++));
         rules.add(fixed(PricingCategory.RESOURCE, "DRONE", "Thiết bị bay", "600000", i++));
@@ -91,7 +94,9 @@ public class PricingPolicyInitializer implements ApplicationRunner {
                         && required.profile().equalsIgnoreCase(rule.getPricingProfile())
                         && rule.getMediaComponent() == required.component()))
                 .toList();
-        if (missing.isEmpty()) return;
+        boolean aiMissing = active.getRules().stream().noneMatch(rule -> rule.isEnabled()
+                && rule.getCategory() == PricingCategory.OUTPUT && AI_IMAGE_ANALYSIS_KEY.equalsIgnoreCase(rule.getRuleKey()));
+        if (missing.isEmpty() && !aiMissing) return;
 
         Instant now = Instant.now();
         PricingPolicy repaired = copyPolicy(active);
@@ -133,6 +138,11 @@ public class PricingPolicyInitializer implements ApplicationRunner {
         if (missing.contains(new RequiredMedia(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.EXTRA_VIDEO))) {
             rules.add(media(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.EXTRA_VIDEO,
                     "0", null, "1", "100000", priority));
+        }
+        if (aiMissing) {
+            rules.removeIf(rule -> rule.getCategory() == PricingCategory.OUTPUT && AI_IMAGE_ANALYSIS_KEY.equalsIgnoreCase(rule.getRuleKey()));
+            rules.add(fixed(PricingCategory.OUTPUT, AI_IMAGE_ANALYSIS_KEY, "Phân tích hình ảnh và đánh dấu dấu hiệu bất thường",
+                    "500000", priority++));
         }
         repaired.replaceRules(rules);
 

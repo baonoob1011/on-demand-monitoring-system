@@ -99,17 +99,17 @@ class ChecklistPricingPreviewServiceTest {
         BigDecimal withoutWall = preview.defaultPrice("s1").total();
         assertThat(both.subtract(withoutWall)).isEqualByComparingTo("100000");
         inspectionRows.clear();
-        assertThat(preview.defaultPrice("s1").total()).isEqualByComparingTo("1000000");
+        assertThat(preview.defaultPrice("s1").total()).isZero();
     }
 
     @Test void adminWhatIfDoesNotNeedSavedConfigurationAndLeavesTheCatalogUntouched() {
-        var result = preview.adminPreview(new Admin("s1", new BigDecimal("900000"), null, List.of(
+        var result = preview.adminPreview(new Admin("s1", null, List.of(
                 new AdminItem("c1", new BigDecimal("300000"), 20, 0, null, 35, null),
                 new AdminItem("c2", null, null, null, null, null, null))));
 
         // roof: 300,000 + 50,000 included images + 15 extra images (10 @50,000 + 5 -> 1 block @40,000) = 440,000; wall 100,000
         assertThat(result.checklists().get(0).subtotal()).isEqualByComparingTo("440000");
-        // typed package fee 900,000 is ignored: roof 440,000 + wall 100,000 are the whole default price
+        // there is no package fee any more: roof 440,000 + wall 100,000 are the whole default price
         assertThat(result.priceSource()).isEqualTo("CHECKLISTS");
         assertThat(result.total()).isEqualByComparingTo("540000");
         assertThat(roof.getBasePrice()).isEqualByComparingTo("200000");
@@ -132,7 +132,7 @@ class ChecklistPricingPreviewServiceTest {
         PricingPolicy noTiers = new PricingPolicy(); noTiers.setId("notiers"); noTiers.setPolicyVersion(9); noTiers.setCurrency("VND"); noTiers.setStatus(PricingPolicyStatus.DRAFT);
         noTiers.replaceRules(List.of(included(MediaPricingComponent.INCLUDED_IMAGE, "50000")));
         when(policies.findById("notiers")).thenReturn(Optional.of(noTiers));
-        var result = preview.adminPreview(new Admin("s1", null, "notiers", List.of(new AdminItem("c1", null, null, null, null, 20, null))));
+        var result = preview.adminPreview(new Admin("s1", "notiers", List.of(new AdminItem("c1", null, null, null, null, 20, null))));
         assertThat(result.complete()).isFalse();
         assertThat(result.warnings()).hasSize(1);
     }
@@ -141,7 +141,7 @@ class ChecklistPricingPreviewServiceTest {
         PricingPolicy draft = new PricingPolicy(); draft.setId("draft"); draft.setPolicyVersion(6); draft.setCurrency("VND"); draft.setStatus(PricingPolicyStatus.DRAFT);
         draft.replaceRules(List.of(included(MediaPricingComponent.INCLUDED_IMAGE, "70000")));
         when(policies.findById("draft")).thenReturn(Optional.of(draft));
-        var result = preview.adminPreview(new Admin("s1", null, "draft", null));
+        var result = preview.adminPreview(new Admin("s1", "draft", null));
         assertThat(result.draftPolicy()).isTrue();
         assertThat(result.checklists().getFirst().subtotal()).isEqualByComparingTo("270000");
     }
@@ -156,19 +156,35 @@ class ChecklistPricingPreviewServiceTest {
         assertThat(result.total()).isEqualByComparingTo("740000");
     }
 
-    @Test void withoutAnyPricedChecklistTheLegacyCatalogPriceIsTheExplicitFallback() {
+    @Test void aiImageAnalysisIsAnAddOnPricedByThePolicyAndIncludedInTheQuoteTotal() {
+        var policy = policies.findEffectiveActive(Instant.now()).getFirst();
+        var rules = new ArrayList<>(policy.getRules());
+        var ai = included(MediaPricingComponent.INCLUDED_IMAGE, "500000");
+        ai.setCategory(PricingCategory.OUTPUT); ai.setMediaComponent(null); ai.setPricingProfile(null); ai.setRuleKey("AI_IMAGE_ANALYSIS");
+        rules.add(ai); policy.replaceRules(rules);
+
+        var without = preview.customerQuote(new Customer("s1", null));
+        var with = preview.customerQuote(new Customer("s1", null, null, null, null, true));
+
+        assertThat(without.addOns()).isEmpty();
+        assertThat(with.addOns()).extracting(a -> a.key()).containsExactly("AI_IMAGE_ANALYSIS");
+        assertThat(with.total().subtract(without.total())).isEqualByComparingTo("500000");
+        assertThat(with.checklistSubtotal()).isEqualByComparingTo(without.checklistSubtotal());
+    }
+
+    @Test void withoutAnyPricedChecklistTheServiceIsUnpricedAndTheCatalogPriceIsNotAFallback() {
         roof.setBasePrice(BigDecimal.ZERO); roof.setIncludedImageCount(0); roof.setIncludedVideoCount(0);
         wall.setBasePrice(BigDecimal.ZERO);
         var stored = preview.defaultPrice("s1");
-        assertThat(stored.priceSource()).isEqualTo("LEGACY_BASE_PRICE");
-        assertThat(stored.packageFee()).isEqualByComparingTo("1000000");
+        assertThat(stored.priceSource()).isEqualTo("UNPRICED");
+        assertThat(stored.packageFee()).isZero();
         assertThat(stored.checklistSubtotal()).isZero();
-        assertThat(stored.total()).isEqualByComparingTo("1000000");
-        var whatIf = preview.adminPreview(new Admin("s1", new BigDecimal("900000"), null, null));
-        assertThat(whatIf.total()).isEqualByComparingTo("900000");
+        assertThat(stored.total()).isZero();
+        var whatIf = preview.adminPreview(new Admin("s1", null, null));
+        assertThat(whatIf.total()).isZero();
         var customer = preview.customerQuote(new Customer("s1", null));
-        assertThat(customer.priceSource()).isEqualTo("LEGACY_BASE_PRICE");
-        assertThat(customer.total()).isEqualByComparingTo("1000000");
+        assertThat(customer.priceSource()).isEqualTo("UNPRICED");
+        assertThat(customer.total()).isZero();
     }
 
     @Test void adminPreviewCustomerQuoteAndServiceEstimateReportTheSameDefaultTotal() {
@@ -181,12 +197,12 @@ class ChecklistPricingPreviewServiceTest {
         assertThat(estimate.source()).isEqualTo(admin.priceSource());
     }
 
-    @Test void estimateFallsBackToLegacyWithoutAnActivePolicyInsteadOfFailing() {
+    @Test void estimateIsUnpricedWithoutAnActivePolicyInsteadOfFailing() {
         when(policies.findEffectiveActive(any(Instant.class))).thenReturn(List.of());
         var resolver = new ServicePriceResolver(assignments, policies, new ChecklistPriceCalculator());
         var estimate = resolver.resolveOrLegacy(inspection);
-        assertThat(estimate.source()).isEqualTo("LEGACY_BASE_PRICE");
-        assertThat(estimate.total()).isEqualByComparingTo("1000000");
+        assertThat(estimate.source()).isEqualTo("UNPRICED");
+        assertThat(estimate.total()).isZero();
     }
 
     @Test void customerCanAddAKnownCatalogChecklistButNotAnUnknownOrDuplicateId() {

@@ -7,7 +7,9 @@ import com.ondemandmonitoring.checklist.repository.ServiceChecklistRepository;
 import com.ondemandmonitoring.checklist.util.ChecklistContentNormalizer;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
+import com.ondemandmonitoring.pricing.config.PricingPolicyInitializer;
 import com.ondemandmonitoring.pricing.domain.PricingPolicy;
+import com.ondemandmonitoring.pricing.enums.PricingCategory;
 import com.ondemandmonitoring.pricing.dto.ChecklistPriceBreakdown;
 import com.ondemandmonitoring.pricing.dto.ChecklistPricingPreviewRequests;
 import com.ondemandmonitoring.pricing.dto.ServicePricePreviewResponse;
@@ -39,7 +41,7 @@ public class ChecklistPricingPreviewService {
 
     /** Default price of a service: package fee + the stored default checklists at their included allowance. */
     public ServicePricePreviewResponse defaultPrice(String serviceId) {
-        return adminPreview(new ChecklistPricingPreviewRequests.Admin(serviceId, null, null, null));
+        return adminPreview(new ChecklistPricingPreviewRequests.Admin(serviceId, null, null));
     }
 
     public ServicePricePreviewResponse adminPreview(ChecklistPricingPreviewRequests.Admin request) {
@@ -68,9 +70,8 @@ public class ChecklistPricingPreviewService {
             }
         }
         BigDecimal subtotal = priced.stream().map(ChecklistPriceBreakdown::subtotal).reduce(BigDecimal.ZERO, BigDecimal::add);
-        // The typed value only matters while the legacy catalog price is the source; it never adds to priced checklists.
-        var resolved = ServicePriceResolver.of(subtotal, request.packageFee() != null ? request.packageFee() : service.getBasePrice());
-        return response(service, policy, resolved, priced, warnings);
+        var resolved = ServicePriceResolver.of(subtotal);
+        return response(service, policy, resolved, priced, warnings, List.of());
     }
 
     /** Customer estimate. Only checklist choices and quantities are read from the client; every price comes from storage. */
@@ -117,7 +118,16 @@ public class ChecklistPricingPreviewService {
                     .ifPresent(row -> { throw new ApiException(ErrorCode.ORDER_CHECKLIST_REQUIRED_MISSING); });
         }
         // The price source follows the service's default checklist set, exactly as at order creation.
-        return response(service, policy, resolver.resolve(service, policy), priced, List.of());
+        List<ServicePricePreviewResponse.AddOn> addOns = new ArrayList<>();
+        if (Boolean.TRUE.equals(request.aiAnalysisRequested())) {
+            var rule = policy.getRules().stream().filter(r -> r.isEnabled() && r.getCategory() == PricingCategory.OUTPUT
+                    && PricingPolicyInitializer.AI_IMAGE_ANALYSIS_KEY.equalsIgnoreCase(r.getRuleKey())).findFirst()
+                    .orElseThrow(() -> new ApiException(ErrorCode.PRICING_RULE_NOT_FOUND,
+                            "AI image analysis is not priced in the active pricing policy"));
+            addOns.add(new ServicePricePreviewResponse.AddOn(rule.getRuleKey(), rule.getDescription(),
+                    whole(rule.getFixedAmount())));
+        }
+        return response(service, policy, resolver.resolve(service, policy), priced, List.of(), addOns);
     }
 
     private ChecklistPriceCalculator.Input input(ChecklistDefinition d, ServiceChecklist row, BigDecimal base, Integer images,
@@ -156,12 +166,14 @@ public class ChecklistPricingPreviewService {
     }
 
     private ServicePricePreviewResponse response(Service service, PricingPolicy policy, ServicePriceResolver.Resolved resolved,
-            List<ChecklistPriceBreakdown> priced, List<String> warnings) {
+            List<ChecklistPriceBreakdown> priced, List<String> warnings, List<ServicePricePreviewResponse.AddOn> addOns) {
         BigDecimal subtotal = priced.stream().map(ChecklistPriceBreakdown::subtotal).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal addOnTotal = addOns.stream().map(ServicePricePreviewResponse.AddOn::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal fee = resolved.packageFee();
         return new ServicePricePreviewResponse(service.getId(), service.getName(), policy.getCurrency(), policy.getId(), policy.getPolicyVersion(),
-                policy.getStatus() == PricingPolicyStatus.DRAFT, resolved.source(), fee, List.copyOf(priced), subtotal, fee.add(subtotal),
-                warnings.isEmpty(), List.copyOf(warnings));
+                policy.getStatus() == PricingPolicyStatus.DRAFT, resolved.source(), fee, List.copyOf(priced), subtotal, fee.add(subtotal).add(addOnTotal),
+                warnings.isEmpty(), List.copyOf(warnings), priced.stream().anyMatch(ChecklistPriceBreakdown::quotePending),
+                List.copyOf(addOns));
     }
 
     private PricingPolicy activePolicy() {

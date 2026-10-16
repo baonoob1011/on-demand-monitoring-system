@@ -6,6 +6,7 @@ import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.domain.OrderChecklistItem;
 import com.ondemandmonitoring.order.domain.OrderDeliverable;
 import com.ondemandmonitoring.order.enums.*;
+import com.ondemandmonitoring.pricing.config.PricingPolicyInitializer;
 import com.ondemandmonitoring.pricing.domain.*;
 import com.ondemandmonitoring.pricing.dto.*;
 import com.ondemandmonitoring.pricing.enums.*;
@@ -33,9 +34,13 @@ public class RuleBasedPricingEngine implements PricingEngine {
         PricingPolicy policy = policies.findEffectiveActive(Instant.now()).stream().findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.PRICING_POLICY_NOT_FOUND));
         List<PricingBreakdownItem> result = new ArrayList<>();
-        BigDecimal base = money(order.getServiceBasePriceSnapshot() != null
+        // Checklists are the price. Only orders created before that (a stored package snapshot, or version-0 checklist
+        // snapshots) keep a PACKAGE line; a new order has none.
+        boolean legacyOrder = order.getServiceBasePriceSnapshot() != null
+                || checklistItems.stream().anyMatch(i -> i.getPricingSnapshotVersion() == 0);
+        BigDecimal base = money(!legacyOrder ? BigDecimal.ZERO : order.getServiceBasePriceSnapshot() != null
                 ? order.getServiceBasePriceSnapshot() : order.getService().getBasePrice());
-        add(result, PricingCategory.PACKAGE, order.getService().getName(), BigDecimal.ONE, base, base);
+        if (legacyOrder) add(result, PricingCategory.PACKAGE, order.getService().getName(), BigDecimal.ONE, base, base);
 
         // Legacy snapshots (version 0) keep the single order-level custom charge; new snapshots price each custom item.
         boolean legacyCustom = checklistItems.stream().anyMatch(i -> i.getSourceType() == OrderChecklistSourceType.CUSTOMER_CUSTOM
@@ -98,6 +103,12 @@ public class RuleBasedPricingEngine implements PricingEngine {
         BigDecimal highResolutionVideo = requestedQualityQuantity(order, "VIDEO", "4K");
         if (highResolutionVideo.signum() > 0)
             keyed(policy, PricingCategory.OUTPUT, "4K_VIDEO").ifPresent(rule -> applyRule(result, rule, highResolutionVideo, base));
+        if (aiAnalysisRequested(order)) {
+            PricingRule ai = keyed(policy, PricingCategory.OUTPUT, PricingPolicyInitializer.AI_IMAGE_ANALYSIS_KEY)
+                    .orElseThrow(() -> new ApiException(ErrorCode.PRICING_RULE_NOT_FOUND,
+                            "AI image analysis is requested but the active pricing policy has no price for it"));
+            addFixed(result, ai, BigDecimal.ONE);
+        }
         keyed(policy, PricingCategory.CONDITION, Optional.ofNullable(order.getPriority()).orElse(OrderPriority.NORMAL).name())
                 .ifPresent(rule -> applyRule(result, rule, BigDecimal.ONE, subtotal(result)));
         if (Boolean.TRUE.equals(order.getPermitRequired()) || order.getPermitStatus() == OrderPermitStatus.NEED_SUPPORT)
@@ -154,6 +165,12 @@ public class RuleBasedPricingEngine implements PricingEngine {
     }
     private List<PricingRule> enabled(PricingPolicy policy, PricingCategory category) {
         return policy.getRules().stream().filter(PricingRule::isEnabled).filter(r -> r.getCategory() == category).toList();
+    }
+    /** The customer's AI image analysis choice travels in the deliverable requirement JSON; the price is a policy rule. */
+    static boolean aiAnalysisRequested(Order order) {
+        if (order.getDeliverables() == null) return false;
+        return order.getDeliverables().stream().map(d -> d.getRequirement())
+                .anyMatch(r -> r != null && Boolean.TRUE.equals(r.get("aiAnalysisRequested")));
     }
     private BigDecimal polygonHectares(Order order) {
         if (order.getTargetArea() == null) return BigDecimal.ZERO;

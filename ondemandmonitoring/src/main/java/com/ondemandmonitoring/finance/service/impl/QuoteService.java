@@ -71,11 +71,11 @@ public class QuoteService implements IQuoteService {
         List<QuoteResponse> history = quotes.findHistory(orderId).stream().map(FinanceMapper::quote).toList();
         QuoteResponse current = history.stream().filter(q -> q.status() == QuoteStatus.DRAFT
                 || q.status() == QuoteStatus.APPROVED || q.status() == QuoteStatus.PENDING_REVIEW).findFirst().orElse(null);
-        BigDecimal basePackagePrice = order.getServiceBasePriceSnapshot() != null
-                ? order.getServiceBasePriceSnapshot()
-                : order.getService().getBasePrice();
         PricingBreakdown calculation = pricingEngine.calculate(order,
                 checklistItems.findAllByOrderIdOrderByDisplayOrderAscIdAsc(orderId));
+        // New orders have no package line: the checklists are the whole price.
+        BigDecimal basePackagePrice = calculation.items().stream().filter(i -> i.category() == PricingCategory.PACKAGE)
+                .map(PricingBreakdownItem::amount).findFirst().orElse(ZERO);
         return new PricingReviewResponse(orderId, order.getOrderCode(), order.getCustomer().getFullName(),
                 order.getService().getName(), basePackagePrice, items, current, history, calculation,
                 currentUser.getCurrentUserId());
