@@ -185,15 +185,24 @@ public class RuleBasedPricingEngine implements PricingEngine {
         String mediaType = format == OrderResultFormat.PHOTO ? "IMAGE" : format == OrderResultFormat.VIDEO ? "VIDEO" : null;
         if (mediaType == null) return BigDecimal.ONE;
         BigDecimal quantity = order.getDeliverables().stream().map(OrderDeliverable::getRequirement)
-                .filter(Objects::nonNull).filter(map -> mediaType.equalsIgnoreCase(String.valueOf(map.get("mediaType"))))
-                .map(map -> number(map.get("quantity"))).reduce(BigDecimal.ZERO, BigDecimal::add);
+                .filter(Objects::nonNull).map(map -> mediaQuantity(map, mediaType))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         return quantity.signum() > 0 ? quantity : BigDecimal.ONE;
     }
     private BigDecimal requestedQualityQuantity(Order order, String mediaType, String resolution) {
         return order.getDeliverables().stream().map(OrderDeliverable::getRequirement).filter(Objects::nonNull)
-                .filter(map -> mediaType.equalsIgnoreCase(String.valueOf(map.get("mediaType"))))
                 .filter(map -> resolution.equalsIgnoreCase(String.valueOf(map.get("resolution"))))
-                .map(map -> number(map.get("quantity"))).reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(map -> mediaQuantity(map, mediaType))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+    /**
+     * Quantity of one media type in a deliverable requirement. The per-type fields (derived from the checklists) win;
+     * older requirements only carry a single mediaType + quantity.
+     */
+    private BigDecimal mediaQuantity(Map<String, Object> requirement, String mediaType) {
+        String key = "IMAGE".equals(mediaType) ? "imageQuantity" : "videoQuantity";
+        if (requirement.containsKey("imageQuantity") || requirement.containsKey("videoQuantity")) return number(requirement.get(key));
+        return mediaType.equalsIgnoreCase(String.valueOf(requirement.get("mediaType"))) ? number(requirement.get("quantity")) : BigDecimal.ZERO;
     }
     private BigDecimal number(Object value) {
         if (value instanceof Number number) return new BigDecimal(number.toString());

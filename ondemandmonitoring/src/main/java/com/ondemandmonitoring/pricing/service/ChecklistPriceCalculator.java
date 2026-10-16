@@ -207,9 +207,10 @@ public class ChecklistPriceCalculator {
             BigDecimal blocks = quantity.divide(size, 0, mode);
             BigDecimal unit = money(tier.getFixedAmount());
             BigDecimal amount = unit.multiply(blocks);
-            String range = lo.stripTrailingZeros().toPlainString() + "–" + (hi == null ? "∞" : hi.stripTrailingZeros().toPlainString());
+            String range = hi == null ? "từ " + lo.stripTrailingZeros().toPlainString() + " trở lên"
+                    : "từ " + lo.stripTrailingZeros().toPlainString() + " đến " + hi.stripTrailingZeros().toPlainString();
             out.add(new Line(component.name(), PricingCategory.MEDIA,
-                    "Phần " + noun + ": " + quantity.stripTrailingZeros().toPlainString() + " (khoảng " + range + ", khối "
+                    "Phần " + noun + ": " + quantity.stripTrailingZeros().toPlainString() + " (" + range + ", mỗi khối "
                             + size.stripTrailingZeros().toPlainString() + ")",
                     blocks, unit, amount, lo.intValue(), hi == null ? null : hi.intValue(), size.intValue(), rounding.name()));
         }

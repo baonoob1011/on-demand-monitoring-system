@@ -127,6 +127,6 @@ ALTER TABLE public.order_checklist_items ADD CONSTRAINT ck_snapshot_evidence_pol
         AND required_evidence_type IN ('IMAGE','VIDEO','IMAGE_OR_VIDEO') AND minimum_image_count = 0 AND minimum_video_count = 0)
     OR (evidence_policy_version = 3 AND minimum_image_count >= 0 AND minimum_video_count >= 0
         AND minimum_evidence_count = minimum_image_count + minimum_video_count AND minimum_evidence_count BETWEEN 1 AND 1000
-        AND required_evidence_type IN ('IMAGE','VIDEO','IMAGE_OR_VIDEO')));
+        AND required_evidence_type IN ('IMAGE','VIDEO','IMAGE_AND_VIDEO','IMAGE_OR_VIDEO')));
 
 COMMIT;

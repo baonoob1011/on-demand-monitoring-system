@@ -46,6 +46,15 @@ public class ServiceDefaultPriceService {
         return missing.size();
     }
 
+    /** Services whose stored default price is missing or still zero (computed before their checklists were priced). */
+    @Transactional
+    public int refreshUnpriced() {
+        List<Service> stale = services.findAll().stream()
+                .filter(s -> s.getDefaultPrice() == null || s.getDefaultPrice().signum() == 0).toList();
+        stale.forEach(this::store);
+        return stale.size();
+    }
+
     private void store(Service service) {
         BigDecimal checklistSum = resolver.resolveOrLegacy(service).checklistSubtotal();
         service.setDefaultPrice(checklistSum);

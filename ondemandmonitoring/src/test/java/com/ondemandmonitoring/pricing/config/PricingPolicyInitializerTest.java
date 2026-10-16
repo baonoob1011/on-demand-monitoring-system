@@ -42,9 +42,9 @@ class PricingPolicyInitializerTest {
         assertThat(legacy.getEffectiveTo()).isNotNull();
         assertThat(repaired.getStatus()).isEqualTo(PricingPolicyStatus.ACTIVE);
         assertThat(repaired.getPolicyVersion()).isEqualTo(4);
-        assertThat(repaired.getRules()).filteredOn(rule -> rule.getPricingProfile().equals("DEFAULT")
+        assertThat(repaired.getRules()).filteredOn(rule -> "DEFAULT".equals(rule.getPricingProfile())
                 && rule.getMediaComponent() == MediaPricingComponent.EXTRA_IMAGE).hasSize(2);
-        assertThat(repaired.getRules()).filteredOn(rule -> rule.getPricingProfile().equals("DEFAULT")
+        assertThat(repaired.getRules()).filteredOn(rule -> "DEFAULT".equals(rule.getPricingProfile())
                 && rule.getMediaComponent() == MediaPricingComponent.EXTRA_VIDEO).hasSize(1);
     }
 
@@ -57,7 +57,8 @@ class PricingPolicyInitializerTest {
                 media("GENERIC_CUSTOMER_ADDED", MediaPricingComponent.CHECKLIST_BASE),
                 media("GENERIC_CUSTOMER_ADDED", MediaPricingComponent.INCLUDED_IMAGE),
                 media("GENERIC_CUSTOMER_ADDED", MediaPricingComponent.EXTRA_IMAGE),
-                media("GENERIC_CUSTOMER_ADDED", MediaPricingComponent.EXTRA_VIDEO)));
+                media("GENERIC_CUSTOMER_ADDED", MediaPricingComponent.EXTRA_VIDEO),
+                aiAnalysis()));
         when(policies.findFirstByStatusOrderByPolicyVersionDesc(PricingPolicyStatus.ACTIVE))
                 .thenReturn(Optional.of(active));
 
@@ -80,6 +81,14 @@ class PricingPolicyInitializerTest {
         policy.setMinimumPriceRatio(new BigDecimal("0.75"));
         policy.setMinimumPrice(new BigDecimal("100000"));
         return policy;
+    }
+
+    private PricingRule aiAnalysis() {
+        PricingRule rule = new PricingRule();
+        rule.setCategory(PricingCategory.OUTPUT);
+        rule.setRuleKey("AI_IMAGE_ANALYSIS");
+        rule.setEnabled(true);
+        return rule;
     }
 
     private PricingRule media(String profile, MediaPricingComponent component) {

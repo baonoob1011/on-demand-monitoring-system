@@ -164,8 +164,10 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
                 entity.setMinimumVideoCount(requestedVideos);
                 entity.setMinimumEvidenceCount(requestedImages + requestedVideos);
                 entity.setRequiredEvidenceType(requestedVideos == 0 ? RequiredEvidenceType.IMAGE
-                        : requestedImages == 0 ? RequiredEvidenceType.VIDEO : RequiredEvidenceType.IMAGE_OR_VIDEO);
+                        : requestedImages == 0 ? RequiredEvidenceType.VIDEO : RequiredEvidenceType.IMAGE_AND_VIDEO);
             } else {
+                if (item.getRequiredEvidenceType() == RequiredEvidenceType.IMAGE_AND_VIDEO)
+                    throw invalid("Image-and-video evidence needs requestedImageCount and requestedVideoCount, not a single minimum");
                 int minimumEvidenceCount = item.getMinimumEvidenceCount() == null ? 1 : item.getMinimumEvidenceCount();
                 RequiredEvidenceType requiredEvidenceType = item.getRequiredEvidenceType() == null
                         ? RequiredEvidenceType.IMAGE_OR_VIDEO : item.getRequiredEvidenceType();

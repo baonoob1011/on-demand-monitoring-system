@@ -193,4 +193,16 @@ class FlexibleChecklistPricingEngineTest {
         assertThatThrownBy(() -> engine.calculate(withAiAnalysis(order("0")), List.of(snapshot("200000", 0, 0, 0, 0))))
                 .isInstanceOf(ApiException.class);
     }
+
+    @Test void highResolutionOutputUsesThePerTypeQuantitiesFromTheChecklists() {
+        policy(4, rule(PricingCategory.OUTPUT, "4K_VIDEO", PricingCalculationType.PER_UNIT, "150000"));
+        Order o = order("0");
+        o.setServiceBasePriceSnapshot(null);
+        o.setDeliverables(new java.util.ArrayList<>(List.of(com.ondemandmonitoring.order.domain.OrderDeliverable.builder()
+                .requirement(java.util.Map.of("mediaType", "IMAGE", "quantity", 10, "resolution", "4K",
+                        "imageQuantity", 10, "videoQuantity", 2)).build())));
+        var result = engine.calculate(o, List.of(snapshot("0", 0, 0, 0, 0)));
+        // 2 requested videos at 4K, although the single mediaType/quantity pair says IMAGE
+        assertThat(result.systemCalculatedAmount()).isEqualByComparingTo("300000");
+    }
 }

@@ -144,7 +144,7 @@ class OrderChecklistPricingSnapshotTest {
         assertEquals(30, item.getMinimumImageCount());
         assertEquals(3, item.getMinimumVideoCount());
         assertEquals(33, item.getMinimumEvidenceCount());
-        assertEquals(RequiredEvidenceType.IMAGE_OR_VIDEO, item.getRequiredEvidenceType());
+        assertEquals(RequiredEvidenceType.IMAGE_AND_VIDEO, item.getRequiredEvidenceType());
     }
 
     @Test void catalogChecklistOutsideThePackageRequiresManagerReview() {
@@ -212,6 +212,21 @@ class OrderChecklistPricingSnapshotTest {
         var item = template("c1", 10, null);
         item.setMinimumEvidenceCount(2);
         assertEquals(ErrorCode.INVALID_REQUEST, assertThrows(ApiException.class, () -> useCase.capture(order, List.of(item))).getErrorCode());
+    }
+
+    @Test void imageAndVideoEvidenceCannotBeDeclaredWithASingleMinimum() {
+        var item = template("c1", null, null);
+        item.setMinimumEvidenceCount(2);
+        item.setRequiredEvidenceType(RequiredEvidenceType.IMAGE_AND_VIDEO);
+        assertEquals(ErrorCode.INVALID_REQUEST, assertThrows(ApiException.class, () -> useCase.capture(order, List.of(item))).getErrorCode());
+    }
+
+    @Test void requestingOnlyImagesStoresAnImageOnlyRequirement() {
+        useCase.capture(order, List.of(template("c1", 5, 0)));
+        var item = saved.getFirst();
+        assertEquals(RequiredEvidenceType.IMAGE, item.getRequiredEvidenceType());
+        assertEquals(5, item.getMinimumImageCount());
+        assertEquals(0, item.getMinimumVideoCount());
     }
 
     @Test void aChecklistRequestingNoMediaAtAllIsRefused() {

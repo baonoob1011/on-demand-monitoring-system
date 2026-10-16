@@ -69,7 +69,7 @@ public class OrderChecklistItem extends BaseEntity {
     @Column(name = "required_evidence_type", nullable = false, length = 30, updatable = false)
     private RequiredEvidenceType requiredEvidenceType = RequiredEvidenceType.IMAGE_OR_VIDEO;
 
-    /** Evidence policy V3 only: independent image and video thresholds (both must be met). */
+    /** Evidence policy V3 only: independent image and video thresholds (both must be met; type IMAGE_AND_VIDEO when both are > 0). */
     @Column(name = "minimum_image_count", nullable = false, updatable = false, columnDefinition = "integer default 0")
     private int minimumImageCount;
     @Column(name = "minimum_video_count", nullable = false, updatable = false, columnDefinition = "integer default 0")

@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Component
 @RequiredArgsConstructor
+@org.springframework.core.annotation.Order(100) // before the checklist pricing seed (150) and the default-price backfill (200)
 public class PricingPolicyInitializer implements ApplicationRunner {
     public static final String AI_IMAGE_ANALYSIS_KEY = "AI_IMAGE_ANALYSIS";
 
