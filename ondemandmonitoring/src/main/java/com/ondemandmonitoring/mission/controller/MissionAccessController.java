@@ -21,6 +21,7 @@ public class MissionAccessController {
     public ApiResponse<MissionPermissionsResponse> permissions(@PathVariable String id) {
         return ApiResponse.ok(new MissionPermissionsResponse(
                 authorization.canRespondToMission(id),
+                authorization.canStartMission(id),
                 authorization.canControlFlight(id),
                 authorization.canOperatePayload(id),
                 authorization.canInspectDevice(id),

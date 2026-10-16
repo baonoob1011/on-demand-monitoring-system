@@ -127,7 +127,7 @@ class MonitoringChecklistAuthorizationTest {
         operator.setReleaseReason("REPLACED"); assertFalse(policy.canExecuteMonitoringChecklist("m"));
     }
 
-    @Test void pendingReviewKeepsOperatorPrimaryAndPilotFallbackButDeniesInspector() {
+    @Test void pendingReviewKeepsReportingCrewPriorityAndLetsInspectorOwnFinalSubmission() {
         mission.setStatus(MissionStatus.PENDING_REVIEW);
         var pilot = crew(actor, MissionStaffRole.PILOT);
         var operator = crew(user("operator"), MissionStaffRole.OPERATOR);
@@ -138,7 +138,18 @@ class MonitoringChecklistAuthorizationTest {
         when(assignments.findByMissionId("m")).thenReturn(List.of(crew(actor, MissionStaffRole.OPERATOR)));
         assertTrue(policy.canExecuteMonitoringChecklist("m"));
         when(assignments.findByMissionId("m")).thenReturn(List.of(crew(actor, MissionStaffRole.INSPECTOR)));
-        assertFalse(policy.canExecuteMonitoringChecklist("m"));
-        assertFalse(policy.canSubmitMissionResult("m"));
+        assertTrue(policy.canExecuteMonitoringChecklist("m"));
+        assertTrue(policy.canSubmitMissionResult("m"));
+    }
+
+    @Test void releasedInspectorCanEditCompletedChecklistAndSubmitResult() {
+        mission.setStatus(MissionStatus.COMPLETED);
+        var inspector = crew(actor, MissionStaffRole.INSPECTOR);
+        inspector.setReleasedAt(Instant.now());
+        inspector.setReleaseReason("MISSION_COMPLETE");
+        when(assignments.findByMissionId("m")).thenReturn(List.of(inspector));
+
+        assertTrue(policy.canExecuteMonitoringChecklist("m"));
+        assertTrue(policy.canSubmitMissionResult("m"));
     }
 }

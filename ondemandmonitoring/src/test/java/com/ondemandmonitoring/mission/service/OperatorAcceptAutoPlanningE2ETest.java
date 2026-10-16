@@ -86,7 +86,7 @@ class OperatorAcceptAutoPlanningE2ETest {
         entityManager.flush();
         entityManager.clear();
 
-        assertThat(accepted.getStatus()).isEqualTo(MissionStatus.SCHEDULED);
+        assertThat(accepted.getStatus()).isEqualTo(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
         assertThat(accepted.getPlan()).isNotNull();
         assertThat(missionPlanRepository.findByMissionId(accepted.getId())).isPresent();
         assertThat(countPlans(accepted.getId())).isEqualTo(1L);

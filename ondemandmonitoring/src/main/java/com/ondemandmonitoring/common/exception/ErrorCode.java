@@ -106,6 +106,7 @@ public enum ErrorCode {
     QUOTE_PRICING_INVALID("Quote pricing is invalid", HttpStatus.BAD_REQUEST),
     INVOICE_NOT_FOUND("Invoice not found", HttpStatus.NOT_FOUND),
     INVOICE_NOT_PAYABLE("Invoice is not payable", HttpStatus.CONFLICT),
+    ORDER_LEGAL_REVIEW_NOT_READY("Đơn hàng chưa hoàn tất xác minh điều kiện khu vực bay", HttpStatus.CONFLICT),
     INVOICE_ALREADY_PAID("Invoice is already paid", HttpStatus.CONFLICT),
     DEPOSIT_ALREADY_SATISFIED("Required deposit has already been paid", HttpStatus.CONFLICT),
     ACTIVE_PAYMENT_EXISTS("An active payment already exists", HttpStatus.CONFLICT),

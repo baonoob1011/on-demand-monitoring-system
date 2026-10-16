@@ -7,17 +7,17 @@ import com.ondemandmonitoring.order.domain.OrderDeliverable;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.request.OrderDeliverableRequest;
 import com.ondemandmonitoring.order.dto.request.FlightAreaReviewRequest;
+import com.ondemandmonitoring.order.dto.request.LegalReviewResolutionRequest;
 import com.ondemandmonitoring.order.dto.OrderAuthorizationDocument;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
 import com.ondemandmonitoring.order.enums.OrderDeliveryMethod;
 import com.ondemandmonitoring.order.enums.OrderPermitStatus;
-import com.ondemandmonitoring.order.enums.OrderPriority;
 import com.ondemandmonitoring.order.enums.OrderRecurrenceType;
 import com.ondemandmonitoring.order.enums.OrderResultFormat;
 import com.ondemandmonitoring.order.enums.OrderWeatherFallback;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.enums.DocumentVerificationStatus;
-import com.ondemandmonitoring.order.enums.FlightAreaReviewStatus;
+import com.ondemandmonitoring.order.enums.LegalReviewStatus;
 import com.ondemandmonitoring.order.mapper.OrderMapper;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.IOrderService;
@@ -84,10 +84,10 @@ public class OrderService implements IOrderService {
         if (order.getOrderStatus() != OrderStatus.PENDING) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Only PENDING orders can be approved");
         }
-        if (order.getFlightAreaReviewStatus() != FlightAreaReviewStatus.PRELIMINARY_PASS
-                && order.getFlightAreaReviewStatus() != FlightAreaReviewStatus.RESTRICTED) {
+        if (order.getLegalReviewStatus() != LegalReviewStatus.NOT_REQUIRED
+                && order.getLegalReviewStatus() != LegalReviewStatus.APPROVED) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
-                    "Flight area must be reviewed before the order can be approved");
+                    "Order legal review is not ready for approval");
         }
 
         order.setOrderStatus(OrderStatus.APPROVED);
@@ -109,10 +109,16 @@ public class OrderService implements IOrderService {
         }
         String reason = trimToNull(request.reason());
         String note = trimToNull(request.note());
-        if (request.status() == FlightAreaReviewStatus.UNSUITABLE && reason == null) {
+        if (request.status() != LegalReviewStatus.NOT_REQUIRED
+                && request.status() != LegalReviewStatus.PENDING_PERMIT
+                && request.status() != LegalReviewStatus.REJECTED) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Initial legal review must be NOT_REQUIRED, PENDING_PERMIT, or REJECTED");
+        }
+        if (request.status() == LegalReviewStatus.REJECTED && reason == null) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "A reason is required for an unsuitable area");
         }
-        order.setFlightAreaReviewStatus(request.status());
+        order.setLegalReviewStatus(request.status());
         order.setFlightAreaReviewReason(reason);
         order.setFlightAreaReviewNote(note);
         if (request.requestedScopeFeasible() != null) {
@@ -120,7 +126,31 @@ public class OrderService implements IOrderService {
         }
         order.setFlightAreaReviewedBy(authenticatedUserResolver.getCurrentUser());
         order.setFlightAreaReviewedAt(Instant.now());
-        order.setRequiresFlightPermissionReview(request.status() == FlightAreaReviewStatus.RESTRICTED);
+        return toResponse(orderRepository.save(order));
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public OrderCreateResponse resolveLegalReview(String orderId, LegalReviewResolutionRequest request) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+        if (order.getOrderStatus() != OrderStatus.PENDING
+                || order.getLegalReviewStatus() != LegalReviewStatus.PENDING_PERMIT) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Only an order pending external permit verification can be resolved");
+        }
+        if (request.status() != LegalReviewStatus.APPROVED
+                && request.status() != LegalReviewStatus.REJECTED) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Resolution must be APPROVED or REJECTED");
+        }
+        order.setLegalReviewStatus(request.status());
+        order.setFlightAreaReviewNote(trimToNull(request.note()));
+        order.setFlightAreaReviewedBy(authenticatedUserResolver.getCurrentUser());
+        order.setFlightAreaReviewedAt(Instant.now());
+        if (request.status() == LegalReviewStatus.REJECTED) {
+            order.setFlightAreaReviewReason("Permit verification was rejected");
+        }
         return toResponse(orderRepository.save(order));
     }
 
@@ -270,9 +300,6 @@ public class OrderService implements IOrderService {
         }
         if (order.getWeatherFallback() == null) {
             order.setWeatherFallback(OrderWeatherFallback.CONTACT_CUSTOMER);
-        }
-        if (order.getPriority() == null) {
-            order.setPriority(OrderPriority.NORMAL);
         }
         if (order.getFlightPurpose() == null) {
             order.setFlightPurpose(com.ondemandmonitoring.order.enums.OrderFlightPurpose.DEFAULT);
@@ -430,7 +457,6 @@ public class OrderService implements IOrderService {
         if (request.address() != null) order.setAddress(request.address().strip());
         if (request.usagePurpose() != null) order.setUsagePurpose(request.usagePurpose());
         if (request.flightPurpose() != null) order.setFlightPurpose(request.flightPurpose());
-        if (request.priority() != null) order.setPriority(request.priority());
         if (request.altitudeM() != null) order.setAltitudeM(request.altitudeM());
         if (request.estimatedLengthM() != null) order.setEstimatedLengthM(request.estimatedLengthM());
         if (request.siteContactName() != null) order.setSiteContactName(request.siteContactName().strip());

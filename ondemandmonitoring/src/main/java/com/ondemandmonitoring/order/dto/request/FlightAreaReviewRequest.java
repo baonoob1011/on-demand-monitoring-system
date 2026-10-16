@@ -1,10 +1,10 @@
 package com.ondemandmonitoring.order.dto.request;
 
-import com.ondemandmonitoring.order.enums.FlightAreaReviewStatus;
+import com.ondemandmonitoring.order.enums.LegalReviewStatus;
 import jakarta.validation.constraints.NotNull;
 
 public record FlightAreaReviewRequest(
-        @NotNull FlightAreaReviewStatus status,
+        @NotNull LegalReviewStatus status,
         Boolean requestedScopeFeasible,
         String reason,
         String note) {

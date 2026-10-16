@@ -82,6 +82,37 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
     }
 
     @Override
+    public boolean canStartMission(String missionId) {
+        User user = currentUser.getCurrentUser();
+        if (!hasRole(user, RoleCode.STAFF)) return false;
+        return findRuntimeMissionById(missionId)
+                .filter(mission -> mission.getStatus() == MissionStatus.WAITING_CREW_CONFIRMATION
+                        || mission.getStatus() == MissionStatus.WAITING_OPERATOR_ACCEPTANCE)
+                .map(mission -> {
+                    List<MissionStaffAssignment> crew = assignments
+                            .findAllByMissionIdAndIsCurrentTrue(mission.getId()).stream()
+                            .filter(entry -> entry.getStaff() != null
+                                    && Boolean.TRUE.equals(entry.getStaff().getIsActive())
+                                    && entry.getReleasedAt() == null)
+                            .toList();
+                    Set<MissionStaffRole> acceptedRoles = crew.stream()
+                            .filter(entry -> entry.getResponseStatus() == StaffResponseStatus.ACCEPTED)
+                            .map(MissionStaffAssignment::getAssignedRole)
+                            .collect(java.util.stream.Collectors.toSet());
+                    boolean inspector = crew.stream().anyMatch(entry ->
+                            entry.getAssignedRole() == MissionStaffRole.INSPECTOR
+                                    && entry.getResponseStatus() == StaffResponseStatus.ACCEPTED
+                                    && user.getId().equals(entry.getStaff().getId()));
+                    return inspector
+                            && acceptedRoles.containsAll(Set.of(MissionStaffRole.PILOT,
+                                    MissionStaffRole.OPERATOR, MissionStaffRole.MAINTAINER,
+                                    MissionStaffRole.INSPECTOR))
+                            && crew.stream().allMatch(entry ->
+                                    entry.getResponseStatus() == StaffResponseStatus.ACCEPTED);
+                }).orElse(false);
+    }
+
+    @Override
     public boolean canControlFlight(String missionId) {
         return normalOperationAllowed(missionId) && canPerform(missionId, MissionStaffRole.PILOT);
     }
@@ -121,23 +152,30 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
         return findRuntimeMissionById(missionId).filter(mission -> Set.of(MissionStatus.IN_FLIGHT,
                 MissionStatus.IN_PROGRESS, MissionStatus.RETURNING, MissionStatus.POSTFLIGHT_CHECKING,
                 MissionStatus.PENDING_REVIEW, MissionStatus.COMPLETED).contains(mission.getStatus())).map(mission -> {
-                    boolean completed = mission.getStatus() == MissionStatus.COMPLETED;
-                    // Operational completion releases current assignments. Only the final accepted crew
-                    // released by successful completion can finish the business report afterwards.
-                    List<MissionStaffAssignment> usable = assignments.findByMissionId(mission.getId()).stream()
-                            .filter(entry -> entry.getStaff() != null && hasRole(entry.getStaff(), RoleCode.STAFF))
-                            .filter(entry -> entry.getResponseStatus() == StaffResponseStatus.ACCEPTED)
-                            .filter(entry -> completed
-                                    ? entry.getReleasedAt() != null
-                                        && "MISSION_COMPLETE".equals(entry.getReleaseReason())
-                                    : Boolean.TRUE.equals(entry.getIsCurrent()) && entry.getReleasedAt() == null)
-                            .toList();
-                    MissionStaffRole required = usable.stream().anyMatch(entry ->
-                            entry.getAssignedRole() == MissionStaffRole.OPERATOR)
-                            ? MissionStaffRole.OPERATOR : MissionStaffRole.PILOT;
-                    return usable.stream().anyMatch(entry -> entry.getAssignedRole() == required
-                            && user.getId().equals(entry.getStaff().getId()));
+                    boolean acceptanceStage = mission.getStatus() == MissionStatus.PENDING_REVIEW
+                            || mission.getStatus() == MissionStatus.COMPLETED;
+                    return (acceptanceStage && hasEligibleInspectorAssignment(mission, user))
+                            || canExecuteAsReportingCrew(mission, user);
                 }).orElse(false);
+    }
+
+    private boolean canExecuteAsReportingCrew(Mission mission, User user) {
+        if (!hasRole(user, RoleCode.STAFF)) return false;
+        boolean completed = mission.getStatus() == MissionStatus.COMPLETED;
+        // Operational completion releases current assignments. Only the final accepted crew
+        // released by successful completion can finish the business report afterwards.
+        List<MissionStaffAssignment> usable = assignments.findByMissionId(mission.getId()).stream()
+                .filter(entry -> entry.getStaff() != null && hasRole(entry.getStaff(), RoleCode.STAFF))
+                .filter(entry -> entry.getResponseStatus() == StaffResponseStatus.ACCEPTED)
+                .filter(entry -> completed
+                        ? entry.getReleasedAt() != null && "MISSION_COMPLETE".equals(entry.getReleaseReason())
+                        : Boolean.TRUE.equals(entry.getIsCurrent()) && entry.getReleasedAt() == null)
+                .toList();
+        MissionStaffRole required = usable.stream().anyMatch(entry ->
+                entry.getAssignedRole() == MissionStaffRole.OPERATOR)
+                ? MissionStaffRole.OPERATOR : MissionStaffRole.PILOT;
+        return usable.stream().anyMatch(entry -> entry.getAssignedRole() == required
+                && user.getId().equals(entry.getStaff().getId()));
     }
 
     @Override
@@ -175,13 +213,12 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
 
     @Override
     public boolean canSubmitMissionResult(String missionId) {
-        // Actor/status capability only; submission also validates readiness, completion and result locks.
-        // Reuse the monitoring actor policy, including Operator priority, Pilot fallback
-        // and successful final-crew release. Inspector media/acceptance is independent.
+        // The inspector owns the final acceptance package. Pilot/operator finish the flight
+        // and upload data; the inspector reviews everything and submits once to the manager.
         return findRuntimeMissionById(missionId)
                 .filter(mission -> mission.getStatus() == MissionStatus.PENDING_REVIEW
                         || mission.getStatus() == MissionStatus.COMPLETED)
-                .map(mission -> canExecuteMonitoringChecklist(mission.getId()))
+                .map(mission -> hasEligibleInspectorAssignment(mission, currentUser.getCurrentUser()))
                 .orElse(false);
     }
 

@@ -212,6 +212,14 @@ public class MissionController {
                 missionService.acceptCurrentStaffMission(id)));
     }
 
+    @PostMapping("/{id}/start-operation")
+    @PreAuthorize("@missionAuthorizationService.canStartMission(#id)")
+    public ResponseEntity<ApiResponse<MissionResponse>> startOperation(@PathVariable String id) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                "Mission workflow started; Operator may connect GCS",
+                missionService.startMissionWorkflow(id)));
+    }
+
     @PatchMapping("/{id}/accept-staff")
     @PreAuthorize("@missionAuthorizationService.canRespondToMission(#id,#staffId)")
     public ResponseEntity<ApiResponse<MissionResponse>> acceptByStaffId(

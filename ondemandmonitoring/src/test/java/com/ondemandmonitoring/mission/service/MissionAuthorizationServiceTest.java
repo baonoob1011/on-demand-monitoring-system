@@ -298,7 +298,7 @@ class MissionAuthorizationServiceTest {
         var entry = assign(MissionStaffRole.INSPECTOR, StaffResponseStatus.ACCEPTED);
         assertThat(policy.canUploadMissionMedia("mission-1")).isTrue();
         assertThat(policy.canCompleteMission("mission-1")).isTrue();
-        assertThat(policy.canSubmitMissionResult("mission-1")).isFalse();
+        assertThat(policy.canSubmitMissionResult("mission-1")).isTrue();
         assertThat(policy.canUploadMissionMedia("another-mission")).isFalse();
         entry.setIsCurrent(false);
         assertThat(policy.canUploadMissionMedia("mission-1")).isFalse();
@@ -310,7 +310,7 @@ class MissionAuthorizationServiceTest {
         entry.setReleaseReason("MISSION_COMPLETE");
         assertThat(policy.canUploadMissionMedia("mission-1")).isTrue();
         assertThat(policy.canCompleteMission("mission-1")).isFalse();
-        assertThat(policy.canSubmitMissionResult("mission-1")).isFalse();
+        assertThat(policy.canSubmitMissionResult("mission-1")).isTrue();
         entry.setIsCurrent(false);
         assertThat(policy.canUploadMissionMedia("mission-1")).isFalse();
         entry.setIsCurrent(true); staff.setIsActive(false);

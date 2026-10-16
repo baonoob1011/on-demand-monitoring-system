@@ -4,6 +4,7 @@ import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.request.OrderAdditionalInformationRequest;
 import com.ondemandmonitoring.order.dto.request.FlightAreaReviewRequest;
+import com.ondemandmonitoring.order.dto.request.LegalReviewResolutionRequest;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.service.IOrderService;
@@ -96,6 +97,16 @@ public class OrderController {
             @Valid @RequestBody FlightAreaReviewRequest request) {
         return ResponseEntity.ok(ApiResponse.ok("Flight-area review recorded",
                 orderService.reviewFlightArea(orderId, request)));
+    }
+
+    @Operation(summary = "Record the result of external permit verification")
+    @PostMapping("/{orderId}/legal-review/resolve")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<OrderCreateResponse>> resolveLegalReview(
+            @PathVariable String orderId,
+            @Valid @RequestBody LegalReviewResolutionRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok("Legal review resolved",
+                orderService.resolveLegalReview(orderId, request)));
     }
 
     @Operation(summary = "Submit approval decision", description = "Manager submits rejection or need-info decision with reason")
