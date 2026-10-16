@@ -12,6 +12,11 @@ public class ChecklistResponse {
     private String content;
     private Boolean isActive;
     private ChecklistDifficulty difficulty;
+    private java.math.BigDecimal basePrice;
+    private int includedImageCount;
+    private int includedVideoCount;
+    private Integer standardVideoDurationSeconds;
+    private String pricingProfile;
     private Instant createdAt;
     private Instant updatedAt;
     private Long version;

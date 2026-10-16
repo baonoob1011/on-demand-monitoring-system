@@ -13,5 +13,7 @@ public interface MissionChecklistExecutionMapper {
     @Mapping(target = "evidencePolicyVersion", source = "orderChecklistItem.evidencePolicyVersion")
     @Mapping(target = "minimumEvidenceCount", source = "orderChecklistItem.minimumEvidenceCount")
     @Mapping(target = "requiredEvidenceType", source = "orderChecklistItem.requiredEvidenceType")
+    @Mapping(target = "minimumImageCount", source = "orderChecklistItem.minimumImageCount")
+    @Mapping(target = "minimumVideoCount", source = "orderChecklistItem.minimumVideoCount")
     ChecklistExecutionResponse toResponse(MissionChecklistExecution execution);
 }

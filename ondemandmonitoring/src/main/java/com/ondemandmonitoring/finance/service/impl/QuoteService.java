@@ -99,7 +99,12 @@ public class QuoteService implements IQuoteService {
         }
         List<OrderChecklistItem> reviewed = checklistItems.findAllByOrderIdOrderByDisplayOrderAscIdAsc(orderId);
         validateMoney(request.adjustmentAmount(), "adjustmentAmount", true);
+        applyManagerQuotes(reviewed, request.additionalUnitPrices());
         PricingBreakdown calculation = pricingEngine.calculate(order, reviewed);
+        if (!calculation.pendingQuoteItems().isEmpty())
+            throw new ApiException(ErrorCode.CUSTOM_WORK_PRICING_INCOMPLETE,
+                    "Enter your price for the checklist items outside the catalog before saving the quote: "
+                            + String.join("; ", calculation.pendingQuoteItems()));
         if (calculation.customWork() && !calculation.assessmentComplete())
             throw new ApiException(ErrorCode.CUSTOM_WORK_PRICING_INCOMPLETE);
 
@@ -270,6 +275,21 @@ public class QuoteService implements IQuoteService {
                         && delivery.getCustomerAcceptedAt() != null)
                 .orElse(false);
         return FinanceMapper.invoice(invoice, finalPaymentAllowed);
+    }
+
+    /**
+     * The Manager's price for checklists the pricing policy cannot price (custom checklists with no CUSTOM profile rule).
+     * Keys are order checklist item ids; entries for items that are priced by the policy are ignored, so a client can never
+     * overwrite a policy price.
+     */
+    private void applyManagerQuotes(List<OrderChecklistItem> items, Map<String, BigDecimal> quotes) {
+        if (quotes == null || quotes.isEmpty()) return;
+        for (OrderChecklistItem item : items) {
+            BigDecimal quoted = quotes.get(item.getId());
+            if (quoted == null || !item.isManagerQuoteRequired()) continue;
+            validateMoney(quoted, "additionalUnitPrices", false);
+            item.setManagerQuotedPrice(quoted.setScale(0, RoundingMode.HALF_UP));
+        }
     }
 
     private List<QuoteItem> buildLines(PricingBreakdown calculation, BigDecimal adjustment) {

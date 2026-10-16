@@ -100,6 +100,37 @@ class QuoteServiceTest {
         assertThat(result.totalAmount()).isEqualByComparingTo("6500000");
     }
 
+    @Test void managerPriceIsAppliedOnlyToChecklistsThePolicyCouldNotPrice() {
+        var custom = item("custom", ChecklistReviewStatus.ADDITIONAL); custom.setManagerQuoteRequired(true);
+        var catalog = item("catalog", ChecklistReviewStatus.INCLUDED);
+        when(items.findAllByOrderIdOrderByDisplayOrderAscIdAsc("o1")).thenReturn(List.of(custom, catalog));
+        service.saveDraft("o1", request("1", "0", "0", Map.of("custom", new BigDecimal("450000"), "catalog", new BigDecimal("999"))));
+        assertThat(custom.getManagerQuotedPrice()).isEqualByComparingTo("450000");
+        assertThat(catalog.getManagerQuotedPrice()).as("a policy-priced checklist can never be overwritten by a client").isNull();
+    }
+
+    @Test void quoteCannotBeSavedWhileACustomChecklistAwaitsTheManagersPrice() {
+        var custom = item("Check antenna", ChecklistReviewStatus.ADDITIONAL); custom.setManagerQuoteRequired(true);
+        when(items.findAllByOrderIdOrderByDisplayOrderAscIdAsc("o1")).thenReturn(List.of(custom));
+        when(pricingEngine.calculate(eq(order), anyList())).thenReturn(new PricingBreakdown("p1", 1, "VND", new BigDecimal("5000000"),
+                false, true, List.of(), List.of("Check antenna")));
+        assertThatThrownBy(() -> service.saveDraft("o1", request("1", "0", "0", Map.of())))
+                .isInstanceOfSatisfying(ApiException.class, e -> {
+                    assertThat(e.getErrorCode()).isEqualTo(ErrorCode.CUSTOM_WORK_PRICING_INCOMPLETE);
+                    assertThat(e.getMessage()).contains("Check antenna");
+                });
+        verify(quotes, never()).saveAndFlush(any());
+    }
+
+    @Test void invalidManagerPriceIsRejected() {
+        var custom = item("custom", ChecklistReviewStatus.ADDITIONAL); custom.setManagerQuoteRequired(true);
+        when(items.findAllByOrderIdOrderByDisplayOrderAscIdAsc("o1")).thenReturn(List.of(custom));
+        for (String bad : new String[] {"-1", "10.5"})
+            assertThatThrownBy(() -> service.saveDraft("o1", request("1", "0", "0", Map.of("custom", new BigDecimal(bad)))))
+                    .isInstanceOf(ApiException.class);
+        assertThat(custom.getManagerQuotedPrice()).isNull();
+    }
+
     @Test void rejectsFractionalManagerAdjustment() {
         assertThatThrownBy(() -> service.saveDraft("o1", request("1", "0", "1.5", Map.of())))
                 .isInstanceOf(ApiException.class).extracting("errorCode").isEqualTo(ErrorCode.QUOTE_PRICING_INVALID);

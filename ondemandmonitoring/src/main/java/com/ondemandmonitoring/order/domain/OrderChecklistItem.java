@@ -17,6 +17,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.math.BigDecimal;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.NoArgsConstructor;
@@ -67,4 +68,36 @@ public class OrderChecklistItem extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "required_evidence_type", nullable = false, length = 30, updatable = false)
     private RequiredEvidenceType requiredEvidenceType = RequiredEvidenceType.IMAGE_OR_VIDEO;
+
+    /** Evidence policy V3 only: independent image and video thresholds (both must be met). */
+    @Column(name = "minimum_image_count", nullable = false, updatable = false, columnDefinition = "integer default 0")
+    private int minimumImageCount;
+    @Column(name = "minimum_video_count", nullable = false, updatable = false, columnDefinition = "integer default 0")
+    private int minimumVideoCount;
+
+    /** 0 = legacy snapshot priced by difficulty only; 1 = priced from the media snapshot below. */
+    @Column(name = "pricing_snapshot_version", nullable = false, updatable = false, columnDefinition = "integer default 0")
+    private int pricingSnapshotVersion;
+    @Column(name = "base_price_snapshot", nullable = false, updatable = false, precision = 19, scale = 0,
+            columnDefinition = "numeric(19,0) default 0")
+    private BigDecimal basePriceSnapshot = BigDecimal.ZERO;
+    @Column(name = "included_image_count_snapshot", nullable = false, updatable = false, columnDefinition = "integer default 0")
+    private int includedImageCountSnapshot;
+    @Column(name = "included_video_count_snapshot", nullable = false, updatable = false, columnDefinition = "integer default 0")
+    private int includedVideoCountSnapshot;
+    @Column(name = "requested_image_count", nullable = false, updatable = false, columnDefinition = "integer default 0")
+    private int requestedImageCount;
+    @Column(name = "requested_video_count", nullable = false, updatable = false, columnDefinition = "integer default 0")
+    private int requestedVideoCount;
+    @Column(name = "standard_video_duration_snapshot", updatable = false)
+    private Integer standardVideoDurationSnapshot;
+    @Column(name = "pricing_profile_snapshot", length = 60, updatable = false)
+    private String pricingProfileSnapshot;
+
+    /** A checklist the policy cannot price (custom, no CUSTOM profile rule): the Manager quotes it later. Frozen at capture. */
+    @Column(name = "manager_quote_required", nullable = false, updatable = false, columnDefinition = "boolean default false")
+    private boolean managerQuoteRequired;
+    /** The Manager's price for a {@link #managerQuoteRequired} checklist; null until quoted. */
+    @Column(name = "manager_quoted_price", precision = 19, scale = 0)
+    private BigDecimal managerQuotedPrice;
 }

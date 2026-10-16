@@ -8,6 +8,8 @@ import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.enums.*;
 import java.time.*;
 import java.util.*;
+
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -112,7 +114,7 @@ class MissionCreationServiceTest {
     @Test void crewMayReadTheirPlanningMissionButCannotGainOperationalPermissions() {
         var mission=new Mission();mission.setId("m");mission.setCreationIdempotencyKey(UUID.randomUUID().toString());
         mission.setStatus(com.ondemandmonitoring.mission.enums.MissionStatus.IN_FLIGHT);
-        var caller=com.ondemandmonitoring.user.domain.User.builder().isActive(true).role(com.ondemandmonitoring.role.domain.Role.builder().code(com.ondemandmonitoring.role.domain.RoleCode.STAFF).active(true).build()).build();caller.setId("crew");
+        var caller=com.ondemandmonitoring.user.domain.User.builder().isActive(true).role(com.ondemandmonitoring.role.domain.Role.builder().code(RoleCode.STAFF).active(true).build()).build();caller.setId("crew");
         when(fixture.authenticatedUserResolver.getCurrentUser()).thenReturn(caller);
         when(fixture.missionRepository.findById("m")).thenReturn(Optional.of(mission));
         when(fixture.missionStaffAssignmentRepository.existsByMissionIdAndStaffId("m","crew")).thenReturn(true);

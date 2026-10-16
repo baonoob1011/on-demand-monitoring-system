@@ -10,7 +10,7 @@ import com.ondemandmonitoring.mission.repository.*;
 import com.ondemandmonitoring.mission.service.*;
 import com.ondemandmonitoring.order.enums.*;
 import com.ondemandmonitoring.order.repository.OrderRepository;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import com.ondemandmonitoring.userschedule.enums.*;
 import com.ondemandmonitoring.userschedule.repository.UserScheduleRepository;

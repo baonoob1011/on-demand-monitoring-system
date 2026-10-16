@@ -15,7 +15,7 @@ import com.ondemandmonitoring.mission.service.IMissionMediaUploadService;
 import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.mission.service.impl.MissionAuthorizationServiceImpl;
 import com.ondemandmonitoring.role.domain.Role;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.util.List;

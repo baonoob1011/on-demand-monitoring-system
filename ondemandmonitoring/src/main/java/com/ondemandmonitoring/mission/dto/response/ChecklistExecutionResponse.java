@@ -28,6 +28,11 @@ public class ChecklistExecutionResponse {
     private int minimumEvidenceCount;
     private RequiredEvidenceType requiredEvidenceType;
     private int eligibleEvidenceCount;
+    /** Policy V3: the image and the video threshold must each be met. Both 0 for policies V0-V2. */
+    private int minimumImageCount;
+    private int minimumVideoCount;
+    private int eligibleImageCount;
+    private int eligibleVideoCount;
     private boolean evidenceRequirementSatisfied;
     private boolean evidenceReady;
     private java.util.List<String> blockingReasons = java.util.List.of();

@@ -23,4 +23,9 @@ public class OrderChecklistItemRequest {
     @Max(value = 50, message = "minimumEvidenceCount must not exceed 50")
     private Integer minimumEvidenceCount;
     private RequiredEvidenceType requiredEvidenceType;
+    /** Media the customer wants for this checklist; the backend prices it and derives the evidence thresholds. */
+    @Min(0) @Max(500)
+    private Integer requestedImageCount;
+    @Min(0) @Max(500)
+    private Integer requestedVideoCount;
 }

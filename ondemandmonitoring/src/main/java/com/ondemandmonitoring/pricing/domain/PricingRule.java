@@ -23,6 +23,12 @@ public class PricingRule extends BaseEntity {
     @Column(name = "percentage", precision = 12, scale = 6) private BigDecimal percentage;
     @Column(name = "unit_size", precision = 19, scale = 4) private BigDecimal unitSize;
     @Column(name = "multiplier", precision = 12, scale = 6) private BigDecimal multiplier;
+    /** MEDIA rules only: profile key shared by a checklist's pricing rules (e.g. STANDARD, CUSTOM). */
+    @Column(name = "pricing_profile", length = 60) private String pricingProfile;
+    @Enumerated(EnumType.STRING) @Column(name = "media_component", length = 30) private MediaPricingComponent mediaComponent;
+    /** Default allowance for profiles that have no checklist definition (custom checklists). */
+    @Column(name = "included_quantity") private Integer includedQuantity;
+    @Enumerated(EnumType.STRING) @Column(name = "rounding_mode", length = 20) private PricingRounding roundingMode;
     @Column(nullable = false) private int priority;
     @Column(nullable = false) private boolean enabled = true;
 }

@@ -96,6 +96,7 @@ public enum ErrorCode {
      */
     SERVICE_NOT_FOUND("Service not found", HttpStatus.NOT_FOUND),
     ORDER_CHECKLIST_LOCKED("Order checklist snapshot is immutable", HttpStatus.CONFLICT),
+    ORDER_CHECKLIST_REQUIRED_MISSING("A required service checklist cannot be removed from the order", HttpStatus.CONFLICT),
     ORDER_CHECKLIST_TEMPLATE_CHANGED("Service checklist changed; refresh requirements and retry", HttpStatus.CONFLICT),
     ORDER_CHECKLIST_REVIEW_INVALID("Order checklist review is incomplete or invalid", HttpStatus.CONFLICT),
     ORDER_REVIEW_INCOMPLETE("Order does not meet the approval criteria", HttpStatus.CONFLICT),
@@ -114,6 +115,8 @@ public enum ErrorCode {
     PRICING_OVERRIDE_EXCEEDS_LIMIT("Pricing adjustment exceeds policy limits", HttpStatus.CONFLICT),
     PRICE_BELOW_ALLOWED_MINIMUM("Final price is below the policy minimum", HttpStatus.CONFLICT),
     ZERO_PRICE_NOT_ALLOWED("Normal work cannot have a zero final price", HttpStatus.CONFLICT),
+    MEDIA_PRICING_NOT_CONFIGURED("No pricing tier covers the requested extra media; ask an administrator to configure it", HttpStatus.CONFLICT),
+    CUSTOM_CHECKLIST_PRICING_NOT_CONFIGURED("No pricing rule is configured for custom checklists", HttpStatus.CONFLICT),
     CUSTOM_WORK_PRICING_INCOMPLETE("Custom work pricing assessment is incomplete", HttpStatus.CONFLICT),
     STALE_PRICING_REVISION("Pricing changed; refresh before deciding", HttpStatus.CONFLICT),
     QUOTE_HAS_UNAPPROVED_PRICING("Quote has unresolved pricing approval", HttpStatus.CONFLICT),

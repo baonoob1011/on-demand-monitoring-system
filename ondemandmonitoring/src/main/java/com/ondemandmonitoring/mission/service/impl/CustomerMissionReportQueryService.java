@@ -8,7 +8,7 @@ import com.ondemandmonitoring.mission.mapper.CustomerMissionReportMapper;
 import com.ondemandmonitoring.mission.repository.*;
 import com.ondemandmonitoring.mission.service.ICustomerMissionReportQueryService;
 import com.ondemandmonitoring.order.repository.OrderRepository;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.util.*;
 import java.util.stream.Collectors;

@@ -10,7 +10,7 @@ import com.ondemandmonitoring.order.service.IOrderService;
 import com.ondemandmonitoring.order.service.impl.OrderAuthorizationService;
 import com.ondemandmonitoring.mission.service.IMissionAuthorizationService;
 import com.ondemandmonitoring.role.domain.Role;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import org.junit.jupiter.api.BeforeEach;

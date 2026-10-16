@@ -23,4 +23,17 @@ public class OrderChecklistItemResponse {
     private int evidencePolicyVersion;
     private int minimumEvidenceCount;
     private RequiredEvidenceType requiredEvidenceType;
+    private int minimumImageCount;
+    private int minimumVideoCount;
+    private int pricingSnapshotVersion;
+    private java.math.BigDecimal basePriceSnapshot;
+    private int includedImageCountSnapshot;
+    private int includedVideoCountSnapshot;
+    private int requestedImageCount;
+    private int requestedVideoCount;
+    private Integer standardVideoDurationSnapshot;
+    private String pricingProfileSnapshot;
+    /** The pricing policy has no price for this checklist; the Manager quotes it. */
+    private boolean managerQuoteRequired;
+    private java.math.BigDecimal managerQuotedPrice;
 }

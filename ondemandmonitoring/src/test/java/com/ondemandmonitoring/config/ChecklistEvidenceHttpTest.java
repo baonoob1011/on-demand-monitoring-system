@@ -4,7 +4,7 @@ import com.ondemandmonitoring.common.exception.GlobalExceptionHandler;
 import com.ondemandmonitoring.mission.controller.ChecklistEvidenceController;
 import com.ondemandmonitoring.mission.service.IChecklistEvidenceService;
 import com.ondemandmonitoring.role.domain.Role;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.util.List;

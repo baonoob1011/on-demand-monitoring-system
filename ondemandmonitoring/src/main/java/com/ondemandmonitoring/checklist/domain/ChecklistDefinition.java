@@ -3,6 +3,7 @@ package com.ondemandmonitoring.checklist.domain;
 import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.pricing.enums.ChecklistDifficulty;
 import jakarta.persistence.*;
+import java.math.BigDecimal;
 import lombok.*;
 
 @Entity
@@ -24,4 +25,16 @@ public class ChecklistDefinition extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "difficulty", nullable = false, length = 20, columnDefinition = "varchar(20) default 'BASIC'")
     private ChecklistDifficulty difficulty = ChecklistDifficulty.BASIC;
+    /** Price of the inspection work itself, excluding the media allowance priced by the pricing profile. */
+    @Column(name = "base_price", nullable = false, precision = 19, scale = 0, columnDefinition = "numeric(19,0) default 0")
+    private BigDecimal basePrice = BigDecimal.ZERO;
+    @Column(name = "included_image_count", nullable = false, columnDefinition = "integer default 0")
+    private int includedImageCount;
+    @Column(name = "included_video_count", nullable = false, columnDefinition = "integer default 0")
+    private int includedVideoCount;
+    @Column(name = "standard_video_duration_seconds")
+    private Integer standardVideoDurationSeconds;
+    /** MEDIA pricing profile key; null means the DEFAULT profile. */
+    @Column(name = "pricing_profile", length = 60)
+    private String pricingProfile;
 }

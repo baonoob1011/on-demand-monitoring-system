@@ -27,6 +27,14 @@ public class ServiceChecklistServiceImpl implements IServiceChecklistService {
     private final ServiceChecklistRepository assignments;
     private final ServiceChecklistMapper mapper;
 
+    private com.ondemandmonitoring.pricing.service.ServiceDefaultPriceService defaultPrices;
+
+    /** Optional collaborator: keeps the stored service default price current. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setDefaultPrices(com.ondemandmonitoring.pricing.service.ServiceDefaultPriceService defaultPrices) {
+        this.defaultPrices = defaultPrices;
+    }
+
     @Override
     public ServiceChecklistResponse assign(String serviceId, ChecklistAssignmentRequest request) {
         validateOrder(request.getDisplayOrder());
@@ -41,12 +49,17 @@ public class ServiceChecklistServiceImpl implements IServiceChecklistService {
         ServiceChecklist entity = new ServiceChecklist();
         entity.setService(service);
         entity.setChecklist(checklist);
+        entity.setRequired(Boolean.TRUE.equals(request.getRequired()));
+        applyOverrides(entity, request.getBasePriceOverride(), request.getIncludedImageCountOverride(),
+                request.getIncludedVideoCountOverride(), request.getPricingProfileOverride());
         var rows = new ArrayList<>(assignments.findAllByServiceIdOrderByDisplayOrderAscIdAsc(serviceId));
         if (rows.size() >= 100) throw new ApiException(ErrorCode.INVALID_REQUEST, "At most 100 template items are allowed");
         rows.add(Math.min(request.getDisplayOrder(), rows.size()), entity);
         normalize(rows);
         service.setChecklistDefaultsInitialized(true);
-        return mapper.toResponse(assignments.saveAndFlush(entity));
+        var saved = assignments.saveAndFlush(entity);
+        refreshPrice(serviceId);
+        return mapper.toResponse(saved);
     }
 
     @Override
@@ -69,6 +82,7 @@ public class ServiceChecklistServiceImpl implements IServiceChecklistService {
         assignments.flush();
         normalize(assignments.findAllByServiceIdOrderByDisplayOrderAscIdAsc(serviceId));
         service.setChecklistDefaultsInitialized(true);
+        refreshPrice(serviceId);
     }
 
     @Override
@@ -90,6 +104,36 @@ public class ServiceChecklistServiceImpl implements IServiceChecklistService {
         normalize(ordered);
         service.setChecklistDefaultsInitialized(true);
         return ordered.stream().map(mapper::toResponse).toList();
+    }
+
+    @Override
+    public ServiceChecklistResponse updatePricing(String serviceId, String checklistId,
+            com.ondemandmonitoring.checklist.dto.request.ServiceChecklistPricingRequest request) {
+        Service service = lockService(serviceId);
+        ServiceChecklist entity = assignment(serviceId, checklistId);
+        if (request.getExpectedVersion() != null && !Objects.equals(entity.getVersion(), request.getExpectedVersion()))
+            throw new ApiException(ErrorCode.CONCURRENT_UPDATE);
+        applyOverrides(entity, request.getBasePriceOverride(), request.getIncludedImageCountOverride(),
+                request.getIncludedVideoCountOverride(), request.getPricingProfileOverride());
+        if (request.getRequired() != null) entity.setRequired(request.getRequired());
+        service.setChecklistDefaultsInitialized(true);
+        var saved = assignments.saveAndFlush(entity);
+        refreshPrice(serviceId);
+        return mapper.toResponse(saved);
+    }
+
+    private void refreshPrice(String serviceId) {
+        if (defaultPrices != null) defaultPrices.refresh(serviceId);
+    }
+
+    /** Overrides live on the association only: another Service using the same checklist is never affected. */
+    private void applyOverrides(ServiceChecklist entity, java.math.BigDecimal base, Integer images, Integer videos, String profile) {
+        if (base != null && (base.signum() < 0 || base.stripTrailingZeros().scale() > 0))
+            throw new ApiException(ErrorCode.VALIDATION_ERROR, "basePriceOverride must be a non-negative whole amount");
+        entity.setBasePriceOverride(base == null ? null : base.setScale(0));
+        entity.setIncludedImageCountOverride(images);
+        entity.setIncludedVideoCountOverride(videos);
+        entity.setPricingProfileOverride(profile == null || profile.isBlank() ? null : profile.trim().toUpperCase(java.util.Locale.ROOT));
     }
 
     private void normalize(List<ServiceChecklist> rows) {

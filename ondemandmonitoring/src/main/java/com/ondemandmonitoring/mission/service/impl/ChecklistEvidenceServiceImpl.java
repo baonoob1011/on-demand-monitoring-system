@@ -12,6 +12,7 @@ import com.ondemandmonitoring.mission.enums.*;
 import com.ondemandmonitoring.mission.mapper.ChecklistEvidenceMapper;
 import com.ondemandmonitoring.mission.repository.*;
 import com.ondemandmonitoring.mission.service.*;
+import com.ondemandmonitoring.order.domain.OrderChecklistItem;
 import com.ondemandmonitoring.order.enums.RequiredEvidenceType;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.time.Instant;
@@ -144,6 +145,7 @@ public class ChecklistEvidenceServiceImpl implements IChecklistEvidenceService {
     public boolean evidenceRequirementsSatisfied(MissionChecklistExecution execution, List<MissionChecklistEvidence> links, boolean finalApproval) {
         var item = execution.getOrderChecklistItem();
         if (item.getEvidencePolicyVersion() == 0) return item.getMinimumEvidenceCount() == 0;
+        if (item.getEvidencePolicyVersion() == 3) return v3Satisfied(item, execution, links, finalApproval);
         if (item.getEvidencePolicyVersion() == 1) {
             if (item.getMinimumEvidenceCount() != 1) return false;
         } else if (item.getEvidencePolicyVersion() != 2 || item.getMinimumEvidenceCount() < 1
@@ -160,10 +162,37 @@ public class ChecklistEvidenceServiceImpl implements IChecklistEvidenceService {
                         && policy.ineligibilityReason(e.getMediaAsset(), true) == null));
     }
 
+    /**
+     * Policy V3 needs the requested images AND the requested videos. A pile of one type never stands in for the other, and at
+     * final approval every attached asset must be eligible.
+     */
+    private boolean v3Satisfied(OrderChecklistItem item, MissionChecklistExecution execution, List<MissionChecklistEvidence> links, boolean finalApproval) {
+        if (item.getMinimumImageCount() < 0 || item.getMinimumVideoCount() < 0
+                || item.getMinimumImageCount() + item.getMinimumVideoCount() < 1
+                || item.getMinimumEvidenceCount() != item.getMinimumImageCount() + item.getMinimumVideoCount()) return false;
+        var applicable = links.stream().filter(e -> e.getDetachedAt() == null && execution.getId().equals(e.getMissionChecklistExecution().getId())).toList();
+        long images = policy.eligibleDistinctCount(applicable, execution.getId(), RequiredEvidenceType.IMAGE, finalApproval);
+        long videos = policy.eligibleDistinctCount(applicable, execution.getId(), RequiredEvidenceType.VIDEO, finalApproval);
+        return images >= item.getMinimumImageCount() && videos >= item.getMinimumVideoCount()
+                && (!finalApproval || applicable.stream().allMatch(e -> policy.ineligibilityReason(e.getMediaAsset(), true) == null));
+    }
+
     @Override
     public String readinessFailure(MissionChecklistExecution execution, List<MissionChecklistEvidence> links, boolean finalApproval) {
         if (ready(execution, links, finalApproval) || execution.getExecutionStatus() == ChecklistExecutionStatus.UNABLE_TO_VERIFY) return null;
         var item = execution.getOrderChecklistItem();
+        if (item.getEvidencePolicyVersion() == 3) {
+            long images = policy.eligibleDistinctCount(links, execution.getId(), RequiredEvidenceType.IMAGE, finalApproval);
+            long videos = policy.eligibleDistinctCount(links, execution.getId(), RequiredEvidenceType.VIDEO, finalApproval);
+            var reasons = new LinkedHashSet<String>();
+            if (execution.getExecutionStatus() != ChecklistExecutionStatus.COMPLETED) reasons.add("EXECUTION_NOT_COMPLETED");
+            links.stream().filter(link -> link.getDetachedAt() == null && execution.getId().equals(link.getMissionChecklistExecution().getId()))
+                    .map(link -> policy.ineligibilityReason(link.getMediaAsset(), finalApproval)).filter(Objects::nonNull).forEach(reasons::add);
+            if (images < item.getMinimumImageCount() || videos < item.getMinimumVideoCount()) reasons.add("INSUFFICIENT_EVIDENCE");
+            return "Checklist item '" + item.getContent() + "' requires at least " + item.getMinimumImageCount() + " image(s) and "
+                    + item.getMinimumVideoCount() + " video(s); current eligible counts are " + images + " image(s) and " + videos
+                    + " video(s). Blockers: " + (reasons.isEmpty() ? "INSUFFICIENT_EVIDENCE" : String.join(", ", reasons));
+        }
         if (item.getEvidencePolicyVersion() != 0 && item.getEvidencePolicyVersion() != 1 && item.getEvidencePolicyVersion() != 2) {
             return "Checklist item '" + item.getContent() + "' has unsupported evidence policy version " + item.getEvidencePolicyVersion() + ".";
         }
@@ -197,8 +226,19 @@ public class ChecklistEvidenceServiceImpl implements IChecklistEvidenceService {
         response.setEvidence(applicable.stream().map(this::toResponse).toList());
         response.setEligibleEvidenceCount(policy.eligibleDistinctCount(applicable, execution.getId(),
                 response.getRequiredEvidenceType(), false));
+        var enrichedItem = execution.getOrderChecklistItem();
+        boolean v3 = enrichedItem.getEvidencePolicyVersion() == 3;
+        if (v3) {
+            response.setMinimumImageCount(enrichedItem.getMinimumImageCount());
+            response.setMinimumVideoCount(enrichedItem.getMinimumVideoCount());
+            response.setEligibleImageCount((int) policy.eligibleDistinctCount(applicable, execution.getId(), RequiredEvidenceType.IMAGE, false));
+            response.setEligibleVideoCount((int) policy.eligibleDistinctCount(applicable, execution.getId(), RequiredEvidenceType.VIDEO, false));
+            response.setEligibleEvidenceCount(response.getEligibleImageCount() + response.getEligibleVideoCount());
+        }
         response.setEvidenceRequirementSatisfied(execution.getExecutionStatus() == ChecklistExecutionStatus.UNABLE_TO_VERIFY
-                || response.getEligibleEvidenceCount() >= response.getMinimumEvidenceCount());
+                || (v3 ? response.getEligibleImageCount() >= response.getMinimumImageCount()
+                        && response.getEligibleVideoCount() >= response.getMinimumVideoCount()
+                : response.getEligibleEvidenceCount() >= response.getMinimumEvidenceCount()));
         response.setEvidenceReady(ready(execution, links, false));
         var blockers = new LinkedHashSet<String>();
         if (!execution.getExecutionStatus().isTerminal()) blockers.add("EXECUTION_NOT_TERMINAL");

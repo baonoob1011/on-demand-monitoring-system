@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 class RuleBasedPricingEngineTest {
     PricingPolicyRepository policies = mock(PricingPolicyRepository.class);
     CustomWorkAssessmentRepository assessments = mock(CustomWorkAssessmentRepository.class);
-    RuleBasedPricingEngine engine = new RuleBasedPricingEngine(policies, assessments);
+    RuleBasedPricingEngine engine = new RuleBasedPricingEngine(policies, assessments, new ChecklistPriceCalculator());
 
     @Test void calculatesExplainableDistanceChecklistAndOutputComponents() {
         PricingPolicy policy = policy();

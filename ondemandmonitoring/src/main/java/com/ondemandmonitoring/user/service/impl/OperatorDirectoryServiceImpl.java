@@ -5,7 +5,7 @@ import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.mission.repository.ResourceTimeLockRepository;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.dto.response.AvailableOperatorResponse;
 import com.ondemandmonitoring.user.repository.UserRepository;

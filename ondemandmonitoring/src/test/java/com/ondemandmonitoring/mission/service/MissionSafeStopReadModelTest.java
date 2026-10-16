@@ -2,7 +2,6 @@ package com.ondemandmonitoring.mission.service;
 
 import com.ondemandmonitoring.devicecheck.repository.PersistedPostDeviceCheckRepository;
 import com.ondemandmonitoring.mission.domain.*;
-import com.ondemandmonitoring.mission.dto.request.MissionSafeStopConfirmationRequest;
 import com.ondemandmonitoring.mission.dto.response.MissionSafeStopResponse;
 import com.ondemandmonitoring.mission.enums.*;
 import com.ondemandmonitoring.mission.repository.*;
@@ -11,7 +10,7 @@ import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.enums.*;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.role.domain.Role;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import com.ondemandmonitoring.userschedule.repository.UserScheduleRepository;

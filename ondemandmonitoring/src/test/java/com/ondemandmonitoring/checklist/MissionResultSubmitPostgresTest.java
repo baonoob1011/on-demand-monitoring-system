@@ -12,7 +12,7 @@ import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepositor
 import com.ondemandmonitoring.mission.service.impl.MissionAuthorizationServiceImpl;
 import com.ondemandmonitoring.mission.service.impl.MissionResultService;
 import com.ondemandmonitoring.order.enums.OrderStatus;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.repository.UserRepository;
 import jakarta.persistence.EntityManagerFactory;
 import java.util.UUID;

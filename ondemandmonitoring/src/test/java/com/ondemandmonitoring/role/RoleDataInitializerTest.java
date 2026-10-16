@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.role;
 
 import com.ondemandmonitoring.role.domain.Role;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.role.infrastructure.RoleDataInitializer;
 import com.ondemandmonitoring.role.repository.RoleRepository;
 import java.util.Optional;

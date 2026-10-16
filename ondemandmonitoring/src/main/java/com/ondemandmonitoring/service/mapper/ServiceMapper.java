@@ -25,6 +25,8 @@ public interface ServiceMapper {
 
     @Mapping(target = "imageUrl", ignore = true)
     @Mapping(target = "fallbackImageUrl", ignore = true)
+    @Mapping(target = "defaultPrice", ignore = true)
+    @Mapping(target = "priceSource", ignore = true)
     ServiceResponse toResponse(Service entity);
 
     @Mapping(target = "id", ignore = true)

@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.support;
 
 import com.ondemandmonitoring.role.domain.Role;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.support.domain.SupportCustomerTicket;
 import com.ondemandmonitoring.support.repository.SupportCustomerTicketRepository;
 import com.ondemandmonitoring.support.service.impl.SupportAuthorizationService;

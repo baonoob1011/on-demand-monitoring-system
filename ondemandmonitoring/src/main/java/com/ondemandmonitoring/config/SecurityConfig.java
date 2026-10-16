@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.config;
 
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import lombok.extern.slf4j.Slf4j;
 import java.util.Collection;
 import java.util.List;

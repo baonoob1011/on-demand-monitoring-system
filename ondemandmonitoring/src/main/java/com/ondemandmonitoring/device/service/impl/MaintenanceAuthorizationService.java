@@ -2,7 +2,7 @@ package com.ondemandmonitoring.device.service.impl;
 
 import com.ondemandmonitoring.device.repository.MaintenanceTicketRepository;
 import com.ondemandmonitoring.device.service.IMaintenanceAuthorizationService;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import lombok.RequiredArgsConstructor;

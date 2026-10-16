@@ -58,10 +58,27 @@ public class PricingPolicyInitializer implements ApplicationRunner {
         rules.add(multiplier("HIGH_RISE", "Điều chỉnh do khu vực nhà cao tầng", "1.2", i++)); rules.add(multiplier("DAM_RESERVOIR", "Điều chỉnh do khu vực đập hoặc hồ chứa", "1.3", i++));
         rules.add(multiplier("HARD_TO_ACCESS", "Điều chỉnh do khu vực khó tiếp cận", "1.3", i++));
         rules.add(rule(PricingCategory.CONDITION, "URGENT", "Yêu cầu thực hiện khẩn cấp", PricingCalculationType.PERCENT_OF_BASE, null, null, null, "15", null, null, i++));
-        rules.add(fixed(PricingCategory.PERMIT, "REQUIRED", "Chi phí giấy phép hoặc vận hành đặc biệt", "1000000", i));
+        rules.add(fixed(PricingCategory.PERMIT, "REQUIRED", "Chi phí giấy phép hoặc vận hành đặc biệt", "1000000", i++));
+        // Starter MEDIA profiles for a fresh installation. They are ordinary policy data: an Admin edits them in a new policy version.
+        rules.add(media("DEFAULT", MediaPricingComponent.EXTRA_IMAGE, "0", "10", "10", "50000", i++));
+        rules.add(media("DEFAULT", MediaPricingComponent.EXTRA_IMAGE, "10", null, "10", "40000", i++));
+        rules.add(media("DEFAULT", MediaPricingComponent.EXTRA_VIDEO, "0", null, "1", "100000", i++));
+        rules.add(media("CUSTOM", MediaPricingComponent.CHECKLIST_BASE, null, null, null, "200000", i++));
+        PricingRule customImages = media("CUSTOM", MediaPricingComponent.INCLUDED_IMAGE, null, null, null, "0", i++);
+        customImages.setIncludedQuantity(5); rules.add(customImages);
+        rules.add(media("CUSTOM", MediaPricingComponent.EXTRA_IMAGE, "0", null, "10", "50000", i++));
+        rules.add(media("CUSTOM", MediaPricingComponent.EXTRA_VIDEO, "0", null, "1", "100000", i));
         p.replaceRules(rules); policies.save(p);
     }
 
+    private PricingRule media(String profile, MediaPricingComponent component, String min, String max, String block, String price, int priority) {
+        boolean tier = component == MediaPricingComponent.EXTRA_IMAGE || component == MediaPricingComponent.EXTRA_VIDEO;
+        PricingRule r = rule(PricingCategory.MEDIA, profile + ":" + component + (min == null ? "" : ":" + min), profile + " · " + component,
+                tier ? PricingCalculationType.PER_BLOCK : PricingCalculationType.FIXED, min, max, price, null, block, null, priority);
+        r.setPricingProfile(profile); r.setMediaComponent(component);
+        if (tier) r.setRoundingMode(PricingRounding.CEILING);
+        return r;
+    }
     private PricingRule fixed(PricingCategory c, String key, String description, String amount, int priority) {
         return rule(c, key, description, PricingCalculationType.FIXED, null, null, amount, null, null, null, priority);
     }
