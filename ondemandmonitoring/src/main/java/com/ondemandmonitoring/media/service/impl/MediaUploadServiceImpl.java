@@ -90,7 +90,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
         if (!mission.isCaptureAllowed()) {
             throw new ApiException(ErrorCode.MEDIA_UPLOAD_NOT_ALLOWED,
                     "Mission is not in a capture state (status=" + mission.getStatus()
-                            + "); upload needs an accepted inspector on a mission ready for review");
+                            + "); upload needs an accepted Pilot or Inspector in an eligible mission phase");
         }
         MissionDeviceAssignment deviceAssignment = requireAssignedDeviceAssignment(mission, request.getDeviceId());
         Device device = deviceAssignment.getDevice();

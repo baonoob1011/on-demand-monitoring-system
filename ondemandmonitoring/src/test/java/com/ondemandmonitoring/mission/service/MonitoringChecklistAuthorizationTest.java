@@ -28,10 +28,11 @@ class MonitoringChecklistAuthorizationTest {
     void evidenceCapabilityUsesAssignmentsNotUploadOrGlobalRoleStrings(MissionStaffRole role) {
         mission.setStatus(MissionStatus.PENDING_REVIEW);
         when(assignments.findByMissionId("m")).thenReturn(List.of(crew(actor, role)));
-        assertEquals(role == MissionStaffRole.OPERATOR || role == MissionStaffRole.PILOT || role == MissionStaffRole.INSPECTOR,
+        assertEquals(role == MissionStaffRole.INSPECTOR,
                 policy.canAttachChecklistEvidence("m"));
         assertEquals(policy.canAttachChecklistEvidence("m"), policy.canDetachChecklistEvidence("m"));
-        mission.setStatus(MissionStatus.IN_FLIGHT); assertFalse(policy.canAttachChecklistEvidence("m"));
+        mission.setStatus(MissionStatus.IN_FLIGHT);
+        assertEquals(role == MissionStaffRole.INSPECTOR, policy.canAttachChecklistEvidence("m"));
     }
 
     @Test void evidenceResultLocksAndFinalReportingCrewArePreserved() {
@@ -63,9 +64,10 @@ class MonitoringChecklistAuthorizationTest {
     }
 
     @ParameterizedTest @EnumSource(MissionStaffRole.class)
-    void onlyOperatorOrPilotFallbackExecutes(MissionStaffRole role) {
+    void operatorPilotAndInspectorCanUpdateChecklist(MissionStaffRole role) {
         when(assignments.findByMissionId("m")).thenReturn(List.of(crew(actor, role)));
-        assertEquals(role == MissionStaffRole.OPERATOR || role == MissionStaffRole.PILOT,
+        assertEquals(role == MissionStaffRole.OPERATOR || role == MissionStaffRole.PILOT
+                        || role == MissionStaffRole.INSPECTOR,
                 policy.canExecuteMonitoringChecklist("m"));
         assertFalse(policy.canExecuteMonitoringChecklist("other"));
     }
@@ -81,7 +83,7 @@ class MonitoringChecklistAuthorizationTest {
         var pilot = crew(actor, MissionStaffRole.PILOT);
         var operator = crew(user("operator"), MissionStaffRole.OPERATOR);
         when(assignments.findByMissionId("m")).thenReturn(List.of(pilot, operator));
-        assertFalse(policy.canExecuteMonitoringChecklist("m"));
+        assertTrue(policy.canExecuteMonitoringChecklist("m"));
         operator.setResponseStatus(StaffResponseStatus.PENDING); assertTrue(policy.canExecuteMonitoringChecklist("m"));
         operator.setResponseStatus(StaffResponseStatus.REJECTED); assertTrue(policy.canExecuteMonitoringChecklist("m"));
         operator.setResponseStatus(StaffResponseStatus.ACCEPTED);
@@ -112,7 +114,8 @@ class MonitoringChecklistAuthorizationTest {
     void mutationWindowIsExplicit(MissionStatus status) {
         mission.setStatus(status);
         when(assignments.findByMissionId("m")).thenReturn(List.of(crew(actor, MissionStaffRole.OPERATOR)));
-        assertEquals(Set.of(MissionStatus.IN_FLIGHT, MissionStatus.IN_PROGRESS, MissionStatus.RETURNING,
+        assertEquals(Set.of(MissionStatus.READY_TO_FLY, MissionStatus.IN_FLIGHT,
+                MissionStatus.IN_PROGRESS, MissionStatus.RETURNING,
                 MissionStatus.POSTFLIGHT_CHECKING, MissionStatus.PENDING_REVIEW).contains(status), policy.canExecuteMonitoringChecklist("m"));
     }
 
@@ -127,12 +130,12 @@ class MonitoringChecklistAuthorizationTest {
         operator.setReleaseReason("REPLACED"); assertFalse(policy.canExecuteMonitoringChecklist("m"));
     }
 
-    @Test void pendingReviewKeepsReportingCrewPriorityAndLetsInspectorOwnFinalSubmission() {
+    @Test void pendingReviewLetsPilotUpdateProgressAndInspectorSubmit() {
         mission.setStatus(MissionStatus.PENDING_REVIEW);
         var pilot = crew(actor, MissionStaffRole.PILOT);
         var operator = crew(user("operator"), MissionStaffRole.OPERATOR);
         when(assignments.findByMissionId("m")).thenReturn(List.of(pilot, operator));
-        assertFalse(policy.canExecuteMonitoringChecklist("m"));
+        assertTrue(policy.canExecuteMonitoringChecklist("m"));
         operator.setReleasedAt(Instant.now());
         assertTrue(policy.canExecuteMonitoringChecklist("m"));
         when(assignments.findByMissionId("m")).thenReturn(List.of(crew(actor, MissionStaffRole.OPERATOR)));
@@ -140,6 +143,55 @@ class MonitoringChecklistAuthorizationTest {
         when(assignments.findByMissionId("m")).thenReturn(List.of(crew(actor, MissionStaffRole.INSPECTOR)));
         assertTrue(policy.canExecuteMonitoringChecklist("m"));
         assertTrue(policy.canSubmitMissionResult("m"));
+    }
+
+    @Test void acceptedPilotCanUploadAndUpdateChecklistWithoutCompletingOrSubmitting() {
+        mission.setStatus(MissionStatus.PENDING_REVIEW);
+        var pilot = crew(actor, MissionStaffRole.PILOT);
+        var operator = crew(user("operator"), MissionStaffRole.OPERATOR);
+        when(assignments.findByMissionId("m")).thenReturn(List.of(pilot, operator));
+        assertTrue(policy.canUploadMissionMedia("m"));
+        assertTrue(policy.canExecuteMonitoringChecklist("m"));
+        assertFalse(policy.canAttachChecklistEvidence("m"));
+        assertFalse(policy.canCompleteMission("m"));
+        assertFalse(policy.canSubmitMissionResult("m"));
+        pilot.setResponseStatus(StaffResponseStatus.PENDING);
+        assertFalse(policy.canUploadMissionMedia("m"));
+        assertFalse(policy.canExecuteMonitoringChecklist("m"));
+    }
+
+    @Test void inspectorReviewsAndAssignsEvidenceWhilePilotIsFlying() {
+        mission.setStatus(MissionStatus.IN_FLIGHT);
+        when(assignments.findByMissionId("m"))
+                .thenReturn(List.of(crew(actor, MissionStaffRole.INSPECTOR)));
+
+        assertTrue(policy.canReviewMissionMedia("m"));
+        assertTrue(policy.canAttachChecklistEvidence("m"));
+        assertTrue(policy.canExecuteMonitoringChecklist("m"));
+        assertFalse(policy.canUploadMissionMedia("m"));
+        assertFalse(policy.canSubmitMissionResult("m"));
+    }
+
+    @Test void readyToFlyAllowsAcceptedPilotUploadButNotInspectorApproval() {
+        mission.setStatus(MissionStatus.READY_TO_FLY);
+        var pilot = crew(actor, MissionStaffRole.PILOT);
+        when(assignments.findByMissionId("m")).thenReturn(List.of(pilot));
+        assertTrue(policy.canUploadMissionMedia("m"));
+        assertFalse(policy.canCompleteMission("m"));
+        assertFalse(policy.canSubmitMissionResult("m"));
+        pilot.setResponseStatus(StaffResponseStatus.PENDING);
+        assertFalse(policy.canUploadMissionMedia("m"));
+    }
+
+    @Test void readyToFlyLetsInspectorOpenAndUpdateAcceptanceChecklist() {
+        mission.setStatus(MissionStatus.READY_TO_FLY);
+        when(assignments.findByMissionId("m"))
+                .thenReturn(List.of(crew(actor, MissionStaffRole.INSPECTOR)));
+
+        assertTrue(policy.canExecuteMonitoringChecklist("m"));
+        assertTrue(policy.canReviewMissionMedia("m"));
+        assertTrue(policy.canAttachChecklistEvidence("m"));
+        assertFalse(policy.canSubmitMissionResult("m"));
     }
 
     @Test void releasedInspectorCanEditCompletedChecklistAndSubmitResult() {

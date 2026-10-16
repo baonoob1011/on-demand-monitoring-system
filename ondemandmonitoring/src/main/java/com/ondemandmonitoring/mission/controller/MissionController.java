@@ -407,7 +407,7 @@ public class MissionController {
 
     /** POST /api/missions/{id}/complete – Staff confirms complete */
     @PostMapping("/{id}/complete")
-    @PreAuthorize("@missionAuthorizationService.canUploadMissionMedia(#id)")
+    @PreAuthorize("@missionAuthorizationService.canCompleteMission(#id)")
     public ResponseEntity<ApiResponse<MissionResponse>> complete(@PathVariable String id) {
         MissionResponse response = missionService.completeMission(id);
         return ResponseEntity.ok(ApiResponse.ok("Mission đã hoàn thành", response));
