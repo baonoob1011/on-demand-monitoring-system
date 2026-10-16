@@ -60,6 +60,8 @@ class MissionChecklistExecutionServiceTest {
                     return 1;
                 });
         when(auth.canExecuteMonitoringChecklist("m")).thenReturn(true);
+        when(auth.canSubmitMissionResult("m")).thenReturn(true);
+        when(auth.canReviewMissionMedia("m")).thenReturn(true);
         when(auth.canViewMission("m")).thenReturn(true);
         when(resolver.getCurrentUserId()).thenReturn("authenticated-actor");
         when(items.findAllByOrderIdInOrderByDisplayOrderAscIdAsc(List.of("o"))).thenReturn(List.of(item));
@@ -74,6 +76,16 @@ class MissionChecklistExecutionServiceTest {
     ChecklistExecutionUpdateRequest request(ChecklistExecutionStatus status) {
         var request = new ChecklistExecutionUpdateRequest(); request.setExpectedVersion(execution.getVersion());
         request.setExecutionStatus(status); request.setAssessmentStatus(ChecklistAssessmentStatus.NOT_ASSESSED); return request;
+    }
+    @Test void pilotMayChangeExecutionStatusButCannotChangeAssessment() {
+        when(auth.canSubmitMissionResult("m")).thenReturn(false);
+        when(auth.canReviewMissionMedia("m")).thenReturn(false);
+        service.update("m", "e", request(ChecklistExecutionStatus.IN_PROGRESS));
+        assertEquals(ChecklistExecutionStatus.IN_PROGRESS, execution.getExecutionStatus());
+        var changeAssessment = request(ChecklistExecutionStatus.IN_PROGRESS);
+        changeAssessment.setAssessmentStatus(ChecklistAssessmentStatus.COMPLIANT);
+        error(ErrorCode.ACCESS_DENIED, () -> service.update("m", "e", changeAssessment));
+        assertEquals(ChecklistAssessmentStatus.NOT_ASSESSED, execution.getAssessmentStatus());
     }
     void error(ErrorCode code, Runnable call) { assertEquals(code, assertThrows(ApiException.class, call::run).getErrorCode()); }
 

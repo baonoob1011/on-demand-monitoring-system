@@ -2,7 +2,6 @@ package com.ondemandmonitoring.order.dto.request;
 
 import com.ondemandmonitoring.order.enums.OrderDeliveryMethod;
 import com.ondemandmonitoring.order.enums.OrderPermitStatus;
-import com.ondemandmonitoring.order.enums.OrderPriority;
 import com.ondemandmonitoring.order.enums.OrderRecurrenceType;
 import com.ondemandmonitoring.order.enums.OrderResultFormat;
 import com.ondemandmonitoring.order.enums.OrderUsagePurpose;
@@ -48,9 +47,6 @@ public class OrderCreateRequest {
 
     @Schema(description = "Purpose of the flight (Decree 288/2025/ND-CP, Article 4.3); defaults to SURVEY_MONITORING")
     com.ondemandmonitoring.order.enums.OrderFlightPurpose flightPurpose;
-
-    @Schema(description = "Request priority, defaults to NORMAL", example = "NORMAL")
-    OrderPriority priority;
 
     @DecimalMin(value = "10", message = "Flight altitude must be at least 10 m")
     @DecimalMax(value = "120", message = "Flight altitude must not exceed 120 m")

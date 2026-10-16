@@ -6,7 +6,6 @@ import com.ondemandmonitoring.order.dto.OrderAuthorizationDocument;
 import com.ondemandmonitoring.order.dto.OrderPermitDocument;
 import com.ondemandmonitoring.order.enums.OrderDeliveryMethod;
 import com.ondemandmonitoring.order.enums.OrderPermitStatus;
-import com.ondemandmonitoring.order.enums.OrderPriority;
 import com.ondemandmonitoring.order.enums.OrderRecurrenceType;
 import com.ondemandmonitoring.order.enums.OrderResultFormat;
 import com.ondemandmonitoring.order.enums.OrderStatus;
@@ -15,7 +14,7 @@ import com.ondemandmonitoring.order.enums.OrderFlightPurpose;
 import com.ondemandmonitoring.order.enums.OrderUsagePurpose;
 import com.ondemandmonitoring.order.enums.OrderWeatherFallback;
 import com.ondemandmonitoring.order.enums.MonitoringRelationship;
-import com.ondemandmonitoring.order.enums.FlightAreaReviewStatus;
+import com.ondemandmonitoring.order.enums.LegalReviewStatus;
 import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.warehouse.domain.PreferredTime;
@@ -107,10 +106,6 @@ public class Order extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "flight_purpose", length = 30)
     private OrderFlightPurpose flightPurpose;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "priority", length = 20)
-    private OrderPriority priority;
 
     @Column(name = "altitude_m")
     private Double altitudeM;
@@ -234,8 +229,9 @@ public class Order extends BaseEntity {
     private Instant reviewAt;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "flight_area_review_status", length = 30)
-    private FlightAreaReviewStatus flightAreaReviewStatus;
+    @Builder.Default
+    @Column(name = "legal_review_status", length = 30)
+    private LegalReviewStatus legalReviewStatus = LegalReviewStatus.NOT_REVIEWED;
 
     @Column(name = "flight_area_review_reason", length = 500)
     private String flightAreaReviewReason;
@@ -252,10 +248,6 @@ public class Order extends BaseEntity {
 
     @Column(name = "flight_area_reviewed_at")
     private Instant flightAreaReviewedAt;
-
-    @Builder.Default
-    @Column(name = "requires_flight_permission_review")
-    private Boolean requiresFlightPermissionReview = false;
 
     @Builder.Default
     @OneToMany(mappedBy = "order", fetch = FetchType.LAZY)

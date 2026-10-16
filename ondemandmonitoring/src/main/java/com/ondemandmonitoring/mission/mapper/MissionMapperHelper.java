@@ -12,6 +12,7 @@ import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentReposito
 import com.ondemandmonitoring.mission.repository.MissionPlanRepository;
 import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepository;
 import com.ondemandmonitoring.order.domain.OrderDeliverable;
+import com.ondemandmonitoring.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.mapstruct.Named;
 import org.mapstruct.AfterMapping;
@@ -34,6 +35,7 @@ public class MissionMapperHelper {
     private final MissionStaffAssignmentRepository missionStaffAssignmentRepository;
     private final MissionPlanMapper missionPlanMapper;
     private final MissionStaffAssignmentMapper missionStaffAssignmentMapper;
+    private final UserRepository userRepository;
 
     @Named("missionLatitude")
     public Double getLatitude(Mission mission) {
@@ -123,6 +125,12 @@ public class MissionMapperHelper {
         }
         var staffId = getStaffId(mission);
         response.staffId(staffId).operatorId(staffId);
+        if (mission.getOrder() != null && mission.getOrder().getExecutionPlanFinalizedBy() != null) {
+            userRepository.findById(mission.getOrder().getExecutionPlanFinalizedBy()).ifPresent(manager ->
+                    response.managerName(manager.getFullName())
+                            .managerEmail(manager.getEmail())
+                            .managerPhone(manager.getPhoneNumber()));
+        }
     }
 
     private String getStaffId(Mission mission) {

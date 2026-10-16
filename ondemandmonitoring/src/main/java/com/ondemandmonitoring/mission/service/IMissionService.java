@@ -107,6 +107,9 @@ public interface IMissionService {
      */
     MissionResponse acceptMission(String missionId, String staffId);
 
+    /** Inspector starts the operational workflow after every required crew role accepted. */
+    MissionResponse startMissionWorkflow(String missionId);
+
     /**
      * Rejects a mission assignment by the Staff (resets mission to
      * RESOURCE_ASSIGNING for re-assignment).

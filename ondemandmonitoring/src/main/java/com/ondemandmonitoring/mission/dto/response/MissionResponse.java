@@ -51,6 +51,12 @@ public class MissionResponse {
 
     String customerName;
 
+    String managerName;
+
+    String managerEmail;
+
+    String managerPhone;
+
     String description;
 
     String address;

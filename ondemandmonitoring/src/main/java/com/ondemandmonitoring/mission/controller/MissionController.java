@@ -212,6 +212,14 @@ public class MissionController {
                 missionService.acceptCurrentStaffMission(id)));
     }
 
+    @PostMapping("/{id}/start-operation")
+    @PreAuthorize("@missionAuthorizationService.canStartMission(#id)")
+    public ResponseEntity<ApiResponse<MissionResponse>> startOperation(@PathVariable String id) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                "Mission workflow started; Operator may connect GCS",
+                missionService.startMissionWorkflow(id)));
+    }
+
     @PatchMapping("/{id}/accept-staff")
     @PreAuthorize("@missionAuthorizationService.canRespondToMission(#id,#staffId)")
     public ResponseEntity<ApiResponse<MissionResponse>> acceptByStaffId(
@@ -399,7 +407,7 @@ public class MissionController {
 
     /** POST /api/missions/{id}/complete – Staff confirms complete */
     @PostMapping("/{id}/complete")
-    @PreAuthorize("@missionAuthorizationService.canUploadMissionMedia(#id)")
+    @PreAuthorize("@missionAuthorizationService.canCompleteMission(#id)")
     public ResponseEntity<ApiResponse<MissionResponse>> complete(@PathVariable String id) {
         MissionResponse response = missionService.completeMission(id);
         return ResponseEntity.ok(ApiResponse.ok("Mission đã hoàn thành", response));

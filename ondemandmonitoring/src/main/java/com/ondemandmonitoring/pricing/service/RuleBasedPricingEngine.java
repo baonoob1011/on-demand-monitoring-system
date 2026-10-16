@@ -71,8 +71,6 @@ public class RuleBasedPricingEngine implements PricingEngine {
             if (a.isMultispectralRequired()) keyed(policy, PricingCategory.OUTPUT, "MULTISPECTRAL").ifPresent(r -> addFixed(result, r, BigDecimal.ONE));
             if (a.isAiReportRequired()) keyed(policy, PricingCategory.OUTPUT, "AI_REPORT").ifPresent(r -> addFixed(result, r, BigDecimal.ONE));
         });
-        keyed(policy, PricingCategory.CONDITION, Optional.ofNullable(order.getPriority()).orElse(OrderPriority.NORMAL).name())
-                .ifPresent(rule -> applyRule(result, rule, BigDecimal.ONE, subtotal(result)));
         if (Boolean.TRUE.equals(order.getPermitRequired()) || order.getPermitStatus() == OrderPermitStatus.NEED_SUPPORT)
             keyed(policy, PricingCategory.PERMIT, "REQUIRED").ifPresent(rule -> addFixed(result, rule, BigDecimal.ONE));
         TerrainType terrain = assessment.map(CustomWorkAssessment::getTerrain).orElse(TerrainType.FLAT);
