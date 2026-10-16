@@ -83,19 +83,24 @@ public class ChecklistPricingPreviewService {
             template.put(row.getChecklist().getId(), row);
 
         List<ChecklistPriceBreakdown> priced = new ArrayList<>();
+        var context = new ChecklistPriceCalculator.RequestContext(request.areaHa(), request.lengthKm(), request.altitudeM());
         if (request.items() == null) {
             for (ServiceChecklist row : template.values())
-                priced.add(calculator.price(policy, input(row.getChecklist(), row, null, null, null, null, null, null)));
+                priced.add(calculator.price(policy, withContext(input(row.getChecklist(), row, null, null, null, null, null, null), context)));
         } else {
             Set<String> seen = new HashSet<>();
             Set<String> contents = new HashSet<>();
             for (var item : request.items()) {
                 if (item.sourceChecklistId() != null) {
                     ServiceChecklist row = template.get(item.sourceChecklistId());
-                    if (row == null) throw new ApiException(ErrorCode.ORDER_CHECKLIST_TEMPLATE_CHANGED);
                     if (!seen.add(item.sourceChecklistId())) throw new ApiException(ErrorCode.INVALID_REQUEST, "Duplicate source checklist");
-                    priced.add(calculator.price(policy, input(row.getChecklist(), row, null, null, null, null,
-                            item.requestedImageCount(), item.requestedVideoCount())));
+                    ChecklistDefinition definition = row == null
+                            ? definitions.findById(item.sourceChecklistId())
+                                    .filter(candidate -> Boolean.TRUE.equals(candidate.getIsActive()))
+                                    .orElseThrow(() -> new ApiException(ErrorCode.CHECKLIST_NOT_FOUND))
+                            : row.getChecklist();
+                    priced.add(calculator.price(policy, withContext(input(definition, row, null, null, null, null,
+                            item.requestedImageCount(), item.requestedVideoCount()), context)));
                 } else {
                     if (item.content() == null || item.content().isBlank())
                         throw new ApiException(ErrorCode.INVALID_REQUEST, "A custom checklist needs content");
@@ -125,7 +130,10 @@ public class ChecklistPricingPreviewService {
         String effectiveProfile = profile != null && !profile.isBlank() ? profile : row != null && row.getPricingProfileOverride() != null
                 ? row.getPricingProfileOverride() : d.getPricingProfile();
         return new ChecklistPriceCalculator.Input(d.getId(), d.getContent(), d.getDifficulty(), false, effectiveBase, effectiveImages,
-                effectiveVideos, requestedImages, requestedVideos, effectiveProfile, d.getStandardVideoDurationSeconds(), true);
+                effectiveVideos, requestedImages, requestedVideos, effectiveProfile, d.getStandardVideoDurationSeconds(), true,
+                new ChecklistPriceCalculator.PricingDimensions(d.isAreaPricingEnabled(), d.isLengthPricingEnabled(),
+                        d.isAltitudePricingEnabled(), d.getIncludedAreaHa(), d.getIncludedLengthKm(), d.getIncludedAltitudeM()),
+                ChecklistPriceCalculator.RequestContext.empty());
     }
 
     private ChecklistPriceBreakdown priceOrWarn(PricingPolicy policy, ChecklistPriceCalculator.Input input, List<String> warnings) {
@@ -137,6 +145,14 @@ public class ChecklistPricingPreviewService {
             return new ChecklistPriceBreakdown(input.checklistId(), input.content(), ChecklistPriceCalculator.normalizeProfile(input.pricingProfile()),
                     false, 0, 0, 0, 0, 0, 0, input.standardVideoDurationSeconds(), List.of(), BigDecimal.ZERO);
         }
+    }
+
+    private ChecklistPriceCalculator.Input withContext(ChecklistPriceCalculator.Input input,
+            ChecklistPriceCalculator.RequestContext context) {
+        return new ChecklistPriceCalculator.Input(input.checklistId(), input.content(), input.difficulty(), input.custom(),
+                input.catalogBasePrice(), input.includedImages(), input.includedVideos(), input.requestedImages(),
+                input.requestedVideos(), input.pricingProfile(), input.standardVideoDurationSeconds(), input.includeDifficulty(),
+                input.dimensions(), context);
     }
 
     private ServicePricePreviewResponse response(Service service, PricingPolicy policy, ServicePriceResolver.Resolved resolved,

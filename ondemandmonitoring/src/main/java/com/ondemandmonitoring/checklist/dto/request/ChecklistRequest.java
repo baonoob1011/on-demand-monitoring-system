@@ -25,4 +25,16 @@ public class ChecklistRequest {
     private Integer standardVideoDurationSeconds;
     @Size(max = 60) @jakarta.validation.constraints.Pattern(regexp = "^[A-Za-z0-9_]*$", message = "pricingProfile may contain letters, digits and underscore only")
     private String pricingProfile;
+    private Boolean areaPricingEnabled;
+    private Boolean lengthPricingEnabled;
+    private Boolean altitudePricingEnabled;
+    @jakarta.validation.constraints.DecimalMin("0")
+    @jakarta.validation.constraints.Digits(integer = 10, fraction = 3)
+    private java.math.BigDecimal includedAreaHa;
+    @jakarta.validation.constraints.DecimalMin("0")
+    @jakarta.validation.constraints.Digits(integer = 10, fraction = 3)
+    private java.math.BigDecimal includedLengthKm;
+    @jakarta.validation.constraints.DecimalMin("0")
+    @jakarta.validation.constraints.Digits(integer = 6, fraction = 2)
+    private java.math.BigDecimal includedAltitudeM;
 }

@@ -37,4 +37,16 @@ public class ChecklistDefinition extends BaseEntity {
     /** MEDIA pricing profile key; null means the DEFAULT profile. */
     @Column(name = "pricing_profile", length = 60)
     private String pricingProfile;
+    @Column(name = "area_pricing_enabled", nullable = false, columnDefinition = "boolean default false")
+    private boolean areaPricingEnabled;
+    @Column(name = "length_pricing_enabled", nullable = false, columnDefinition = "boolean default false")
+    private boolean lengthPricingEnabled;
+    @Column(name = "altitude_pricing_enabled", nullable = false, columnDefinition = "boolean default false")
+    private boolean altitudePricingEnabled;
+    @Column(name = "included_area_ha", nullable = false, precision = 14, scale = 3, columnDefinition = "numeric(14,3) default 0")
+    private BigDecimal includedAreaHa = BigDecimal.ZERO;
+    @Column(name = "included_length_km", nullable = false, precision = 14, scale = 3, columnDefinition = "numeric(14,3) default 0")
+    private BigDecimal includedLengthKm = BigDecimal.ZERO;
+    @Column(name = "included_altitude_m", nullable = false, precision = 10, scale = 2, columnDefinition = "numeric(10,2) default 0")
+    private BigDecimal includedAltitudeM = BigDecimal.ZERO;
 }

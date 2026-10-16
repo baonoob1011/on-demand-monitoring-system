@@ -21,6 +21,7 @@ import com.ondemandmonitoring.order.domain.OrderChecklistItem;
 import com.ondemandmonitoring.order.dto.response.OrderChecklistItemResponse;
 import com.ondemandmonitoring.order.enums.ChecklistReviewStatus;
 import com.ondemandmonitoring.order.enums.OrderStatus;
+import com.ondemandmonitoring.order.enums.OrderChecklistSourceType;
 import com.ondemandmonitoring.order.mapper.OrderChecklistItemMapper;
 import com.ondemandmonitoring.order.repository.OrderChecklistItemRepository;
 import com.ondemandmonitoring.order.repository.OrderRepository;
@@ -82,8 +83,20 @@ public class QuoteService implements IQuoteService {
         orders.findByIdForUpdate(orderId).orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND));
         OrderChecklistItem item = checklistItems.findByIdAndOrderId(itemId, orderId)
                 .orElseThrow(() -> new ApiException(ErrorCode.CHECKLIST_NOT_FOUND));
+        if (item.getSourceType() == OrderChecklistSourceType.SERVICE_TEMPLATE) {
+            throw new ApiException(ErrorCode.ORDER_CHECKLIST_REVIEW_INVALID,
+                    "A service-package checklist is included and priced automatically");
+        }
         if (request.status() == ChecklistReviewStatus.PENDING) {
             throw new ApiException(ErrorCode.ORDER_CHECKLIST_REVIEW_INVALID, "Manager must choose a final review status");
+        }
+        if (request.status() == ChecklistReviewStatus.INCLUDED) {
+            throw new ApiException(ErrorCode.ORDER_CHECKLIST_REVIEW_INVALID,
+                    "Customer-added work cannot be included without a pricing override approval");
+        }
+        if (request.status() == ChecklistReviewStatus.REJECTED && trimToNull(request.managerNote()) == null) {
+            throw new ApiException(ErrorCode.ORDER_CHECKLIST_REVIEW_INVALID,
+                    "A rejection reason is required");
         }
         item.setReviewStatus(request.status());
         item.setManagerNote(trimToNull(request.managerNote()));
@@ -98,12 +111,21 @@ public class QuoteService implements IQuoteService {
             throw new ApiException(ErrorCode.QUOTE_PRICING_INVALID, "Order can no longer be priced");
         }
         List<OrderChecklistItem> reviewed = checklistItems.findAllByOrderIdOrderByDisplayOrderAscIdAsc(orderId);
+        normalizeServiceTemplateReviews(reviewed);
+        List<String> pendingReviews = reviewed.stream()
+                .filter(item -> item.getSourceType() != OrderChecklistSourceType.SERVICE_TEMPLATE)
+                .filter(item -> item.getReviewStatus() == null || item.getReviewStatus() == ChecklistReviewStatus.PENDING)
+                .map(OrderChecklistItem::getContent).toList();
+        if (!pendingReviews.isEmpty()) {
+            throw new ApiException(ErrorCode.ORDER_CHECKLIST_REVIEW_INVALID,
+                    "Review every customer-added checklist before saving the quote: " + String.join("; ", pendingReviews));
+        }
         validateMoney(request.adjustmentAmount(), "adjustmentAmount", true);
         applyManagerQuotes(reviewed, request.additionalUnitPrices());
         PricingBreakdown calculation = pricingEngine.calculate(order, reviewed);
         if (!calculation.pendingQuoteItems().isEmpty())
             throw new ApiException(ErrorCode.CUSTOM_WORK_PRICING_INCOMPLETE,
-                    "Enter your price for the checklist items outside the catalog before saving the quote: "
+                    "Complete the structured assessment before pricing these custom checklist items: "
                             + String.join("; ", calculation.pendingQuoteItems()));
         if (calculation.customWork() && !calculation.assessmentComplete())
             throw new ApiException(ErrorCode.CUSTOM_WORK_PRICING_INCOMPLETE);
@@ -136,7 +158,7 @@ public class QuoteService implements IQuoteService {
                 .orElseThrow(() -> new ApiException(ErrorCode.PRICING_POLICY_NOT_FOUND));
         List<PricingRiskFlag> risks = evaluateGuardrails(policy, calculation.systemCalculatedAmount(), adjustment,
                 calculation.customWork(), orderId);
-        List<QuoteItem> lines = buildLines(calculation, adjustment);
+        List<QuoteItem> lines = buildLines(calculation, adjustment, reviewed);
         BigDecimal packagePrice = lines.stream().filter(l -> l.getType() == QuoteItemType.PACKAGE)
                 .map(QuoteItem::getAmount).findFirst().orElse(ZERO);
         BigDecimal discount = lines.stream().filter(l -> l.getType() == QuoteItemType.DISCOUNT)
@@ -182,7 +204,9 @@ public class QuoteService implements IQuoteService {
         }
         if (quote.getPricingApprovalStatus() != PricingApprovalStatus.NOT_REQUIRED)
             throw new ApiException(ErrorCode.QUOTE_HAS_UNAPPROVED_PRICING);
-        if (checklistItems.findAllByOrderIdOrderByDisplayOrderAscIdAsc(orderId).stream()
+        List<OrderChecklistItem> reviewed = checklistItems.findAllByOrderIdOrderByDisplayOrderAscIdAsc(orderId);
+        normalizeServiceTemplateReviews(reviewed);
+        if (reviewed.stream()
                 .anyMatch(item -> item.getReviewStatus() == null || item.getReviewStatus() == ChecklistReviewStatus.PENDING)) {
             throw new ApiException(ErrorCode.ORDER_CHECKLIST_REVIEW_INVALID);
         }
@@ -292,10 +316,22 @@ public class QuoteService implements IQuoteService {
         }
     }
 
-    private List<QuoteItem> buildLines(PricingBreakdown calculation, BigDecimal adjustment) {
+    /** Backward-compatible repair for snapshots created before package checklists became auto-included. */
+    private void normalizeServiceTemplateReviews(List<OrderChecklistItem> items) {
+        items.stream()
+                .filter(item -> item.getSourceType() == OrderChecklistSourceType.SERVICE_TEMPLATE)
+                .filter(item -> item.getReviewStatus() == null || item.getReviewStatus() == ChecklistReviewStatus.PENDING)
+                .forEach(item -> item.setReviewStatus(ChecklistReviewStatus.INCLUDED));
+    }
+
+    private List<QuoteItem> buildLines(PricingBreakdown calculation, BigDecimal adjustment,
+            List<OrderChecklistItem> checklistRows) {
         List<QuoteItem> lines = new ArrayList<>();
+        Map<String, OrderChecklistItem> itemsById = checklistRows.stream()
+                .collect(java.util.stream.Collectors.toMap(OrderChecklistItem::getId, item -> item));
         for (PricingBreakdownItem item : calculation.items()) {
-            QuoteItem line = line(QuoteItemType.valueOf(item.category().name()), item.description(), item.unitPrice(), null, lines.size());
+            QuoteItem line = line(QuoteItemType.valueOf(item.category().name()), item.description(), item.unitPrice(),
+                    itemsById.get(item.orderChecklistItemId()), lines.size());
             line.setQuantity(item.quantity()); line.setAmount(item.amount()); lines.add(line);
         }
         if (adjustment.signum() != 0)

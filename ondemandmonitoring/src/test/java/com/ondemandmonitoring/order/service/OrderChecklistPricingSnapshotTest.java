@@ -14,6 +14,7 @@ import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.domain.OrderChecklistItem;
 import com.ondemandmonitoring.order.dto.request.OrderChecklistItemRequest;
 import com.ondemandmonitoring.order.enums.OrderChecklistSourceType;
+import com.ondemandmonitoring.order.enums.ChecklistReviewStatus;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.enums.RequiredEvidenceType;
 import com.ondemandmonitoring.order.mapper.OrderChecklistItemMapper;
@@ -136,12 +137,25 @@ class OrderChecklistPricingSnapshotTest {
         assertEquals(3, item.getRequestedVideoCount());
         assertEquals("STANDARD", item.getPricingProfileSnapshot());
         assertEquals(30, item.getStandardVideoDurationSnapshot());
+        assertEquals(OrderChecklistSourceType.SERVICE_TEMPLATE, item.getSourceType());
+        assertEquals(ChecklistReviewStatus.INCLUDED, item.getReviewStatus());
         // evidence policy V3 demands BOTH thresholds
         assertEquals(3, item.getEvidencePolicyVersion());
         assertEquals(30, item.getMinimumImageCount());
         assertEquals(3, item.getMinimumVideoCount());
         assertEquals(33, item.getMinimumEvidenceCount());
         assertEquals(RequiredEvidenceType.IMAGE_OR_VIDEO, item.getRequiredEvidenceType());
+    }
+
+    @Test void catalogChecklistOutsideThePackageRequiresManagerReview() {
+        var thermal = definition("c3", "Thermal inspection", "350000", 0, 0);
+        when(definitions.findByIdForUpdate("c3")).thenReturn(Optional.of(thermal));
+
+        useCase.capture(order, List.of(template("c3", null, null)));
+
+        assertEquals(OrderChecklistSourceType.CUSTOMER_SELECTED, saved.getFirst().getSourceType());
+        assertEquals(ChecklistReviewStatus.PENDING, saved.getFirst().getReviewStatus());
+        assertFalse(saved.getFirst().isManagerQuoteRequired());
     }
 
     @Test void catalogEditsAfterCaptureDoNotChangeTheStoredSnapshot() {
@@ -212,7 +226,7 @@ class OrderChecklistPricingSnapshotTest {
         assertTrue(saved.isEmpty());
     }
 
-    @Test void customChecklistIsSnapshottedWithCustomProfileAndQuotedByTheManagerWhenThePolicyHasNoRule() {
+    @Test void customChecklistIsSnapshottedForStructuredAssessmentAndNeverGetsAManagerBaselinePrice() {
         var custom = new OrderChecklistItemRequest();
         custom.setContentOverride("Check the antenna mast"); custom.setRequestedImageCount(4);
         useCase.capture(order, List.of(custom));
@@ -227,7 +241,7 @@ class OrderChecklistPricingSnapshotTest {
         order.setChecklistSnapshotAt(null);
         policy(rule(MediaPricingComponent.INCLUDED_IMAGE, "STANDARD", "50000", null, null));
         assertDoesNotThrow(() -> useCase.capture(order, List.of(custom)));
-        assertTrue(saved.getFirst().isManagerQuoteRequired(), "no CUSTOM rule -> the Manager quotes it");
+        assertFalse(saved.getFirst().isManagerQuoteRequired(), "Manager classifies inputs; policy calculates the baseline");
         assertNull(saved.getFirst().getManagerQuotedPrice());
         assertEquals(4, saved.getFirst().getRequestedImageCount());
     }

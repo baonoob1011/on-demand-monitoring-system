@@ -124,6 +124,15 @@ public class ChecklistServiceImpl implements IChecklistService {
             String profile = request.getPricingProfile().trim();
             entity.setPricingProfile(profile.isEmpty() ? null : profile.toUpperCase(Locale.ROOT));
         }
+        if (request.getAreaPricingEnabled() != null) entity.setAreaPricingEnabled(request.getAreaPricingEnabled());
+        if (request.getLengthPricingEnabled() != null) entity.setLengthPricingEnabled(request.getLengthPricingEnabled());
+        if (request.getAltitudePricingEnabled() != null) entity.setAltitudePricingEnabled(request.getAltitudePricingEnabled());
+        if (request.getIncludedAreaHa() != null) entity.setIncludedAreaHa(request.getIncludedAreaHa());
+        else if (create) entity.setIncludedAreaHa(java.math.BigDecimal.ZERO);
+        if (request.getIncludedLengthKm() != null) entity.setIncludedLengthKm(request.getIncludedLengthKm());
+        else if (create) entity.setIncludedLengthKm(java.math.BigDecimal.ZERO);
+        if (request.getIncludedAltitudeM() != null) entity.setIncludedAltitudeM(request.getIncludedAltitudeM());
+        else if (create) entity.setIncludedAltitudeM(java.math.BigDecimal.ZERO);
     }
 
     private ChecklistDefinition locked(String id) {

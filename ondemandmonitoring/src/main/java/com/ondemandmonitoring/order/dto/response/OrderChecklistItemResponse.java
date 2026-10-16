@@ -33,7 +33,13 @@ public class OrderChecklistItemResponse {
     private int requestedVideoCount;
     private Integer standardVideoDurationSnapshot;
     private String pricingProfileSnapshot;
-    /** The pricing policy has no price for this checklist; the Manager quotes it. */
+    private boolean areaPricingEnabledSnapshot;
+    private boolean lengthPricingEnabledSnapshot;
+    private boolean altitudePricingEnabledSnapshot;
+    private java.math.BigDecimal includedAreaHaSnapshot;
+    private java.math.BigDecimal includedLengthKmSnapshot;
+    private java.math.BigDecimal includedAltitudeMSnapshot;
+    /** Legacy compatibility only. New custom work uses structured assessment and policy pricing. */
     private boolean managerQuoteRequired;
     private java.math.BigDecimal managerQuotedPrice;
 }

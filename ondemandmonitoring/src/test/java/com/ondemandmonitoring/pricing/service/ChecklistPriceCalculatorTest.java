@@ -46,6 +46,14 @@ class ChecklistPriceCalculatorTest {
         r.setCalculationType(PricingCalculationType.FIXED); r.setFixedAmount(new BigDecimal(price)); r.setEnabled(true);
         return r;
     }
+    PricingRule dimension(PricingCategory category, String profile, String block, String price) {
+        PricingRule r = new PricingRule();
+        r.setCategory(category); r.setPricingProfile(profile); r.setRuleKey(profile + ":" + category);
+        r.setDescription(category.name()); r.setCalculationType(PricingCalculationType.PER_BLOCK);
+        r.setMinValue(BigDecimal.ZERO); r.setUnitSize(new BigDecimal(block));
+        r.setFixedAmount(new BigDecimal(price)); r.setRoundingMode(PricingRounding.CEILING); r.setEnabled(true);
+        return r;
+    }
     ChecklistPriceCalculator.Input catalog(String base, Integer includedImages, Integer includedVideos,
             Integer requestedImages, Integer requestedVideos) {
         return new ChecklistPriceCalculator.Input("c1", "Check roof", ChecklistDifficulty.BASIC, false, new BigDecimal(base),
@@ -123,7 +131,7 @@ class ChecklistPriceCalculatorTest {
         assertThatThrownBy(() -> calculator.price(bounded, catalog("0", 0, 0, 25, null)))
                 .hasMessageContaining("only cover up to 10").hasMessageContaining("extend the tiers");
         assertThatThrownBy(() -> calculator.price(policy(), new ChecklistPriceCalculator.Input(null, "c", null, true, null, null, null, null, null, null, null, true)))
-                .hasMessageContaining("Manager must quote");
+                .hasMessageContaining("administrator must publish");
     }
 
     @Test void conflictOnlyHappensWithoutAPolicyOrWithoutCoverageNeverForCoveredQuantities() {
@@ -169,6 +177,27 @@ class ChecklistPriceCalculatorTest {
         assertThat(result.includedImageCount()).isEqualTo(5);
         assertThat(result.extraImageCount()).isEqualTo(7);
         assertThat(result.subtotal()).isEqualByComparingTo("440000"); // 300k + ceil(7/5)=2 blocks x 70k
+    }
+
+    @Test void sharedDimensionsAreChargedOnlyWhenTheChecklistEnablesThem() {
+        PricingPolicy p = policy(dimension(PricingCategory.AREA, "STANDARD", "10", "100000"),
+                dimension(PricingCategory.DISTANCE, "STANDARD", "1", "75000"));
+        var context = new ChecklistPriceCalculator.RequestContext(new BigDecimal("50.3"), new BigDecimal("5.2"), BigDecimal.ZERO);
+        var areaOnly = new ChecklistPriceCalculator.Input("area", "Roof", ChecklistDifficulty.BASIC, false,
+                BigDecimal.ZERO, 0, 0, 0, 0, "STANDARD", null, false,
+                new ChecklistPriceCalculator.PricingDimensions(true, false, false, new BigDecimal("10"), BigDecimal.ZERO,
+                        BigDecimal.ZERO), context);
+        var lengthOnly = new ChecklistPriceCalculator.Input("length", "Pipeline", ChecklistDifficulty.BASIC, false,
+                BigDecimal.ZERO, 0, 0, 0, 0, "STANDARD", null, false,
+                new ChecklistPriceCalculator.PricingDimensions(false, true, false, BigDecimal.ZERO, new BigDecimal("1"),
+                        BigDecimal.ZERO), context);
+        var fixedOnly = new ChecklistPriceCalculator.Input("fixed", "Equipment", ChecklistDifficulty.BASIC, false,
+                BigDecimal.ZERO, 0, 0, 0, 0, "STANDARD", null, false,
+                ChecklistPriceCalculator.PricingDimensions.disabled(), context);
+
+        assertThat(calculator.price(p, areaOnly).subtotal()).isEqualByComparingTo("500000");
+        assertThat(calculator.price(p, lengthOnly).subtotal()).isEqualByComparingTo("375000");
+        assertThat(calculator.price(p, fixedOnly).subtotal()).isZero();
     }
 
     @Test void customChecklistWithoutACustomRuleIsQuotedByTheManagerNeverPricedByALegacyRuleOrZero() {

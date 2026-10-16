@@ -21,7 +21,13 @@ public final class ChecklistPricingPreviewRequests {
             @Min(0) @Max(500) Integer requestedImageCount, @Min(0) @Max(500) Integer requestedVideoCount) {}
 
     /** Customer selection. No prices are accepted from the client, only choices and quantities. */
-    public record Customer(@NotBlank String serviceId, @Size(max = 100) List<@Valid CustomerItem> items) {}
+    public record Customer(@NotBlank String serviceId, @Size(max = 100) List<@Valid CustomerItem> items,
+            @DecimalMin("0") BigDecimal areaHa, @DecimalMin("0") BigDecimal lengthKm,
+            @DecimalMin("0") BigDecimal altitudeM) {
+        public Customer(String serviceId, List<CustomerItem> items) {
+            this(serviceId, items, null, null, null);
+        }
+    }
 
     public record CustomerItem(@Size(max = 255) String sourceChecklistId, @Size(max = 500) String content,
             @Min(0) @Max(500) Integer requestedImageCount, @Min(0) @Max(500) Integer requestedVideoCount) {}

@@ -27,7 +27,7 @@ import lombok.NoArgsConstructor;
         @UniqueConstraint(name = "uk_order_checklist_source", columnNames = {"order_id", "source_checklist_id"}),
         @UniqueConstraint(name = "uk_checklist_item_id_order", columnNames = {"id", "order_id"})},
         indexes = @Index(name = "ix_order_checklist_order", columnList = "order_id,display_order,id"))
-@org.hibernate.annotations.Check(constraints = "display_order >= 0 and ((source_type = 'SERVICE_TEMPLATE' and source_checklist_id is not null) or (source_type = 'CUSTOMER_CUSTOM' and source_checklist_id is null))")
+@org.hibernate.annotations.Check(constraints = "display_order >= 0 and ((source_type in ('SERVICE_TEMPLATE','CUSTOMER_SELECTED') and source_checklist_id is not null) or (source_type = 'CUSTOMER_CUSTOM' and source_checklist_id is null))")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -94,10 +94,26 @@ public class OrderChecklistItem extends BaseEntity {
     @Column(name = "pricing_profile_snapshot", length = 60, updatable = false)
     private String pricingProfileSnapshot;
 
-    /** A checklist the policy cannot price (custom, no CUSTOM profile rule): the Manager quotes it later. Frozen at capture. */
+    @Column(name = "area_pricing_enabled_snapshot", nullable = false, updatable = false, columnDefinition = "boolean default false")
+    private boolean areaPricingEnabledSnapshot;
+    @Column(name = "length_pricing_enabled_snapshot", nullable = false, updatable = false, columnDefinition = "boolean default false")
+    private boolean lengthPricingEnabledSnapshot;
+    @Column(name = "altitude_pricing_enabled_snapshot", nullable = false, updatable = false, columnDefinition = "boolean default false")
+    private boolean altitudePricingEnabledSnapshot;
+    @Column(name = "included_area_ha_snapshot", nullable = false, updatable = false, precision = 14, scale = 3,
+            columnDefinition = "numeric(14,3) default 0")
+    private BigDecimal includedAreaHaSnapshot = BigDecimal.ZERO;
+    @Column(name = "included_length_km_snapshot", nullable = false, updatable = false, precision = 14, scale = 3,
+            columnDefinition = "numeric(14,3) default 0")
+    private BigDecimal includedLengthKmSnapshot = BigDecimal.ZERO;
+    @Column(name = "included_altitude_m_snapshot", nullable = false, updatable = false, precision = 10, scale = 2,
+            columnDefinition = "numeric(10,2) default 0")
+    private BigDecimal includedAltitudeMSnapshot = BigDecimal.ZERO;
+
+    /** Legacy compatibility flag; new snapshots use structured assessment and policy pricing. */
     @Column(name = "manager_quote_required", nullable = false, updatable = false, columnDefinition = "boolean default false")
     private boolean managerQuoteRequired;
-    /** The Manager's price for a {@link #managerQuoteRequired} checklist; null until quoted. */
+    /** Legacy compatibility value; never populated by the new Manager UI. */
     @Column(name = "manager_quoted_price", precision = 19, scale = 0)
     private BigDecimal managerQuotedPrice;
 }

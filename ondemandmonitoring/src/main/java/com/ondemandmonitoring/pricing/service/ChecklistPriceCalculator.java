@@ -38,10 +38,32 @@ public class ChecklistPriceCalculator {
      * @param includedImages   allowance; for custom checklists {@code null} means the CUSTOM profile allowance.
      * @param requestedImages  {@code null} means "exactly the included allowance".
      */
+    public record PricingDimensions(boolean areaEnabled, boolean lengthEnabled, boolean altitudeEnabled,
+            BigDecimal includedAreaHa, BigDecimal includedLengthKm, BigDecimal includedAltitudeM) {
+        public static PricingDimensions disabled() {
+            return new PricingDimensions(false, false, false, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+        }
+    }
+
+    public record RequestContext(BigDecimal areaHa, BigDecimal lengthKm, BigDecimal altitudeM) {
+        public static RequestContext empty() {
+            return new RequestContext(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+        }
+    }
+
     public record Input(String checklistId, String content, ChecklistDifficulty difficulty, boolean custom,
             BigDecimal catalogBasePrice, Integer includedImages, Integer includedVideos,
             Integer requestedImages, Integer requestedVideos, String pricingProfile, Integer standardVideoDurationSeconds,
-            boolean includeDifficulty) {}
+            boolean includeDifficulty, PricingDimensions dimensions, RequestContext context) {
+        public Input(String checklistId, String content, ChecklistDifficulty difficulty, boolean custom,
+                BigDecimal catalogBasePrice, Integer includedImages, Integer includedVideos,
+                Integer requestedImages, Integer requestedVideos, String pricingProfile, Integer standardVideoDurationSeconds,
+                boolean includeDifficulty) {
+            this(checklistId, content, difficulty, custom, catalogBasePrice, includedImages, includedVideos,
+                    requestedImages, requestedVideos, pricingProfile, standardVideoDurationSeconds, includeDifficulty,
+                    PricingDimensions.disabled(), RequestContext.empty());
+        }
+    }
 
     public ChecklistPriceBreakdown price(PricingPolicy policy, Input in) {
         String profile = in.custom() ? CUSTOM_PROFILE : normalizeProfile(in.pricingProfile());
@@ -77,6 +99,18 @@ public class ChecklistPriceCalculator {
         tierLines(policy, profile, MediaPricingComponent.EXTRA_IMAGE, extraImages, "ảnh bổ sung", lines);
         tierLines(policy, profile, MediaPricingComponent.EXTRA_VIDEO, extraVideos, "video bổ sung", lines);
 
+        PricingDimensions dimensions = in.dimensions() == null ? PricingDimensions.disabled() : in.dimensions();
+        RequestContext context = in.context() == null ? RequestContext.empty() : in.context();
+        if (dimensions.areaEnabled()) dimensionLines(policy, profile, PricingCategory.AREA, "AREA",
+                positive(context.areaHa()).subtract(positive(dimensions.includedAreaHa())).max(BigDecimal.ZERO),
+                "diện tích bổ sung", lines);
+        if (dimensions.lengthEnabled()) dimensionLines(policy, profile, PricingCategory.DISTANCE, "LENGTH",
+                positive(context.lengthKm()).subtract(positive(dimensions.includedLengthKm())).max(BigDecimal.ZERO),
+                "chiều dài bổ sung", lines);
+        if (dimensions.altitudeEnabled()) dimensionLines(policy, profile, PricingCategory.ALTITUDE, "ALTITUDE",
+                positive(context.altitudeM()).subtract(positive(dimensions.includedAltitudeM())).max(BigDecimal.ZERO),
+                "độ cao bổ sung", lines);
+
         BigDecimal subtotal = lines.stream().map(Line::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
         return new ChecklistPriceBreakdown(in.checklistId(), in.content(), profile, in.custom(), includedImages, includedVideos,
                 requestedImages, requestedVideos, extraImages, extraVideos, in.standardVideoDurationSeconds(), List.copyOf(lines), subtotal);
@@ -108,9 +142,9 @@ public class ChecklistPriceCalculator {
     private BigDecimal customBase(PricingPolicy policy, String profile) {
         Optional<PricingRule> rule = rules(policy, PricingCategory.MEDIA, profile, MediaPricingComponent.CHECKLIST_BASE).stream().findFirst();
         if (rule.isPresent()) return money(rule.get().getFixedAmount());
-        // No CUSTOM rule: callers route such checklists to managerQuoted(); reaching here is a programming error.
+        // No CUSTOM rule means policy configuration is incomplete; a Manager never invents the baseline amount.
         throw new ApiException(ErrorCode.CUSTOM_CHECKLIST_PRICING_NOT_CONFIGURED,
-                "Custom checklists have no policy price: the Manager must quote them.");
+                "Custom checklist pricing is not configured. An administrator must publish a CUSTOM checklist base rule.");
     }
 
     private int allowance(PricingPolicy policy, String profile, MediaPricingComponent component, Integer configured) {
@@ -176,6 +210,73 @@ public class ChecklistPriceCalculator {
                             + "last tier open-ended) in the pricing policy and publish it; alternatively request fewer.");
     }
 
+    private void dimensionLines(PricingPolicy policy, String profile, PricingCategory category, String component,
+            BigDecimal extra, String noun, List<Line> out) {
+        if (extra.signum() <= 0) return;
+        List<PricingRule> tiers = policy.getRules().stream().filter(PricingRule::isEnabled)
+                .filter(rule -> rule.getCategory() == category)
+                .filter(rule -> rule.getPricingProfile() == null || rule.getPricingProfile().isBlank()
+                        || profile.equalsIgnoreCase(rule.getPricingProfile()))
+                .sorted(Comparator.comparing((PricingRule r) -> nz(r.getMinValue())).thenComparingInt(PricingRule::getPriority))
+                .toList();
+        if (tiers.isEmpty()) {
+            throw new ApiException(ErrorCode.PRICING_RULE_NOT_FOUND,
+                    "Cannot price " + noun + " for checklist profile " + profile + ".");
+        }
+
+        BigDecimal covered = BigDecimal.ZERO;
+        for (PricingRule tier : tiers) {
+            if (covered.compareTo(extra) >= 0) break;
+            BigDecimal lo = positive(tier.getMinValue());
+            BigDecimal hi = tier.getMaxValue();
+            if (lo.compareTo(covered) != 0) break;
+            BigDecimal upper = hi == null ? extra : hi.min(extra);
+            BigDecimal quantity = upper.subtract(lo);
+            if (quantity.signum() <= 0) break;
+
+            BigDecimal unitSize = positive(tier.getUnitSize());
+            if (unitSize.signum() == 0) unitSize = BigDecimal.ONE;
+            PricingRounding rounding = tier.getRoundingMode() == null ? PricingRounding.CEILING : tier.getRoundingMode();
+            RoundingMode roundingMode = switch (rounding) {
+                case CEILING -> RoundingMode.CEILING;
+                case FLOOR -> RoundingMode.FLOOR;
+                case HALF_UP -> RoundingMode.HALF_UP;
+            };
+
+            BigDecimal billedQuantity;
+            BigDecimal unitPrice = money(tier.getFixedAmount());
+            BigDecimal amount;
+            PricingCalculationType calculation = tier.getCalculationType();
+            if (calculation == PricingCalculationType.FIXED) {
+                billedQuantity = BigDecimal.ONE;
+                amount = unitPrice;
+            } else if (calculation == PricingCalculationType.PER_UNIT) {
+                billedQuantity = quantity;
+                amount = money(unitPrice.multiply(billedQuantity));
+            } else if (calculation == PricingCalculationType.PER_BLOCK
+                    || calculation == PricingCalculationType.TIERED_BLOCK) {
+                billedQuantity = quantity.divide(unitSize, 0, roundingMode);
+                amount = money(unitPrice.multiply(billedQuantity));
+                if (calculation == PricingCalculationType.TIERED_BLOCK) amount = amount.add(money(tier.getBaseAmount()));
+            } else {
+                throw new ApiException(ErrorCode.PRICING_CALCULATION_FAILED,
+                        "Unsupported " + category + " calculation type: " + calculation);
+            }
+
+            out.add(new Line(component, category,
+                    tier.getDescription() == null || tier.getDescription().isBlank() ? noun : tier.getDescription(),
+                    billedQuantity, unitPrice, amount, lo.intValue(), hi == null ? null : hi.intValue(),
+                    unitSize.intValue(), rounding.name()));
+            covered = upper;
+        }
+
+        if (covered.compareTo(extra) < 0) {
+            throw new ApiException(ErrorCode.PRICING_RULE_NOT_FOUND,
+                    "Cannot price " + noun + " for checklist profile " + profile
+                            + ": rules must be contiguous from 0 and end with an open tier.");
+        }
+    }
+
     private List<PricingRule> rules(PricingPolicy policy, PricingCategory category, String profile, MediaPricingComponent component) {
         return policy.getRules().stream().filter(PricingRule::isEnabled).filter(r -> r.getCategory() == category)
                 .filter(r -> profile == null || profile.equalsIgnoreCase(r.getPricingProfile()))
@@ -186,5 +287,6 @@ public class ChecklistPriceCalculator {
         return profile == null || profile.isBlank() ? DEFAULT_PROFILE : profile.trim().toUpperCase(Locale.ROOT);
     }
     private static BigDecimal nz(BigDecimal v) { return v == null ? BigDecimal.ZERO : v; }
+    private static BigDecimal positive(BigDecimal v) { return nz(v).max(BigDecimal.ZERO); }
     private static BigDecimal money(BigDecimal v) { return nz(v).setScale(0, RoundingMode.HALF_UP); }
 }

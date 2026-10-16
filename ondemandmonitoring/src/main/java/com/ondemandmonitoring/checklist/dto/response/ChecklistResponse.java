@@ -17,6 +17,12 @@ public class ChecklistResponse {
     private int includedVideoCount;
     private Integer standardVideoDurationSeconds;
     private String pricingProfile;
+    private boolean areaPricingEnabled;
+    private boolean lengthPricingEnabled;
+    private boolean altitudePricingEnabled;
+    private java.math.BigDecimal includedAreaHa;
+    private java.math.BigDecimal includedLengthKm;
+    private java.math.BigDecimal includedAltitudeM;
     private Instant createdAt;
     private Instant updatedAt;
     private Long version;

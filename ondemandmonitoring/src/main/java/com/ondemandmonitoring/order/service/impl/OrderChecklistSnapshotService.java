@@ -89,7 +89,7 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
             if (item == null) throw invalid("Checklist item cannot be null");
             String source = item.getSourceChecklistId();
             if (source != null) {
-                if (source.isBlank() || !membership.contains(source))
+                if (source.isBlank())
                     throw new ApiException(ErrorCode.ORDER_CHECKLIST_TEMPLATE_CHANGED);
                 if (!ids.add(source)) throw invalid("Duplicate source checklist");
                 if (!defaults && (item.getExpectedChecklistVersion() == null || item.getExpectedChecklistVersion() < 0))
@@ -118,6 +118,7 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
                 throw new ApiException(ErrorCode.ORDER_CHECKLIST_TEMPLATE_CHANGED);
             var override = source == null ? null : overrides.get(source.getId());
             boolean custom = source == null;
+            boolean packageChecklist = source != null && membership.contains(source.getId());
             boolean explicitEvidence = item.getMinimumEvidenceCount() != null || item.getRequiredEvidenceType() != null;
             boolean explicitMedia = item.getRequestedImageCount() != null || item.getRequestedVideoCount() != null;
             if (explicitEvidence && explicitMedia)
@@ -140,8 +141,8 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
                 throw invalid("A checklist needs at least one image or video");
             var entity = new OrderChecklistItem();
             entity.setPricingSnapshotVersion(1);
-            // A custom checklist without a CUSTOM policy price is never rejected: the Manager quotes it later.
-            entity.setManagerQuoteRequired(custom && !priceCalculator.hasCustomRule(policy));
+            // Baseline money always comes from policy. Custom work is resolved by structured assessment, never a typed quote.
+            entity.setManagerQuoteRequired(false);
             entity.setBasePriceSnapshot(basePrice == null ? BigDecimal.ZERO : basePrice);
             entity.setIncludedImageCountSnapshot(includedImages);
             entity.setIncludedVideoCountSnapshot(includedVideos);
@@ -149,6 +150,12 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
             entity.setRequestedVideoCount(requestedVideos);
             entity.setPricingProfileSnapshot(profile);
             entity.setStandardVideoDurationSnapshot(custom ? null : source.getStandardVideoDurationSeconds());
+            entity.setAreaPricingEnabledSnapshot(!custom && source.isAreaPricingEnabled());
+            entity.setLengthPricingEnabledSnapshot(!custom && source.isLengthPricingEnabled());
+            entity.setAltitudePricingEnabledSnapshot(!custom && source.isAltitudePricingEnabled());
+            entity.setIncludedAreaHaSnapshot(custom ? BigDecimal.ZERO : source.getIncludedAreaHa());
+            entity.setIncludedLengthKmSnapshot(custom ? BigDecimal.ZERO : source.getIncludedLengthKm());
+            entity.setIncludedAltitudeMSnapshot(custom ? BigDecimal.ZERO : source.getIncludedAltitudeM());
             if (explicitMedia || (!explicitEvidence && requestedImages + requestedVideos > 0)) {
                 // Evidence policy V3: acceptance needs the requested images AND the requested videos.
                 entity.setEvidencePolicyVersion(3);
@@ -172,8 +179,9 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
             entity.setSourceChecklist(source);
             entity.setDifficultySnapshot(source == null || source.getDifficulty() == null
                     ? ChecklistDifficulty.BASIC : source.getDifficulty());
-            entity.setSourceType(source == null ? OrderChecklistSourceType.CUSTOMER_CUSTOM : OrderChecklistSourceType.SERVICE_TEMPLATE);
-            entity.setReviewStatus(ChecklistReviewStatus.PENDING);
+            entity.setSourceType(custom ? OrderChecklistSourceType.CUSTOMER_CUSTOM
+                    : packageChecklist ? OrderChecklistSourceType.SERVICE_TEMPLATE : OrderChecklistSourceType.CUSTOMER_SELECTED);
+            entity.setReviewStatus(packageChecklist ? ChecklistReviewStatus.INCLUDED : ChecklistReviewStatus.PENDING);
             String content = item.getContentOverride();
             if (content == null && source != null) {
                 content = source.getContent();
@@ -182,7 +190,7 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
             if (!contents.add(entity.getContent().toLowerCase(Locale.ROOT))) throw invalid("Duplicate checklist content");
             entity.setDisplayOrder(entities.size());
             // Fail fast: a selection the policy cannot price must not become a snapshot.
-            if (policy != null && !entity.isManagerQuoteRequired()) priceCalculator.price(policy, new ChecklistPriceCalculator.Input(
+            if (policy != null && !custom) priceCalculator.price(policy, new ChecklistPriceCalculator.Input(
                     source == null ? null : source.getId(), entity.getContent(), entity.getDifficultySnapshot(), custom,
                     entity.getBasePriceSnapshot(), custom ? null : includedImages, custom ? null : includedVideos,
                     requestedImages, requestedVideos, profile, entity.getStandardVideoDurationSnapshot(), false));

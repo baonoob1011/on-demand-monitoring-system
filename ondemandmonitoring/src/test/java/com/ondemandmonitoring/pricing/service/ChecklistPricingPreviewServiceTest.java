@@ -189,9 +189,14 @@ class ChecklistPricingPreviewServiceTest {
         assertThat(estimate.total()).isEqualByComparingTo("1000000");
     }
 
-    @Test void customerCannotAddAChecklistOutsideTheTemplateAsAnIdOrDuplicateOne() {
+    @Test void customerCanAddAKnownCatalogChecklistButNotAnUnknownOrDuplicateId() {
         assertThatThrownBy(() -> preview.customerQuote(new Customer("s1", List.of(new CustomerItem("not-in-template", null, null, null)))))
-                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.ORDER_CHECKLIST_TEMPLATE_CHANGED));
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.CHECKLIST_NOT_FOUND));
+        var thermal = checklist("c3", "Thermal inspection", "350000", 0, 0);
+        when(definitions.findById("c3")).thenReturn(Optional.of(thermal));
+        var selected = preview.customerQuote(new Customer("s1", List.of(new CustomerItem("c1", null, null, null),
+                new CustomerItem("c3", null, null, null))));
+        assertThat(selected.checklists()).extracting(c -> c.checklistId()).containsExactly("c1", "c3");
         assertThatThrownBy(() -> preview.customerQuote(new Customer("s1", List.of(new CustomerItem("c1", null, null, null), new CustomerItem("c1", null, null, null)))))
                 .isInstanceOf(ApiException.class);
     }
