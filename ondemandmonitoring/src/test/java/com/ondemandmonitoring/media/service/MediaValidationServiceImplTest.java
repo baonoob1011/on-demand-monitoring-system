@@ -2,6 +2,7 @@ package com.ondemandmonitoring.media.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -118,17 +119,14 @@ class MediaValidationServiceImplTest {
 
         service.processObjectCreated(bucket, stagingKey, "event-1");
 
-        ArgumentCaptor<MediaNotificationOutbox> notification =
-                ArgumentCaptor.forClass(MediaNotificationOutbox.class);
-        verify(outbox).save(notification.capture());
-        assertThat(notification.getValue().getMissionId()).isEqualTo("mission-1");
-        assertThat(notification.getValue().getMedia()).isSameAs(captured);
+        // No per-file manager approval any more: the media is available right after technical validation.
+        assertThat(captured.getMediaStatus()).isEqualTo(com.ondemandmonitoring.media.enums.MediaStatus.AVAILABLE);
+        assertThat(captured.getAvailableAt()).isNotNull();
+        verify(outbox, never()).save(any());
 
         ArgumentCaptor<StorageEventInbox> event = ArgumentCaptor.forClass(StorageEventInbox.class);
         verify(inbox).save(event.capture());
         assertThat(event.getValue().getBucket()).isEqualTo(bucket);
-        assertThat(captured.getMediaStatus()).isEqualTo(MediaStatus.PENDING_MANAGER_APPROVAL);
-        assertThat(captured.getAvailableAt()).isNull();
         assertThat(attempt.getStatus()).isEqualTo(UploadAttemptStatus.SUCCEEDED);
         verify(storage).copy(bucket, stagingKey, stagingKey.replace("/staging/", "/final/"));
     }

@@ -77,6 +77,8 @@ class CurrentSchemaPostgresTest extends ChecklistPostgresTest {
         jdbc.execute("alter table " + SCHEMA + ".order_checklist_items drop constraint ck_snapshot_evidence_policy");
         jdbc.update("update " + SCHEMA + ".order_checklist_items set required_evidence_type=null where id in ('v0','v1')");
         CurrentSchemaPostgres.migrateEvidenceRequirementsV2(dataSource, SCHEMA);
+        // Deployments upgrade V2 -> flexible pricing/evidence V3 in order; later tests need the current constraint again.
+        CurrentSchemaPostgres.migrateFlexibleChecklistPricing(dataSource, SCHEMA);
         assertEquals("IMAGE_OR_VIDEO", jdbc.queryForObject("select required_evidence_type from " + SCHEMA + ".order_checklist_items where id='v0'", String.class));
         assertEquals(0, jdbc.queryForObject("select minimum_evidence_count from " + SCHEMA + ".order_checklist_items where id='v0'", Integer.class));
         assertEquals(1, jdbc.queryForObject("select evidence_policy_version from " + SCHEMA + ".order_checklist_items where id='v1'", Integer.class));

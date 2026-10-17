@@ -10,7 +10,7 @@ import com.ondemandmonitoring.order.service.IOrderService;
 import com.ondemandmonitoring.order.service.impl.OrderAuthorizationService;
 import com.ondemandmonitoring.mission.service.IMissionAuthorizationService;
 import com.ondemandmonitoring.role.domain.Role;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import org.junit.jupiter.api.BeforeEach;
@@ -96,12 +96,12 @@ class OrderSnapshotAuthorizationTest {
     }
     String validBody() {
         return """
-                {"title":"Order","serviceId":"s1","longitude":106.7,"latitude":10.7,
-                 "coverageArea":{"type":"Polygon"},"preferredDateFrom":"2026-10-04",
-                 "preferredDateTo":"2026-10-05","preferredTimeId":"t1",
+                {"title":"Order","serviceId":"s1","monitoringRelationship":"OWNER","monitoringAuthorizationConfirmed":true,"longitude":106.7,"latitude":10.7,
+                 "coverageArea":{"type":"Polygon"},"preferredDateFrom":"%s",
+                 "preferredDateTo":"%s","preferredTimeId":"t1",
                  "deliverables":[{"deliverableTypeId":"d1","requirement":{}}],
                  "checklistItems":[{"contentOverride":"Custom requirement"}]}
-                """;
+                """.formatted(java.time.LocalDate.now().plusDays(7), java.time.LocalDate.now().plusDays(8));
     }
     @Configuration @EnableWebMvc
     static class Beans {

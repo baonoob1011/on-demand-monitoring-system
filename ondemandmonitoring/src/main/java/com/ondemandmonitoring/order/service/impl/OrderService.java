@@ -277,7 +277,6 @@ public class OrderService implements IOrderService {
         Order order = orderMapper.toEntity(request);
         order.setCustomer(customer);
         order.setService(service);
-        order.setServiceBasePriceSnapshot(service.getBasePrice());
         order.setPreferredTime(preferredTime);
         order.setPoint(location);
         order.setTargetArea(targetArea);
@@ -514,6 +513,17 @@ public class OrderService implements IOrderService {
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public List<OrderCreateResponse> getApprovedOrders() {
         return toResponses(orderRepository.findByOrderStatusOrderByCreatedAtAsc(OrderStatus.APPROVED));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public List<OrderCreateResponse> getManagedOrders(OrderStatus status) {
+        List<Order> orders = status == null
+                ? orderRepository.findAll(org.springframework.data.domain.Sort.by(
+                        org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))
+                : orderRepository.findByOrderStatusOrderByCreatedAtAsc(status).reversed();
+        return toResponses(orders);
     }
 
     @Override

@@ -1,10 +1,10 @@
 package com.ondemandmonitoring.user.repository;
 
 import com.ondemandmonitoring.user.domain.User;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.EntityGraph;

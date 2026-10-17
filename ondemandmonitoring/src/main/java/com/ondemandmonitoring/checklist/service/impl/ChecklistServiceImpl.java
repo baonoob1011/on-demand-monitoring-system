@@ -26,6 +26,14 @@ public class ChecklistServiceImpl implements IChecklistService {
     private final ChecklistDefinitionRepository repository;
     private final ChecklistMapper mapper;
 
+    private com.ondemandmonitoring.pricing.service.ServiceDefaultPriceService defaultPrices;
+
+    /** Optional collaborator: keeps the stored service default price current. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setDefaultPrices(com.ondemandmonitoring.pricing.service.ServiceDefaultPriceService defaultPrices) {
+        this.defaultPrices = defaultPrices;
+    }
+
     @Override
     @Transactional
     public ChecklistResponse create(ChecklistRequest request) {
@@ -39,6 +47,7 @@ public class ChecklistServiceImpl implements IChecklistService {
         entity.setNormalizedContent(normalized);
         entity.setDifficulty(request.getDifficulty() == null
                 ? com.ondemandmonitoring.pricing.enums.ChecklistDifficulty.BASIC : request.getDifficulty());
+        applyPricing(entity, request, true);
         return mapper.toResponse(repository.saveAndFlush(entity));
     }
 
@@ -85,7 +94,10 @@ public class ChecklistServiceImpl implements IChecklistService {
         entity.setContent(content);
         entity.setNormalizedContent(normalized);
         if (request.getDifficulty() != null) entity.setDifficulty(request.getDifficulty());
-        return mapper.toResponse(repository.saveAndFlush(entity));
+        applyPricing(entity, request, false);
+        var saved = repository.saveAndFlush(entity);
+        if (defaultPrices != null) defaultPrices.refreshForChecklist(id);
+        return mapper.toResponse(saved);
     }
 
     @Override
@@ -93,7 +105,34 @@ public class ChecklistServiceImpl implements IChecklistService {
     public ChecklistResponse updateStatus(String id, boolean active) {
         ChecklistDefinition entity = locked(id);
         entity.setIsActive(active);
-        return mapper.toResponse(repository.saveAndFlush(entity));
+        var saved = repository.saveAndFlush(entity);
+        if (defaultPrices != null) defaultPrices.refreshForChecklist(id);
+        return mapper.toResponse(saved);
+    }
+
+    /** Absent fields keep the stored value on update and take the neutral default on create. */
+    private void applyPricing(ChecklistDefinition entity, ChecklistRequest request, boolean create) {
+        if (request.getBasePrice() != null) {
+            if (request.getBasePrice().signum() < 0 || request.getBasePrice().stripTrailingZeros().scale() > 0)
+                throw new ApiException(ErrorCode.VALIDATION_ERROR, "basePrice must be a non-negative whole amount");
+            entity.setBasePrice(request.getBasePrice().setScale(0));
+        } else if (create) entity.setBasePrice(java.math.BigDecimal.ZERO);
+        if (request.getIncludedImageCount() != null) entity.setIncludedImageCount(request.getIncludedImageCount());
+        if (request.getIncludedVideoCount() != null) entity.setIncludedVideoCount(request.getIncludedVideoCount());
+        if (request.getStandardVideoDurationSeconds() != null) entity.setStandardVideoDurationSeconds(request.getStandardVideoDurationSeconds());
+        if (request.getPricingProfile() != null) {
+            String profile = request.getPricingProfile().trim();
+            entity.setPricingProfile(profile.isEmpty() ? null : profile.toUpperCase(Locale.ROOT));
+        }
+        if (request.getAreaPricingEnabled() != null) entity.setAreaPricingEnabled(request.getAreaPricingEnabled());
+        if (request.getLengthPricingEnabled() != null) entity.setLengthPricingEnabled(request.getLengthPricingEnabled());
+        if (request.getAltitudePricingEnabled() != null) entity.setAltitudePricingEnabled(request.getAltitudePricingEnabled());
+        if (request.getIncludedAreaHa() != null) entity.setIncludedAreaHa(request.getIncludedAreaHa());
+        else if (create) entity.setIncludedAreaHa(java.math.BigDecimal.ZERO);
+        if (request.getIncludedLengthKm() != null) entity.setIncludedLengthKm(request.getIncludedLengthKm());
+        else if (create) entity.setIncludedLengthKm(java.math.BigDecimal.ZERO);
+        if (request.getIncludedAltitudeM() != null) entity.setIncludedAltitudeM(request.getIncludedAltitudeM());
+        else if (create) entity.setIncludedAltitudeM(java.math.BigDecimal.ZERO);
     }
 
     private ChecklistDefinition locked(String id) {

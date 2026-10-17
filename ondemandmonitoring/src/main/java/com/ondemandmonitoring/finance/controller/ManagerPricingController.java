@@ -7,8 +7,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-import com.ondemandmonitoring.pricing.dto.*;
-import com.ondemandmonitoring.pricing.service.CustomWorkAssessmentService;
 
 @RestController
 @RequestMapping("/api/manager/orders/{orderId}")
@@ -16,7 +14,7 @@ import com.ondemandmonitoring.pricing.service.CustomWorkAssessmentService;
 @RequiredArgsConstructor
 public class ManagerPricingController {
     private final IQuoteService quoteService;
-    private final CustomWorkAssessmentService assessmentService;
+    private final com.ondemandmonitoring.finance.service.IPaymentService paymentService;
 
     @GetMapping("/pricing")
     public ApiResponse<PricingReviewResponse> pricing(@PathVariable String orderId) {
@@ -26,6 +24,17 @@ public class ManagerPricingController {
     @GetMapping("/invoice")
     public ApiResponse<InvoiceResponse> invoice(@PathVariable String orderId) {
         return ApiResponse.ok(quoteService.getInvoiceByOrder(orderId));
+    }
+
+    /**
+     * Re-checks the order's pending VNPAY payments directly with VNPAY (QueryDR) and returns the up-to-date invoice. Used when
+     * the payment notification cannot reach the server (for example a development machine).
+     */
+    @org.springframework.web.bind.annotation.PostMapping("/payments/refresh")
+    public ApiResponse<InvoiceResponse> refreshPayments(@PathVariable String orderId,
+            jakarta.servlet.http.HttpServletRequest request) {
+        paymentService.refreshOrderPayments(orderId, request.getRemoteAddr());
+        return ApiResponse.ok("Payment status reconciled", quoteService.getInvoiceByOrder(orderId));
     }
 
     @PatchMapping("/checklist-items/{itemId}")
@@ -46,21 +55,4 @@ public class ManagerPricingController {
         return ApiResponse.ok("Quote approved", quoteService.approve(orderId, quoteId));
     }
 
-    @PostMapping("/quotes/{quoteId}/pricing-decision")
-    public ApiResponse<QuoteResponse> decidePricing(@PathVariable String orderId, @PathVariable String quoteId,
-                                                     @Valid @RequestBody PricingApprovalRequest request) {
-        return ApiResponse.ok(request.approved() ? "Pricing adjustment approved" : "Pricing adjustment rejected",
-                quoteService.decidePricingAdjustment(orderId, quoteId, request));
-    }
-
-    @GetMapping("/pricing-assessment")
-    public ApiResponse<CustomWorkAssessmentResponse> assessment(@PathVariable String orderId) {
-        return ApiResponse.ok(assessmentService.get(orderId));
-    }
-
-    @PutMapping("/pricing-assessment")
-    public ApiResponse<CustomWorkAssessmentResponse> saveAssessment(@PathVariable String orderId,
-            @Valid @RequestBody CustomWorkAssessmentRequest request) {
-        return ApiResponse.ok("Custom work assessment saved", assessmentService.save(orderId, request));
-    }
 }

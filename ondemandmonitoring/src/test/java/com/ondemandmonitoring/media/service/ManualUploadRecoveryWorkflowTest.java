@@ -206,12 +206,13 @@ class ManualUploadRecoveryWorkflowTest {
 
         validationService.processObjectCreated("test-bucket", STAGING_KEY, "recovery-event");
 
-        assertThat(captured.getMediaStatus()).isEqualTo(MediaStatus.PENDING_MANAGER_APPROVAL);
+        // Technical validation makes the media available; the Manager approves the whole result once, not each file.
+        assertThat(captured.getMediaStatus()).isEqualTo(MediaStatus.AVAILABLE);
         assertThat(captured.getValidatedAt()).isNotNull();
         assertThat(captured.getValidationError()).isNull();
         // Step 7: capture origin survives recovery; it is NOT rewritten to MANUAL_UPLOAD.
         assertThat(captured.getSourceType()).isEqualTo("DRONE_CAMERA");
-        assertThat(captured.getAvailableAt()).as("Manager approval is still required").isNull();
+        assertThat(captured.getAvailableAt()).isNotNull();
         // Step 9: resolved only after successful validation.
         assertThat(storedTask.getStatus()).isEqualTo(ManualUploadTaskStatus.RESOLVED);
         assertThat(storedTask.getResolvedAt()).isNotNull();
@@ -336,17 +337,15 @@ class ManualUploadRecoveryWorkflowTest {
         assertThat(evidencePolicy.eligibleDistinctCount(List.of(link), "exec-1",
                 com.ondemandmonitoring.order.enums.RequiredEvidenceType.IMAGE, false)).isLessThan(2);
 
-        // Final approval still requires Manager approval of the recovered media.
-        assertThat(evidencePolicy.ineligibilityReason(captured, true))
-                .isEqualTo("MEDIA_APPROVAL_REQUIRED");
+        // Recovered media is already available, so it is also eligible at final approval.
+        assertThat(evidencePolicy.ineligibilityReason(captured, true)).isNull();
     }
 
     @Test
-    void mediaMarkedAsManualUploadOriginWouldBeIneligibleEvidence() {
-        // Documents WHY the recovery path must not rewrite the capture origin.
+    void mediaUploadedManuallyIsOfficialEvidenceOnceItPassesTheSameChecks() {
+        // Manual upload is the fallback when the drone cannot upload; it is reviewed like any other media.
         captured.setSourceType("MANUAL_UPLOAD");
-        assertThat(evidencePolicy.attachable(captured)).isFalse();
-        assertThat(evidencePolicy.ineligibilityReason(captured, false))
-                .isEqualTo("EVIDENCE_SOURCE_NOT_ELIGIBLE");
+        assertThat(evidencePolicy.attachable(captured)).isTrue();
+        assertThat(evidencePolicy.ineligibilityReason(captured, false)).isNotEqualTo("EVIDENCE_SOURCE_NOT_ELIGIBLE");
     }
 }

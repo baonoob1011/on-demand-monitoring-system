@@ -1,6 +1,5 @@
 package com.ondemandmonitoring.checklist;
 
-import com.ondemandmonitoring.checklist.domain.*;
 import com.ondemandmonitoring.checklist.dto.request.*;
 import com.ondemandmonitoring.checklist.mapper.*;
 import com.ondemandmonitoring.checklist.repository.*;
@@ -24,7 +23,7 @@ import com.ondemandmonitoring.order.service.impl.OrderChecklistSnapshotService;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.role.domain.Role;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.warehouse.domain.PreferredTime;
 import com.ondemandmonitoring.warehouse.enums.PreferredTimeCode;
 import com.ondemandmonitoring.service.domain.DeliverableType;
@@ -508,24 +507,44 @@ class ChecklistPostgresTest {
             return new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory))
                     .getRepository(ServiceRepository.class);
         }
-        @Bean IChecklistService catalog(ChecklistDefinitionRepository repository) {
-            return new ChecklistServiceImpl(repository, Mappers.getMapper(ChecklistMapper.class));
+        @Bean com.ondemandmonitoring.pricing.service.ServiceDefaultPriceService defaultPrices(ServiceRepository services,
+                ServiceChecklistRepository links, com.ondemandmonitoring.pricing.repository.PricingPolicyRepository pricingPolicies) {
+            var calculator = new com.ondemandmonitoring.pricing.service.ChecklistPriceCalculator();
+            return new com.ondemandmonitoring.pricing.service.ServiceDefaultPriceService(services, links,
+                    new com.ondemandmonitoring.pricing.service.ServicePriceResolver(links, pricingPolicies, calculator));
+        }
+        @Bean IChecklistService catalog(ChecklistDefinitionRepository repository,
+                com.ondemandmonitoring.pricing.service.ServiceDefaultPriceService defaultPrices) {
+            var catalog = new ChecklistServiceImpl(repository, Mappers.getMapper(ChecklistMapper.class));
+            catalog.setDefaultPrices(defaultPrices);
+            return catalog;
         }
         @Bean IServiceChecklistService assignments(ServiceRepository services,
-                ChecklistDefinitionRepository checklists, ServiceChecklistRepository links) {
-            return new ServiceChecklistServiceImpl(services, checklists, links,
+                ChecklistDefinitionRepository checklists, ServiceChecklistRepository links,
+                com.ondemandmonitoring.pricing.service.ServiceDefaultPriceService defaultPrices) {
+            var assignments = new ServiceChecklistServiceImpl(services, checklists, links,
                     Mappers.getMapper(ServiceChecklistMapper.class));
+            assignments.setDefaultPrices(defaultPrices);
+            return assignments;
         }
         @Bean AuthenticatedUserResolver resolver() { return mock(AuthenticatedUserResolver.class); }
         @Bean PreferredTimeRepository times() { return mock(PreferredTimeRepository.class); }
         @Bean DeliverableTypeRepository deliverables() { return mock(DeliverableTypeRepository.class); }
         @Bean ServiceDeliverableRepository serviceDeliverables() { return mock(ServiceDeliverableRepository.class); }
         @Bean MissionResultRepository results() { return mock(MissionResultRepository.class); }
+        @Bean com.ondemandmonitoring.pricing.repository.PricingPolicyRepository pricingPolicies(EntityManagerFactory factory) {
+            return new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(factory))
+                    .getRepository(com.ondemandmonitoring.pricing.repository.PricingPolicyRepository.class);
+        }
         @Bean IOrderChecklistSnapshotService snapshots(ServiceRepository services,
                 ChecklistDefinitionRepository definitions, ServiceChecklistRepository assignments,
-                OrderChecklistItemRepository snapshots, AuthenticatedUserResolver resolver) {
+                OrderChecklistItemRepository snapshots, AuthenticatedUserResolver resolver,
+                com.ondemandmonitoring.pricing.repository.PricingPolicyRepository pricingPolicies) {
             return new OrderChecklistSnapshotService(services, definitions, assignments, snapshots,
-                    Mappers.getMapper(OrderChecklistItemMapper.class), resolver);
+                    Mappers.getMapper(OrderChecklistItemMapper.class), resolver, pricingPolicies,
+                    new com.ondemandmonitoring.pricing.service.ChecklistPriceCalculator(),
+                    new com.ondemandmonitoring.pricing.service.ServicePriceResolver(assignments, pricingPolicies,
+                            new com.ondemandmonitoring.pricing.service.ChecklistPriceCalculator()));
         }
         @Bean IOrderService orderService(OrderRepository orders, ServiceRepository services,
                 DeliverableTypeRepository deliverables, ServiceDeliverableRepository links,

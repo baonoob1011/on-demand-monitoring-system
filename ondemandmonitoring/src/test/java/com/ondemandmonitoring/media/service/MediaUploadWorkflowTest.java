@@ -169,6 +169,47 @@ class MediaUploadWorkflowTest {
     }
 
     @Test
+    void rejectsAFileThatIsAlreadyStoredForTheMission() {
+        var request = request("IMAGE", "image/jpeg");
+        when(media.existsActiveDuplicate("mission-id", request.getChecksumSha256())).thenReturn(true);
+        assertThatThrownBy(() -> service.prepare("mission-id", request))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> assertThat(((ApiException) e).getErrorCode())
+                        .isEqualTo(com.ondemandmonitoring.common.exception.ErrorCode.MEDIA_DUPLICATE_CONTENT));
+        verify(media, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void rejectsACaptureOlderThanTheMissionsPlannedDuration() {
+        Mission mission = missions.findById("mission-id").orElseThrow();
+        Instant start = Instant.now().minusSeconds(3600);
+        mission.setScheduledStartAt(start);
+        mission.setScheduledEndAt(start.plusSeconds(1800)); // planned 30 minutes
+        var old = request("IMAGE", "image/jpeg");
+        old.setCapturedAt(Instant.now().minusSeconds(3 * 3600));
+        assertThatThrownBy(() -> service.prepare("mission-id", old))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> assertThat(((ApiException) e).getErrorCode())
+                        .isEqualTo(com.ondemandmonitoring.common.exception.ErrorCode.MEDIA_CAPTURE_TOO_OLD));
+    }
+
+    @Test
+    void acceptsACaptureInsideThePlannedDurationWindow() {
+        Mission mission = missions.findById("mission-id").orElseThrow();
+        Instant start = Instant.now().minusSeconds(3600);
+        mission.setScheduledStartAt(start);
+        mission.setScheduledEndAt(start.plusSeconds(1800));
+        var recent = request("IMAGE", "image/jpeg");
+        recent.setCapturedAt(Instant.now().minusSeconds(600));
+        when(media.saveAndFlush(any())).thenAnswer(call -> {
+            MediaAsset saved = call.getArgument(0); saved.setId("media-id"); return saved;
+        });
+        when(storage.createPresignedPutUrl(any(), any(), anyLong(), any()))
+                .thenReturn(new IMediaObjectStorage.PresignedUpload("https://test/upload", Map.of(), 300));
+        assertThat(service.prepare("mission-id", recent)).isNotNull();
+    }
+
+    @Test
     void preparePersistsDeclaredProvenanceWithoutInventingCaptureActor() {
         var request = request("IMAGE", "image/jpeg"); request.setSourceType("SATELLITE_SNAPSHOT");
         when(media.saveAndFlush(any())).thenAnswer(call -> {

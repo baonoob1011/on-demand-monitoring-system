@@ -6,9 +6,12 @@ import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.common.exception.GlobalExceptionHandler;
 import com.ondemandmonitoring.config.*;
 import com.ondemandmonitoring.role.domain.*;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import com.ondemandmonitoring.service.controller.ServiceController;
+import com.ondemandmonitoring.pricing.service.ServicePriceResolver;
+import com.ondemandmonitoring.service.dto.response.ServiceResponse;
 import com.ondemandmonitoring.service.service.IServiceService;
 import com.ondemandmonitoring.service.repository.ServiceRequirementSuggestionRepository;
 import com.ondemandmonitoring.service.domain.Service;
@@ -51,10 +54,13 @@ class ChecklistAuthorizationTest {
     @Autowired IServiceChecklistService assignments;
     @Autowired IServiceService services;
     @Autowired AuthenticatedUserResolver resolver;
+    @Autowired ServicePriceResolver priceResolver;
     MockMvc mvc;
 
     @BeforeEach void setup() {
-        reset(catalog, assignments, services, resolver);
+        reset(catalog, assignments, services, resolver, priceResolver);
+        when(priceResolver.forDisplay(any())).thenReturn(ServicePriceResolver.of(new BigDecimal("3200000")));
+        when(priceResolver.aiImageAnalysisPrice()).thenReturn(java.util.Optional.of(new BigDecimal("500000")));
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         var response = new ChecklistResponse(); response.setId("c1"); response.setContent("Check exits");
         when(catalog.create(any())).thenReturn(response);
@@ -78,6 +84,7 @@ class ChecklistAuthorizationTest {
             post("/api/admin/services/s1/checklists").content("{\"checklistId\":\"c1\",\"displayOrder\":0}"),
             patch("/api/admin/services/s1/checklists/c1").content("{\"displayOrder\":2}"),
             delete("/api/admin/services/s1/checklists/c1"),
+            put("/api/admin/services/s1/checklists/c1/pricing").content("{\"basePriceOverride\":250000,\"includedImageCountOverride\":12}"),
             put("/api/admin/services/s1/checklists/order").content("{\"items\":[]}"),
             get("/api/admin/services/s1/checklists"), get("/api/admin/checklists/c1/services"),
             post("/api/services").content("{\"name\":\"Service\",\"basePrice\":3200000}"),
@@ -130,6 +137,35 @@ class ChecklistAuthorizationTest {
                 .andExpect(jsonPath("$.data.totalPrice").value(3700000));
     }
 
+    @Test void pricingEstimateKeepsItsShapeButFollowsTheChecklistDefaultPrice() throws Exception {
+        role(RoleCode.CUSTOMER);
+        when(priceResolver.forDisplay(any())).thenReturn(ServicePriceResolver.of(new BigDecimal("470000")));
+        mvc.perform(get("/api/services/pricing-estimate").param("serviceId", "s1").param("aiImageAnalysis", "true")
+                        .with(jwt().authorities(() -> "ROLE_CUSTOMER")))
+                .andExpect(status().isOk())
+                // the legacy catalog price is NOT added on top of priced checklists
+                .andExpect(jsonPath("$.data.servicePrice").value(470000))
+                .andExpect(jsonPath("$.data.additionalRequirements[0].additionalPrice").value(500000))
+                .andExpect(jsonPath("$.data.totalPrice").value(970000))
+                .andExpect(jsonPath("$.data.serviceId").value("s1"));
+    }
+
+    @Test void serviceReadsExposeTheLegacyPriceAndTheChecklistDefaultPriceSeparately() throws Exception {
+        role(RoleCode.CUSTOMER);
+        var response = ServiceResponse.builder().id("s1").name("Service").basePrice(new BigDecimal("3200000")).build();
+        when(services.getById("s1")).thenReturn(response);
+        when(services.getAllActive()).thenReturn(List.of(ServiceResponse.builder().id("s1").name("Service").basePrice(new BigDecimal("3200000")).build()));
+        when(priceResolver.forDisplay(any())).thenReturn(ServicePriceResolver.of(new BigDecimal("470000")));
+        mvc.perform(get("/api/services/s1").with(jwt().authorities(() -> "ROLE_CUSTOMER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.basePrice").value(3200000))
+                .andExpect(jsonPath("$.data.defaultPrice").value(470000))
+                .andExpect(jsonPath("$.data.priceSource").value("CHECKLISTS"));
+        mvc.perform(get("/api/services").param("activeOnly", "true").with(jwt().authorities(() -> "ROLE_CUSTOMER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].defaultPrice").value(470000));
+    }
+
     @Test void emptySearchIsOptionalAndPaginationBindsAsQueryParameters() throws Exception {
         role(RoleCode.ADMIN);
         mvc.perform(get("/api/admin/checklists").param("page", "0").param("size", "6")
@@ -144,6 +180,13 @@ class ChecklistAuthorizationTest {
         for (var request : List.of(
                 post("/api/admin/checklists").content("{\"content\":\" \"}"),
                 post("/api/admin/checklists").content("{\"content\":\"" + "x".repeat(501) + "\"}"),
+                post("/api/admin/checklists").content("{\"content\":\"Check\",\"basePrice\":-1}"),
+                post("/api/admin/checklists").content("{\"content\":\"Check\",\"includedImageCount\":-1}"),
+                post("/api/admin/checklists").content("{\"content\":\"Check\",\"includedVideoCount\":501}"),
+                put("/api/admin/checklists/c1").content("{\"content\":\"Check\",\"standardVideoDurationSeconds\":0}"),
+                put("/api/admin/checklists/c1").content("{\"content\":\"Check\",\"pricingProfile\":\"bad profile!\"}"),
+                put("/api/admin/services/s1/checklists/c1/pricing").content("{\"basePriceOverride\":-5}"),
+                put("/api/admin/services/s1/checklists/c1/pricing").content("{\"includedImageCountOverride\":-1}"),
                 patch("/api/admin/checklists/c1/status").content("{}"),
                 post("/api/admin/services/s1/checklists").content("{\"checklistId\":\"c1\",\"displayOrder\":-1}"),
                 patch("/api/admin/services/s1/checklists/c1").content("{}"),
@@ -181,6 +224,7 @@ class ChecklistAuthorizationTest {
         @Bean IServiceService services() { return mock(IServiceService.class); }
         @Bean ServiceRequirementSuggestionRepository suggestions() { return mock(ServiceRequirementSuggestionRepository.class); }
         @Bean AuthenticatedUserResolver resolver() { return mock(AuthenticatedUserResolver.class); }
+        @Bean ServicePriceResolver priceResolver() { return mock(ServicePriceResolver.class); }
         @Bean @Qualifier("cognitoAccessTokenDecoder") JwtDecoder decoder() { return mock(JwtDecoder.class); }
     }
 }

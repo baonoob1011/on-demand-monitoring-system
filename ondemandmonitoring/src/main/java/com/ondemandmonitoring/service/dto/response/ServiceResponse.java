@@ -22,7 +22,12 @@ public class ServiceResponse {
     String code;
     String name;
     String description;
+    /** Legacy catalog price; only used as the price while no default checklist is priced. */
     BigDecimal basePrice;
+    /** Default price: the sum of the default checklists (see priceSource). Null when not computed. */
+    BigDecimal defaultPrice;
+    /** CHECKLISTS or LEGACY_BASE_PRICE. */
+    String priceSource;
     String imageUrl;
     String fallbackImageUrl;
     Boolean isActive;

@@ -35,6 +35,12 @@ public class ServiceChecklistController {
         return ApiResponse.ok(service.updateOrder(serviceId, checklistId, request.getDisplayOrder()));
     }
 
+    @PutMapping("/{checklistId}/pricing")
+    public ApiResponse<ServiceChecklistResponse> updatePricing(@PathVariable String serviceId,
+            @PathVariable String checklistId, @Valid @RequestBody ServiceChecklistPricingRequest request) {
+        return ApiResponse.ok(service.updatePricing(serviceId, checklistId, request));
+    }
+
     @PutMapping("/order")
     public ApiResponse<List<ServiceChecklistResponse>> reorder(@PathVariable String serviceId,
             @Valid @RequestBody ChecklistReorderRequest request) {

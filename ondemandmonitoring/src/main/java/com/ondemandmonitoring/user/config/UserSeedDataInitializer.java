@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.user.config;
 
 import com.ondemandmonitoring.role.domain.Role;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.role.repository.RoleRepository;
 import com.ondemandmonitoring.user.domain.CustomerProfile;
 import com.ondemandmonitoring.user.domain.User;

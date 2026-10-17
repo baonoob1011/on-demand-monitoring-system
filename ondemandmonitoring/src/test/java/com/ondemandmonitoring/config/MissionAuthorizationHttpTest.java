@@ -15,7 +15,7 @@ import com.ondemandmonitoring.mission.service.IMissionMediaUploadService;
 import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.mission.service.impl.MissionAuthorizationServiceImpl;
 import com.ondemandmonitoring.role.domain.Role;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.util.List;
@@ -184,34 +184,25 @@ class MissionAuthorizationHttpTest {
     }
 
     @Test
-    void inspectorCompletesButOnlyFinalMonitoringActorCanSubmit() throws Exception {
+    void inspectorOwnsFinalAcceptanceWhilePilotAndOperatorCannotSubmit() throws Exception {
         mission.setStatus(MissionStatus.PENDING_REVIEW);
+        crew(MissionStaffRole.PILOT, StaffResponseStatus.ACCEPTED);
+        mvc.perform(get("/api/missions/mission-1/permissions").with(jwt().authorities(() -> "ROLE_STAFF")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.canCompleteMission").value(false))
+                .andExpect(jsonPath("$.data.canSubmitMissionResult").value(false));
+        submitResult(status().isForbidden());
+        crew(MissionStaffRole.OPERATOR, StaffResponseStatus.ACCEPTED);
+        submitResult(status().isForbidden());
         crew(MissionStaffRole.INSPECTOR, StaffResponseStatus.ACCEPTED);
         mvc.perform(get("/api/missions/mission-1/permissions").with(jwt().authorities(() -> "ROLE_STAFF")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.canCompleteMission").value(true))
-                .andExpect(jsonPath("$.data.canSubmitMissionResult").value(false));
+                .andExpect(jsonPath("$.data.canSubmitMissionResult").value(true));
         mvc.perform(post("/api/missions/mission-1/complete").with(jwt().authorities(() -> "ROLE_STAFF")).with(csrf()))
                 .andExpect(status().isOk());
         verify(service).completeMission("mission-1");
         mission.setStatus(MissionStatus.COMPLETED);
         var inspector = assignments.findByMissionId("mission-1").getFirst();
         inspector.setReleasedAt(java.time.Instant.now()); inspector.setReleaseReason("MISSION_COMPLETE");
-        submitResult(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
-        crew(MissionStaffRole.OPERATOR, StaffResponseStatus.ACCEPTED);
-        var operator = assignments.findByMissionId("mission-1").getFirst();
-        operator.setReleasedAt(java.time.Instant.now()); operator.setReleaseReason("MISSION_COMPLETE");
-        mvc.perform(get("/api/missions/mission-1/permissions").with(jwt().authorities(() -> "ROLE_STAFF")))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.canCompleteMission").value(false))
-                .andExpect(jsonPath("$.data.canSubmitMissionResult").value(true));
-        submitResult(status().isCreated());
-        crew(MissionStaffRole.PILOT, StaffResponseStatus.ACCEPTED);
-        var pilot = assignments.findByMissionId("mission-1").getFirst();
-        pilot.setReleasedAt(java.time.Instant.now()); pilot.setReleaseReason("MISSION_COMPLETE");
-        when(assignments.findByMissionId("mission-1")).thenReturn(List.of(pilot, operator));
-        var otherOperator = User.builder().isActive(true).role(user.getRole()).build();
-        otherOperator.setId("another-operator"); operator.setStaff(otherOperator);
-        submitResult(status().isForbidden());
-        when(assignments.findByMissionId("mission-1")).thenReturn(List.of(pilot));
         submitResult(status().isCreated());
     }
 
@@ -221,22 +212,19 @@ class MissionAuthorizationHttpTest {
     }
 
     @Test
-    void inspectorMayUploadMediaWithoutBeingAllowedToSubmitResult() throws Exception {
+    void inspectorMayUploadMediaAndSubmitTheFinalResult() throws Exception {
         mission.setStatus(MissionStatus.PENDING_REVIEW);
         crew(MissionStaffRole.INSPECTOR, StaffResponseStatus.ACCEPTED);
         var mediaUploads = context.getBean(IMissionMediaUploadService.class);
-        var results = context.getBean(com.ondemandmonitoring.mission.service.IMissionResultService.class);
-        reset(mediaUploads, results);
+        reset(mediaUploads);
         mvc.perform(get("/api/missions/mission-1/permissions").with(jwt().authorities(() -> "ROLE_STAFF")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.canUploadMedia").value(true))
-                .andExpect(jsonPath("$.data.canSubmitMissionResult").value(false));
+                .andExpect(jsonPath("$.data.canSubmitMissionResult").value(true));
         var file = new org.springframework.mock.web.MockMultipartFile("file", "capture.jpg", "image/jpeg", new byte[]{1,2,3});
         mvc.perform(multipart("/api/missions/mission-1/media").file(file)
                 .with(jwt().authorities(() -> "ROLE_STAFF")).with(csrf()))
                 .andExpect(status().isCreated());
         verify(mediaUploads).uploadWithRetry(eq("mission-1"),isNull(),any(),isNull());
-        submitResult(status().isForbidden());
-        verify(results,never()).upsert(anyString(),any());
     }
 
     @Configuration

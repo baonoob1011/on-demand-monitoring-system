@@ -16,4 +16,19 @@ public class ServiceChecklistResponse {
     private int displayOrder;
     private Long version;
     private Long checklistVersion;
+    private boolean required;
+    // Effective values = override, else inherited from the checklist definition.
+    private java.math.BigDecimal basePrice;
+    private Integer includedImageCount;
+    private Integer includedVideoCount;
+    private String pricingProfile;
+    private Integer standardVideoDurationSeconds;
+    private java.math.BigDecimal basePriceOverride;
+    private Integer includedImageCountOverride;
+    private Integer includedVideoCountOverride;
+    private String pricingProfileOverride;
+    private java.math.BigDecimal checklistBasePrice;
+    private int checklistIncludedImageCount;
+    private int checklistIncludedVideoCount;
+    private String checklistPricingProfile;
 }

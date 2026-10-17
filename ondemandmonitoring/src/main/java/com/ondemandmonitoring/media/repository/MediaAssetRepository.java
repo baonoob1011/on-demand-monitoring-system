@@ -42,6 +42,15 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, String> 
         Optional<MediaAsset> findByMissionIdAndDeviceIdAndLocalMediaId(
                         String missionId, String deviceId, String localMediaId);
 
+        /** The same file (same SHA-256) already stored for the mission and not rejected. */
+        @Query("""
+                        select count(m) > 0 from MediaAsset m
+                        where m.mission.id = :missionId
+                          and lower(m.checksumSha256) = lower(:checksum)
+                          and (m.mediaStatus is null or m.mediaStatus <> com.ondemandmonitoring.media.enums.MediaStatus.REJECTED)
+                        """)
+        boolean existsActiveDuplicate(@Param("missionId") String missionId, @Param("checksum") String checksum);
+
         @Query("select m from MediaAsset m where m.mission.id = :missionId order by m.capturedAt desc")
         List<MediaAsset> findByMissionIdOrderByCapturedAtDesc(String missionId);
 

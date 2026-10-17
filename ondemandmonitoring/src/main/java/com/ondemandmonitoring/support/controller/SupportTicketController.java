@@ -4,7 +4,7 @@ import com.ondemandmonitoring.support.dto.*;
 import com.ondemandmonitoring.support.service.ISupportTicketService;
 import com.ondemandmonitoring.user.service.IStaffDirectoryService;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import org.springframework.security.access.prepost.PreAuthorize;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

@@ -38,12 +38,24 @@ public class PaymentService implements IPaymentService {
      * fallback when a development machine cannot expose its IPN URL publicly.
      */
     public PaymentResponse refreshByReference(String transactionReference, String requestIp) {
-        PaymentResponse current = persistence.getByReference(transactionReference);
+        return reconcile(transactionReference, requestIp, false);
+    }
+
+    public int refreshOrderPayments(String orderId, String requestIp) {
+        List<String> references = persistence.pendingReferencesForOrder(orderId);
+        for (String reference : references) reconcile(reference, requestIp, true);
+        return references.size();
+    }
+
+    private PaymentResponse reconcile(String transactionReference, String requestIp, boolean staff) {
+        PaymentResponse current = staff ? persistence.getByReferenceForStaff(transactionReference)
+                : persistence.getByReference(transactionReference);
         if (current.status() != com.ondemandmonitoring.finance.enums.PaymentStatus.PENDING
                 && current.status() != com.ondemandmonitoring.finance.enums.PaymentStatus.PROCESSING) {
             return current;
         }
-        PaymentReconciliationContext context = persistence.reconciliationContext(transactionReference);
+        PaymentReconciliationContext context = staff ? persistence.reconciliationContextForStaff(transactionReference)
+                : persistence.reconciliationContext(transactionReference);
         String providerRequestDate = context.providerRequestDate() == null
                 ? queryParameter(context.paymentUrl(), "vnp_CreateDate") : context.providerRequestDate();
         if (providerRequestDate == null || !providerRequestDate.matches("\\d{14}")) {
@@ -62,7 +74,7 @@ public class PaymentService implements IPaymentService {
         if (verified.successful() || isTerminalFailure(verified.transactionStatus())) {
             webhookProcessor.process(verified);
         }
-        return persistence.getByReference(transactionReference);
+        return staff ? persistence.getByReferenceForStaff(transactionReference) : persistence.getByReference(transactionReference);
     }
     public List<PaymentResponse> list(String invoiceId) { return persistence.list(invoiceId); }
 

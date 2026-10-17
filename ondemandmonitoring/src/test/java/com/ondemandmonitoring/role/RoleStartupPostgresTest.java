@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.role;
 
 import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.role.infrastructure.RoleDataInitializer;
 import com.ondemandmonitoring.role.infrastructure.RoleModelMigration;
 import com.ondemandmonitoring.user.config.UserSeedDataInitializer;

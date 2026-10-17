@@ -94,7 +94,7 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
         }
         MissionDeviceAssignment deviceAssignment = requireAssignedDeviceAssignment(mission, request.getDeviceId());
         Device device = deviceAssignment.getDevice();
-        validateMetadata(request);
+        validateMetadata(request, mission);
         Optional<MediaAsset> existing = media.findByMissionIdAndDeviceIdAndLocalMediaId(
                 mission.getId(), device.getId(), request.getLocalMediaId());
         if (existing.isPresent()) {
@@ -110,6 +110,10 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
         }
         if (storage.bucket() == null || storage.bucket().isBlank()) {
             throw new ApiException(ErrorCode.INTERNAL_SERVER_ERROR, "S3 bucket is required");
+        }
+        // The same file cannot count twice: attach the media that is already stored instead of uploading it again.
+        if (media.existsActiveDuplicate(mission.getId(), request.getChecksumSha256())) {
+            throw new ApiException(ErrorCode.MEDIA_DUPLICATE_CONTENT);
         }
         MediaAsset captured = new MediaAsset();
         captured.setDeviceAssignment(deviceAssignment);
@@ -466,7 +470,19 @@ public class MediaUploadServiceImpl implements IMediaUploadService {
         return status(captured.getId());
     }
 
-    private void validateMetadata(PrepareMediaUploadRequest request) {
+    /** Photos older than the mission's own planned duration (counted back from now) cannot belong to this mission. */
+    private void requireRecentCapture(PrepareMediaUploadRequest request, MissionMediaContext mission) {
+        if (mission.getScheduledStartAt() == null || mission.getScheduledEndAt() == null
+                || !mission.getScheduledEndAt().isAfter(mission.getScheduledStartAt())) return;
+        java.time.Duration planned = java.time.Duration.between(mission.getScheduledStartAt(), mission.getScheduledEndAt());
+        if (request.getCapturedAt().isBefore(Instant.now().minus(planned))) {
+            throw new ApiException(ErrorCode.MEDIA_CAPTURE_TOO_OLD,
+                    "Ảnh/video được chụp cách đây hơn " + planned.toMinutes() + " phút (thời lượng dự kiến của Mission).");
+        }
+    }
+
+    private void validateMetadata(PrepareMediaUploadRequest request, MissionMediaContext mission) {
+        requireRecentCapture(request, mission);
         if (request.getSourceType() != null && !java.util.Set.of(
                 "DRONE_CAMERA", "SATELLITE_SNAPSHOT", "MANUAL_UPLOAD").contains(request.getSourceType())) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Unsupported media source type");

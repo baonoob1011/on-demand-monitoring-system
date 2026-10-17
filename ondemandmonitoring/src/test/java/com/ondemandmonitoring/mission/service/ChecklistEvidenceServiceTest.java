@@ -72,8 +72,12 @@ class ChecklistEvidenceServiceTest {
         assertEquals(1, service.attach("m", request()).size());
         assertTrue(service.ready(execution, List.of(link()), false));
     }
-    @Test void rejectsManualUnknownAndMapillarySources() {
-        for(String source:Arrays.asList("MANUAL_UPLOAD","MAPILLARY_REFERENCE",null)) { asset.setSourceType(source); error(ErrorCode.EVIDENCE_NOT_ELIGIBLE,()->service.attach("m",request())); }
+    @Test void permitsManualUploadAsTheFallbackWhenTheDroneCannotUpload() {
+        asset.setSourceType("MANUAL_UPLOAD");
+        assertEquals(1, service.attach("m", request()).size());
+    }
+    @Test void rejectsUnknownAndMapillarySources() {
+        for(String source:Arrays.asList("MAPILLARY_REFERENCE",null)) { asset.setSourceType(source); error(ErrorCode.EVIDENCE_NOT_ELIGIBLE,()->service.attach("m",request())); }
     }
     @Test void permitsPreValidationLinkButDoesNotCount() {
         asset.setMediaStatus(MediaStatus.UPLOAD_PENDING); asset.setValidatedAt(null);

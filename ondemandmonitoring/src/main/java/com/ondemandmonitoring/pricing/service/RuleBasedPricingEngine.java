@@ -6,6 +6,7 @@ import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.domain.OrderChecklistItem;
 import com.ondemandmonitoring.order.domain.OrderDeliverable;
 import com.ondemandmonitoring.order.enums.*;
+import com.ondemandmonitoring.pricing.config.PricingPolicyInitializer;
 import com.ondemandmonitoring.pricing.domain.*;
 import com.ondemandmonitoring.pricing.dto.*;
 import com.ondemandmonitoring.pricing.enums.*;
@@ -23,7 +24,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class RuleBasedPricingEngine implements PricingEngine {
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(0);
     private final PricingPolicyRepository policies;
+    /** Retained as a constructor dependency for binary/test compatibility; assessments no longer affect pricing. */
     private final CustomWorkAssessmentRepository assessments;
+    private final ChecklistPriceCalculator checklistPrices;
 
     @Override
     @Transactional(readOnly = true)
@@ -31,27 +34,64 @@ public class RuleBasedPricingEngine implements PricingEngine {
         PricingPolicy policy = policies.findEffectiveActive(Instant.now()).stream().findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.PRICING_POLICY_NOT_FOUND));
         List<PricingBreakdownItem> result = new ArrayList<>();
-        BigDecimal base = money(order.getServiceBasePriceSnapshot() != null
+        // Checklists are the price. Only orders created before that (a stored package snapshot, or version-0 checklist
+        // snapshots) keep a PACKAGE line; a new order has none.
+        boolean legacyOrder = order.getServiceBasePriceSnapshot() != null
+                || checklistItems.stream().anyMatch(i -> i.getPricingSnapshotVersion() == 0);
+        BigDecimal base = money(!legacyOrder ? BigDecimal.ZERO : order.getServiceBasePriceSnapshot() != null
                 ? order.getServiceBasePriceSnapshot() : order.getService().getBasePrice());
-        add(result, PricingCategory.PACKAGE, order.getService().getName(), BigDecimal.ONE, base, base);
+        if (legacyOrder) add(result, PricingCategory.PACKAGE, order.getService().getName(), BigDecimal.ONE, base, base);
 
-        boolean custom = checklistItems.stream().anyMatch(i -> i.getSourceType() == OrderChecklistSourceType.CUSTOMER_CUSTOM
+        // Legacy snapshots (version 0) keep the single order-level custom charge; new snapshots price each custom item.
+        boolean legacyCustom = checklistItems.stream().anyMatch(i -> i.getSourceType() == OrderChecklistSourceType.CUSTOMER_CUSTOM
+                && i.getPricingSnapshotVersion() == 0
                 && i.getReviewStatus() != ChecklistReviewStatus.REJECTED && i.getReviewStatus() != ChecklistReviewStatus.DUPLICATE);
-        Optional<CustomWorkAssessment> assessment = assessments.findByOrderId(order.getId());
-        if (custom) keyed(policy, PricingCategory.RESOURCE, "CUSTOM_BASE").ifPresent(r -> addFixed(result, r, BigDecimal.ONE));
+        boolean customWork = checklistItems.stream().anyMatch(i -> i.getSourceType() == OrderChecklistSourceType.CUSTOMER_CUSTOM
+                && i.getReviewStatus() != ChecklistReviewStatus.REJECTED && i.getReviewStatus() != ChecklistReviewStatus.DUPLICATE);
+        boolean assessmentComplete = true;
+        if (legacyCustom) keyed(policy, PricingCategory.RESOURCE, "CUSTOM_BASE").ifPresent(r -> addFixed(result, r, BigDecimal.ONE));
 
-        BigDecimal distanceKm = assessment.map(CustomWorkAssessment::getEstimatedDistanceKm).filter(Objects::nonNull)
-                .orElseGet(() -> decimal(order.getEstimatedLengthM()).divide(new BigDecimal("1000"), 4, RoundingMode.HALF_UP));
-        ranged(policy, PricingCategory.DISTANCE, distanceKm).ifPresent(rule -> applyRule(result, rule, distanceKm, base));
+        BigDecimal distanceKm = decimal(order.getEstimatedLengthM()).divide(new BigDecimal("1000"), 4, RoundingMode.HALF_UP);
+        BigDecimal areaHa = polygonHectares(order);
+        BigDecimal altitudeM = decimal(order.getAltitudeM());
+        boolean legacyDimensions = checklistItems.stream().allMatch(i -> i.getPricingSnapshotVersion() == 0);
+        if (legacyDimensions) {
+            BigDecimal legacyDistance = distanceKm;
+            ranged(policy, PricingCategory.DISTANCE, legacyDistance).ifPresent(rule -> applyRule(result, rule, legacyDistance, base));
+            BigDecimal legacyArea = areaHa;
+            ranged(policy, PricingCategory.AREA, legacyArea).ifPresent(rule -> applyRule(result, rule, legacyArea, base));
+        }
 
-        BigDecimal areaHa = assessment.map(CustomWorkAssessment::getEstimatedAreaHa).filter(Objects::nonNull)
-                .orElseGet(() -> polygonHectares(order));
-        ranged(policy, PricingCategory.AREA, areaHa).ifPresent(rule -> applyRule(result, rule, areaHa, base));
-
+        List<String> pendingQuotes = new ArrayList<>();
         for (OrderChecklistItem item : checklistItems) {
             if (item.getReviewStatus() == ChecklistReviewStatus.REJECTED || item.getReviewStatus() == ChecklistReviewStatus.DUPLICATE) continue;
-            String key = Optional.ofNullable(item.getDifficultySnapshot()).orElse(ChecklistDifficulty.BASIC).name();
-            keyed(policy, PricingCategory.CHECKLIST, key).ifPresent(rule -> addFixed(result, rule, BigDecimal.ONE));
+            if (item.getPricingSnapshotVersion() == 0) {
+                String key = Optional.ofNullable(item.getDifficultySnapshot()).orElse(ChecklistDifficulty.BASIC).name();
+                keyed(policy, PricingCategory.CHECKLIST, key).ifPresent(rule -> addFixed(result, rule, BigDecimal.ONE));
+                continue;
+            }
+            // Priced only from the frozen snapshot plus the policy: later catalog edits cannot change this order.
+            boolean customItem = item.getSourceType() == OrderChecklistSourceType.CUSTOMER_CUSTOM;
+            String label = shorten(item.getContent());
+            ChecklistPriceBreakdown priced;
+            {
+                ChecklistPriceCalculator.PricingDimensions dimensions = new ChecklistPriceCalculator.PricingDimensions(
+                        item.isAreaPricingEnabledSnapshot(), item.isLengthPricingEnabledSnapshot(),
+                        item.isAltitudePricingEnabledSnapshot(), item.getIncludedAreaHaSnapshot(),
+                        item.getIncludedLengthKmSnapshot(), item.getIncludedAltitudeMSnapshot());
+                ChecklistPriceCalculator.RequestContext itemContext = new ChecklistPriceCalculator.RequestContext(
+                        areaHa, distanceKm, altitudeM);
+                priced = checklistPrices.price(policy, new ChecklistPriceCalculator.Input(
+                        item.getSourceChecklist() == null ? null : item.getSourceChecklist().getId(), item.getContent(),
+                        item.getDifficultySnapshot(), customItem, item.getBasePriceSnapshot(),
+                        customItem ? null : item.getIncludedImageCountSnapshot(), customItem ? null : item.getIncludedVideoCountSnapshot(),
+                        item.getRequestedImageCount(), item.getRequestedVideoCount(), item.getPricingProfileSnapshot(),
+                        item.getStandardVideoDurationSnapshot(), true,
+                        dimensions, itemContext));
+            }
+            for (ChecklistPriceBreakdown.Line line : priced.lines())
+                add(result, line.category(), label + " · " + line.description(), line.quantity(), line.unitPrice(), line.amount(),
+                        item.getId());
         }
         if (order.getResultFormats() != null) for (OrderResultFormat format : order.getResultFormats()) {
             BigDecimal requestedQuantity = requestedOutputQuantity(order, format);
@@ -63,24 +103,24 @@ public class RuleBasedPricingEngine implements PricingEngine {
         BigDecimal highResolutionVideo = requestedQualityQuantity(order, "VIDEO", "4K");
         if (highResolutionVideo.signum() > 0)
             keyed(policy, PricingCategory.OUTPUT, "4K_VIDEO").ifPresent(rule -> applyRule(result, rule, highResolutionVideo, base));
-        assessment.ifPresent(a -> {
-            resource(result, policy, "PILOT", a.getPilotCount());
-            resource(result, policy, "DRONE", a.getDroneCount());
-            resource(result, policy, "BATTERY", a.getBatteryUnits());
-            if (a.isThermalRequired()) keyed(policy, PricingCategory.OUTPUT, "THERMAL").ifPresent(r -> addFixed(result, r, BigDecimal.ONE));
-            if (a.isMultispectralRequired()) keyed(policy, PricingCategory.OUTPUT, "MULTISPECTRAL").ifPresent(r -> addFixed(result, r, BigDecimal.ONE));
-            if (a.isAiReportRequired()) keyed(policy, PricingCategory.OUTPUT, "AI_REPORT").ifPresent(r -> addFixed(result, r, BigDecimal.ONE));
-        });
+        if (aiAnalysisRequested(order)) {
+            PricingRule ai = keyed(policy, PricingCategory.OUTPUT, PricingPolicyInitializer.AI_IMAGE_ANALYSIS_KEY)
+                    .orElseThrow(() -> new ApiException(ErrorCode.PRICING_RULE_NOT_FOUND,
+                            "AI image analysis is requested but the active pricing policy has no price for it"));
+            addFixed(result, ai, BigDecimal.ONE);
+        }
         if (Boolean.TRUE.equals(order.getPermitRequired()) || order.getPermitStatus() == OrderPermitStatus.NEED_SUPPORT)
             keyed(policy, PricingCategory.PERMIT, "REQUIRED").ifPresent(rule -> addFixed(result, rule, BigDecimal.ONE));
-        TerrainType terrain = assessment.map(CustomWorkAssessment::getTerrain).orElse(TerrainType.FLAT);
-        keyed(policy, PricingCategory.TERRAIN, terrain.name()).ifPresent(rule -> applyRule(result, rule, BigDecimal.ONE, subtotal(result)));
+        keyed(policy, PricingCategory.TERRAIN, TerrainType.FLAT.name())
+                .ifPresent(rule -> applyRule(result, rule, BigDecimal.ONE, subtotal(result)));
         for (PricingRule discount : enabled(policy, PricingCategory.DISCOUNT)) applyRule(result, discount, BigDecimal.ONE, subtotal(result));
 
         BigDecimal total = subtotal(result);
         if (total.signum() < 0) throw new ApiException(ErrorCode.PRICING_CALCULATION_FAILED);
+        // Work assessment is only forced for legacy custom items; v1 custom items are priced by the policy or quoted per item.
         return new PricingBreakdown(policy.getId(), policy.getPolicyVersion(), policy.getCurrency(), total,
-                custom, !custom || assessment.map(CustomWorkAssessment::isAssessmentComplete).orElse(false), List.copyOf(result));
+                customWork, assessmentComplete,
+                List.copyOf(result), List.copyOf(pendingQuotes));
     }
 
     private void resource(List<PricingBreakdownItem> out, PricingPolicy policy, String key, Integer count) {
@@ -124,6 +164,12 @@ public class RuleBasedPricingEngine implements PricingEngine {
     private List<PricingRule> enabled(PricingPolicy policy, PricingCategory category) {
         return policy.getRules().stream().filter(PricingRule::isEnabled).filter(r -> r.getCategory() == category).toList();
     }
+    /** The customer's AI image analysis choice travels in the deliverable requirement JSON; the price is a policy rule. */
+    static boolean aiAnalysisRequested(Order order) {
+        if (order.getDeliverables() == null) return false;
+        return order.getDeliverables().stream().map(d -> d.getRequirement())
+                .anyMatch(r -> r != null && Boolean.TRUE.equals(r.get("aiAnalysisRequested")));
+    }
     private BigDecimal polygonHectares(Order order) {
         if (order.getTargetArea() == null) return BigDecimal.ZERO;
         Coordinate[] points = order.getTargetArea().getExteriorRing().getCoordinates();
@@ -137,23 +183,40 @@ public class RuleBasedPricingEngine implements PricingEngine {
         String mediaType = format == OrderResultFormat.PHOTO ? "IMAGE" : format == OrderResultFormat.VIDEO ? "VIDEO" : null;
         if (mediaType == null) return BigDecimal.ONE;
         BigDecimal quantity = order.getDeliverables().stream().map(OrderDeliverable::getRequirement)
-                .filter(Objects::nonNull).filter(map -> mediaType.equalsIgnoreCase(String.valueOf(map.get("mediaType"))))
-                .map(map -> number(map.get("quantity"))).reduce(BigDecimal.ZERO, BigDecimal::add);
+                .filter(Objects::nonNull).map(map -> mediaQuantity(map, mediaType))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         return quantity.signum() > 0 ? quantity : BigDecimal.ONE;
     }
     private BigDecimal requestedQualityQuantity(Order order, String mediaType, String resolution) {
         return order.getDeliverables().stream().map(OrderDeliverable::getRequirement).filter(Objects::nonNull)
-                .filter(map -> mediaType.equalsIgnoreCase(String.valueOf(map.get("mediaType"))))
                 .filter(map -> resolution.equalsIgnoreCase(String.valueOf(map.get("resolution"))))
-                .map(map -> number(map.get("quantity"))).reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(map -> mediaQuantity(map, mediaType))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+    /**
+     * Quantity of one media type in a deliverable requirement. The per-type fields (derived from the checklists) win;
+     * older requirements only carry a single mediaType + quantity.
+     */
+    private BigDecimal mediaQuantity(Map<String, Object> requirement, String mediaType) {
+        String key = "IMAGE".equals(mediaType) ? "imageQuantity" : "videoQuantity";
+        if (requirement.containsKey("imageQuantity") || requirement.containsKey("videoQuantity")) return number(requirement.get(key));
+        return mediaType.equalsIgnoreCase(String.valueOf(requirement.get("mediaType"))) ? number(requirement.get("quantity")) : BigDecimal.ZERO;
     }
     private BigDecimal number(Object value) {
         if (value instanceof Number number) return new BigDecimal(number.toString());
         try { return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString()); }
         catch (NumberFormatException ignored) { return BigDecimal.ZERO; }
     }
+    private String shorten(String text) {
+        if (text == null) return "";
+        return text.length() <= 80 ? text : text.substring(0, 77) + "...";
+    }
     private BigDecimal subtotal(List<PricingBreakdownItem> items) { return items.stream().map(PricingBreakdownItem::amount).reduce(ZERO, BigDecimal::add); }
     private void add(List<PricingBreakdownItem> out, PricingCategory c, String d, BigDecimal q, BigDecimal u, BigDecimal a) { if (a.signum() != 0 || c == PricingCategory.PACKAGE) out.add(new PricingBreakdownItem(c, d, q, u, a)); }
+    private void add(List<PricingBreakdownItem> out, PricingCategory c, String d, BigDecimal q, BigDecimal u, BigDecimal a,
+            String checklistItemId) {
+        if (a.signum() != 0) out.add(new PricingBreakdownItem(c, d, q, u, a, checklistItemId));
+    }
     private BigDecimal decimal(Double value) { return value == null ? BigDecimal.ZERO : BigDecimal.valueOf(value); }
     private BigDecimal nz(BigDecimal value) { return value == null ? BigDecimal.ZERO : value; }
     private BigDecimal positive(BigDecimal value) { return value == null || value.signum() <= 0 ? BigDecimal.ONE : value; }

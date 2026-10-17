@@ -141,6 +141,32 @@ public class PaymentPersistenceService implements IPaymentPersistenceService {
     }
 
     @Transactional(readOnly = true)
+    public List<String> pendingReferencesForOrder(String orderId) {
+        var invoice = invoices.findByOrderId(orderId).orElseThrow(() -> new ApiException(ErrorCode.INVOICE_NOT_FOUND));
+        return payments.findAllByInvoiceIdOrderByCreatedAtDesc(invoice.getId()).stream()
+                .filter(payment -> payment.getProvider() == PaymentProvider.VNPAY)
+                .filter(payment -> payment.getStatus() == PaymentStatus.PENDING || payment.getStatus() == PaymentStatus.PROCESSING)
+                .map(Payment::getTransactionReference).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public PaymentResponse getByReferenceForStaff(String transactionReference) {
+        return FinanceMapper.payment(payments.findByTransactionReference(transactionReference)
+                .orElseThrow(() -> new ApiException(ErrorCode.PAYMENT_NOT_FOUND)));
+    }
+
+    @Transactional(readOnly = true)
+    public PaymentReconciliationContext reconciliationContextForStaff(String transactionReference) {
+        Payment payment = payments.findByTransactionReference(transactionReference)
+                .orElseThrow(() -> new ApiException(ErrorCode.PAYMENT_NOT_FOUND));
+        if (payment.getProvider() != PaymentProvider.VNPAY) {
+            throw new ApiException(ErrorCode.PAYMENT_PROVIDER_ERROR, "Only VNPAY payments can be reconciled");
+        }
+        return new PaymentReconciliationContext(payment.getTransactionReference(),
+                payment.getProviderTransactionId(), payment.getProviderRequestDate(), payment.getPaymentUrl());
+    }
+
+    @Transactional(readOnly = true)
     public List<PaymentResponse> list(String invoiceId) {
         Invoice invoice = invoices.findById(invoiceId).orElseThrow(() -> new ApiException(ErrorCode.INVOICE_NOT_FOUND));
         if (!invoice.getOrder().getCustomer().getId().equals(currentUser.getCurrentUserId())) throw new ApiException(ErrorCode.ACCESS_DENIED);
