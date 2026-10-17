@@ -16,6 +16,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class PricingPolicyService {
     private final PricingPolicyRepository policies;
 
+    private com.ondemandmonitoring.checklist.repository.ChecklistDefinitionRepository checklistDefinitions;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setChecklistDefinitions(
+            com.ondemandmonitoring.checklist.repository.ChecklistDefinitionRepository checklistDefinitions) {
+        this.checklistDefinitions = checklistDefinitions;
+    }
+
     private com.ondemandmonitoring.pricing.service.ServiceDefaultPriceService defaultPrices;
 
     /** Optional collaborator: keeps the stored service default price current. */
@@ -87,7 +95,8 @@ public class PricingPolicyService {
         p.setHighRiskDiscountPercent(r.highRiskDiscountPercent()); p.setMinimumPriceRatio(r.minimumPriceRatio()); p.setMinimumPrice(r.minimumPrice());
         List<PricingRule> rules = new ArrayList<>(); Set<String> keys = new HashSet<>();
         for (PricingRuleRequest rr : r.rules()) {
-            if (!keys.add(rr.category() + ":" + rr.ruleKey().toUpperCase(Locale.ROOT)))
+            String target = rr.checklistDefinitionId() == null ? "*" : rr.checklistDefinitionId();
+            if (!keys.add(rr.category() + ":" + target + ":" + rr.ruleKey().toUpperCase(Locale.ROOT)))
                 throw new ApiException(ErrorCode.INVALID_REQUEST, "Duplicate pricing rule key");
             PricingRule rule = new PricingRule(); rule.setCategory(rr.category()); rule.setCalculationType(rr.calculationType());
             rule.setRuleKey(rr.ruleKey().trim().toUpperCase(Locale.ROOT)); rule.setDescription(rr.description().trim());
@@ -96,6 +105,8 @@ public class PricingPolicyService {
             rule.setPriority(rr.priority()); rule.setEnabled(rr.enabled());
             rule.setPricingProfile(rr.pricingProfile() == null || rr.pricingProfile().isBlank() ? null
                     : rr.pricingProfile().trim().toUpperCase(Locale.ROOT));
+            rule.setChecklistDefinitionId(rr.checklistDefinitionId() == null || rr.checklistDefinitionId().isBlank()
+                    ? null : rr.checklistDefinitionId().trim());
             rule.setMediaComponent(rr.mediaComponent()); rule.setIncludedQuantity(rr.includedQuantity());
             rule.setRoundingMode(rr.roundingMode());
             validateRule(rule); rules.add(rule);
@@ -114,8 +125,9 @@ public class PricingPolicyService {
         if (r.getMinValue() != null && r.getMaxValue() != null && r.getMaxValue().compareTo(r.getMinValue()) <= 0)
             throw invalid("Rule '" + r.getRuleKey() + "' needs maxValue greater than minValue");
         if (r.getCategory() != PricingCategory.MEDIA) {
-            if (r.getPricingProfile() != null || r.getMediaComponent() != null || r.getIncludedQuantity() != null)
-                throw invalid("Profile, media component and allowance apply to MEDIA rules only");
+            if (r.getPricingProfile() != null || r.getMediaComponent() != null || r.getIncludedQuantity() != null
+                    || r.getChecklistDefinitionId() != null)
+                throw invalid("Profile, checklist target, media component and allowance apply to MEDIA rules only");
             boolean block = r.getCalculationType() == PricingCalculationType.PER_BLOCK
                     || r.getCalculationType() == PricingCalculationType.TIERED_BLOCK;
             if (block && (r.getUnitSize() == null || r.getUnitSize().signum() <= 0))
@@ -138,6 +150,13 @@ public class PricingPolicyService {
         if (r.getPricingProfile() == null || !PROFILE.matcher(r.getPricingProfile()).matches())
             throw invalid("MEDIA rule '" + r.getRuleKey() + "' needs a pricing profile of letters, digits and underscore");
         if (r.getMediaComponent() == null) throw invalid("MEDIA rule '" + r.getRuleKey() + "' needs a media component");
+        if (r.getChecklistDefinitionId() != null) {
+            if (checklistDefinitions == null || !checklistDefinitions.existsById(r.getChecklistDefinitionId()))
+                throw invalid("MEDIA rule '" + r.getRuleKey() + "' targets an unknown checklist");
+            if (r.getMediaComponent() != MediaPricingComponent.EXTRA_IMAGE
+                    && r.getMediaComponent() != MediaPricingComponent.EXTRA_VIDEO)
+                throw invalid("Checklist-specific rules apply only to extra image or extra video pricing");
+        }
         if (r.getFixedAmount() == null) throw invalid("MEDIA rule '" + r.getRuleKey() + "' needs a price (fixedAmount)");
         boolean tier = r.getMediaComponent() == MediaPricingComponent.EXTRA_IMAGE || r.getMediaComponent() == MediaPricingComponent.EXTRA_VIDEO;
         if (tier) {
@@ -165,7 +184,8 @@ public class PricingPolicyService {
         for (PricingRule r : rules) {
             if (r.getCategory() != PricingCategory.MEDIA) continue;
             if (r.isEnabled() && (r.getMediaComponent() == MediaPricingComponent.EXTRA_IMAGE || r.getMediaComponent() == MediaPricingComponent.EXTRA_VIDEO))
-                groups.computeIfAbsent(r.getPricingProfile() + ":" + r.getMediaComponent(), k -> new ArrayList<>()).add(r);
+                groups.computeIfAbsent(Optional.ofNullable(r.getChecklistDefinitionId()).orElse("*") + ":"
+                        + r.getPricingProfile() + ":" + r.getMediaComponent(), k -> new ArrayList<>()).add(r);
         }
         for (var entry : groups.entrySet()) {
             List<PricingRule> tiers = entry.getValue().stream().sorted(Comparator.comparing(PricingRule::getMinValue)).toList();
@@ -212,10 +232,19 @@ public class PricingPolicyService {
         rule.setPercentage(source.getPercentage()); rule.setUnitSize(source.getUnitSize());
         rule.setMultiplier(source.getMultiplier()); rule.setPriority(source.getPriority());
         rule.setEnabled(source.isEnabled()); rule.setPricingProfile(source.getPricingProfile());
+        rule.setChecklistDefinitionId(source.getChecklistDefinitionId());
         rule.setMediaComponent(source.getMediaComponent()); rule.setIncludedQuantity(source.getIncludedQuantity());
         rule.setRoundingMode(source.getRoundingMode());
         return rule;
     }
     private PricingPolicyResponse response(PricingPolicy p) { return new PricingPolicyResponse(p.getId(), p.getName(), p.getPolicyVersion(), p.getStatus(), p.getCurrency(), p.getEffectiveFrom(), p.getEffectiveTo(), p.getManagerMaxDiscountPercent(), p.getManagerMaxMarkupPercent(), p.getHighRiskDiscountPercent(), p.getMinimumPriceRatio(), p.getMinimumPrice(), p.getRules().stream().map(this::response).toList()); }
-    private PricingRuleResponse response(PricingRule r) { return new PricingRuleResponse(r.getId(), r.getCategory(), r.getCalculationType(), r.getRuleKey(), r.getDescription(), r.getMinValue(), r.getMaxValue(), r.getFixedAmount(), r.getBaseAmount(), r.getPercentage(), r.getUnitSize(), r.getMultiplier(), r.getPriority(), r.isEnabled(), r.getPricingProfile(), r.getMediaComponent(), r.getIncludedQuantity(), r.getRoundingMode()); }
+    private PricingRuleResponse response(PricingRule r) {
+        String checklistName = r.getChecklistDefinitionId() == null || checklistDefinitions == null ? null
+                : checklistDefinitions.findById(r.getChecklistDefinitionId()).map(definition -> definition.getContent()).orElse(null);
+        return new PricingRuleResponse(r.getId(), r.getCategory(), r.getCalculationType(), r.getRuleKey(),
+                r.getDescription(), r.getMinValue(), r.getMaxValue(), r.getFixedAmount(), r.getBaseAmount(),
+                r.getPercentage(), r.getUnitSize(), r.getMultiplier(), r.getPriority(), r.isEnabled(),
+                r.getPricingProfile(), r.getMediaComponent(), r.getIncludedQuantity(), r.getRoundingMode(),
+                r.getChecklistDefinitionId(), checklistName);
+    }
 }

@@ -447,8 +447,10 @@ class FlexibleChecklistPricingPostgresTest extends ChecklistPostgresTest {
 
         var created = orderService.createOrder(request);           // accepted, not rejected
         var response = created.getChecklistItems().getFirst();
-        assertTrue(response.isManagerQuoteRequired());
-        assertNull(response.getManagerQuotedPrice());
+        assertEquals(com.ondemandmonitoring.order.enums.ChecklistPricingStatus.NEEDS_MANAGER_REVIEW,
+                response.getPricingStatus());
+        assertFalse(response.isPriceAvailable());
+        assertNull(response.getApprovedPrice());
 
         var engine = new RuleBasedPricingEngine(policyRepository, mock(CustomWorkAssessmentRepository.class), new ChecklistPriceCalculator());
         var pending = transaction.execute(status -> engine.calculate(orders.findById(created.getId()).orElseThrow(),

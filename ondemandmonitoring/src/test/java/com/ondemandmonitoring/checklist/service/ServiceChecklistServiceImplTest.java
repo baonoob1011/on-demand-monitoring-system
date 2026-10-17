@@ -1,6 +1,7 @@
 package com.ondemandmonitoring.checklist.service;
 
 import com.ondemandmonitoring.checklist.domain.*;
+import com.ondemandmonitoring.checklist.enums.ChecklistConfigAuditAction;
 import com.ondemandmonitoring.checklist.dto.request.ChecklistAssignmentRequest;
 import com.ondemandmonitoring.checklist.mapper.ServiceChecklistMapper;
 import com.ondemandmonitoring.checklist.repository.*;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.*;
 import org.mapstruct.factory.Mappers;
 import java.util.Optional;
 import java.util.List;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -88,6 +90,52 @@ class ServiceChecklistServiceImplTest {
         verify(services, never()).delete(any(Service.class));
         verify(checklists, never()).delete(any(ChecklistDefinition.class));
     }
+    @Test void forkGivesTheServiceItsOwnCopyAndKeepsTheOriginalForOthers() {
+        checklist.setDescription("Phạm vi"); checklist.setExecutionSteps(List.of("Bước 1", "Bước 2"));
+        checklist.setBasePrice(new java.math.BigDecimal("800000"));
+        var link = link(); link.setRequired(true); link.setBasePriceOverride(new java.math.BigDecimal("700000"));
+        when(assignments.findByServiceIdAndChecklistId("s1", "c1")).thenReturn(Optional.of(link));
+        when(checklists.saveAndFlush(any())).thenAnswer(i -> { ChecklistDefinition copy = i.getArgument(0); copy.setId("c9"); return copy; });
+        var audit = mock(ChecklistAuditService.class);
+        useCase.setAudit(audit);
+
+        var result = useCase.fork("s1", "c1");
+
+        assertEquals("c9", result.getChecklistId());
+        assertEquals("Check exits (Service)", result.getContent());
+        assertEquals("Phạm vi", result.getDescription());
+        assertEquals(List.of("Bước 1", "Bước 2"), result.getExecutionSteps());
+        assertTrue(result.isRequired());
+        assertEquals(new java.math.BigDecimal("700000"), result.getBasePriceOverride(), "overrides move with the service");
+        assertEquals("c1", checklist.getId());
+        assertEquals("Check exits", checklist.getContent(), "the shared original is untouched");
+        verify(audit).record(eq(ChecklistConfigAuditAction.SERVICE_CHECKLIST_FORKED), any(), eq(service), anyMap(), anyMap());
+    }
+
+    @Test void forkNumbersTheCopyWhenTheNameIsTaken() {
+        var link = link();
+        when(assignments.findByServiceIdAndChecklistId("s1", "c1")).thenReturn(Optional.of(link));
+        when(checklists.existsByNormalizedContent("check exits (service)")).thenReturn(true);
+        when(checklists.saveAndFlush(any())).thenAnswer(i -> { ChecklistDefinition copy = i.getArgument(0); copy.setId("c9"); return copy; });
+        assertEquals("Check exits (Service) #2", useCase.fork("s1", "c1").getContent());
+    }
+
+    @Test void forkOfAnUnassignedChecklistIs404() {
+        assertEquals(ErrorCode.SERVICE_CHECKLIST_NOT_FOUND,
+                assertThrows(ApiException.class, () -> useCase.fork("s1", "c1")).getErrorCode());
+        verify(checklists, never()).saveAndFlush(any());
+    }
+
+    @Test void changesAreRecordedInTheHistory() {
+        var audit = mock(ChecklistAuditService.class);
+        useCase.setAudit(audit);
+        useCase.assign("s1", request("c1"));
+        verify(audit).record(eq(ChecklistConfigAuditAction.SERVICE_CHECKLIST_ASSIGNED), eq(checklist), eq(service), anyMap(), any());
+        when(assignments.findByServiceIdAndChecklistId("s1", "c1")).thenReturn(Optional.of(link()));
+        useCase.unassign("s1", "c1");
+        verify(audit).record(ChecklistConfigAuditAction.SERVICE_CHECKLIST_REMOVED, checklist, service);
+    }
+
     @Test void nonexistentUnassignIs404() {
         assertEquals(ErrorCode.SERVICE_CHECKLIST_NOT_FOUND,
                 assertThrows(ApiException.class, () -> useCase.unassign("s1", "c1")).getErrorCode());

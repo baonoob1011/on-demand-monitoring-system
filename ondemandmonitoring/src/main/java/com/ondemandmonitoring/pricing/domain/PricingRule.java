@@ -25,6 +25,8 @@ public class PricingRule extends BaseEntity {
     @Column(name = "multiplier", precision = 12, scale = 6) private BigDecimal multiplier;
     /** MEDIA rules only: profile key shared by a checklist's pricing rules (e.g. STANDARD, CUSTOM). */
     @Column(name = "pricing_profile", length = 60) private String pricingProfile;
+    /** Optional catalog-checklist target. Null means a profile/global fallback rule. */
+    @Column(name = "checklist_definition_id", length = 36) private String checklistDefinitionId;
     @Enumerated(EnumType.STRING) @Column(name = "media_component", length = 30) private MediaPricingComponent mediaComponent;
     /** Default allowance for profiles that have no checklist definition (custom checklists). */
     @Column(name = "included_quantity") private Integer includedQuantity;

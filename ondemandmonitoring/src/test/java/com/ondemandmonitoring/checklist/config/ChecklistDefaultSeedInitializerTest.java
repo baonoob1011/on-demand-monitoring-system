@@ -38,6 +38,8 @@ class ChecklistDefaultSeedInitializerTest {
         seed.run(null); seed.run(null);
         assertEquals(19, catalog.size()); assertEquals(6, templates.get("s").size());
         assertEquals(java.util.stream.IntStream.range(0, 6).boxed().toList(), templates.get("s").stream().map(ServiceChecklist::getDisplayOrder).toList());
+        assertTrue(catalog.values().stream().allMatch(row -> row.getDescription() != null
+                && !row.getExecutionSteps().isEmpty() && !row.getInputRequirements().isEmpty() && !row.getExpectedOutputs().isEmpty()));
         assertTrue(service.getChecklistDefaultsInitialized());
         verify(definitions, times(19)).saveAndFlush(any());
         verify(services).save(service);
@@ -50,6 +52,14 @@ class ChecklistDefaultSeedInitializerTest {
         assertEquals("Admin edited", catalog.get(ChecklistDefaults.code(1)).getContent());
         assertFalse(catalog.get(ChecklistDefaults.code(1)).getIsActive());
         assertEquals(5, templates.get("s").size()); assertEquals(19, catalog.size());
+    }
+
+    @Test void restartKeepsGuidanceWrittenByAdministrator() {
+        seed.run(null);
+        var edited = catalog.get(ChecklistDefaults.code(2)); edited.setDescription("Admin text"); edited.setExecutionSteps(List.of("Own step"));
+        seed.run(null);
+        assertEquals("Admin text", catalog.get(ChecklistDefaults.code(2)).getDescription());
+        assertEquals(List.of("Own step"), catalog.get(ChecklistDefaults.code(2)).getExecutionSteps());
     }
 
     @Test void preexistingTemplateIsNotChangedAndGetsMarker() {

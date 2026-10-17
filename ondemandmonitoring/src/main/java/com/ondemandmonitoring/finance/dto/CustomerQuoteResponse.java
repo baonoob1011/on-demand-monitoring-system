@@ -5,8 +5,8 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
-/** Customer-safe quote projection. Internal pricing approval notes and risk flags are intentionally excluded. */
+/** Customer-safe commercial projection. It never exposes system prices or manager adjustments. */
 public record CustomerQuoteResponse(String id, String orderId, int version, QuoteStatus status,
-        BigDecimal packagePrice, BigDecimal additionalAmount, BigDecimal discountAmount,
-        BigDecimal adjustmentAmount, BigDecimal totalAmount, String managerNote,
+        BigDecimal estimatedBaseAmount, BigDecimal approvedAdditionalServiceAmount,
+        BigDecimal finalOrderAmount, boolean pricingFinalized,
         Instant approvedAt, Instant acceptedAt, List<QuoteItemResponse> items) {}

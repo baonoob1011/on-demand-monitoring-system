@@ -26,6 +26,9 @@ import com.ondemandmonitoring.pricing.enums.*;
 import com.ondemandmonitoring.pricing.repository.PricingPolicyRepository;
 import com.ondemandmonitoring.pricing.service.ChecklistPriceCalculator;
 import com.ondemandmonitoring.pricing.service.ServicePriceResolver;
+import com.ondemandmonitoring.pricing.service.PricingEngine;
+import com.ondemandmonitoring.pricing.dto.PricingBreakdown;
+import com.ondemandmonitoring.pricing.dto.PricingBreakdownItem;
 import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.service.repository.ServiceRepository;
 import com.ondemandmonitoring.user.domain.User;
@@ -44,6 +47,7 @@ class OrderChecklistPricingSnapshotTest {
     ServiceChecklistRepository assignments = mock(ServiceChecklistRepository.class);
     OrderChecklistItemRepository snapshots = mock(OrderChecklistItemRepository.class);
     PricingPolicyRepository policies = mock(PricingPolicyRepository.class);
+    PricingEngine engine = mock(PricingEngine.class);
     OrderChecklistSnapshotService useCase;
     Order order;
     ChecklistDefinition roof;
@@ -76,6 +80,9 @@ class OrderChecklistPricingSnapshotTest {
         useCase = new OrderChecklistSnapshotService(services, definitions, assignments, snapshots,
                 Mappers.getMapper(OrderChecklistItemMapper.class), resolver, policies, new ChecklistPriceCalculator(),
                 new ServicePriceResolver(assignments, policies, new ChecklistPriceCalculator()));
+        when(engine.calculate(any(), any())).thenReturn(new PricingBreakdown("p1", 3, "VND", BigDecimal.ZERO,
+                false, true, List.of(), List.of()));
+        useCase.setPricingEngine(engine);
     }
 
     ChecklistDefinition definition(String id, String content, String base, int images, int videos) {
@@ -244,6 +251,12 @@ class OrderChecklistPricingSnapshotTest {
     @Test void customChecklistUsesGenericPricingAndRequiresManagerReview() {
         var custom = new OrderChecklistItemRequest();
         custom.setContentOverride("Check the antenna mast"); custom.setRequestedImageCount(4);
+        when(engine.calculate(any(), any())).thenAnswer(call -> {
+            List<OrderChecklistItem> rows = call.getArgument(1);
+            var line = new PricingBreakdownItem(PricingCategory.MEDIA, "Internal custom price", BigDecimal.ONE,
+                    new BigDecimal("880000"), new BigDecimal("880000"), rows.getFirst().getId());
+            return new PricingBreakdown("p1", 3, "VND", new BigDecimal("880000"), true, true, List.of(line), List.of());
+        });
         useCase.capture(order, List.of(custom));
         OrderChecklistItem item = saved.getFirst();
         assertEquals(OrderChecklistSourceType.CUSTOMER_CUSTOM, item.getSourceType());
@@ -251,6 +264,7 @@ class OrderChecklistPricingSnapshotTest {
         assertEquals(1, item.getPricingSnapshotVersion());
         assertNull(item.getSourceChecklist());
         assertTrue(item.isManagerQuoteRequired(), "customer-added work always requires Manager price review");
+        assertEquals(new BigDecimal("880000"), item.getSystemCalculatedPrice());
 
         saved.clear();
         order.setChecklistSnapshotAt(null);

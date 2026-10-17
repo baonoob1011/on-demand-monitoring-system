@@ -213,6 +213,10 @@ class ChecklistPricingPreviewServiceTest {
         var selected = preview.customerQuote(new Customer("s1", List.of(new CustomerItem("c1", null, null, null),
                 new CustomerItem("c3", null, null, null))));
         assertThat(selected.checklists()).extracting(c -> c.checklistId()).containsExactly("c1", "c3");
+        assertThat(selected.checklists().get(1).quotePending()).isTrue();
+        assertThat(selected.checklists().get(1).subtotal()).isZero();
+        assertThat(selected.checklists().get(1).lines()).isEmpty();
+        assertThat(selected.checklistSubtotal()).isEqualByComparingTo(selected.checklists().getFirst().subtotal());
         assertThatThrownBy(() -> preview.customerQuote(new Customer("s1", List.of(new CustomerItem("c1", null, null, null), new CustomerItem("c1", null, null, null)))))
                 .isInstanceOf(ApiException.class);
     }

@@ -3,6 +3,7 @@ package com.ondemandmonitoring.order.domain;
 import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.checklist.domain.ChecklistDefinition;
 import com.ondemandmonitoring.order.enums.ChecklistReviewStatus;
+import com.ondemandmonitoring.order.enums.ChecklistPricingStatus;
 import com.ondemandmonitoring.order.enums.OrderChecklistSourceType;
 import com.ondemandmonitoring.order.enums.RequiredEvidenceType;
 import com.ondemandmonitoring.pricing.enums.ChecklistDifficulty;
@@ -42,6 +43,18 @@ public class OrderChecklistItem extends BaseEntity {
     private ChecklistDefinition sourceChecklist;
     @Column(nullable = false, length = 500, updatable = false)
     private String content;
+    /** Guidance as it read when the order was placed; later catalog edits never change an existing order. */
+    @Column(name = "description_snapshot", length = 4000, updatable = false)
+    private String descriptionSnapshot;
+    @jakarta.persistence.Convert(converter = com.ondemandmonitoring.checklist.domain.StringListJsonConverter.class)
+    @Column(name = "execution_steps_snapshot", columnDefinition = "text", updatable = false)
+    private java.util.List<String> executionStepsSnapshot;
+    @jakarta.persistence.Convert(converter = com.ondemandmonitoring.checklist.domain.StringListJsonConverter.class)
+    @Column(name = "input_requirements_snapshot", columnDefinition = "text", updatable = false)
+    private java.util.List<String> inputRequirementsSnapshot;
+    @jakarta.persistence.Convert(converter = com.ondemandmonitoring.checklist.domain.StringListJsonConverter.class)
+    @Column(name = "expected_outputs_snapshot", columnDefinition = "text", updatable = false)
+    private java.util.List<String> expectedOutputsSnapshot;
     @Column(name = "display_order", nullable = false, updatable = false)
     private int displayOrder;
     @Enumerated(EnumType.STRING)
@@ -135,4 +148,9 @@ public class OrderChecklistItem extends BaseEntity {
 
     @Column(name = "price_difference_percent", precision = 12, scale = 6)
     private BigDecimal priceDifferencePercent;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pricing_status", nullable = false, length = 40,
+            columnDefinition = "varchar(40) default 'NEEDS_MANAGER_REVIEW'")
+    private ChecklistPricingStatus pricingStatus = ChecklistPricingStatus.NEEDS_MANAGER_REVIEW;
 }

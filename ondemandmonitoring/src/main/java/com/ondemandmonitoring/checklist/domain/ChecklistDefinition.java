@@ -18,6 +18,21 @@ public class ChecklistDefinition extends BaseEntity {
     private String seedCode;
     @Column(nullable = false, length = 500)
     private String content;
+    /** What the item is for and what it covers; shown to customers and managers. */
+    @Column(name = "description", length = 4000)
+    private String description;
+    /** Ordered work steps for the field crew. */
+    @Convert(converter = StringListJsonConverter.class)
+    @Column(name = "execution_steps", columnDefinition = "text")
+    private java.util.List<String> executionSteps;
+    /** What must be in place before the work starts (area, altitude, weather, equipment). */
+    @Convert(converter = StringListJsonConverter.class)
+    @Column(name = "input_requirements", columnDefinition = "text")
+    private java.util.List<String> inputRequirements;
+    /** What the crew must deliver for the item to count as done. */
+    @Convert(converter = StringListJsonConverter.class)
+    @Column(name = "expected_outputs", columnDefinition = "text")
+    private java.util.List<String> expectedOutputs;
     @Column(name = "normalized_content", nullable = false, length = 1000)
     private String normalizedContent;
     @Column(name = "is_active", nullable = false)
