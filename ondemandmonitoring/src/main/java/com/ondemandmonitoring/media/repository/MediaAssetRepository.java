@@ -3,7 +3,9 @@ package com.ondemandmonitoring.media.repository;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import java.util.List;
 import java.util.Optional;
+import com.ondemandmonitoring.media.domain.MediaStorageStatus;
 import com.ondemandmonitoring.media.enums.MediaStatus;
+import java.time.Instant;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import jakarta.persistence.LockModeType;
@@ -13,6 +15,17 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface MediaAssetRepository extends JpaRepository<MediaAsset, String> {
+        @Query("""
+                select m.id from MediaAsset m
+                where m.mission.order.resultExpiresAt is not null
+                  and m.mission.order.resultExpiresAt <= :now
+                  and m.storageStatus in :statuses
+                order by m.mission.order.resultExpiresAt, m.id
+                """)
+        Page<String> findExpiredStorageCandidateIds(
+                        @Param("now") Instant now,
+                        @Param("statuses") List<MediaStorageStatus> statuses,
+                        Pageable pageable);
         @Query("select m from MediaAsset m where m.mission.id = :missionId order by m.capturedAt desc, m.id")
         Page<MediaAsset> findMissionCandidates(String missionId, Pageable pageable);
         @Query("select m.mission.id from MediaAsset m where m.id = :id")

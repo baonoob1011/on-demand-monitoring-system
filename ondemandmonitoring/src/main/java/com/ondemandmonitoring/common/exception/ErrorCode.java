@@ -84,6 +84,7 @@ public enum ErrorCode {
     MEDIA_DUPLICATE_CONTENT("File này đã được tải lên cho Mission. Hãy gắn media đã có thay vì tải lại.", HttpStatus.CONFLICT),
     MEDIA_CAPTURE_TOO_OLD("Thời điểm chụp quá cũ so với thời gian thực hiện Mission.", HttpStatus.BAD_REQUEST),
     ORDER_MEDIA_QUANTITY_NOT_MET("Số ảnh/video đã giao ít hơn đơn đặt; cần nhập lý do để duyệt.", HttpStatus.CONFLICT),
+    RESULT_RETENTION_EXPIRED("Kết quả đã hết thời hạn lưu trữ.", HttpStatus.GONE),
     MEDIA_UPLOAD_NOT_ALLOWED("Media upload is not allowed", HttpStatus.CONFLICT),
     MEDIA_UPLOAD_ATTEMPT_INVALID("Media upload attempt is invalid", HttpStatus.CONFLICT),
     MEDIA_IDEMPOTENCY_CONFLICT("Local media ID conflicts with existing metadata", HttpStatus.CONFLICT),

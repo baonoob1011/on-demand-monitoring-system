@@ -56,7 +56,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class OrderService implements IOrderService {
 
     private static final DateTimeFormatter ORDER_CODE_DATE_FORMATTER = DateTimeFormatter.BASIC_ISO_DATE;
-    private static final int MINIMUM_FLIGHT_NOTICE_DAYS = 7;
+    private static final int MINIMUM_FLIGHT_NOTICE_DAYS = 10;
 
     OrderRepository orderRepository;
     ServiceRepository serviceRepository;
@@ -159,6 +159,40 @@ public class OrderService implements IOrderService {
     @PreAuthorize("hasRole('CUSTOMER')")
     public OrderCreateResponse createOrder(OrderCreateRequest request) {
 
+        if (request.getMonitoringRelationship() == com.ondemandmonitoring.order.enums.MonitoringRelationship.OTHER
+                && (request.getMonitoringRelationshipOther() == null
+                || request.getMonitoringRelationshipOther().isBlank())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "monitoringRelationshipOther is required when monitoringRelationship is OTHER");
+        }
+        if (request.getMonitoringRelationship() != com.ondemandmonitoring.order.enums.MonitoringRelationship.OTHER) {
+            request.setMonitoringRelationshipOther(null);
+        } else {
+            request.setMonitoringRelationshipOther(request.getMonitoringRelationshipOther().trim());
+        }
+
+        if (request.getUsagePurpose() == com.ondemandmonitoring.order.enums.OrderUsagePurpose.OTHER
+                && (request.getUsagePurposeOther() == null || request.getUsagePurposeOther().isBlank())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "usagePurposeOther is required when usagePurpose is OTHER");
+        }
+        if (request.getUsagePurpose() != com.ondemandmonitoring.order.enums.OrderUsagePurpose.OTHER) {
+            request.setUsagePurposeOther(null);
+        } else {
+            request.setUsagePurposeOther(request.getUsagePurposeOther().trim());
+        }
+
+        if (request.getFlightPurpose() == com.ondemandmonitoring.order.enums.OrderFlightPurpose.OTHER
+                && (request.getFlightPurposeOther() == null || request.getFlightPurposeOther().isBlank())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "flightPurposeOther is required when flightPurpose is OTHER");
+        }
+        if (request.getFlightPurpose() != com.ondemandmonitoring.order.enums.OrderFlightPurpose.OTHER) {
+            request.setFlightPurposeOther(null);
+        } else {
+            request.setFlightPurposeOther(request.getFlightPurposeOther().trim());
+        }
+
         // 1. Resolve Customer from logged-in user session
         User customer = authenticatedUserResolver.getCurrentUser();
 
@@ -179,7 +213,7 @@ public class OrderService implements IOrderService {
         LocalDate earliestFlightDate = LocalDate.now().plusDays(MINIMUM_FLIGHT_NOTICE_DAYS);
         if (request.getPreferredDateFrom().isBefore(earliestFlightDate)) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
-                    "preferredDateFrom must be at least 7 days after the request date");
+                    "preferredDateFrom must be at least 10 days after the request date");
         }
         if (request.getPreferredDateFrom().isAfter(request.getPreferredDateTo())) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
@@ -211,9 +245,7 @@ public class OrderService implements IOrderService {
         }
         List<OrderAuthorizationDocument> authorizationDocuments =
                 validateAuthorizationDocuments(request.getMonitoringAuthorizationDocuments());
-        int retentionDays = request.getDataRetentionDays() == null
-                ? DEFAULT_RETENTION_DAYS
-                : request.getDataRetentionDays();
+        int retentionDays = request.getDataRetentionDays();
         if (!ALLOWED_RETENTION_DAYS.contains(retentionDays)) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
                     "dataRetentionDays must be one of " + ALLOWED_RETENTION_DAYS);
@@ -608,7 +640,6 @@ public class OrderService implements IOrderService {
 
     /** Version recorded with the customer's acceptance of the terms and security commitment. */
     static final String TERMS_VERSION = "2026-10";
-    static final int DEFAULT_RETENTION_DAYS = 90;
     static final java.util.List<Integer> ALLOWED_RETENTION_DAYS = java.util.List.of(30, 90, 180, 365);
 
     /** Keeps the customer's order of choice, drops duplicates, falls back to one default. */

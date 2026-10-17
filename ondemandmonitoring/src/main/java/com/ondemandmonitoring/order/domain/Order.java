@@ -6,6 +6,7 @@ import com.ondemandmonitoring.order.dto.OrderAuthorizationDocument;
 import com.ondemandmonitoring.order.dto.OrderPermitDocument;
 import com.ondemandmonitoring.order.enums.OrderDeliveryMethod;
 import com.ondemandmonitoring.order.enums.OrderPermitStatus;
+import com.ondemandmonitoring.order.enums.OrderPriority;
 import com.ondemandmonitoring.order.enums.OrderRecurrenceType;
 import com.ondemandmonitoring.order.enums.OrderResultFormat;
 import com.ondemandmonitoring.order.enums.OrderStatus;
@@ -102,11 +103,20 @@ public class Order extends BaseEntity {
     @Column(name = "usage_purpose", length = 30)
     private OrderUsagePurpose usagePurpose;
 
+    @Column(name = "usage_purpose_other", length = 255)
+    private String usagePurposeOther;
+
     /** Purpose of the flight (Decree 288/2025/ND-CP, Article 4.3). */
     @Enumerated(EnumType.STRING)
     @Column(name = "flight_purpose", length = 30)
     private OrderFlightPurpose flightPurpose;
 
+    @Column(name = "flight_purpose_other", length = 255)
+    private String flightPurposeOther;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "priority", length = 20)
+    private OrderPriority priority;
     @Column(name = "altitude_m")
     private Double altitudeM;
 
@@ -141,6 +151,9 @@ public class Order extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "monitoring_relationship", length = 40)
     private MonitoringRelationship monitoringRelationship;
+
+    @Column(name = "monitoring_relationship_other", length = 255)
+    private String monitoringRelationshipOther;
 
     @Column(name = "monitoring_authorization_confirmed", nullable = false)
     private Boolean monitoringAuthorizationConfirmed = false;
@@ -204,8 +217,12 @@ public class Order extends BaseEntity {
     private List<OrderDeliveryMethod> deliveryMethods;
 
     /** Days the result data is kept after handover. */
-    @Column(name = "data_retention_days")
+    @Column(name = "data_retention_days", nullable = false)
     private Integer dataRetentionDays;
+
+    /** Customer result access expires at this instant; set only on first originals handover. */
+    @Column(name = "result_expires_at")
+    private Instant resultExpiresAt;
 
     /** When the customer accepted the terms and the data-security commitment. */
     @Column(name = "terms_accepted_at")

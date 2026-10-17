@@ -2,6 +2,7 @@ package com.ondemandmonitoring.order.dto.response;
 
 import com.ondemandmonitoring.order.enums.OrderDeliveryMethod;
 import com.ondemandmonitoring.order.enums.OrderPermitStatus;
+import com.ondemandmonitoring.order.enums.OrderPriority;
 import com.ondemandmonitoring.order.enums.OrderRecurrenceType;
 import com.ondemandmonitoring.order.enums.OrderResultFormat;
 import com.ondemandmonitoring.order.enums.OrderStatus;
@@ -50,7 +51,10 @@ public class OrderCreateResponse {
     BigDecimal serviceBasePriceSnapshot;
     String description;
     OrderUsagePurpose usagePurpose;
+    String usagePurposeOther;
     com.ondemandmonitoring.order.enums.OrderFlightPurpose flightPurpose;
+    String flightPurposeOther;
+    OrderPriority priority;
     Double altitudeM;
     Double estimatedLengthM;
     String siteContactName;
@@ -61,6 +65,7 @@ public class OrderCreateResponse {
     LocalDate permitExpiresOn;
     List<com.ondemandmonitoring.order.dto.OrderPermitDocument> permitDocuments;
     com.ondemandmonitoring.order.enums.MonitoringRelationship monitoringRelationship;
+    String monitoringRelationshipOther;
     Boolean monitoringAuthorizationConfirmed;
     List<com.ondemandmonitoring.order.dto.OrderAuthorizationDocument> monitoringAuthorizationDocuments;
     Boolean permitRequired;
@@ -87,6 +92,7 @@ public class OrderCreateResponse {
     List<OrderResultFormat> resultFormats;
     List<OrderDeliveryMethod> deliveryMethods;
     Integer dataRetentionDays;
+    Instant resultExpiresAt;
     Instant termsAcceptedAt;
     String termsVersion;
 

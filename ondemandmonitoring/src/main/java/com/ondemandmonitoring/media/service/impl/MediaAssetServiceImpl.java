@@ -11,6 +11,7 @@ import com.ondemandmonitoring.media.service.IMediaAssetService;
 import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.service.IMissionMediaAccessService;
 import com.ondemandmonitoring.media.service.IMediaObjectStorage;
+import com.ondemandmonitoring.media.service.ResultRetentionAccessService;
 import com.ondemandmonitoring.media.service.IMediaObjectStorage.StoredObject;
 import com.ondemandmonitoring.media.service.IMediaObjectStorage.StoredObjectStream;
 import java.io.IOException;
@@ -33,7 +34,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @Slf4j
-@RequiredArgsConstructor
+@RequiredArgsConstructor(onConstructor_ = @org.springframework.beans.factory.annotation.Autowired)
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class MediaAssetServiceImpl implements IMediaAssetService {
 
@@ -45,11 +46,20 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
     static Path LOCAL_IMAGE_DIR = Path.of("uploads", "device-images");
 
     IMediaObjectStorage objectStorage;
+    ResultRetentionAccessService retentionAccess;
     Environment environment;
     IDeviceService deviceService;
     MediaAssetRepository mediaAssetRepository;
     IMissionMediaAccessService missionAccess;
     IMissionMediaEvidenceGuard missionLock;
+
+    /** Compatibility constructor for focused unit tests and non-Spring callers. */
+    public MediaAssetServiceImpl(IMediaObjectStorage objectStorage, Environment environment,
+            IDeviceService deviceService, MediaAssetRepository mediaAssetRepository,
+            IMissionMediaAccessService missionAccess, IMissionMediaEvidenceGuard missionLock) {
+        this(objectStorage, new ResultRetentionAccessService(), environment, deviceService,
+                mediaAssetRepository, missionAccess, missionLock);
+    }
 
     @Transactional
     @Override
@@ -268,6 +278,7 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
 
     @Override
     public String createPresignedGetUrl(MediaAsset image) {
+        retentionAccess.requireAccessible(image);
         if (STORAGE_PROVIDER_LOCAL.equalsIgnoreCase(image.getStorageProvider())) {
             if (!migrateLocalToS3(image)) {
                 return image.getS3Url();
