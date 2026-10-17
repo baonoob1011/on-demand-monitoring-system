@@ -28,6 +28,43 @@ public class ChecklistServiceImpl implements IChecklistService {
 
     private com.ondemandmonitoring.pricing.service.ServiceDefaultPriceService defaultPrices;
 
+    private com.ondemandmonitoring.checklist.service.ChecklistAuditService audit;
+    private com.ondemandmonitoring.checklist.repository.ServiceChecklistRepository serviceUsage;
+    private com.ondemandmonitoring.order.repository.OrderChecklistItemRepository orderUsage;
+
+    /** Optional collaborators: change history and the "used by" counts. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setAudit(com.ondemandmonitoring.checklist.service.ChecklistAuditService audit) {
+        this.audit = audit;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setUsage(com.ondemandmonitoring.checklist.repository.ServiceChecklistRepository serviceUsage,
+            com.ondemandmonitoring.order.repository.OrderChecklistItemRepository orderUsage) {
+        this.serviceUsage = serviceUsage;
+        this.orderUsage = orderUsage;
+    }
+
+    /** Adds the "used by" counts to a page of responses with two grouped queries. */
+    private java.util.List<ChecklistResponse> withUsage(java.util.List<ChecklistResponse> responses) {
+        if (responses.isEmpty() || serviceUsage == null || orderUsage == null) return responses;
+        var ids = responses.stream().map(ChecklistResponse::getId).toList();
+        var services = new java.util.HashMap<String, Long>();
+        serviceUsage.countByChecklistIds(ids).forEach(row -> services.put(row.getChecklistId(), row.getTotal()));
+        var orders = new java.util.HashMap<String, Long>();
+        orderUsage.countBySourceChecklistIds(ids).forEach(row -> orders.put(row.getChecklistId(), row.getTotal()));
+        responses.forEach(response -> {
+            response.setUsedByServiceCount(services.getOrDefault(response.getId(), 0L));
+            response.setUsedByOrderCount(orders.getOrDefault(response.getId(), 0L));
+        });
+        return responses;
+    }
+
+    private ChecklistResponse withUsage(ChecklistResponse response) {
+        withUsage(java.util.List.of(response));
+        return response;
+    }
+
     /** Optional collaborator: keeps the stored service default price current. */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setDefaultPrices(com.ondemandmonitoring.pricing.service.ServiceDefaultPriceService defaultPrices) {
@@ -49,13 +86,16 @@ public class ChecklistServiceImpl implements IChecklistService {
                 ? com.ondemandmonitoring.pricing.enums.ChecklistDifficulty.BASIC : request.getDifficulty());
         applyPricing(entity, request, true);
         applyGuidance(entity, request);
-        return mapper.toResponse(repository.saveAndFlush(entity));
+        var created = repository.saveAndFlush(entity);
+        if (audit != null) audit.record(com.ondemandmonitoring.checklist.enums.ChecklistConfigAuditAction.CHECKLIST_CREATED,
+                created, null, java.util.Map.of(), audit.snapshot(created));
+        return withUsage(mapper.toResponse(created));
     }
 
     @Override
     public ChecklistResponse getById(String id) {
-        return mapper.toResponse(repository.findById(id)
-                .orElseThrow(() -> new ApiException(ErrorCode.CHECKLIST_NOT_FOUND)));
+        return withUsage(mapper.toResponse(repository.findById(id)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHECKLIST_NOT_FOUND))));
     }
 
     @Override
@@ -79,8 +119,9 @@ public class ChecklistServiceImpl implements IChecklistService {
                     cb.like(root.get("normalizedContent"), "%" + escaped + "%", '\\'));
             return predicate;
         };
-        return PageResponse.from(repository.findAll(filter,
-                PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sort)).map(mapper::toResponse));
+        var found = repository.findAll(filter, PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sort));
+        var responses = withUsage(found.getContent().stream().map(mapper::toResponse).toList());
+        return PageResponse.from(new PageImpl<>(responses, found.getPageable(), found.getTotalElements()));
     }
 
     @Override
@@ -92,24 +133,31 @@ public class ChecklistServiceImpl implements IChecklistService {
         if (repository.existsByNormalizedContentAndIdNot(normalized, id)) {
             throw new ApiException(ErrorCode.CHECKLIST_ALREADY_EXISTS);
         }
+        var before = audit == null ? null : audit.snapshot(entity);
         entity.setContent(content);
         entity.setNormalizedContent(normalized);
         if (request.getDifficulty() != null) entity.setDifficulty(request.getDifficulty());
         applyPricing(entity, request, false);
         applyGuidance(entity, request);
         var saved = repository.saveAndFlush(entity);
+        if (audit != null) audit.record(com.ondemandmonitoring.checklist.enums.ChecklistConfigAuditAction.CHECKLIST_UPDATED,
+                saved, null, before, audit.snapshot(saved));
         if (defaultPrices != null) defaultPrices.refreshForChecklist(id);
-        return mapper.toResponse(saved);
+        return withUsage(mapper.toResponse(saved));
     }
 
     @Override
     @Transactional
     public ChecklistResponse updateStatus(String id, boolean active) {
         ChecklistDefinition entity = locked(id);
+        boolean changed = !java.util.Objects.equals(entity.getIsActive(), active);
         entity.setIsActive(active);
         var saved = repository.saveAndFlush(entity);
+        if (audit != null && changed) audit.record(active
+                ? com.ondemandmonitoring.checklist.enums.ChecklistConfigAuditAction.CHECKLIST_ACTIVATED
+                : com.ondemandmonitoring.checklist.enums.ChecklistConfigAuditAction.CHECKLIST_DEACTIVATED, saved, null);
         if (defaultPrices != null) defaultPrices.refreshForChecklist(id);
-        return mapper.toResponse(saved);
+        return withUsage(mapper.toResponse(saved));
     }
 
     /**

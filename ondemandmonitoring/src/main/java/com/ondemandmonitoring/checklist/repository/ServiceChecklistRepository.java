@@ -24,6 +24,15 @@ public interface ServiceChecklistRepository extends JpaRepository<ServiceCheckli
         boolean isRequired();
         Boolean getChecklistActive();
     }
+    /** How many services use each checklist (grouped, so a page of checklists costs one query). */
+    @Query("select sc.checklist.id as checklistId, count(sc) as total from ServiceChecklist sc "
+            + "where sc.checklist.id in :ids group by sc.checklist.id")
+    List<UsageCount> countByChecklistIds(@org.springframework.data.repository.query.Param("ids") java.util.Collection<String> ids);
+
+    interface UsageCount {
+        String getChecklistId();
+        long getTotal();
+    }
     boolean existsByServiceIdAndChecklistId(String serviceId, String checklistId);
     Optional<ServiceChecklist> findByServiceIdAndChecklistId(String serviceId, String checklistId);
     @EntityGraph(attributePaths = {"service", "checklist"})

@@ -13,6 +13,17 @@ public interface OrderChecklistItemRepository extends JpaRepository<OrderCheckli
 
     List<OrderChecklistItem> findAllByOrderIdOrderByDisplayOrderAscIdAsc(String orderId);
 
+    /** How many order lines were taken from each library checklist (grouped, one query per page). */
+    @org.springframework.data.jpa.repository.Query("select i.sourceChecklist.id as checklistId, count(i) as total "
+            + "from OrderChecklistItem i where i.sourceChecklist.id in :ids group by i.sourceChecklist.id")
+    List<UsageCount> countBySourceChecklistIds(
+            @org.springframework.data.repository.query.Param("ids") Collection<String> ids);
+
+    interface UsageCount {
+        String getChecklistId();
+        long getTotal();
+    }
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<OrderChecklistItem> findByIdAndOrderId(String id, String orderId);
 }

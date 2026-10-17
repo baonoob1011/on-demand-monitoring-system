@@ -21,6 +21,8 @@ public class ServiceChecklistResponse {
     private Long version;
     private Long checklistVersion;
     private boolean required;
+    /** How many services include this checklist; more than one means editing its content changes all of them. */
+    private long usedByServiceCount;
     // Effective values = override, else inherited from the checklist definition.
     private java.math.BigDecimal basePrice;
     private Integer includedImageCount;

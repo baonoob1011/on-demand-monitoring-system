@@ -29,6 +29,14 @@ public class ServiceChecklistServiceImpl implements IServiceChecklistService {
 
     private com.ondemandmonitoring.pricing.service.ServiceDefaultPriceService defaultPrices;
 
+    private com.ondemandmonitoring.checklist.service.ChecklistAuditService audit;
+
+    /** Optional collaborator: the change history. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setAudit(com.ondemandmonitoring.checklist.service.ChecklistAuditService audit) {
+        this.audit = audit;
+    }
+
     /** Optional collaborator: keeps the stored service default price current. */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setDefaultPrices(com.ondemandmonitoring.pricing.service.ServiceDefaultPriceService defaultPrices) {
@@ -58,6 +66,8 @@ public class ServiceChecklistServiceImpl implements IServiceChecklistService {
         normalize(rows);
         service.setChecklistDefaultsInitialized(true);
         var saved = assignments.saveAndFlush(entity);
+        if (audit != null) audit.record(com.ondemandmonitoring.checklist.enums.ChecklistConfigAuditAction.SERVICE_CHECKLIST_ASSIGNED, checklist, service,
+                java.util.Map.of(), audit.snapshot(saved));
         refreshPrice(serviceId);
         return mapper.toResponse(saved);
     }
@@ -78,8 +88,11 @@ public class ServiceChecklistServiceImpl implements IServiceChecklistService {
     @Override
     public void unassign(String serviceId, String checklistId) {
         Service service = lockService(serviceId);
-        assignments.delete(assignment(serviceId, checklistId));
+        var removed = assignment(serviceId, checklistId);
+        var removedChecklist = removed.getChecklist();
+        assignments.delete(removed);
         assignments.flush();
+        if (audit != null) audit.record(com.ondemandmonitoring.checklist.enums.ChecklistConfigAuditAction.SERVICE_CHECKLIST_REMOVED, removedChecklist, service);
         normalize(assignments.findAllByServiceIdOrderByDisplayOrderAscIdAsc(serviceId));
         service.setChecklistDefaultsInitialized(true);
         refreshPrice(serviceId);
@@ -101,8 +114,11 @@ public class ServiceChecklistServiceImpl implements IServiceChecklistService {
                 throw new ApiException(ErrorCode.CONCURRENT_UPDATE);
             ordered.add(row);
         }
+        var before = rows.stream().map(row -> row.getChecklist().getId()).toList();
         normalize(ordered);
         service.setChecklistDefaultsInitialized(true);
+        if (audit != null && !before.equals(ordered.stream().map(row -> row.getChecklist().getId()).toList()))
+            audit.record(com.ondemandmonitoring.checklist.enums.ChecklistConfigAuditAction.SERVICE_CHECKLIST_REORDERED, null, service);
         return ordered.stream().map(mapper::toResponse).toList();
     }
 
@@ -113,13 +129,71 @@ public class ServiceChecklistServiceImpl implements IServiceChecklistService {
         ServiceChecklist entity = assignment(serviceId, checklistId);
         if (request.getExpectedVersion() != null && !Objects.equals(entity.getVersion(), request.getExpectedVersion()))
             throw new ApiException(ErrorCode.CONCURRENT_UPDATE);
+        var before = audit == null ? null : audit.snapshot(entity);
         applyOverrides(entity, request.getBasePriceOverride(), request.getIncludedImageCountOverride(),
                 request.getIncludedVideoCountOverride(), request.getPricingProfileOverride());
         if (request.getRequired() != null) entity.setRequired(request.getRequired());
         service.setChecklistDefaultsInitialized(true);
         var saved = assignments.saveAndFlush(entity);
+        if (audit != null) audit.record(com.ondemandmonitoring.checklist.enums.ChecklistConfigAuditAction.SERVICE_CHECKLIST_UPDATED, saved.getChecklist(), service,
+                before, audit.snapshot(saved));
         refreshPrice(serviceId);
         return mapper.toResponse(saved);
+    }
+
+    /**
+     * Gives this service its own copy of a shared checklist and points the service at it, so the copy can be edited
+     * without touching the other services that use the original. Order, "required" and the price overrides move with it;
+     * orders already placed keep their frozen snapshot.
+     */
+    @Override
+    public ServiceChecklistResponse fork(String serviceId, String checklistId) {
+        Service service = lockService(serviceId);
+        ServiceChecklist link = assignment(serviceId, checklistId);
+        ChecklistDefinition source = checklists.findByIdForUpdate(checklistId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHECKLIST_NOT_FOUND));
+        ChecklistDefinition copy = new ChecklistDefinition();
+        String content = uniqueCopyContent(source.getContent(), service.getName());
+        copy.setContent(content);
+        copy.setNormalizedContent(content.toLowerCase(java.util.Locale.ROOT));
+        copy.setIsActive(true);
+        copy.setDescription(source.getDescription());
+        copy.setExecutionSteps(source.getExecutionSteps() == null ? null : List.copyOf(source.getExecutionSteps()));
+        copy.setInputRequirements(source.getInputRequirements() == null ? null : List.copyOf(source.getInputRequirements()));
+        copy.setExpectedOutputs(source.getExpectedOutputs() == null ? null : List.copyOf(source.getExpectedOutputs()));
+        copy.setDifficulty(source.getDifficulty());
+        copy.setBasePrice(source.getBasePrice());
+        copy.setIncludedImageCount(source.getIncludedImageCount());
+        copy.setIncludedVideoCount(source.getIncludedVideoCount());
+        copy.setStandardVideoDurationSeconds(source.getStandardVideoDurationSeconds());
+        copy.setPricingProfile(source.getPricingProfile());
+        copy.setAreaPricingEnabled(source.isAreaPricingEnabled());
+        copy.setLengthPricingEnabled(source.isLengthPricingEnabled());
+        copy.setAltitudePricingEnabled(source.isAltitudePricingEnabled());
+        copy.setIncludedAreaHa(source.getIncludedAreaHa());
+        copy.setIncludedLengthKm(source.getIncludedLengthKm());
+        copy.setIncludedAltitudeM(source.getIncludedAltitudeM());
+        ChecklistDefinition savedCopy = checklists.saveAndFlush(copy);
+        link.setChecklist(savedCopy);
+        service.setChecklistDefaultsInitialized(true);
+        var saved = assignments.saveAndFlush(link);
+        if (audit != null) audit.record(com.ondemandmonitoring.checklist.enums.ChecklistConfigAuditAction.SERVICE_CHECKLIST_FORKED, savedCopy, service,
+                java.util.Map.of("checklist", source.getContent()), java.util.Map.of("checklist", savedCopy.getContent()));
+        refreshPrice(serviceId);
+        return mapper.toResponse(saved);
+    }
+
+    /** "<content> (<service>)", numbered when that name is taken; always within the 500-character limit. */
+    private String uniqueCopyContent(String content, String serviceName) {
+        String suffix = " (" + (serviceName == null ? "riêng" : serviceName.trim()) + ")";
+        if (suffix.length() > 120) suffix = suffix.substring(0, 119) + ")";
+        for (int attempt = 1; attempt <= 50; attempt++) {
+            String tail = attempt == 1 ? suffix : suffix + " #" + attempt;
+            String head = content.length() + tail.length() > 500 ? content.substring(0, 500 - tail.length()) : content;
+            String candidate = com.ondemandmonitoring.checklist.util.ChecklistContentNormalizer.content(head + tail);
+            if (!checklists.existsByNormalizedContent(candidate.toLowerCase(java.util.Locale.ROOT))) return candidate;
+        }
+        throw new ApiException(ErrorCode.CHECKLIST_ALREADY_EXISTS);
     }
 
     private void refreshPrice(String serviceId) {
@@ -157,7 +231,15 @@ public class ServiceChecklistServiceImpl implements IServiceChecklistService {
         List<ServiceChecklist> rows = activeOnly
                 ? assignments.findAllByServiceIdAndChecklistIsActiveTrueOrderByDisplayOrderAscIdAsc(serviceId)
                 : assignments.findAllByServiceIdOrderByDisplayOrderAscIdAsc(serviceId);
-        return rows.stream().map(mapper::toResponse).toList();
+        var responses = rows.stream().map(mapper::toResponse).toList();
+        if (!activeOnly && !responses.isEmpty()) {
+            // The admin template shows which checklists are shared; customers do not need the figure.
+            var counts = new java.util.HashMap<String, Long>();
+            assignments.countByChecklistIds(responses.stream().map(ServiceChecklistResponse::getChecklistId).toList())
+                    .forEach(row -> counts.put(row.getChecklistId(), row.getTotal()));
+            responses.forEach(response -> response.setUsedByServiceCount(counts.getOrDefault(response.getChecklistId(), 0L)));
+        }
+        return responses;
     }
 
     @Override

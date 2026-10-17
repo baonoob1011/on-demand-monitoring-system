@@ -27,6 +27,10 @@ public class ChecklistResponse {
     private java.math.BigDecimal includedAreaHa;
     private java.math.BigDecimal includedLengthKm;
     private java.math.BigDecimal includedAltitudeM;
+    /** How many services currently include this checklist; editing it changes all of them. */
+    private long usedByServiceCount;
+    /** How many order lines were taken from it. Existing orders keep their own frozen copy. */
+    private long usedByOrderCount;
     private Instant createdAt;
     private Instant updatedAt;
     private Long version;

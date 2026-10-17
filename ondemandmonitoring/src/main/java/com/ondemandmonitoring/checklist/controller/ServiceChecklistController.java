@@ -41,6 +41,13 @@ public class ServiceChecklistController {
         return ApiResponse.ok(service.updatePricing(serviceId, checklistId, request));
     }
 
+    @PostMapping("/{checklistId}/fork")
+    public ResponseEntity<ApiResponse<ServiceChecklistResponse>> fork(
+            @PathVariable String serviceId, @PathVariable String checklistId) {
+        return ResponseEntity.status(201).body(ApiResponse.created("Checklist copied for this service",
+                service.fork(serviceId, checklistId)));
+    }
+
     @PutMapping("/order")
     public ApiResponse<List<ServiceChecklistResponse>> reorder(@PathVariable String serviceId,
             @Valid @RequestBody ChecklistReorderRequest request) {

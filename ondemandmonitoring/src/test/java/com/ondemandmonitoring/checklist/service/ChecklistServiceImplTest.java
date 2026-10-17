@@ -1,6 +1,10 @@
 package com.ondemandmonitoring.checklist.service;
 
+import com.ondemandmonitoring.checklist.enums.ChecklistConfigAuditAction;
 import com.ondemandmonitoring.checklist.domain.ChecklistDefinition;
+import com.ondemandmonitoring.checklist.repository.ServiceChecklistRepository;
+import com.ondemandmonitoring.checklist.service.ChecklistAuditService;
+import java.util.List;
 import com.ondemandmonitoring.checklist.dto.request.ChecklistRequest;
 import com.ondemandmonitoring.checklist.mapper.ChecklistMapper;
 import com.ondemandmonitoring.checklist.repository.ChecklistDefinitionRepository;
@@ -78,6 +82,30 @@ class ChecklistServiceImplTest {
         assertEquals("Keep", response.getDescription());
         assertEquals(java.util.List.of("Old step"), response.getExecutionSteps());
         assertNull(response.getExpectedOutputs());
+    }
+    @Test void responsesCarryHowManyServicesAndOrdersUseTheChecklist() {
+        var serviceUsage = mock(ServiceChecklistRepository.class);
+        var orderUsage = mock(com.ondemandmonitoring.order.repository.OrderChecklistItemRepository.class);
+        service.setUsage(serviceUsage, orderUsage);
+        var row = mock(ServiceChecklistRepository.UsageCount.class);
+        when(row.getChecklistId()).thenReturn("c1"); when(row.getTotal()).thenReturn(3L);
+        var orderRow = mock(com.ondemandmonitoring.order.repository.OrderChecklistItemRepository.UsageCount.class);
+        when(orderRow.getChecklistId()).thenReturn("c1"); when(orderRow.getTotal()).thenReturn(12L);
+        when(serviceUsage.countByChecklistIds(any())).thenReturn(List.of(row));
+        when(orderUsage.countBySourceChecklistIds(any())).thenReturn(List.of(orderRow));
+        when(repository.findById("c1")).thenReturn(Optional.of(entity()));
+        var response = service.getById("c1");
+        assertEquals(3L, response.getUsedByServiceCount());
+        assertEquals(12L, response.getUsedByOrderCount());
+    }
+    @Test void updateAndStatusChangesAreWrittenToTheHistory() {
+        var audit = mock(ChecklistAuditService.class);
+        service.setAudit(audit);
+        when(repository.findByIdForUpdate("c1")).thenReturn(Optional.of(entity()));
+        service.update("c1", request("New"));
+        verify(audit).record(eq(ChecklistConfigAuditAction.CHECKLIST_UPDATED), any(), isNull(), any(), any());
+        service.updateStatus("c1", false);
+        verify(audit).record(eq(ChecklistConfigAuditAction.CHECKLIST_DEACTIVATED), any(), isNull());
     }
     @Test void duplicateUpdateRejected() {
         when(repository.findByIdForUpdate("c1")).thenReturn(Optional.of(entity()));
