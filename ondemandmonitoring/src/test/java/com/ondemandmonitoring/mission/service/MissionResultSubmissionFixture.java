@@ -25,7 +25,7 @@ import static org.mockito.Mockito.*;
 /** Real submit service and actor policy; only persistence/readiness infrastructure is mocked. */
 public final class MissionResultSubmissionFixture {
     public enum Scenario {
-        OPERATOR(true), PILOT_FALLBACK(true), PILOT_WITH_OPERATOR(false), INSPECTOR(false),
+        OPERATOR(false), PILOT_FALLBACK(false), PILOT_WITH_OPERATOR(false), INSPECTOR(true),
         MAINTAINER(false), CUSTOMER(false), MANAGER(false), ADMIN(false), UNASSIGNED(false),
         SIBLING_OPERATOR(false), REPLACED_OPERATOR(false), UNACCEPTED_OPERATOR(false), INACTIVE_OPERATOR(false);
         public final boolean allowed;

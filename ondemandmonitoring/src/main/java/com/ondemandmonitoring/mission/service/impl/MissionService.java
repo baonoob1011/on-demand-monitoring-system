@@ -608,8 +608,25 @@ public class MissionService implements IMissionService {
         missionStaffAssignmentRepository.saveAll(assignments);
 
         if (isRequiredCrewAccepted(resolvedMissionId)) {
-            mission.setStatus(MissionStatus.SCHEDULED);
             ensureAcceptedMissionPlan(mission);
+        }
+        return missionMapper.toResponse(missionRepository.save(mission));
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("@missionAuthorizationService.canStartMission(#missionId)")
+    public MissionResponse startMissionWorkflow(String missionId) {
+        Mission mission = getRuntimeMissionOrThrow(missionId);
+        requireCrewConfirmationStatus(mission);
+        if (!isRequiredCrewAccepted(mission.getId())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "All required crew members must accept before the mission can start");
+        }
+        ensureAcceptedMissionPlan(mission);
+        mission.setStatus(MissionStatus.SCHEDULED);
+        if (mission.getActualStartAt() == null) {
+            mission.setActualStartAt(Instant.now());
         }
         return missionMapper.toResponse(missionRepository.save(mission));
     }
@@ -1037,7 +1054,9 @@ public class MissionService implements IMissionService {
         }
 
         mission.setStatus(MissionStatus.IN_FLIGHT);
-        mission.setActualStartAt(Instant.now());
+        if (mission.getActualStartAt() == null) {
+            mission.setActualStartAt(Instant.now());
+        }
         updateDeviceStatus(mission, DeviceStatus.ACTIVE_MISSION);
 
         log.info("Mission {} IN_FLIGHT – WebSocket telemetry and RTSP video stream OPENED", missionId);
@@ -1091,7 +1110,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    @PreAuthorize("@missionAuthorizationService.canUploadMissionMedia(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canCompleteMission(#missionId)")
     public MissionResponse completeMission(String missionId) {
         Mission resolved = getRuntimeMissionOrThrow(missionId);
         MissionRuntimeGate.requireOperationalCommandsAllowed(resolved);

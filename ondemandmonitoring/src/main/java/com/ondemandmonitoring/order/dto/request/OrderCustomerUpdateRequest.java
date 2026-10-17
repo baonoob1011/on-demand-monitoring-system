@@ -12,7 +12,6 @@ public record OrderCustomerUpdateRequest(
         @Size(max = 2000) String address,
         OrderUsagePurpose usagePurpose,
         OrderFlightPurpose flightPurpose,
-        OrderPriority priority,
         @DecimalMin("10") @DecimalMax("120") Double altitudeM,
         @DecimalMin(value = "0", inclusive = false) @DecimalMax("100000") Double estimatedLengthM,
         @Size(max = 120) String siteContactName,

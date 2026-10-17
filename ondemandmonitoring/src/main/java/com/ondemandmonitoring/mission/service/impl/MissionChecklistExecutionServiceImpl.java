@@ -89,6 +89,9 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
         if (request == null || request.getExpectedVersion() == null || request.getExpectedVersion() < 0
                 || request.getExecutionStatus() == null || request.getAssessmentStatus() == null)
             throw new ApiException(ErrorCode.INVALID_REQUEST);
+        if (request.getAssessmentStatus() != execution.getAssessmentStatus()
+                && !authorization.canReviewMissionMedia(missionId))
+            throw new ApiException(ErrorCode.ACCESS_DENIED);
         if (!request.getExpectedVersion().equals(execution.getVersion()))
             throw new ApiException(ErrorCode.CONCURRENT_UPDATE);
         ChecklistExecutionStatus next = request.getExecutionStatus();

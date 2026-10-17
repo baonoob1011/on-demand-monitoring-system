@@ -11,5 +11,6 @@ public interface MissionStaffAssignmentMapper {
     @Mapping(target = "staffId", source = "staff.id")
     @Mapping(target = "staffName", source = "staff.fullName")
     @Mapping(target = "staffEmail", source = "staff.email")
+    @Mapping(target = "staffPhone", source = "staff.phoneNumber")
     MissionStaffAssignmentResponse toResponse(MissionStaffAssignment assignment);
 }

@@ -21,6 +21,7 @@ import com.ondemandmonitoring.order.domain.OrderChecklistItem;
 import com.ondemandmonitoring.order.dto.response.OrderChecklistItemResponse;
 import com.ondemandmonitoring.order.enums.ChecklistReviewStatus;
 import com.ondemandmonitoring.order.enums.OrderStatus;
+import com.ondemandmonitoring.order.enums.LegalReviewStatus;
 import com.ondemandmonitoring.order.enums.OrderChecklistSourceType;
 import com.ondemandmonitoring.order.mapper.OrderChecklistItemMapper;
 import com.ondemandmonitoring.order.repository.OrderChecklistItemRepository;
@@ -271,6 +272,7 @@ public class QuoteService implements IQuoteService {
     public InvoiceResponse accept(String orderId, String quoteId) {
         Order order = orders.findByIdForUpdate(orderId).orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND));
         assertOwner(order);
+        requireLegalReady(order);
         Quote quote = quotes.findByIdForUpdate(quoteId).orElseThrow(() -> new ApiException(ErrorCode.QUOTE_NOT_FOUND));
         if (!quote.getOrder().getId().equals(orderId)) throw new ApiException(ErrorCode.QUOTE_NOT_CURRENT);
         if (quote.getStatus() == QuoteStatus.ACCEPTED_BY_CUSTOMER) {
@@ -297,6 +299,13 @@ public class QuoteService implements IQuoteService {
         Invoice saved = invoices.save(invoice);
         ensureWaitingDepositMission(order);
         return invoiceResponse(saved);
+    }
+
+    private static void requireLegalReady(Order order) {
+        if (order.getLegalReviewStatus() != LegalReviewStatus.NOT_REQUIRED
+                && order.getLegalReviewStatus() != LegalReviewStatus.APPROVED) {
+            throw new ApiException(ErrorCode.ORDER_LEGAL_REVIEW_NOT_READY);
+        }
     }
 
     @Transactional(readOnly = true)

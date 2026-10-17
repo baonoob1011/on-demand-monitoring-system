@@ -29,35 +29,30 @@ class MissionResultSubmitAuthorizationTest {
         verifyNoInteractions(fixture.completion);
     }
 
-    @Test void inspectorMediaPermissionDoesNotGrantResultSubmission() {
+    @Test void inspectorOwnsTheSingleFinalResultSubmission() {
         fixture.prepare(Scenario.INSPECTOR);
         assertTrue(fixture.authorization.canUploadMissionMedia(fixture.targetId));
-        assertFalse(fixture.authorization.canSubmitMissionResult(fixture.targetId));
-        assertError(ErrorCode.ACCESS_DENIED);
-    }
-
-    @Test void finalReportingCrewSurvivesReleaseButReplacementHistoryIsNotEligible() {
-        fixture.prepare(Scenario.OPERATOR);
-        var entry = fixture.crew.stream().filter(a -> a.getAssignedRole() == MissionStaffRole.OPERATOR).findFirst().orElseThrow();
-        entry.setIsCurrent(false);
         assertTrue(fixture.authorization.canSubmitMissionResult(fixture.targetId));
         fixture.service.upsert(fixture.targetId, new MissionResultRequest());
-        entry.setReleaseReason("REPLACED");
+    }
+
+    @Test void reportingCrewCannotSubmitTheAcceptancePackage() {
+        fixture.prepare(Scenario.OPERATOR);
         assertFalse(fixture.authorization.canSubmitMissionResult(fixture.targetId));
         assertError(ErrorCode.ACCESS_DENIED);
     }
 
-    @Test void operatorPriorityReusesExistingUsableAssignmentRule() {
+    @Test void pilotCannotSubmitEvenWhenOperatorIsUnavailable() {
         fixture.prepare(Scenario.PILOT_WITH_OPERATOR);
         var operator = fixture.crew.stream().filter(a -> a.getAssignedRole() == MissionStaffRole.OPERATOR).findFirst().orElseThrow();
         assertFalse(fixture.authorization.canSubmitMissionResult(fixture.targetId));
         operator.setReleaseReason("REPLACED");
-        assertTrue(fixture.authorization.canSubmitMissionResult(fixture.targetId));
-        fixture.service.upsert(fixture.targetId, new MissionResultRequest());
+        assertFalse(fixture.authorization.canSubmitMissionResult(fixture.targetId));
+        assertError(ErrorCode.ACCESS_DENIED);
     }
 
     @Test void actorAuthorizationDoesNotBypassOperationalCompletion() {
-        fixture.prepare(Scenario.OPERATOR);
+        fixture.prepare(Scenario.INSPECTOR);
         fixture.mission.setStatus(MissionStatus.PENDING_REVIEW);
         fixture.crew.forEach(a -> { a.setReleasedAt(null); a.setReleaseReason(null); });
         assertTrue(fixture.authorization.canSubmitMissionResult(fixture.targetId));
@@ -66,7 +61,7 @@ class MissionResultSubmitAuthorizationTest {
     }
 
     @Test void actorAuthorizationDoesNotBypassChecklistOrEvidenceReadiness() {
-        fixture.prepare(Scenario.OPERATOR);
+        fixture.prepare(Scenario.INSPECTOR);
         doThrow(new ApiException(ErrorCode.CHECKLIST_NOT_READY)).when(fixture.checklist).requireReadyForSubmission(fixture.mission);
         assertError(ErrorCode.CHECKLIST_NOT_READY);
         verify(fixture.results, never()).save(any());
@@ -74,16 +69,16 @@ class MissionResultSubmitAuthorizationTest {
 
     @ParameterizedTest @EnumSource(value=MissionResultApprovalStatus.class, names={"PENDING_MANAGER_APPROVAL","APPROVED"})
     void submissionPreservesExistingResultLocks(MissionResultApprovalStatus approval) {
-        fixture.prepare(Scenario.OPERATOR); fixture.result.setApprovalStatus(approval);
+        fixture.prepare(Scenario.INSPECTOR); fixture.result.setApprovalStatus(approval);
         assertError(ErrorCode.CHECKLIST_EXECUTION_LOCKED);
         verify(fixture.results, never()).save(any());
     }
 
     @Test void correctionUpdatesTheSameResultAndReplayStillChecksAuthorization() {
-        fixture.prepare(Scenario.OPERATOR); fixture.result.setApprovalStatus(MissionResultApprovalStatus.REJECTED);
+        fixture.prepare(Scenario.INSPECTOR); fixture.result.setApprovalStatus(MissionResultApprovalStatus.REJECTED);
         assertEquals("result-1", fixture.service.upsert(fixture.targetId, new MissionResultRequest()).getId());
         assertError(ErrorCode.CHECKLIST_EXECUTION_LOCKED);
-        fixture.actor = fixture.crew.stream().filter(a -> a.getAssignedRole() == MissionStaffRole.INSPECTOR).findFirst().orElseThrow().getStaff();
+        fixture.actor = fixture.crew.stream().filter(a -> a.getAssignedRole() == MissionStaffRole.OPERATOR).findFirst().orElseThrow().getStaff();
         assertError(ErrorCode.ACCESS_DENIED);
         verify(fixture.results, times(1)).save(any());
     }

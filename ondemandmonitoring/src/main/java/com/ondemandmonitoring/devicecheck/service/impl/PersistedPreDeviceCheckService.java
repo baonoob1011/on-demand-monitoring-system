@@ -13,6 +13,7 @@ import com.ondemandmonitoring.devicecheck.enums.PreDeviceCheckType;
 import com.ondemandmonitoring.devicecheck.enums.PreDeviceItemStatus;
 import com.ondemandmonitoring.devicecheck.repository.PersistedPreDeviceCheckRepository;
 import com.ondemandmonitoring.mission.domain.Mission;
+import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import java.time.Instant;
 import java.util.Arrays;
@@ -22,6 +23,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import static com.ondemandmonitoring.mission.service.impl.MissionRuntimeGate.requireOperationalCommandsAllowed;
 
 @Service
 @RequiredArgsConstructor
@@ -42,9 +45,9 @@ public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckS
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.MISSION_NOT_FOUND,
                         "Mission not found: " + missionId));
-        com.ondemandmonitoring.mission.service.impl.MissionRuntimeGate.requireOperationalCommandsAllowed(mission);
-        if (mission.getStatus() != com.ondemandmonitoring.mission.enums.MissionStatus.CONNECTED
-                && mission.getStatus() != com.ondemandmonitoring.mission.enums.MissionStatus.PREFLIGHT_CHECKING) {
+        requireOperationalCommandsAllowed(mission);
+        if (mission.getStatus() != MissionStatus.CONNECTED
+                && mission.getStatus() != MissionStatus.PREFLIGHT_CHECKING) {
             throw new ApiException(ErrorCode.MISSION_STATUS_INVALID, "Pre-device inspection requires a connected mission");
         }
 
@@ -121,7 +124,7 @@ public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckS
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Preflight check not found: " + id));
         Mission mission = missionRepository.findByIdForUpdate(existing.getMission().getId())
                 .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
-        com.ondemandmonitoring.mission.service.impl.MissionRuntimeGate.requireOperationalCommandsAllowed(mission);
+        requireOperationalCommandsAllowed(mission);
         PersistedPreDeviceCheck run = runRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.RESOURCE_NOT_FOUND,

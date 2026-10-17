@@ -53,7 +53,7 @@ class QuoteServiceTest {
         service = new QuoteService(orders, items, mock(OrderChecklistItemMapper.class), quotes, invoices, missions,
                 executions, users, new PaymentProperties(new BigDecimal("0.30")), deliveries,
                 readiness, pricingEngine, pricingPolicies, pricingAudits);
-        order = new Order(); order.setId("o1"); order.setOrderStatus(OrderStatus.PENDING);
+        order = new Order(); order.setId("o1"); order.setLegalReviewStatus(com.ondemandmonitoring.order.enums.LegalReviewStatus.NOT_REQUIRED); order.setOrderStatus(OrderStatus.PENDING);
         var catalog = new com.ondemandmonitoring.service.domain.Service(); catalog.setName("Building inspection");
         order.setService(catalog);
         when(orders.findByIdForUpdate("o1")).thenReturn(Optional.of(order));

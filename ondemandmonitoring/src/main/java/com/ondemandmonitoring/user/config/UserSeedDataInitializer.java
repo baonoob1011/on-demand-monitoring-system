@@ -162,9 +162,32 @@ public class UserSeedDataInitializer implements ApplicationRunner {
                     );
 
             insertUser(seed, role);
+            seedStaffPhone(seed);
             insertIdentity(seed);
             provisionCustomerProfile(seed);
         }
+    }
+
+    private void seedStaffPhone(SeedUser seed) {
+        String phoneNumber = switch (seed.email()) {
+            case "seed.manager@odms.local" -> "0902000001";
+            case "seed.manager.2@odms.local" -> "0902000002";
+            case "seed.manager.3@odms.local" -> "0902000003";
+            case "seed.manager.4@odms.local" -> "0902000004";
+            case "seed.drone.operator@odms.local" -> "0901000001";
+            case "seed.drone.operator.2@odms.local" -> "0901000002";
+            case "seed.drone.operator.3@odms.local" -> "0901000003";
+            case "seed.drone.operator.4@odms.local" -> "0901000004";
+            default -> null;
+        };
+        if (phoneNumber == null) {
+            return;
+        }
+        jdbcTemplate.update(
+                "UPDATE users SET phone_number = ? WHERE id = ?",
+                phoneNumber,
+                seed.userId()
+        );
     }
 
     private void provisionCustomerProfile(SeedUser seed) {

@@ -17,6 +17,7 @@ public class MissionStaffAssignmentResponse {
     String staffId;
     String staffName;
     String staffEmail;
+    String staffPhone;
     MissionStaffRole assignedRole;
     StaffResponseStatus responseStatus;
     Instant assignedAt;

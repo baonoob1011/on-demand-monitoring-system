@@ -12,7 +12,6 @@ import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.domain.OrderChecklistItem;
 import com.ondemandmonitoring.order.enums.ChecklistReviewStatus;
 import com.ondemandmonitoring.order.enums.OrderChecklistSourceType;
-import com.ondemandmonitoring.order.enums.OrderPriority;
 import com.ondemandmonitoring.pricing.domain.PricingPolicy;
 import com.ondemandmonitoring.pricing.domain.PricingRule;
 import com.ondemandmonitoring.pricing.enums.*;
@@ -58,7 +57,7 @@ class FlexibleChecklistPricingEngineTest {
         var service = new com.ondemandmonitoring.service.domain.Service();
         service.setName("Inspection"); service.setBasePrice(new BigDecimal(packageFee));
         Order o = new Order();
-        o.setId("o1"); o.setService(service); o.setServiceBasePriceSnapshot(new BigDecimal(packageFee)); o.setPriority(OrderPriority.NORMAL);
+        o.setId("o1"); o.setService(service); o.setServiceBasePriceSnapshot(new BigDecimal(packageFee));
         when(assessments.findByOrderId("o1")).thenReturn(Optional.empty());
         return o;
     }

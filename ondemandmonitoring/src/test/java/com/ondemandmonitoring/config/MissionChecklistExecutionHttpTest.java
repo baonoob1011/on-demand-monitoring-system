@@ -111,8 +111,8 @@ class MissionChecklistExecutionHttpTest {
                 .contentType(MediaType.APPLICATION_JSON).content(BODY)).andExpect(status().isConflict());
     }
 
-    @Test void customerManagerAdminAndInspectorCannotMutate() throws Exception {
-        for (RoleCode role : List.of(RoleCode.CUSTOMER, RoleCode.MANAGER, RoleCode.ADMIN, RoleCode.STAFF)) {
+    @Test void customerManagerAndAdminCannotMutate() throws Exception {
+        for (RoleCode role : List.of(RoleCode.CUSTOMER, RoleCode.MANAGER, RoleCode.ADMIN)) {
             actor.getRole().setCode(role); crew(MissionStaffRole.INSPECTOR);
             mvc.perform(patch(URL + "/e").with(jwt().authorities(() -> "ROLE_" + role.name())).with(csrf())
                             .contentType(MediaType.APPLICATION_JSON).content(BODY)).andExpect(status().isForbidden());

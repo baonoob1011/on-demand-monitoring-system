@@ -104,7 +104,7 @@ class ManualUploadRecoveryWorkflowTest {
 
         // Recovery is asserted through the ticket lifecycle and the real validation pipeline.
         validationService = new MediaValidationServiceImpl(attempts, media, inbox, manualTasks,
-                manualTaskService, auditService, new MediaUploadPolicy(), outbox, storage,
+                manualTaskService, auditService, new MediaUploadPolicy(), storage,
                 new MediaObjectVerificationServiceImpl(storage),
                 mock(com.ondemandmonitoring.mission.service.IMissionMediaEvidenceGuard.class));
     }
@@ -206,12 +206,13 @@ class ManualUploadRecoveryWorkflowTest {
 
         validationService.processObjectCreated("test-bucket", STAGING_KEY, "recovery-event");
 
-        assertThat(captured.getMediaStatus()).isEqualTo(MediaStatus.PENDING_MANAGER_APPROVAL);
+        // Technical validation makes the media available; the Manager approves the whole result once, not each file.
+        assertThat(captured.getMediaStatus()).isEqualTo(MediaStatus.AVAILABLE);
         assertThat(captured.getValidatedAt()).isNotNull();
         assertThat(captured.getValidationError()).isNull();
         // Step 7: capture origin survives recovery; it is NOT rewritten to MANUAL_UPLOAD.
         assertThat(captured.getSourceType()).isEqualTo("DRONE_CAMERA");
-        assertThat(captured.getAvailableAt()).as("Manager approval is still required").isNull();
+        assertThat(captured.getAvailableAt()).isNotNull();
         // Step 9: resolved only after successful validation.
         assertThat(storedTask.getStatus()).isEqualTo(ManualUploadTaskStatus.RESOLVED);
         assertThat(storedTask.getResolvedAt()).isNotNull();
@@ -336,9 +337,8 @@ class ManualUploadRecoveryWorkflowTest {
         assertThat(evidencePolicy.eligibleDistinctCount(List.of(link), "exec-1",
                 com.ondemandmonitoring.order.enums.RequiredEvidenceType.IMAGE, false)).isLessThan(2);
 
-        // Final approval still requires Manager approval of the recovered media.
-        assertThat(evidencePolicy.ineligibilityReason(captured, true))
-                .isEqualTo("MEDIA_APPROVAL_REQUIRED");
+        // Recovered media is already available, so it is also eligible at final approval.
+        assertThat(evidencePolicy.ineligibilityReason(captured, true)).isNull();
     }
 
     @Test

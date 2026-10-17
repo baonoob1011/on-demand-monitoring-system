@@ -331,12 +331,12 @@ class MissionServiceTest {
 
             MissionResponse result = missionService.acceptMission("m-1", "op-01");
 
-            assertThat(result.getStatus()).isEqualTo(MissionStatus.SCHEDULED);
+            assertThat(result.getStatus()).isEqualTo(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
             verify(missionStaffAssignmentRepository).saveAll(any());
         }
 
         @Test
-        void oneStaffCanAcceptAllAssignedRolesAndScheduleMission() {
+        void oneStaffCanAcceptAllAssignedRolesAndWaitForInspectorStart() {
             Mission mission = buildMission("m-solo", MissionStatus.WAITING_CREW_CONFIRMATION);
             var assignments = java.util.Arrays.stream(MissionStaffRole.values())
                     .map(role -> staffAssignment(mission, "seed-staff-1", role, "PENDING"))
@@ -351,7 +351,7 @@ class MissionServiceTest {
 
             MissionResponse result = missionService.acceptMission("m-solo", "seed-staff-1");
 
-            assertThat(result.getStatus()).isEqualTo(MissionStatus.SCHEDULED);
+            assertThat(result.getStatus()).isEqualTo(MissionStatus.WAITING_CREW_CONFIRMATION);
             assertThat(assignments).allMatch(entry -> entry.getResponseStatus() == StaffResponseStatus.ACCEPTED);
             verify(missionStaffAssignmentRepository).saveAll(assignments);
         }
@@ -644,6 +644,7 @@ class MissionServiceTest {
             MissionResponse result = missionService.startMission("m-7", "valid-token");
 
             assertThat(result.getStatus()).isEqualTo(MissionStatus.IN_FLIGHT);
+            assertThat(mission.getActualStartAt()).isNotNull();
             assertThat(device.getStatus()).isEqualTo(DeviceStatus.ACTIVE_MISSION);
             assertThat(token.isUsed()).isTrue();
         }
@@ -707,6 +708,7 @@ class MissionServiceTest {
             MissionResponse result = missionService.startMission("m-7");
 
             assertThat(result.getStatus()).isEqualTo(MissionStatus.IN_FLIGHT);
+            assertThat(mission.getActualStartAt()).isNotNull();
             assertThat(token.isUsed()).isTrue();
         }
     }
@@ -1103,9 +1105,11 @@ class MissionServiceTest {
         missionService.updatePostFlightStatus(mission.getId(), DeviceStatus.AVAILABLE, "Inspection passed");
         assertThat(mission.getStatus()).isEqualTo(MissionStatus.PENDING_REVIEW);
         assertThat(deviceAssignment.getReleasedAt()).isNull(); verify(resultRepo, never()).save(any());
+        // The inspector owns the final acceptance package, including the checklist assessment.
         var operator = crew.stream().filter(entry -> entry.getAssignedRole() == MissionStaffRole.OPERATOR).findFirst().orElseThrow();
-        when(authenticatedUserResolver.getCurrentUser()).thenReturn(operator.getStaff());
-        when(authenticatedUserResolver.getCurrentUserId()).thenReturn(operator.getStaff().getId());
+        var checklistActor = crew.stream().filter(entry -> entry.getAssignedRole() == MissionStaffRole.INSPECTOR).findFirst().orElseThrow();
+        when(authenticatedUserResolver.getCurrentUser()).thenReturn(checklistActor.getStaff());
+        when(authenticatedUserResolver.getCurrentUserId()).thenReturn(checklistActor.getStaff().getId());
         var update = new com.ondemandmonitoring.mission.dto.request.ChecklistExecutionUpdateRequest(); update.setExpectedVersion(0L);
         update.setExecutionStatus(com.ondemandmonitoring.mission.enums.ChecklistExecutionStatus.COMPLETED);
         update.setAssessmentStatus(com.ondemandmonitoring.mission.enums.ChecklistAssessmentStatus.NON_COMPLIANT);
@@ -1119,10 +1123,10 @@ class MissionServiceTest {
         assertThat(result.getSubmittedAt()).isNull(); assertThat(deviceAssignment.getReleasedAt()).isNotNull();
         assertThat(crew).allMatch(entry -> "MISSION_COMPLETE".equals(entry.getReleaseReason()));
         assertThat(replaced.getReleaseReason()).isEqualTo("REPLACED");
+        results.upsert(mission.getId(), new com.ondemandmonitoring.mission.dto.request.MissionResultRequest());
+        when(authenticatedUserResolver.getCurrentUser()).thenReturn(operator.getStaff());
         assertThatThrownBy(() -> results.upsert(mission.getId(), new com.ondemandmonitoring.mission.dto.request.MissionResultRequest()))
                 .isInstanceOf(ApiException.class);
-        when(authenticatedUserResolver.getCurrentUser()).thenReturn(operator.getStaff());
-        results.upsert(mission.getId(), new com.ondemandmonitoring.mission.dto.request.MissionResultRequest());
         assertThat(result.getApprovalStatus()).isEqualTo(com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL);
         assertThat(order.getOrderStatus()).isEqualTo(com.ondemandmonitoring.order.enums.OrderStatus.APPROVED);
         var manager = User.builder().isActive(true).role(Role.builder().code(RoleCode.MANAGER).active(true).build()).build();

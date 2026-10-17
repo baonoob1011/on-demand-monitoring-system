@@ -4,6 +4,7 @@ import com.ondemandmonitoring.order.dto.request.OrderAdditionalInformationReques
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.request.OrderCustomerUpdateRequest;
 import com.ondemandmonitoring.order.dto.request.FlightAreaReviewRequest;
+import com.ondemandmonitoring.order.dto.request.LegalReviewResolutionRequest;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 
@@ -16,6 +17,8 @@ public interface IOrderService {
     OrderCreateResponse approveOrder(String orderId);
 
     OrderCreateResponse reviewFlightArea(String orderId, FlightAreaReviewRequest request);
+
+    OrderCreateResponse resolveLegalReview(String orderId, LegalReviewResolutionRequest request);
 
     void rejectOrder(String orderId, String reason);
 
