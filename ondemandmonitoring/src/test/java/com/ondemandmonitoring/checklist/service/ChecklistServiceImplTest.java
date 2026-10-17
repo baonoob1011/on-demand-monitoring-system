@@ -55,6 +55,30 @@ class ChecklistServiceImplTest {
         assertEquals("New", service.update("c1", request(" New ")).getContent());
         verify(repository).existsByNormalizedContentAndIdNot("new", "c1");
     }
+    @Test void guidanceIsStoredTrimmedInOrderAndBlankStepsAreDropped() {
+        var request = request("Roof");
+        request.setDescription("  What it covers  ");
+        request.setExecutionSteps(java.util.Arrays.asList(" Step one ", "", "Step two", null));
+        request.setInputRequirements(java.util.List.of("Clear weather"));
+        request.setExpectedOutputs(java.util.List.of("Photos"));
+        var response = service.create(request);
+        assertEquals("What it covers", response.getDescription());
+        assertEquals(java.util.List.of("Step one", "Step two"), response.getExecutionSteps());
+        assertEquals(java.util.List.of("Clear weather"), response.getInputRequirements());
+        assertEquals(java.util.List.of("Photos"), response.getExpectedOutputs());
+    }
+    @Test void updateKeepsAbsentGuidanceAndClearsEmptyGuidance() {
+        var entity = entity();
+        entity.setDescription("Keep"); entity.setExecutionSteps(java.util.List.of("Old step"));
+        entity.setExpectedOutputs(java.util.List.of("Old output"));
+        when(repository.findByIdForUpdate("c1")).thenReturn(Optional.of(entity));
+        var request = request("Roof");
+        request.setExpectedOutputs(java.util.List.of());
+        var response = service.update("c1", request);
+        assertEquals("Keep", response.getDescription());
+        assertEquals(java.util.List.of("Old step"), response.getExecutionSteps());
+        assertNull(response.getExpectedOutputs());
+    }
     @Test void duplicateUpdateRejected() {
         when(repository.findByIdForUpdate("c1")).thenReturn(Optional.of(entity()));
         when(repository.existsByNormalizedContentAndIdNot("new", "c1")).thenReturn(true);

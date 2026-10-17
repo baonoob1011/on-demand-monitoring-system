@@ -15,6 +15,10 @@ public class OrderChecklistItemResponse {
     private String id;
     private String sourceChecklistId;
     private String content;
+    private String description;
+    private java.util.List<String> executionSteps;
+    private java.util.List<String> inputRequirements;
+    private java.util.List<String> expectedOutputs;
     private int displayOrder;
     private OrderChecklistSourceType sourceType;
     private ChecklistReviewStatus reviewStatus;

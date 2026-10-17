@@ -10,6 +10,10 @@ import com.ondemandmonitoring.pricing.enums.ChecklistDifficulty;
 public class ChecklistResponse {
     private String id;
     private String content;
+    private String description;
+    private java.util.List<String> executionSteps;
+    private java.util.List<String> inputRequirements;
+    private java.util.List<String> expectedOutputs;
     private Boolean isActive;
     private ChecklistDifficulty difficulty;
     private java.math.BigDecimal basePrice;

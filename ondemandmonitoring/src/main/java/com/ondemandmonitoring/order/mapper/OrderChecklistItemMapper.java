@@ -10,9 +10,17 @@ import org.mapstruct.*;
 @Mapper(componentModel = "spring", builder = @Builder(disableBuilder = true))
 public interface OrderChecklistItemMapper {
     @Mapping(source = "sourceChecklist.id", target = "sourceChecklistId")
+    @Mapping(target = "description", source = "descriptionSnapshot")
+    @Mapping(target = "executionSteps", source = "executionStepsSnapshot")
+    @Mapping(target = "inputRequirements", source = "inputRequirementsSnapshot")
+    @Mapping(target = "expectedOutputs", source = "expectedOutputsSnapshot")
     OrderChecklistItemResponse toResponse(OrderChecklistItem item);
 
     @Mapping(source = "sourceChecklist.id", target = "sourceChecklistId")
+    @Mapping(target = "description", source = "descriptionSnapshot")
+    @Mapping(target = "executionSteps", source = "executionStepsSnapshot")
+    @Mapping(target = "inputRequirements", source = "inputRequirementsSnapshot")
+    @Mapping(target = "expectedOutputs", source = "expectedOutputsSnapshot")
     @Mapping(target = "pricingStatus", expression = "java(customerPricingStatus(item))")
     @Mapping(target = "priceAvailable", expression = "java(customerPriceAvailable(item))")
     @Mapping(target = "approvedPrice", expression = "java(customerApprovedPrice(item))")

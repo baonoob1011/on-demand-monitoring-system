@@ -48,6 +48,7 @@ public class ChecklistServiceImpl implements IChecklistService {
         entity.setDifficulty(request.getDifficulty() == null
                 ? com.ondemandmonitoring.pricing.enums.ChecklistDifficulty.BASIC : request.getDifficulty());
         applyPricing(entity, request, true);
+        applyGuidance(entity, request);
         return mapper.toResponse(repository.saveAndFlush(entity));
     }
 
@@ -95,6 +96,7 @@ public class ChecklistServiceImpl implements IChecklistService {
         entity.setNormalizedContent(normalized);
         if (request.getDifficulty() != null) entity.setDifficulty(request.getDifficulty());
         applyPricing(entity, request, false);
+        applyGuidance(entity, request);
         var saved = repository.saveAndFlush(entity);
         if (defaultPrices != null) defaultPrices.refreshForChecklist(id);
         return mapper.toResponse(saved);
@@ -108,6 +110,26 @@ public class ChecklistServiceImpl implements IChecklistService {
         var saved = repository.saveAndFlush(entity);
         if (defaultPrices != null) defaultPrices.refreshForChecklist(id);
         return mapper.toResponse(saved);
+    }
+
+    /**
+     * Description and work guidance: an absent field keeps the stored value, an empty one clears it.
+     * Blank list entries are dropped and the order is preserved.
+     */
+    private void applyGuidance(ChecklistDefinition entity, ChecklistRequest request) {
+        if (request.getDescription() != null) {
+            String text = request.getDescription().trim();
+            entity.setDescription(text.isEmpty() ? null : text);
+        }
+        if (request.getExecutionSteps() != null) entity.setExecutionSteps(cleanList(request.getExecutionSteps()));
+        if (request.getInputRequirements() != null) entity.setInputRequirements(cleanList(request.getInputRequirements()));
+        if (request.getExpectedOutputs() != null) entity.setExpectedOutputs(cleanList(request.getExpectedOutputs()));
+    }
+
+    private static java.util.List<String> cleanList(java.util.List<String> values) {
+        var cleaned = values.stream().filter(java.util.Objects::nonNull).map(String::trim)
+                .filter(value -> !value.isEmpty()).toList();
+        return cleaned.isEmpty() ? null : cleaned;
     }
 
     /** Absent fields keep the stored value on update and take the neutral default on create. */

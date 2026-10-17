@@ -71,6 +71,22 @@ class OrderChecklistSnapshotServiceTest {
         locks.verify(services).findByIdForUpdate("s1");
         locks.verify(definitions).findByIdForUpdate("c1"); locks.verify(definitions).findByIdForUpdate("c2");
     }
+    @Test void guidanceIsFrozenAtOrderTimeAndSurvivesLaterCatalogEdits() {
+        c1.setDescription("Covers the roof"); c1.setExecutionSteps(List.of("Fly the grid", "Photograph defects"));
+        c1.setInputRequirements(List.of("Clear weather")); c1.setExpectedOutputs(List.of("Roof photos"));
+        var result = useCase.capture(order, List.of(item("c1", "Check exits"), item(null, "Own custom work")));
+        var captured = result.stream().filter(r -> "Check exits".equals(r.getContent())).findFirst().orElseThrow();
+        assertEquals("Covers the roof", captured.getDescription());
+        assertEquals(List.of("Fly the grid", "Photograph defects"), captured.getExecutionSteps());
+        assertEquals(List.of("Clear weather"), captured.getInputRequirements());
+        assertEquals(List.of("Roof photos"), captured.getExpectedOutputs());
+        var custom = result.stream().filter(r -> "Own custom work".equals(r.getContent())).findFirst().orElseThrow();
+        assertNull(custom.getDescription()); assertNull(custom.getExecutionSteps());
+        // The catalog is edited afterwards: the stored snapshot is a separate copy.
+        c1.setDescription("Rewritten"); c1.setExecutionSteps(List.of("Different"));
+        assertEquals("Covers the roof", captured.getDescription());
+        assertEquals(List.of("Fly the grid", "Photograph defects"), captured.getExecutionSteps());
+    }
     @Test void configurableEvidenceRequirementIsSnapshottedAndReturned() {
         var configured = item("c1", "Check exits");
         configured.setMinimumEvidenceCount(2);

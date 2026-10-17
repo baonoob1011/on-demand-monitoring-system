@@ -12,6 +12,14 @@ public class ChecklistRequest {
     @NotBlank
     @Size(max = 500)
     private String content;
+    @Size(max = 4000)
+    private String description;
+    @Size(max = 30)
+    private java.util.List<@NotBlank @Size(max = 500) String> executionSteps;
+    @Size(max = 30)
+    private java.util.List<@NotBlank @Size(max = 500) String> inputRequirements;
+    @Size(max = 30)
+    private java.util.List<@NotBlank @Size(max = 500) String> expectedOutputs;
     private ChecklistDifficulty difficulty;
     /** Price of the inspection work itself (VND, whole amount); media is priced by the pricing profile. */
     @jakarta.validation.constraints.DecimalMin("0")

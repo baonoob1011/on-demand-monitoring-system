@@ -200,6 +200,13 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
                 content = source.getContent();
             }
             entity.setContent(ChecklistContentNormalizer.content(content));
+            if (source != null && !custom) {
+                // Customer-edited text may no longer match the catalog wording, but the guidance still describes the work.
+                entity.setDescriptionSnapshot(source.getDescription());
+                entity.setExecutionStepsSnapshot(source.getExecutionSteps());
+                entity.setInputRequirementsSnapshot(source.getInputRequirements());
+                entity.setExpectedOutputsSnapshot(source.getExpectedOutputs());
+            }
             if (!contents.add(entity.getContent().toLowerCase(Locale.ROOT))) throw invalid("Duplicate checklist content");
             entity.setDisplayOrder(entities.size());
             // Fail fast: a selection the policy cannot price must not become a snapshot.

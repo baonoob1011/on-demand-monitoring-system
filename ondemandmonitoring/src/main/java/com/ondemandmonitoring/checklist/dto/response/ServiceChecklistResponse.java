@@ -12,6 +12,10 @@ public class ServiceChecklistResponse {
     private Boolean serviceActive;
     private String checklistId;
     private String content;
+    private String description;
+    private java.util.List<String> executionSteps;
+    private java.util.List<String> inputRequirements;
+    private java.util.List<String> expectedOutputs;
     private Boolean checklistActive;
     private int displayOrder;
     private Long version;
