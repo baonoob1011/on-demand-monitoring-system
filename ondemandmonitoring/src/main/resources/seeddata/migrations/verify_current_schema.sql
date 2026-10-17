@@ -127,6 +127,16 @@ DO $$ DECLARE e record; actual text; keys text[]; predicate text; meta record; B
         AND format_type(atttypid,atttypmod)='character varying(30)') THEN
         RAISE EXCEPTION 'Order checklist required_evidence_type missing/invalid';
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid='public.pricing_rules'::regclass
+        AND attname='checklist_definition_id'
+        AND format_type(atttypid,atttypmod)='character varying(36)') THEN
+        RAISE EXCEPTION 'Pricing rule checklist target missing/invalid';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid='public.order_checklist_items'::regclass
+        AND attname='pricing_status' AND attnotnull
+        AND format_type(atttypid,atttypmod)='character varying(40)') THEN
+        RAISE EXCEPTION 'Order checklist pricing_status missing/invalid';
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.order_checklist_items'::regclass
         AND conname='ck_snapshot_evidence_policy' AND contype='c' AND convalidated
         AND pg_get_constraintdef(oid) LIKE '%evidence_policy_version%'

@@ -3,6 +3,7 @@ package com.ondemandmonitoring.order.domain;
 import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.checklist.domain.ChecklistDefinition;
 import com.ondemandmonitoring.order.enums.ChecklistReviewStatus;
+import com.ondemandmonitoring.order.enums.ChecklistPricingStatus;
 import com.ondemandmonitoring.order.enums.OrderChecklistSourceType;
 import com.ondemandmonitoring.order.enums.RequiredEvidenceType;
 import com.ondemandmonitoring.pricing.enums.ChecklistDifficulty;
@@ -135,4 +136,9 @@ public class OrderChecklistItem extends BaseEntity {
 
     @Column(name = "price_difference_percent", precision = 12, scale = 6)
     private BigDecimal priceDifferencePercent;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pricing_status", nullable = false, length = 40,
+            columnDefinition = "varchar(40) default 'NEEDS_MANAGER_REVIEW'")
+    private ChecklistPricingStatus pricingStatus = ChecklistPricingStatus.NEEDS_MANAGER_REVIEW;
 }

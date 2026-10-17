@@ -101,8 +101,8 @@ public class ChecklistPriceCalculator {
 
         int extraImages = Math.max(0, requestedImages - includedImages);
         int extraVideos = Math.max(0, requestedVideos - includedVideos);
-        tierLines(policy, profile, MediaPricingComponent.EXTRA_IMAGE, extraImages, "ảnh bổ sung", lines);
-        tierLines(policy, profile, MediaPricingComponent.EXTRA_VIDEO, extraVideos, "video bổ sung", lines);
+        tierLines(policy, in.checklistId(), profile, MediaPricingComponent.EXTRA_IMAGE, extraImages, "ảnh bổ sung", lines);
+        tierLines(policy, in.checklistId(), profile, MediaPricingComponent.EXTRA_VIDEO, extraVideos, "video bổ sung", lines);
 
         PricingDimensions dimensions = in.dimensions() == null ? PricingDimensions.disabled() : in.dimensions();
         RequestContext context = in.context() == null ? RequestContext.empty() : in.context();
@@ -177,9 +177,10 @@ public class ChecklistPriceCalculator {
         });
     }
 
-    private void tierLines(PricingPolicy policy, String profile, MediaPricingComponent component, int extra, String noun, List<Line> out) {
+    private void tierLines(PricingPolicy policy, String checklistId, String profile,
+            MediaPricingComponent component, int extra, String noun, List<Line> out) {
         if (extra <= 0) return;
-        List<PricingRule> tiers = profileRules(policy, PricingCategory.MEDIA, profile, component).stream()
+        List<PricingRule> tiers = targetedProfileRules(policy, PricingCategory.MEDIA, checklistId, profile, component).stream()
                 .sorted(Comparator.comparing((PricingRule r) -> nz(r.getMinValue())).thenComparingInt(PricingRule::getPriority)).toList();
         if (tiers.isEmpty()) throw new ApiException(ErrorCode.MEDIA_PRICING_NOT_CONFIGURED,
                 "Cannot price " + extra + " " + noun + ": pricing profile " + profile + " has no price tier for it. "
@@ -296,9 +297,24 @@ public class ChecklistPriceCalculator {
 
     private List<PricingRule> profileRules(PricingPolicy policy, PricingCategory category, String profile,
             MediaPricingComponent component) {
-        List<PricingRule> configured = rules(policy, category, profile, component);
+        List<PricingRule> configured = rules(policy, category, profile, component).stream()
+                .filter(rule -> rule.getChecklistDefinitionId() == null).toList();
         if (!configured.isEmpty() || !GENERIC_CUSTOMER_ADDED_PROFILE.equals(profile)) return configured;
-        return rules(policy, category, LEGACY_CUSTOM_PROFILE, component);
+        return rules(policy, category, LEGACY_CUSTOM_PROFILE, component).stream()
+                .filter(rule -> rule.getChecklistDefinitionId() == null).toList();
+    }
+
+    /** Checklist target wins; then the checklist profile; finally DEFAULT global rules. */
+    private List<PricingRule> targetedProfileRules(PricingPolicy policy, PricingCategory category,
+            String checklistId, String profile, MediaPricingComponent component) {
+        if (checklistId != null) {
+            List<PricingRule> targeted = rules(policy, category, null, component).stream()
+                    .filter(rule -> checklistId.equals(rule.getChecklistDefinitionId())).toList();
+            if (!targeted.isEmpty()) return targeted;
+        }
+        List<PricingRule> profileRules = profileRules(policy, category, profile, component);
+        if (!profileRules.isEmpty() || DEFAULT_PROFILE.equals(profile)) return profileRules;
+        return profileRules(policy, category, DEFAULT_PROFILE, component);
     }
 
     public static String normalizeProfile(String profile) {

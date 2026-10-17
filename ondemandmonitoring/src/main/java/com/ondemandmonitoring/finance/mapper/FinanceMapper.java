@@ -3,6 +3,14 @@ package com.ondemandmonitoring.finance.mapper;
 import com.ondemandmonitoring.finance.domain.*;
 import com.ondemandmonitoring.finance.dto.*;
 import java.util.Comparator;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.List;
+import com.ondemandmonitoring.order.domain.OrderChecklistItem;
+import com.ondemandmonitoring.order.enums.OrderChecklistSourceType;
+import com.ondemandmonitoring.finance.enums.QuoteItemType;
 
 public final class FinanceMapper {
     private FinanceMapper() {}
@@ -30,11 +38,27 @@ public final class FinanceMapper {
     }
 
     public static CustomerQuoteResponse customerQuote(Quote quote) {
+        List<QuoteItemResponse> safeItems = new ArrayList<>();
+        Map<String, OrderChecklistItem> additional = new LinkedHashMap<>();
+        for (QuoteItem line : quote.getItems().stream().sorted(Comparator.comparingInt(QuoteItem::getDisplayOrder)).toList()) {
+            OrderChecklistItem item = line.getOrderChecklistItem();
+            if (item != null && item.getSourceType() != OrderChecklistSourceType.SERVICE_TEMPLATE) {
+                additional.putIfAbsent(item.getId(), item);
+                continue;
+            }
+            safeItems.add(quoteItem(line));
+        }
+        BigDecimal approvedAdditional = BigDecimal.ZERO;
+        for (OrderChecklistItem item : additional.values()) {
+            BigDecimal amount = item.getFinalAmount() == null ? BigDecimal.ZERO : item.getFinalAmount();
+            approvedAdditional = approvedAdditional.add(amount);
+            safeItems.add(new QuoteItemResponse("additional-" + item.getId(), item.getId(), QuoteItemType.ADDITIONAL,
+                    item.getContent(), BigDecimal.ONE, amount, amount, safeItems.size()));
+        }
+        BigDecimal estimatedBase = quote.getTotalAmount().subtract(approvedAdditional);
         return new CustomerQuoteResponse(quote.getId(), quote.getOrder().getId(), quote.getQuoteVersion(), quote.getStatus(),
-                quote.getPackagePrice(), quote.getAdditionalAmount(), quote.getDiscountAmount(), quote.getAdjustmentAmount(),
-                quote.getTotalAmount(), quote.getManagerNote(), quote.getApprovedAt(), quote.getAcceptedAt(),
-                quote.getItems().stream().sorted(Comparator.comparingInt(QuoteItem::getDisplayOrder))
-                        .map(FinanceMapper::quoteItem).toList());
+                estimatedBase, approvedAdditional, quote.getTotalAmount(), true,
+                quote.getApprovedAt(), quote.getAcceptedAt(), List.copyOf(safeItems));
     }
 
     public static InvoiceResponse invoice(Invoice invoice, boolean finalPaymentAllowed) {

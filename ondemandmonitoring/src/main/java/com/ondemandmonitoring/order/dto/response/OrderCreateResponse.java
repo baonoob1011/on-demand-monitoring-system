@@ -109,7 +109,7 @@ public class OrderCreateResponse {
     // Deliverables
     List<OrderDeliverableResponse> deliverables;
 
-    List<OrderChecklistItemResponse> checklistItems;
+    List<CustomerOrderChecklistItemResponse> checklistItems;
     Instant checklistSnapshotAt;
 
     Instant createdAt;

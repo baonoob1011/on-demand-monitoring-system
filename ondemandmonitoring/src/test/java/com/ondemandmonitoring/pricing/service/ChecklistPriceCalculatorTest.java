@@ -233,4 +233,59 @@ class ChecklistPriceCalculatorTest {
         assertThat(components).filteredOn("INCLUDED_IMAGE"::equals).hasSize(1);
         assertThat(components).filteredOn("INCLUDED_VIDEO"::equals).hasSize(1);
     }
+
+    @Test void checklistSpecificRulesOverrideProfileRulesAndRemainDifferentPerChecklist() {
+        PricingRule profileImage = tier("STANDARD", MediaPricingComponent.EXTRA_IMAGE,
+                "0", null, "10", "30000", PricingRounding.CEILING);
+        PricingRule checklistXImage = tier("STANDARD", MediaPricingComponent.EXTRA_IMAGE,
+                "0", null, "10", "50000", PricingRounding.CEILING);
+        checklistXImage.setChecklistDefinitionId("c1");
+        PricingRule checklistYImage = tier("STANDARD", MediaPricingComponent.EXTRA_IMAGE,
+                "0", null, "10", "70000", PricingRounding.CEILING);
+        checklistYImage.setChecklistDefinitionId("c2");
+        PricingPolicy configured = policy(profileImage, checklistXImage, checklistYImage);
+
+        var x = calculator.price(configured, catalog("100000", 1, 1, 2, 1));
+        var yInput = new ChecklistPriceCalculator.Input("c2", "Facade", ChecklistDifficulty.BASIC,
+                false, new BigDecimal("100000"), 1, 1, 2, 1, "STANDARD", null, false);
+        var y = calculator.price(configured, yInput);
+
+        assertThat(x.subtotal()).isEqualByComparingTo("150000");
+        assertThat(y.subtotal()).isEqualByComparingTo("170000");
+    }
+
+    @Test void checklistSpecificGraduatedVideoPricingChargesEachTierIncrementally() {
+        PricingRule first = tier("STANDARD", MediaPricingComponent.EXTRA_VIDEO,
+                "0", "1", "1", "50000", PricingRounding.CEILING);
+        PricingRule following = tier("STANDARD", MediaPricingComponent.EXTRA_VIDEO,
+                "1", null, "1", "40000", PricingRounding.CEILING);
+        first.setChecklistDefinitionId("c1");
+        following.setChecklistDefinitionId("c1");
+        PricingPolicy configured = policy(first, following);
+
+        assertThat(calculator.price(configured, catalog("0", 1, 1, 1, 2)).subtotal())
+                .isEqualByComparingTo("50000");
+        assertThat(calculator.price(configured, catalog("0", 1, 1, 1, 3)).subtotal())
+                .isEqualByComparingTo("90000");
+        assertThat(calculator.price(configured, catalog("0", 1, 1, 1, 4)).subtotal())
+                .isEqualByComparingTo("130000");
+    }
+
+    @Test void configuredChecklistExampleProducesBasePlusFirstImageAndVideoTier() {
+        PricingRule image = tier("STANDARD", MediaPricingComponent.EXTRA_IMAGE,
+                "0", null, "10", "50000", PricingRounding.CEILING);
+        PricingRule video = tier("STANDARD", MediaPricingComponent.EXTRA_VIDEO,
+                "0", null, "1", "50000", PricingRounding.CEILING);
+        image.setChecklistDefinitionId("c1");
+        video.setChecklistDefinitionId("c1");
+
+        ChecklistPriceBreakdown result = calculator.price(policy(image, video),
+                catalog("100000", 1, 1, 2, 2));
+
+        assertThat(result.extraImageCount()).isEqualTo(1);
+        assertThat(result.extraVideoCount()).isEqualTo(1);
+        assertThat(result.subtotal()).isEqualByComparingTo("200000");
+        assertThat(result.lines()).extracting(ChecklistPriceBreakdown.Line::amount)
+                .containsExactly(new BigDecimal("100000"), new BigDecimal("50000"), new BigDecimal("50000"));
+    }
 }

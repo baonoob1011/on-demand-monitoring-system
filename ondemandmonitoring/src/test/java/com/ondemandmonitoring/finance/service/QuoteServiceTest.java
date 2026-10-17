@@ -150,6 +150,8 @@ class QuoteServiceTest {
 
         service.approve("o1", "q1");
 
+        assertThat(custom.getPricingStatus()).isEqualTo(com.ondemandmonitoring.order.enums.ChecklistPricingStatus.ADJUSTED_AND_APPROVED);
+
         @SuppressWarnings("unchecked")
         var captured = (List<ChecklistPricingAudit>) mockingDetails(pricingAudits).getInvocations().stream()
                 .filter(invocation -> invocation.getMethod().getName().equals("saveAll"))
@@ -174,6 +176,8 @@ class QuoteServiceTest {
         when(quotes.findByIdForUpdate("q1")).thenReturn(Optional.of(approvableQuote()));
 
         service.approve("o1", "q1");
+
+        assertThat(custom.getPricingStatus()).isEqualTo(com.ondemandmonitoring.order.enums.ChecklistPricingStatus.APPROVED);
 
         @SuppressWarnings("unchecked")
         var captured = (List<ChecklistPricingAudit>) mockingDetails(pricingAudits).getInvocations().stream()

@@ -20,6 +20,7 @@ import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.domain.OrderChecklistItem;
 import com.ondemandmonitoring.order.dto.response.OrderChecklistItemResponse;
 import com.ondemandmonitoring.order.enums.ChecklistReviewStatus;
+import com.ondemandmonitoring.order.enums.ChecklistPricingStatus;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.enums.LegalReviewStatus;
 import com.ondemandmonitoring.order.enums.OrderChecklistSourceType;
@@ -104,6 +105,17 @@ public class QuoteService implements IQuoteService {
         }
         item.setReviewStatus(request.status());
         item.setManagerNote(trimToNull(request.managerNote()));
+        if (request.status() == ChecklistReviewStatus.DUPLICATE) {
+            item.setPricingStatus(ChecklistPricingStatus.DUPLICATE);
+            item.setManagerApprovedAmount(ZERO);
+            item.setFinalAmount(ZERO);
+        } else if (request.status() == ChecklistReviewStatus.REJECTED) {
+            item.setPricingStatus(ChecklistPricingStatus.REJECTED);
+            item.setManagerApprovedAmount(ZERO);
+            item.setFinalAmount(ZERO);
+        } else {
+            item.setPricingStatus(ChecklistPricingStatus.NEEDS_MANAGER_REVIEW);
+        }
         return checklistMapper.toResponse(item);
     }
 
@@ -229,6 +241,12 @@ public class QuoteService implements IQuoteService {
         quote.setApprovedBy(currentUser.getCurrentUser());
         quote.setApprovedAt(Instant.now());
         writeChecklistPricingAudits(quote, reviewed);
+        reviewed.stream().filter(this::requiresManagerPrice).forEach(item -> {
+            BigDecimal system = Optional.ofNullable(item.getSystemCalculatedPrice()).orElse(ZERO);
+            BigDecimal approved = Optional.ofNullable(item.getManagerQuotedPrice()).orElse(system);
+            item.setPricingStatus(approved.compareTo(system) == 0
+                    ? ChecklistPricingStatus.APPROVED : ChecklistPricingStatus.ADJUSTED_AND_APPROVED);
+        });
         if (order.getOrderStatus() == OrderStatus.PENDING) order.setOrderStatus(OrderStatus.APPROVED);
         return FinanceMapper.quote(quote);
     }

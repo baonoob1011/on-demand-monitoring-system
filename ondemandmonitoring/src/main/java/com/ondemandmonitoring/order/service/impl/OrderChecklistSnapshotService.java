@@ -9,7 +9,8 @@ import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.domain.OrderChecklistItem;
 import com.ondemandmonitoring.order.dto.request.OrderChecklistItemRequest;
-import com.ondemandmonitoring.order.dto.response.OrderChecklistItemResponse;
+import com.ondemandmonitoring.order.dto.response.CustomerOrderChecklistItemResponse;
+import com.ondemandmonitoring.order.enums.ChecklistPricingStatus;
 import com.ondemandmonitoring.order.enums.OrderChecklistSourceType;
 import com.ondemandmonitoring.order.enums.ChecklistReviewStatus;
 import com.ondemandmonitoring.order.enums.OrderStatus;
@@ -24,6 +25,7 @@ import com.ondemandmonitoring.pricing.enums.MediaPricingComponent;
 import com.ondemandmonitoring.pricing.repository.PricingPolicyRepository;
 import com.ondemandmonitoring.pricing.service.ChecklistPriceCalculator;
 import com.ondemandmonitoring.pricing.service.ServicePriceResolver;
+import com.ondemandmonitoring.pricing.service.PricingEngine;
 import java.math.BigDecimal;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.time.Instant;
@@ -54,10 +56,16 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
     private final PricingPolicyRepository pricingPolicies;
     private final ChecklistPriceCalculator priceCalculator;
     private final ServicePriceResolver servicePrices;
+    private PricingEngine pricingEngine;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setPricingEngine(PricingEngine pricingEngine) {
+        this.pricingEngine = pricingEngine;
+    }
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
-    public List<OrderChecklistItemResponse> capture(Order order, List<OrderChecklistItemRequest> requested) {
+    public List<CustomerOrderChecklistItemResponse> capture(Order order, List<OrderChecklistItemRequest> requested) {
         if (order.getChecklistSnapshotAt() != null || order.getOrderStatus() != OrderStatus.PENDING) {
             throw new ApiException(ErrorCode.ORDER_CHECKLIST_LOCKED);
         }
@@ -185,6 +193,8 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
             entity.setSourceType(custom ? OrderChecklistSourceType.CUSTOMER_CUSTOM
                     : packageChecklist ? OrderChecklistSourceType.SERVICE_TEMPLATE : OrderChecklistSourceType.CUSTOMER_SELECTED);
             entity.setReviewStatus(packageChecklist ? ChecklistReviewStatus.INCLUDED : ChecklistReviewStatus.PENDING);
+            entity.setPricingStatus(packageChecklist ? ChecklistPricingStatus.AUTO_PRICED
+                    : ChecklistPricingStatus.NEEDS_MANAGER_REVIEW);
             String content = item.getContentOverride();
             if (content == null && source != null) {
                 content = source.getContent();
@@ -208,17 +218,25 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
             throw new ApiException(ErrorCode.SERVICE_NOT_PRICED);
         order.setServiceBasePriceSnapshot(null);
         List<OrderChecklistItem> saved = snapshots.saveAllAndFlush(entities);
+        if (pricingEngine != null) {
+            var calculated = pricingEngine.calculate(order, saved);
+            Map<String, BigDecimal> calculatedByItem = new HashMap<>();
+            calculated.items().stream().filter(line -> line.orderChecklistItemId() != null)
+                    .forEach(line -> calculatedByItem.merge(line.orderChecklistItemId(), line.amount(), BigDecimal::add));
+            saved.forEach(item -> item.setSystemCalculatedPrice(
+                    calculatedByItem.getOrDefault(item.getId(), BigDecimal.ZERO)));
+        }
         order.setChecklistSnapshotAt(Instant.now());
-        return saved.stream().map(mapper::toResponse).toList();
+        return saved.stream().map(mapper::toCustomerResponse).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
-    public Map<String, List<OrderChecklistItemResponse>> getByOrders(List<String> orderIds) {
+    public Map<String, List<CustomerOrderChecklistItemResponse>> getByOrders(List<String> orderIds) {
         if (orderIds.isEmpty()) return Map.of();
         return snapshots.findAllByOrderIdInOrderByDisplayOrderAscIdAsc(orderIds).stream()
                 .collect(Collectors.groupingBy(item -> item.getOrder().getId(),
-                        Collectors.mapping(mapper::toResponse, Collectors.toList())));
+                        Collectors.mapping(mapper::toCustomerResponse, Collectors.toList())));
     }
 
     private ApiException invalid(String message) {

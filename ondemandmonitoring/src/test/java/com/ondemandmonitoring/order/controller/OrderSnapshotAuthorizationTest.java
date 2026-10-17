@@ -49,7 +49,8 @@ class OrderSnapshotAuthorizationTest {
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         var owner = user("owner", RoleCode.CUSTOMER);
         when(orders.findById("o1")).thenReturn(Optional.of(Order.builder().customer(owner).build()));
-        var item = new OrderChecklistItemResponse(); item.setId("stable"); item.setContent("Historical");
+        var item = new com.ondemandmonitoring.order.dto.response.CustomerOrderChecklistItemResponse();
+        item.setId("stable"); item.setContent("Historical");
         when(service.getOrderById("o1")).thenReturn(OrderCreateResponse.builder().id("o1")
                 .checklistItems(List.of(item)).build());
     }

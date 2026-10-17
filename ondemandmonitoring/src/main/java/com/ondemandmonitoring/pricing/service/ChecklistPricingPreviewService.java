@@ -54,10 +54,13 @@ public class ChecklistPricingPreviewService {
 
         List<ChecklistPriceBreakdown> priced = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
+        var context = new ChecklistPriceCalculator.RequestContext(
+                request.areaHa(), request.lengthKm(), request.altitudeM());
         if (request.items() == null) {
             for (ServiceChecklist row : stored.values()) {
                 if (!Boolean.TRUE.equals(row.getChecklist().getIsActive())) continue;
-                priced.add(priceOrWarn(policy, input(row.getChecklist(), row, null, null, null, null, null, null), warnings));
+                priced.add(priceOrWarn(policy, withContext(
+                        input(row.getChecklist(), row, null, null, null, null, null, null), context), warnings));
             }
         } else {
             Set<String> seen = new HashSet<>();
@@ -65,8 +68,9 @@ public class ChecklistPricingPreviewService {
                 if (!seen.add(item.checklistId())) throw new ApiException(ErrorCode.INVALID_REQUEST, "Duplicate checklist in preview");
                 ChecklistDefinition definition = stored.containsKey(item.checklistId()) ? stored.get(item.checklistId()).getChecklist()
                         : definitions.findById(item.checklistId()).orElseThrow(() -> new ApiException(ErrorCode.CHECKLIST_NOT_FOUND));
-                priced.add(priceOrWarn(policy, input(definition, stored.get(item.checklistId()), item.basePrice(), item.includedImageCount(),
-                        item.includedVideoCount(), item.pricingProfile(), item.requestedImageCount(), item.requestedVideoCount()), warnings));
+                priced.add(priceOrWarn(policy, withContext(input(definition, stored.get(item.checklistId()),
+                        item.basePrice(), item.includedImageCount(), item.includedVideoCount(), item.pricingProfile(),
+                        item.requestedImageCount(), item.requestedVideoCount()), context), warnings));
             }
         }
         BigDecimal subtotal = priced.stream().map(ChecklistPriceBreakdown::subtotal).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -100,17 +104,19 @@ public class ChecklistPricingPreviewService {
                                     .filter(candidate -> Boolean.TRUE.equals(candidate.getIsActive()))
                                     .orElseThrow(() -> new ApiException(ErrorCode.CHECKLIST_NOT_FOUND))
                             : row.getChecklist();
-                    priced.add(calculator.price(policy, withContext(input(definition, row, null, null, null, null,
-                            item.requestedImageCount(), item.requestedVideoCount()), context)));
+                    ChecklistPriceBreakdown calculated = calculator.price(policy, withContext(input(definition, row, null, null, null, null,
+                            item.requestedImageCount(), item.requestedVideoCount()), context));
+                    priced.add(row == null ? customerHidden(calculated) : calculated);
                 } else {
                     if (item.content() == null || item.content().isBlank())
                         throw new ApiException(ErrorCode.INVALID_REQUEST, "A custom checklist needs content");
                     String content = ChecklistContentNormalizer.content(item.content());
                     if (!contents.add(content.toLowerCase(Locale.ROOT))) throw new ApiException(ErrorCode.INVALID_REQUEST, "Duplicate checklist content");
-                    priced.add(calculator.hasCustomRule(policy)
+                    ChecklistPriceBreakdown calculated = calculator.hasCustomRule(policy)
                             ? calculator.price(policy, new ChecklistPriceCalculator.Input(null, content, null, true, null, null, null,
                                     item.requestedImageCount(), item.requestedVideoCount(), null, null, true))
-                            : calculator.managerQuoted(content, null, item.requestedImageCount(), item.requestedVideoCount()));
+                            : calculator.managerQuoted(content, null, item.requestedImageCount(), item.requestedVideoCount());
+                    priced.add(customerHidden(calculated));
                 }
             }
             template.values().stream().filter(ServiceChecklist::isRequired)
@@ -128,6 +134,14 @@ public class ChecklistPricingPreviewService {
                     whole(rule.getFixedAmount())));
         }
         return response(service, policy, resolver.resolve(service, policy), priced, List.of(), addOns);
+    }
+
+    /** Public customer previews disclose neither the internal amount nor its component breakdown. */
+    private ChecklistPriceBreakdown customerHidden(ChecklistPriceBreakdown priced) {
+        return new ChecklistPriceBreakdown(priced.checklistId(), priced.content(), priced.pricingProfile(), priced.custom(),
+                priced.includedImageCount(), priced.includedVideoCount(), priced.requestedImageCount(),
+                priced.requestedVideoCount(), priced.extraImageCount(), priced.extraVideoCount(),
+                priced.standardVideoDurationSeconds(), List.of(), BigDecimal.ZERO, true);
     }
 
     private ChecklistPriceCalculator.Input input(ChecklistDefinition d, ServiceChecklist row, BigDecimal base, Integer images,

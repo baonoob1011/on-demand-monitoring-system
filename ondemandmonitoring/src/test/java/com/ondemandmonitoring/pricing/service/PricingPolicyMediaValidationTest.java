@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.ondemandmonitoring.common.exception.ApiException;
+import com.ondemandmonitoring.checklist.repository.ChecklistDefinitionRepository;
 import com.ondemandmonitoring.pricing.domain.PricingPolicy;
 import com.ondemandmonitoring.pricing.dto.PricingPolicyRequest;
 import com.ondemandmonitoring.pricing.dto.PricingRuleRequest;
@@ -20,7 +21,9 @@ import org.junit.jupiter.api.Test;
 
 class PricingPolicyMediaValidationTest {
     PricingPolicyRepository repository = mock(PricingPolicyRepository.class);
+    ChecklistDefinitionRepository checklistDefinitions = mock(ChecklistDefinitionRepository.class);
     PricingPolicyService service = new PricingPolicyService(repository);
+    { service.setChecklistDefinitions(checklistDefinitions); }
 
     PricingRuleRequest tier(String key, MediaPricingComponent component, String from, String to, String block, String price) {
         return new PricingRuleRequest(PricingCategory.MEDIA, PricingCalculationType.PER_BLOCK, key, "tier " + key,
@@ -82,6 +85,25 @@ class PricingPolicyMediaValidationTest {
                 new BigDecimal("90000"), null, null, BigDecimal.TEN, null, 0, true, "PREMIUM", MediaPricingComponent.EXTRA_IMAGE, null, null);
         var video = tier("V1", MediaPricingComponent.EXTRA_VIDEO, "0", null, "1", "100000");
         assertThat(service.createDraft(request(tier("T1", MediaPricingComponent.EXTRA_IMAGE, "0", null, "10", "50000"), other, video)).rules()).hasSize(3);
+    }
+
+    @Test void checklistTargetMustExistAndMayOnlyPriceExtraMedia() {
+        when(repository.findAllByOrderByPolicyVersionDesc()).thenReturn(List.of());
+        when(repository.save(any(PricingPolicy.class))).thenAnswer(i -> i.getArgument(0));
+        when(checklistDefinitions.existsById("checklist-x")).thenReturn(true);
+        var targeted = new PricingRuleRequest(PricingCategory.MEDIA, PricingCalculationType.PER_BLOCK,
+                "X_IMAGE", "Checklist X image", BigDecimal.ZERO, null, new BigDecimal("50000"),
+                null, null, BigDecimal.TEN, null, 0, true, "STANDARD",
+                MediaPricingComponent.EXTRA_IMAGE, null, PricingRounding.CEILING, "checklist-x");
+
+        assertThat(service.createDraft(request(targeted)).rules()).singleElement()
+                .satisfies(rule -> assertThat(rule.checklistDefinitionId()).isEqualTo("checklist-x"));
+
+        var unknown = new PricingRuleRequest(PricingCategory.MEDIA, PricingCalculationType.PER_BLOCK,
+                "UNKNOWN", "Unknown", BigDecimal.ZERO, null, BigDecimal.ONE, null, null,
+                BigDecimal.ONE, null, 0, true, "STANDARD", MediaPricingComponent.EXTRA_VIDEO,
+                null, null, "missing");
+        assertInvalid(request(unknown), "unknown checklist");
     }
 
     @Test void mediaRuleNeedsProfileAndComponentAndOtherCategoriesMustNotCarryThem() {
