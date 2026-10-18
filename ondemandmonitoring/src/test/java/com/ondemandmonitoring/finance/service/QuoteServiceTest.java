@@ -117,6 +117,23 @@ class QuoteServiceTest {
         assertThat(result.totalAmount()).isEqualByComparingTo("6500000");
     }
 
+    @Test void anItemCannotBeMarkedDownPastTheLimitEvenWhenTheWholeOrderStaysWithinIt() {
+        var custom = item("custom", ChecklistReviewStatus.ADDITIONAL); custom.setManagerQuoteRequired(true);
+        when(items.findAllByOrderIdOrderByDisplayOrderAscIdAsc("o1")).thenReturn(List.of(custom));
+        when(pricingEngine.calculate(eq(order), anyList())).thenReturn(new PricingBreakdown("p1", 1, "VND", new BigDecimal("1000000"), false, true,
+                List.of(new PricingBreakdownItem(PricingCategory.PACKAGE, "Package", BigDecimal.ONE,
+                                new BigDecimal("700000"), new BigDecimal("700000")),
+                        new PricingBreakdownItem(PricingCategory.RESOURCE, "Custom", BigDecimal.ONE,
+                                new BigDecimal("300000"), new BigDecimal("300000"), "custom"))));
+        // 300000 -> 150000 is -50% on the item but only -15% on the order, which the order-level guard alone would let through.
+        var request = new QuoteDraftRequest(BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ZERO, null, Map.of("custom", new BigDecimal("150000")),
+                "Manager lowered this price a lot", PricingAdjustmentType.CORRECTION, null, null);
+        assertThatThrownBy(() -> service.saveDraft("o1", request))
+                .isInstanceOfSatisfying(ApiException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.PRICING_OVERRIDE_EXCEEDS_LIMIT));
+        assertThat(custom.getManagerQuotedPrice()).isNull();
+    }
+
     @Test void managerPriceIsAppliedOnlyToChecklistsThePolicyCouldNotPrice() {
         var custom = item("custom", ChecklistReviewStatus.ADDITIONAL); custom.setManagerQuoteRequired(true);
         var catalog = item("catalog", ChecklistReviewStatus.INCLUDED);
@@ -127,13 +144,13 @@ class QuoteServiceTest {
                 new PricingBreakdownItem(PricingCategory.RESOURCE, "Custom", BigDecimal.ONE,
                         new BigDecimal("30000"), new BigDecimal("30000"), "custom"))));
         service.saveDraft("o1", new QuoteDraftRequest(BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ZERO, null,
-                Map.of("custom", new BigDecimal("45000"), "catalog", new BigDecimal("999")),
+                Map.of("custom", new BigDecimal("36000"), "catalog", new BigDecimal("999")),
                 "Manager adjusted this checklist price", PricingAdjustmentType.CORRECTION, null));
-        assertThat(custom.getManagerQuotedPrice()).isEqualByComparingTo("45000");
-        assertThat(custom.getManagerApprovedAmount()).isEqualByComparingTo("45000");
-        assertThat(custom.getFinalAmount()).isEqualByComparingTo("45000");
-        assertThat(custom.getPriceDifferenceAmount()).isEqualByComparingTo("15000");
-        assertThat(custom.getPriceDifferencePercent()).isEqualByComparingTo("50");
+        assertThat(custom.getManagerQuotedPrice()).isEqualByComparingTo("36000");
+        assertThat(custom.getManagerApprovedAmount()).isEqualByComparingTo("36000");
+        assertThat(custom.getFinalAmount()).isEqualByComparingTo("36000");
+        assertThat(custom.getPriceDifferenceAmount()).isEqualByComparingTo("6000");
+        assertThat(custom.getPriceDifferencePercent()).isEqualByComparingTo("20");
         assertThat(catalog.getManagerQuotedPrice()).as("a policy-priced checklist can never be overwritten by a client").isNull();
     }
 
@@ -188,6 +205,18 @@ class QuoteServiceTest {
             assertThat(audit.getAdjustmentReason()).isNull();
             assertThat(audit.getAction()).isEqualTo(ChecklistPricingAuditAction.SYSTEM_PRICE_APPROVED);
         });
+    }
+
+    @Test void quoteIsNotSavedWhenTheManagerPricedAgainstAnOlderPolicyVersion() {
+        var custom = item("custom", ChecklistReviewStatus.ADDITIONAL); custom.setManagerQuoteRequired(true);
+        when(items.findAllByOrderIdOrderByDisplayOrderAscIdAsc("o1")).thenReturn(List.of(custom));
+        when(pricingEngine.calculate(eq(order), anyList())).thenReturn(breakdown("5000000", List.of()));
+        var stale = new QuoteDraftRequest(BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ZERO, null, Map.of("custom", new BigDecimal("45000")),
+                null, PricingAdjustmentType.CORRECTION, null, 0);
+        assertThatThrownBy(() -> service.saveDraft("o1", stale))
+                .isInstanceOfSatisfying(ApiException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.STALE_PRICING_POLICY));
+        assertThat(custom.getManagerQuotedPrice()).isNull();
     }
 
     @Test void quoteCannotBeSavedWhileACustomChecklistAwaitsTheManagersPrice() {

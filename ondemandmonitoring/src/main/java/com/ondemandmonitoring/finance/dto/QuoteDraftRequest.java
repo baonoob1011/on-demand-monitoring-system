@@ -16,10 +16,18 @@ public record QuoteDraftRequest(
         Map<String, @NotNull @DecimalMin("0") @Digits(integer = 19, fraction = 0) BigDecimal> additionalUnitPrices,
         @Size(max = 2000) String adjustmentReason,
         PricingAdjustmentType adjustmentType,
-        Long expectedPricingRevision) {
+        Long expectedPricingRevision,
+        /** Version of the pricing policy the Manager was looking at; null skips the check. */
+        Integer expectedPolicyVersion) {
+    public QuoteDraftRequest(BigDecimal packagePrice, BigDecimal discountAmount, BigDecimal adjustmentAmount,
+            String managerNote, Map<String, BigDecimal> additionalUnitPrices, String adjustmentReason,
+            PricingAdjustmentType adjustmentType, Long expectedPricingRevision) {
+        this(packagePrice, discountAmount, adjustmentAmount, managerNote, additionalUnitPrices, adjustmentReason,
+                adjustmentType, expectedPricingRevision, null);
+    }
     public QuoteDraftRequest(BigDecimal packagePrice, BigDecimal discountAmount, BigDecimal adjustmentAmount,
             String managerNote, Map<String, BigDecimal> additionalUnitPrices) {
         this(packagePrice, discountAmount, adjustmentAmount, managerNote, additionalUnitPrices, managerNote,
-                PricingAdjustmentType.CORRECTION, null);
+                PricingAdjustmentType.CORRECTION, null, null);
     }
 }

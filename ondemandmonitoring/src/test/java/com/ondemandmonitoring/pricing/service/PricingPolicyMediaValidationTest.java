@@ -54,6 +54,20 @@ class PricingPolicyMediaValidationTest {
         assertThat(response.rules().get(0).roundingMode()).isEqualTo(PricingRounding.CEILING);
     }
 
+    @Test void areaAllowanceAndRateBelongToTheCustomerAddedProfileOnly() {
+        when(repository.findAllByOrderByPolicyVersionDesc()).thenReturn(List.of());
+        when(repository.save(any(PricingPolicy.class))).thenAnswer(i -> i.getArgument(0));
+        var response = service.createDraft(request(
+                included("AREA-INC", MediaPricingComponent.INCLUDED_AREA, "0", 5, "generic_customer_added"),
+                included("AREA-EXTRA", MediaPricingComponent.EXTRA_AREA, "50000", null, "generic_customer_added")));
+        assertThat(response.rules()).extracting(r -> r.mediaComponent())
+                .containsExactlyInAnyOrder(MediaPricingComponent.INCLUDED_AREA, MediaPricingComponent.EXTRA_AREA);
+        assertInvalid(request(included("AREA-EXTRA", MediaPricingComponent.EXTRA_AREA, "50000", null, "standard")),
+                "customer-added profile only");
+        assertInvalid(request(included("AREA-INC", MediaPricingComponent.INCLUDED_AREA, "0", 5, "default")),
+                "customer-added profile only");
+    }
+
     @Test void overlappingTiersAreRejected() {
         assertInvalid(request(tier("T1", MediaPricingComponent.EXTRA_IMAGE, "0", "10", "10", "50000"),
                 tier("T2", MediaPricingComponent.EXTRA_IMAGE, "5", null, "10", "40000")), "overlap");

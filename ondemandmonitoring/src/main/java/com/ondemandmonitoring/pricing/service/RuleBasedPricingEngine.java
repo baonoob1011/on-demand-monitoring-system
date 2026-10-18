@@ -62,6 +62,10 @@ public class RuleBasedPricingEngine implements PricingEngine {
             ranged(policy, PricingCategory.AREA, legacyArea).ifPresent(rule -> applyRule(result, rule, legacyArea, base));
         }
 
+        // Work done on every visit is billed once per visit; permits, terrain and discounts apply to the order as a whole.
+        // Orders priced before this rule (a package snapshot or version-0 checklists) keep their single-visit price.
+        int occurrences = legacyOrder || legacyDimensions ? 1 : PricingOccurrences.of(order);
+        int visitStart = result.size();
         List<String> pendingQuotes = new ArrayList<>();
         for (OrderChecklistItem item : checklistItems) {
             if (item.getReviewStatus() == ChecklistReviewStatus.REJECTED || item.getReviewStatus() == ChecklistReviewStatus.DUPLICATE) continue;
@@ -109,6 +113,7 @@ public class RuleBasedPricingEngine implements PricingEngine {
                             "AI image analysis is requested but the active pricing policy has no price for it"));
             addFixed(result, ai, BigDecimal.ONE);
         }
+        scaleVisitLines(result, visitStart, occurrences);
         if (Boolean.TRUE.equals(order.getPermitRequired()) || order.getPermitStatus() == OrderPermitStatus.NEED_SUPPORT)
             keyed(policy, PricingCategory.PERMIT, "REQUIRED").ifPresent(rule -> addFixed(result, rule, BigDecimal.ONE));
         keyed(policy, PricingCategory.TERRAIN, TerrainType.FLAT.name())
@@ -121,6 +126,18 @@ public class RuleBasedPricingEngine implements PricingEngine {
         return new PricingBreakdown(policy.getId(), policy.getPolicyVersion(), policy.getCurrency(), total,
                 customWork, assessmentComplete,
                 List.copyOf(result), List.copyOf(pendingQuotes));
+    }
+
+    /** Bills the lines added since {@code from} once per visit: quantity and amount scale, the unit price does not. */
+    private void scaleVisitLines(List<PricingBreakdownItem> items, int from, int occurrences) {
+        if (occurrences <= 1) return;
+        BigDecimal factor = BigDecimal.valueOf(occurrences);
+        for (int i = from; i < items.size(); i++) {
+            PricingBreakdownItem line = items.get(i);
+            items.set(i, new PricingBreakdownItem(line.category(), line.description() + " (× " + occurrences + " lần)",
+                    line.quantity().multiply(factor), line.unitPrice(), money(line.amount().multiply(factor)),
+                    line.orderChecklistItemId()));
+        }
     }
 
     private void resource(List<PricingBreakdownItem> out, PricingPolicy policy, String key, Integer count) {

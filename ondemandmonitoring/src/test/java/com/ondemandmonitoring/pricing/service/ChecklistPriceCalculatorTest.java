@@ -168,7 +168,7 @@ class ChecklistPriceCalculatorTest {
     @Test void customChecklistUsesCustomProfileRulesAndItsOwnAllowance() {
         PricingRule allowance = media("CUSTOM", MediaPricingComponent.INCLUDED_IMAGE, "0"); allowance.setIncludedQuantity(5);
         PricingPolicy p = policy(media("CUSTOM", MediaPricingComponent.CHECKLIST_BASE, "300000"), allowance,
-                tier("CUSTOM", MediaPricingComponent.EXTRA_IMAGE, "0", null, "5", "70000", PricingRounding.CEILING));
+                tier("DEFAULT", MediaPricingComponent.EXTRA_IMAGE, "0", null, "5", "70000", PricingRounding.CEILING));
         var input = new ChecklistPriceCalculator.Input(null, "Check antenna", null, true, null, null, null, 12, null, null, null, true);
 
         ChecklistPriceBreakdown result = calculator.price(p, input);
@@ -177,6 +177,51 @@ class ChecklistPriceCalculatorTest {
         assertThat(result.includedImageCount()).isEqualTo(5);
         assertThat(result.extraImageCount()).isEqualTo(7);
         assertThat(result.subtotal()).isEqualByComparingTo("440000"); // 300k + ceil(7/5)=2 blocks x 70k
+    }
+
+    @Test void customChecklistUsesTheSharedMediaPriceListNotOneOfItsOwn() {
+        // A list left over on the customer-added profile is ignored: extra media has one price list.
+        PricingPolicy p = policy(media("CUSTOM", MediaPricingComponent.CHECKLIST_BASE, "300000"),
+                tier("CUSTOM", MediaPricingComponent.EXTRA_IMAGE, "0", null, "10", "999999", PricingRounding.CEILING),
+                tier("DEFAULT", MediaPricingComponent.EXTRA_IMAGE, "0", null, "10", "50000", PricingRounding.CEILING));
+        var custom = new ChecklistPriceCalculator.Input(null, "Check antenna", null, true, null, null, null, 10, null, null, null, true);
+        var catalog = new ChecklistPriceCalculator.Input("c1", "Check roof", null, false, BigDecimal.ZERO, 0, 0, 10, null, "DEFAULT", null, true);
+        // The same ten extra images cost the same on both; only the base price differs.
+        assertThat(calculator.price(p, custom).subtotal().subtract(new BigDecimal("300000")))
+                .isEqualByComparingTo(calculator.price(p, catalog).subtotal()).isEqualByComparingTo("50000");
+    }
+
+    @Test void customChecklistIsChargedOnlyForAreaAboveTheIncludedAllowance() {
+        PricingRule allowance = media("CUSTOM", MediaPricingComponent.INCLUDED_AREA, "0"); allowance.setIncludedQuantity(5);
+        PricingPolicy p = policy(media("CUSTOM", MediaPricingComponent.CHECKLIST_BASE, "200000"), allowance,
+                media("CUSTOM", MediaPricingComponent.EXTRA_AREA, "50000"));
+        BigDecimal small = new BigDecimal("4.2"), large = new BigDecimal("8.5");
+        PricingContextHelper helper = new PricingContextHelper();
+        assertThat(calculator.price(p, helper.custom(small)).subtotal()).isEqualByComparingTo("200000");
+        var big = calculator.price(p, helper.custom(large));
+        // 8.5 ha - 5 ha included = 3.5 ha x 50,000
+        assertThat(big.subtotal()).isEqualByComparingTo("375000");
+        assertThat(big.lines()).extracting(l -> l.component()).contains("EXTRA_AREA");
+        assertThat(big.lines().getLast().description()).contains("3.5 ha");
+    }
+
+    @Test void customAreaSurchargeNeedsAPriceWhenTheAreaExceedsTheAllowance() {
+        PricingRule allowance = media("CUSTOM", MediaPricingComponent.INCLUDED_AREA, "0"); allowance.setIncludedQuantity(5);
+        PricingPolicy p = policy(media("CUSTOM", MediaPricingComponent.CHECKLIST_BASE, "200000"), allowance);
+        assertThatThrownBy(() -> calculator.price(p, new PricingContextHelper().custom(new BigDecimal("9"))))
+                .isInstanceOfSatisfying(ApiException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.MEDIA_PRICING_NOT_CONFIGURED));
+        // Within the allowance nothing needs pricing.
+        assertThat(calculator.price(p, new PricingContextHelper().custom(new BigDecimal("5"))).subtotal()).isEqualByComparingTo("200000");
+    }
+
+    /** Builds a customer-added checklist input for an order of a given area. */
+    static class PricingContextHelper {
+        ChecklistPriceCalculator.Input custom(BigDecimal areaHa) {
+            return new ChecklistPriceCalculator.Input(null, "Check antenna", null, true, null, null, null, null, null, null, null, true,
+                    ChecklistPriceCalculator.PricingDimensions.disabled(),
+                    new ChecklistPriceCalculator.RequestContext(areaHa, BigDecimal.ZERO, BigDecimal.ZERO));
+        }
     }
 
     @Test void sharedDimensionsAreChargedOnlyWhenTheChecklistEnablesThem() {

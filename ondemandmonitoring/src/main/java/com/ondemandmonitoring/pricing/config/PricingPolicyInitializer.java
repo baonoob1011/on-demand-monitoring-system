@@ -74,11 +74,12 @@ public class PricingPolicyInitializer implements ApplicationRunner {
         rules.add(media("DEFAULT", MediaPricingComponent.EXTRA_IMAGE, "0", "10", "10", "50000", i++));
         rules.add(media("DEFAULT", MediaPricingComponent.EXTRA_IMAGE, "10", null, "10", "40000", i++));
         rules.add(media("DEFAULT", MediaPricingComponent.EXTRA_VIDEO, "0", null, "1", "100000", i++));
-        rules.add(media("CUSTOM", MediaPricingComponent.CHECKLIST_BASE, null, null, null, "200000", i++));
-        PricingRule customImages = media("CUSTOM", MediaPricingComponent.INCLUDED_IMAGE, null, null, null, "0", i++);
+        rules.add(media(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.CHECKLIST_BASE, null, null, null, "200000", i++));
+        PricingRule customImages = media(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.INCLUDED_IMAGE, null, null, null, "0", i++);
         customImages.setIncludedQuantity(5); rules.add(customImages);
-        rules.add(media("CUSTOM", MediaPricingComponent.EXTRA_IMAGE, "0", null, "10", "50000", i++));
-        rules.add(media("CUSTOM", MediaPricingComponent.EXTRA_VIDEO, "0", null, "1", "100000", i));
+        PricingRule customArea = media(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.INCLUDED_AREA, null, null, null, "0", i++);
+        customArea.setIncludedQuantity(15); rules.add(customArea);
+        rules.add(media(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.EXTRA_AREA, null, null, null, "10000", i));
         p.replaceRules(rules); policies.save(p);
     }
 
@@ -132,13 +133,15 @@ public class PricingPolicyInitializer implements ApplicationRunner {
             included.setIncludedQuantity(5);
             rules.add(included);
         }
-        if (missing.contains(new RequiredMedia(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.EXTRA_IMAGE))) {
-            rules.add(media(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.EXTRA_IMAGE,
-                    "0", null, "10", "50000", priority++));
+        if (missing.contains(new RequiredMedia(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.INCLUDED_AREA))) {
+            PricingRule area = media(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.INCLUDED_AREA,
+                    null, null, null, "0", priority++);
+            area.setIncludedQuantity(15);
+            rules.add(area);
         }
-        if (missing.contains(new RequiredMedia(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.EXTRA_VIDEO))) {
-            rules.add(media(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.EXTRA_VIDEO,
-                    "0", null, "1", "100000", priority));
+        if (missing.contains(new RequiredMedia(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.EXTRA_AREA))) {
+            rules.add(media(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.EXTRA_AREA,
+                    null, null, null, "10000", priority));
         }
         if (aiMissing) {
             rules.removeIf(rule -> rule.getCategory() == PricingCategory.OUTPUT && AI_IMAGE_ANALYSIS_KEY.equalsIgnoreCase(rule.getRuleKey()));
@@ -159,8 +162,8 @@ public class PricingPolicyInitializer implements ApplicationRunner {
                 new RequiredMedia(ChecklistPriceCalculator.DEFAULT_PROFILE, MediaPricingComponent.EXTRA_VIDEO),
                 new RequiredMedia(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.CHECKLIST_BASE),
                 new RequiredMedia(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.INCLUDED_IMAGE),
-                new RequiredMedia(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.EXTRA_IMAGE),
-                new RequiredMedia(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.EXTRA_VIDEO));
+                new RequiredMedia(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.INCLUDED_AREA),
+                new RequiredMedia(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.EXTRA_AREA));
     }
 
     private record RequiredMedia(String profile, MediaPricingComponent component) {}

@@ -18,6 +18,21 @@ public record ChecklistPriceBreakdown(String checklistId, String content, String
                 requestedVideoCount, extraImageCount, extraVideoCount, standardVideoDurationSeconds, lines, subtotal, false);
     }
 
+    /**
+     * The same checklist done {@code times} times: every line bills {@code times} times its quantity at the same unit price,
+     * so the figures stay explainable (quantity x unit = amount). The per-visit media counts are not multiplied.
+     */
+    public ChecklistPriceBreakdown times(int times) {
+        if (times <= 1) return this;
+        BigDecimal factor = BigDecimal.valueOf(times);
+        List<Line> scaled = lines.stream().map(line -> new Line(line.component(), line.category(), line.description(),
+                line.quantity().multiply(factor), line.unitPrice(), line.amount().multiply(factor), line.tierFrom(),
+                line.tierTo(), line.blockSize(), line.rounding())).toList();
+        return new ChecklistPriceBreakdown(checklistId, content, pricingProfile, custom, includedImageCount, includedVideoCount,
+                requestedImageCount, requestedVideoCount, extraImageCount, extraVideoCount, standardVideoDurationSeconds,
+                scaled, subtotal.multiply(factor), quotePending);
+    }
+
     /** @param component stable machine key: BASE, CUSTOM_BASE, DIFFICULTY, INCLUDED_IMAGE, INCLUDED_VIDEO, EXTRA_IMAGE, EXTRA_VIDEO. */
     public record Line(String component, PricingCategory category, String description, BigDecimal quantity,
             BigDecimal unitPrice, BigDecimal amount, Integer tierFrom, Integer tierTo, Integer blockSize, String rounding) {}
