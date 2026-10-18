@@ -113,8 +113,8 @@ public class ChecklistPricingPreviewService {
                     String content = ChecklistContentNormalizer.content(item.content());
                     if (!contents.add(content.toLowerCase(Locale.ROOT))) throw new ApiException(ErrorCode.INVALID_REQUEST, "Duplicate checklist content");
                     ChecklistPriceBreakdown calculated = calculator.hasCustomRule(policy)
-                            ? calculator.price(policy, new ChecklistPriceCalculator.Input(null, content, null, true, null, null, null,
-                                    item.requestedImageCount(), item.requestedVideoCount(), null, null, true))
+                            ? calculator.price(policy, withContext(new ChecklistPriceCalculator.Input(null, content, null, true, null, null, null,
+                                    item.requestedImageCount(), item.requestedVideoCount(), null, null, true), context))
                             : calculator.managerQuoted(content, null, item.requestedImageCount(), item.requestedVideoCount());
                     priced.add(customerHidden(calculated));
                 }
@@ -133,7 +133,14 @@ public class ChecklistPricingPreviewService {
             addOns.add(new ServicePricePreviewResponse.AddOn(rule.getRuleKey(), rule.getDescription(),
                     whole(rule.getFixedAmount())));
         }
-        return response(service, policy, resolver.resolve(service, policy), priced, List.of(), addOns);
+        int occurrences = request.occurrences() == null ? 1 : Math.max(1, Math.min(PricingOccurrences.MAX, request.occurrences()));
+        if (occurrences > 1) {
+            priced = priced.stream().map(row -> row.times(occurrences)).toList();
+            java.math.BigDecimal factor = java.math.BigDecimal.valueOf(occurrences);
+            addOns = addOns.stream().map(addOn -> new ServicePricePreviewResponse.AddOn(addOn.key(),
+                    addOn.description(), addOn.amount().multiply(factor))).toList();
+        }
+        return response(service, policy, resolver.resolve(service, policy), priced, List.of(), addOns, occurrences);
     }
 
     /** Public customer previews disclose neither the internal amount nor its component breakdown. */
@@ -181,13 +188,19 @@ public class ChecklistPricingPreviewService {
 
     private ServicePricePreviewResponse response(Service service, PricingPolicy policy, ServicePriceResolver.Resolved resolved,
             List<ChecklistPriceBreakdown> priced, List<String> warnings, List<ServicePricePreviewResponse.AddOn> addOns) {
+        return response(service, policy, resolved, priced, warnings, addOns, 1);
+    }
+
+    private ServicePricePreviewResponse response(Service service, PricingPolicy policy, ServicePriceResolver.Resolved resolved,
+            List<ChecklistPriceBreakdown> priced, List<String> warnings, List<ServicePricePreviewResponse.AddOn> addOns,
+            int occurrences) {
         BigDecimal subtotal = priced.stream().map(ChecklistPriceBreakdown::subtotal).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal addOnTotal = addOns.stream().map(ServicePricePreviewResponse.AddOn::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal fee = resolved.packageFee();
         return new ServicePricePreviewResponse(service.getId(), service.getName(), policy.getCurrency(), policy.getId(), policy.getPolicyVersion(),
                 policy.getStatus() == PricingPolicyStatus.DRAFT, resolved.source(), fee, List.copyOf(priced), subtotal, fee.add(subtotal).add(addOnTotal),
                 warnings.isEmpty(), List.copyOf(warnings), priced.stream().anyMatch(ChecklistPriceBreakdown::quotePending),
-                List.copyOf(addOns));
+                List.copyOf(addOns), occurrences);
     }
 
     private PricingPolicy activePolicy() {

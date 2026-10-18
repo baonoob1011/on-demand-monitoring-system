@@ -56,8 +56,8 @@ class PricingPolicyInitializerTest {
                 media("DEFAULT", MediaPricingComponent.EXTRA_VIDEO),
                 media("GENERIC_CUSTOMER_ADDED", MediaPricingComponent.CHECKLIST_BASE),
                 media("GENERIC_CUSTOMER_ADDED", MediaPricingComponent.INCLUDED_IMAGE),
-                media("GENERIC_CUSTOMER_ADDED", MediaPricingComponent.EXTRA_IMAGE),
-                media("GENERIC_CUSTOMER_ADDED", MediaPricingComponent.EXTRA_VIDEO),
+                media("GENERIC_CUSTOMER_ADDED", MediaPricingComponent.INCLUDED_AREA),
+                media("GENERIC_CUSTOMER_ADDED", MediaPricingComponent.EXTRA_AREA),
                 aiAnalysis()));
         when(policies.findFirstByStatusOrderByPolicyVersionDesc(PricingPolicyStatus.ACTIVE))
                 .thenReturn(Optional.of(active));

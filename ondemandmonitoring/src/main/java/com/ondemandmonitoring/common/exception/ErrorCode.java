@@ -123,6 +123,7 @@ public enum ErrorCode {
     CUSTOM_CHECKLIST_PRICING_NOT_CONFIGURED("No pricing rule is configured for custom checklists", HttpStatus.CONFLICT),
     CUSTOM_WORK_PRICING_INCOMPLETE("Custom work pricing assessment is incomplete", HttpStatus.CONFLICT),
     STALE_PRICING_REVISION("Pricing changed; refresh before deciding", HttpStatus.CONFLICT),
+    STALE_PRICING_POLICY("The pricing policy changed while you were reviewing; reload to see the new prices", HttpStatus.CONFLICT),
     QUOTE_HAS_UNAPPROVED_PRICING("Quote has unresolved pricing approval", HttpStatus.CONFLICT),
     INVOICE_NOT_FOUND("Invoice not found", HttpStatus.NOT_FOUND),
     INVOICE_NOT_PAYABLE("Invoice is not payable", HttpStatus.CONFLICT),

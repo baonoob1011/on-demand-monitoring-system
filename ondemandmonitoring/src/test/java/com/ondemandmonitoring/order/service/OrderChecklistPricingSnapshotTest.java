@@ -106,8 +106,9 @@ class OrderChecklistPricingSnapshotTest {
         return r;
     }
     PricingRule customTier() {
-        var r = rule(MediaPricingComponent.EXTRA_IMAGE, "CUSTOM", "70000", null, PricingRounding.CEILING);
-        r.setRuleKey("CUSTOM-EXTRA"); r.setMinValue(BigDecimal.ZERO); r.setUnitSize(BigDecimal.TEN);
+        // Customer-added work shares the DEFAULT price list for extra media.
+        var r = rule(MediaPricingComponent.EXTRA_IMAGE, "DEFAULT", "70000", null, PricingRounding.CEILING);
+        r.setRuleKey("DEFAULT-EXTRA"); r.setMinValue(BigDecimal.ZERO); r.setUnitSize(BigDecimal.TEN);
         return r;
     }
     void policy(PricingRule... rules) {

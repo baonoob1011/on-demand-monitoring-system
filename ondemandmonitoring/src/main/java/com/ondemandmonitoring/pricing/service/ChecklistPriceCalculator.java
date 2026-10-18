@@ -101,8 +101,11 @@ public class ChecklistPriceCalculator {
 
         int extraImages = Math.max(0, requestedImages - includedImages);
         int extraVideos = Math.max(0, requestedVideos - includedVideos);
-        tierLines(policy, in.checklistId(), profile, MediaPricingComponent.EXTRA_IMAGE, extraImages, "ảnh bổ sung", lines);
-        tierLines(policy, in.checklistId(), profile, MediaPricingComponent.EXTRA_VIDEO, extraVideos, "video bổ sung", lines);
+        // One shared price list for extra images and videos. Customer-added work never has a list of its own, so its
+        // extra media is priced exactly like the same quantity on a catalog checklist.
+        String mediaProfile = in.custom() ? DEFAULT_PROFILE : profile;
+        tierLines(policy, in.checklistId(), mediaProfile, MediaPricingComponent.EXTRA_IMAGE, extraImages, "ảnh bổ sung", lines);
+        tierLines(policy, in.checklistId(), mediaProfile, MediaPricingComponent.EXTRA_VIDEO, extraVideos, "video bổ sung", lines);
 
         PricingDimensions dimensions = in.dimensions() == null ? PricingDimensions.disabled() : in.dimensions();
         RequestContext context = in.context() == null ? RequestContext.empty() : in.context();
@@ -115,6 +118,8 @@ public class ChecklistPriceCalculator {
         if (dimensions.altitudeEnabled()) dimensionLines(policy, profile, PricingCategory.ALTITUDE, "ALTITUDE",
                 positive(context.altitudeM()).subtract(positive(dimensions.includedAltitudeM())).max(BigDecimal.ZERO),
                 "độ cao bổ sung", lines);
+
+        if (in.custom()) customAreaLines(policy, profile, context.areaHa(), lines);
 
         BigDecimal subtotal = lines.stream().map(Line::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
         return new ChecklistPriceBreakdown(in.checklistId(), in.content(), profile, in.custom(), includedImages, includedVideos,
@@ -140,6 +145,12 @@ public class ChecklistPriceCalculator {
                 null, null, null, null));
         return new ChecklistPriceBreakdown(null, content, GENERIC_CUSTOMER_ADDED_PROFILE, true, 0, 0, requestedImages == null ? 0 : requestedImages,
                 requestedVideos == null ? 0 : requestedVideos, 0, 0, null, List.copyOf(lines), amount, quotedPrice == null);
+    }
+
+    /** Hectares included in the base price of customer-added work. */
+    public int customIncludedAreaHa(PricingPolicy policy) {
+        return profileRules(policy, PricingCategory.MEDIA, GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.INCLUDED_AREA)
+                .stream().findFirst().map(PricingRule::getIncludedQuantity).orElse(0);
     }
 
     /** Allowance a custom checklist gets from policy; used when the order snapshot is captured. */
@@ -220,6 +231,30 @@ public class ChecklistPriceCalculator {
                     "Cannot price " + extra + " " + noun + ": the price tiers of profile " + profile + " only cover up to "
                             + covered.stripTrailingZeros().toPlainString() + ". An administrator must extend the tiers (contiguous from 0, "
                             + "last tier open-ended) in the pricing policy and publish it; alternatively request fewer.");
+    }
+
+    /**
+     * Customer-added work covers the order's whole area. The base price includes an allowance of hectares; each hectare
+     * above it is charged the policy's flat rate. Nothing is charged while the area is within the allowance.
+     */
+    private void customAreaLines(PricingPolicy policy, String profile, BigDecimal areaHa, List<Line> out) {
+        BigDecimal area = positive(areaHa);
+        if (area.signum() == 0) return;
+        BigDecimal included = BigDecimal.valueOf(profileRules(policy, PricingCategory.MEDIA, profile, MediaPricingComponent.INCLUDED_AREA)
+                .stream().findFirst().map(PricingRule::getIncludedQuantity).orElse(0));
+        BigDecimal extra = area.subtract(included).max(BigDecimal.ZERO);
+        if (extra.signum() == 0) return;
+        PricingRule rate = profileRules(policy, PricingCategory.MEDIA, profile, MediaPricingComponent.EXTRA_AREA).stream().findFirst()
+                .orElseThrow(() -> new ApiException(ErrorCode.MEDIA_PRICING_NOT_CONFIGURED,
+                        "Cannot price " + extra.stripTrailingZeros().toPlainString() + " ha above the included area: the pricing policy has no "
+                                + "price per extra hectare for customer-added work. An administrator must add it and publish the policy."));
+        BigDecimal unit = money(rate.getFixedAmount());
+        BigDecimal amount = money(unit.multiply(extra));
+        if (amount.signum() == 0) return;
+        out.add(new Line("EXTRA_AREA", PricingCategory.AREA,
+                "Phụ thu diện tích vượt định mức: " + extra.stripTrailingZeros().toPlainString() + " ha (đã bao gồm "
+                        + included.stripTrailingZeros().toPlainString() + " ha)",
+                extra, unit, amount, null, null, null, null));
     }
 
     private void dimensionLines(PricingPolicy policy, String profile, PricingCategory category, String component,

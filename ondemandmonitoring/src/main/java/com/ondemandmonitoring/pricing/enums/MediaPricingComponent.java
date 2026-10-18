@@ -11,5 +11,9 @@ public enum MediaPricingComponent {
     /** One tier of the extra-image price list. */
     EXTRA_IMAGE,
     /** One tier of the extra-video price list. */
-    EXTRA_VIDEO
+    EXTRA_VIDEO,
+    /** Customer-added work: hectares covered by the base price (the allowance is the rule's included quantity). */
+    INCLUDED_AREA,
+    /** Customer-added work: price per hectare above the included area. */
+    EXTRA_AREA
 }
