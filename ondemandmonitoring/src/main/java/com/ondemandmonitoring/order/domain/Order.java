@@ -204,8 +204,12 @@ public class Order extends BaseEntity {
     private List<OrderDeliveryMethod> deliveryMethods;
 
     /** Days the result data is kept after handover. */
-    @Column(name = "data_retention_days")
+    @Column(name = "data_retention_days", nullable = false)
     private Integer dataRetentionDays;
+
+    /** Customer result access expires at this instant; set only on first originals handover. */
+    @Column(name = "result_expires_at")
+    private Instant resultExpiresAt;
 
     /** When the customer accepted the terms and the data-security commitment. */
     @Column(name = "terms_accepted_at")

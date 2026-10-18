@@ -14,6 +14,7 @@ import com.ondemandmonitoring.media.repository.MediaNotificationOutboxRepository
 import com.ondemandmonitoring.media.service.ICustomerMediaService;
 import com.ondemandmonitoring.mission.service.IMissionMediaAccessService;
 import com.ondemandmonitoring.media.service.IMediaObjectStorage;
+import com.ondemandmonitoring.media.service.IResultRetentionAccessService;
 import java.util.List;
 import com.ondemandmonitoring.common.api.PageResponse;
 import org.springframework.data.domain.PageRequest;
@@ -28,7 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@RequiredArgsConstructor
+@RequiredArgsConstructor(onConstructor_ = @Autowired)
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class CustomerMediaServiceImpl implements ICustomerMediaService {
 
@@ -37,7 +38,16 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
     MediaNotificationOutboxRepository notifications;
     IMediaObjectStorage storage;
     MediaWorkflowMapper mapper;
+    IResultRetentionAccessService retentionAccess;
     @Autowired @NonFinal IDeliveryWorkflowService deliveryWorkflow;
+
+    /** Compatibility constructor for focused unit tests and non-Spring callers. */
+    public CustomerMediaServiceImpl(IMissionMediaAccessService missionAccess,
+            MediaAssetRepository media, MediaNotificationOutboxRepository notifications,
+            IMediaObjectStorage storage, MediaWorkflowMapper mapper) {
+        this(missionAccess, media, notifications, storage, mapper,
+                new ResultRetentionAccessServiceImpl(java.time.Clock.systemUTC()));
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -144,6 +154,7 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
     }
 
     private CustomerMediaResponse toResponse(MediaAsset asset, boolean originalsAvailable) {
+        if (originalsAvailable) retentionAccess.requireAccessible(asset);
         return mapper.toCustomerResponse(asset,
                 originalsAvailable ? storage.createPresignedGetUrl(asset.getS3Bucket(), asset.getS3Key()) : null);
     }

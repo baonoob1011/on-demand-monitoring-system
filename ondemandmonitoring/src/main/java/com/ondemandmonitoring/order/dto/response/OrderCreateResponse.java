@@ -87,6 +87,7 @@ public class OrderCreateResponse {
     List<OrderResultFormat> resultFormats;
     List<OrderDeliveryMethod> deliveryMethods;
     Integer dataRetentionDays;
+    Instant resultExpiresAt;
     Instant termsAcceptedAt;
     String termsVersion;
 

@@ -11,6 +11,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OrderCreateRequestValidationTest {
 
     @Test
+    void requiresAnAllowedResultRetentionPeriod() {
+        try (var factory = Validation.buildDefaultValidatorFactory()) {
+            var validator = factory.getValidator();
+
+            assertTrue(validator.validate(OrderCreateRequest.builder().build()).stream()
+                    .anyMatch(v -> v.getPropertyPath().toString().equals("dataRetentionDays")));
+
+            for (int allowed : new int[] {30, 90, 180, 365}) {
+                assertTrue(validator.validate(OrderCreateRequest.builder().dataRetentionDays(allowed).build()).stream()
+                        .noneMatch(v -> v.getPropertyPath().toString().equals("dataRetentionDays")),
+                        "retention " + allowed);
+            }
+
+            assertTrue(validator.validate(OrderCreateRequest.builder().dataRetentionDays(60).build()).stream()
+                    .anyMatch(v -> v.getPropertyPath().toString().equals("dataRetentionDays")));
+        }
+    }
+
+    @Test
     void validatesNestedDeliverableFields() {
         try (var factory = Validation.buildDefaultValidatorFactory()) {
             var request = OrderCreateRequest.builder()

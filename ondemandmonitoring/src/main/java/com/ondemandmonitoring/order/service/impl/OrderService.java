@@ -211,9 +211,7 @@ public class OrderService implements IOrderService {
         }
         List<OrderAuthorizationDocument> authorizationDocuments =
                 validateAuthorizationDocuments(request.getMonitoringAuthorizationDocuments());
-        int retentionDays = request.getDataRetentionDays() == null
-                ? DEFAULT_RETENTION_DAYS
-                : request.getDataRetentionDays();
+        int retentionDays = request.getDataRetentionDays();
         if (!ALLOWED_RETENTION_DAYS.contains(retentionDays)) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
                     "dataRetentionDays must be one of " + ALLOWED_RETENTION_DAYS);
@@ -608,7 +606,6 @@ public class OrderService implements IOrderService {
 
     /** Version recorded with the customer's acceptance of the terms and security commitment. */
     static final String TERMS_VERSION = "2026-10";
-    static final int DEFAULT_RETENTION_DAYS = 90;
     static final java.util.List<Integer> ALLOWED_RETENTION_DAYS = java.util.List.of(30, 90, 180, 365);
 
     /** Keeps the customer's order of choice, drops duplicates, falls back to one default. */
