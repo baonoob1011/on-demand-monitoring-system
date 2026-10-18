@@ -28,7 +28,8 @@ class CustomerMediaServiceTest {
         var access = mock(com.ondemandmonitoring.mission.service.IMissionMediaAccessService.class);
         var delivery = mock(com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService.class);
         var gated = new CustomerMediaServiceImpl(access, media, notifications, storage,
-                org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class));
+                org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class),
+                mock(IResultRetentionAccessService.class));
         org.springframework.test.util.ReflectionTestUtils.setField(gated, "deliveryWorkflow", delivery);
         when(access.authorizeCustomer("m")).thenReturn("m");
         var asset = new MediaAsset(); asset.setId("asset"); asset.setMissionId("m");
@@ -53,7 +54,8 @@ class CustomerMediaServiceTest {
     private final CustomerMediaServiceImpl service = new CustomerMediaServiceImpl(
             new MissionMediaAccessServiceImpl(missions, mock(MissionDeviceAssignmentRepository.class),
                     currentUser, mock(com.ondemandmonitoring.mission.service.IMissionAuthorizationService.class)), media, notifications, storage,
-            org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class));
+            org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class),
+            mock(IResultRetentionAccessService.class));
 
     @Test
     void onlyAvailableMediaGetsDownloadUrl() {
@@ -92,7 +94,8 @@ class CustomerMediaServiceTest {
         var access = mock(com.ondemandmonitoring.mission.service.IMissionMediaAccessService.class);
         var delivery = mock(com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService.class);
         var gated = new CustomerMediaServiceImpl(access, media, notifications, storage,
-                org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class));
+                org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class),
+                mock(IResultRetentionAccessService.class));
         org.springframework.test.util.ReflectionTestUtils.setField(gated, "deliveryWorkflow", delivery);
         var ids = List.of("m1", "m2");
         when(access.ownCustomerMissionIds()).thenReturn(ids);

@@ -28,6 +28,7 @@ class MediaAssetServiceTest {
     void upload_rejectsMissingFile() {
         MediaAssetServiceImpl service = new MediaAssetServiceImpl(
                 mock(IMediaObjectStorage.class),
+                mock(IResultRetentionAccessService.class),
                 mock(Environment.class),
                 mock(IDeviceService.class),
                 mock(MediaAssetRepository.class),
@@ -42,6 +43,7 @@ class MediaAssetServiceTest {
     void upload_rejectsUnsupportedContentType() {
         MediaAssetServiceImpl service = new MediaAssetServiceImpl(
                 mock(IMediaObjectStorage.class),
+                mock(IResultRetentionAccessService.class),
                 mock(Environment.class),
                 mock(IDeviceService.class),
                 mock(MediaAssetRepository.class),
@@ -58,6 +60,7 @@ class MediaAssetServiceTest {
     void upload_rejectsMismatchedVideoMediaType() {
         MediaAssetServiceImpl service = new MediaAssetServiceImpl(
                 mock(IMediaObjectStorage.class),
+                mock(IResultRetentionAccessService.class),
                 mock(Environment.class),
                 mock(IDeviceService.class),
                 mock(MediaAssetRepository.class),
@@ -88,6 +91,7 @@ class MediaAssetServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
         MediaAssetServiceImpl service = new MediaAssetServiceImpl(
                 mock(IMediaObjectStorage.class),
+                mock(IResultRetentionAccessService.class),
                 environment,
                 deviceService,
                 mediaAssetRepository,
@@ -127,6 +131,7 @@ class MediaAssetServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
         MediaAssetServiceImpl service = new MediaAssetServiceImpl(
                 objectStorage,
+                mock(IResultRetentionAccessService.class),
                 environment,
                 deviceService,
                 mediaAssetRepository,

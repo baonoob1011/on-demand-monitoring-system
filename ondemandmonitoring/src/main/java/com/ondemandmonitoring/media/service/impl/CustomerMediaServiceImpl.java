@@ -29,7 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@RequiredArgsConstructor(onConstructor_ = @Autowired)
+@RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class CustomerMediaServiceImpl implements ICustomerMediaService {
 
@@ -40,14 +40,6 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
     MediaWorkflowMapper mapper;
     IResultRetentionAccessService retentionAccess;
     @Autowired @NonFinal IDeliveryWorkflowService deliveryWorkflow;
-
-    /** Compatibility constructor for focused unit tests and non-Spring callers. */
-    public CustomerMediaServiceImpl(IMissionMediaAccessService missionAccess,
-            MediaAssetRepository media, MediaNotificationOutboxRepository notifications,
-            IMediaObjectStorage storage, MediaWorkflowMapper mapper) {
-        this(missionAccess, media, notifications, storage, mapper,
-                new ResultRetentionAccessServiceImpl(java.time.Clock.systemUTC()));
-    }
 
     @Override
     @Transactional(readOnly = true)

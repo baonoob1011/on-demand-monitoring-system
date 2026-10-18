@@ -34,7 +34,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @Slf4j
-@RequiredArgsConstructor(onConstructor_ = @org.springframework.beans.factory.annotation.Autowired)
+@RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class MediaAssetServiceImpl implements IMediaAssetService {
 
@@ -52,14 +52,6 @@ public class MediaAssetServiceImpl implements IMediaAssetService {
     MediaAssetRepository mediaAssetRepository;
     IMissionMediaAccessService missionAccess;
     IMissionMediaEvidenceGuard missionLock;
-
-    /** Compatibility constructor for focused unit tests and non-Spring callers. */
-    public MediaAssetServiceImpl(IMediaObjectStorage objectStorage, Environment environment,
-            IDeviceService deviceService, MediaAssetRepository mediaAssetRepository,
-            IMissionMediaAccessService missionAccess, IMissionMediaEvidenceGuard missionLock) {
-        this(objectStorage, new ResultRetentionAccessServiceImpl(java.time.Clock.systemUTC()), environment, deviceService,
-                mediaAssetRepository, missionAccess, missionLock);
-    }
 
     @Transactional
     @Override
