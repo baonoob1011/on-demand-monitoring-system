@@ -18,6 +18,8 @@ import com.ondemandmonitoring.media.domain.MediaAsset;
 import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.IMediaObjectStorage;
+import com.ondemandmonitoring.media.service.IResultRetentionAccessService;
+import com.ondemandmonitoring.media.service.impl.ResultRetentionAccessServiceImpl;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
@@ -43,7 +45,7 @@ import org.springframework.transaction.annotation.Transactional;
  * manager's explicit release have completed.</p>
  */
 @Service
-@RequiredArgsConstructor
+@RequiredArgsConstructor(onConstructor_ = @org.springframework.beans.factory.annotation.Autowired)
 public class DeliveryWorkflowServiceImpl implements IDeliveryWorkflowService {
     private final OrderDeliveryRepository deliveries;
     private final OrderRepository orders;
@@ -52,8 +54,18 @@ public class DeliveryWorkflowServiceImpl implements IDeliveryWorkflowService {
     private final InvoiceRepository invoices;
     private final MediaAssetRepository media;
     private final IMediaObjectStorage storage;
+    private final IResultRetentionAccessService retentionAccess;
     private final AuthenticatedUserResolver currentUser;
     private final com.ondemandmonitoring.order.service.IOrderExecutionCompletionPolicy completionPolicy;
+
+    /** Compatibility constructor for focused unit tests and non-Spring callers. */
+    public DeliveryWorkflowServiceImpl(OrderDeliveryRepository deliveries, OrderRepository orders,
+            MissionRepository missions, MissionResultRepository missionResults, InvoiceRepository invoices,
+            MediaAssetRepository media, IMediaObjectStorage storage, AuthenticatedUserResolver currentUser,
+            com.ondemandmonitoring.order.service.IOrderExecutionCompletionPolicy completionPolicy) {
+        this(deliveries, orders, missions, missionResults, invoices, media, storage,
+                new ResultRetentionAccessServiceImpl(java.time.Clock.systemUTC()), currentUser, completionPolicy);
+    }
 
     @Override
     @Transactional
@@ -195,14 +207,22 @@ public class DeliveryWorkflowServiceImpl implements IDeliveryWorkflowService {
         Invoice invoice = invoice(orderId);
         if (invoice.getStatus() != InvoiceStatus.PAID) throw new ApiException(ErrorCode.INVOICE_NOT_PAID);
         OrderDelivery delivery = locked(orderId);
-        if (delivery.getStatus() == DeliveryStatus.DELIVERED) throw new ApiException(ErrorCode.DELIVERY_ALREADY_RELEASED);
+        if (delivery.getStatus() == DeliveryStatus.DELIVERED) {
+            return response(delivery, effective, assets(effective).stream()
+                    .filter(a -> a.getMediaStatus() == MediaStatus.AVAILABLE).toList(), true);
+        }
         if (delivery.getStatus() != DeliveryStatus.READY_FOR_DELIVERY) throw new ApiException(ErrorCode.DELIVERY_NOT_READY);
         List<MediaAsset> assets = assets(effective).stream()
                 .filter(a -> a.getMediaStatus() == MediaStatus.AVAILABLE).toList();
         if (assets.isEmpty()) throw new ApiException(ErrorCode.DELIVERY_NOT_READY, "No approved originals exist");
+        Instant handedOverAt = Instant.now();
         delivery.setStatus(DeliveryStatus.DELIVERED);
-        delivery.setOriginalsReleasedAt(Instant.now());
+        delivery.setOriginalsReleasedAt(handedOverAt);
         delivery.setOriginalsReleasedBy(currentUser.getCurrentUser());
+        Order order = delivery.getOrder();
+        if (order.getResultExpiresAt() == null) {
+            order.setResultExpiresAt(handedOverAt.plus(order.getDataRetentionDays(), java.time.temporal.ChronoUnit.DAYS));
+        }
         if (!completionPolicy.completeIfReady(completionPolicy.lockAggregate(orderId)))
             throw new ApiException(ErrorCode.DELIVERY_NOT_READY);
         return response(delivery, effective, assets, true);
@@ -336,7 +356,7 @@ public class DeliveryWorkflowServiceImpl implements IDeliveryWorkflowService {
         Invoice invoice = invoice(d.getOrder().getId());
         Instant expires = Instant.now().plusSeconds(storage.presignedUrlExpiresSeconds());
         List<DeliveryAssetResponse> mapped = assets.stream().map(a -> new DeliveryAssetResponse(a.getId(), a.getType(),
-                a.getOriginalFileName(), a.getFileSize(), storage.createPresignedGetUrl(a.getS3Bucket(), a.getS3Key()),
+                a.getOriginalFileName(), a.getFileSize(), retainedUrl(a),
                 expires, downloadable)).toList();
         return new DeliveryResponse(d.getOrder().getId(), d.getStatus(), executionStatus(effective), d.getOrder().getOrderStatus(),
                 invoice.getStatus(), invoice.getTotalAmount(), invoice.getPaidAmount(), invoice.getRemainingAmount(),
@@ -344,4 +364,8 @@ public class DeliveryWorkflowServiceImpl implements IDeliveryWorkflowService {
                 d.getRevisionReason(), d.getRevisionCount(), d.getFinalPaymentConfirmedAt(), d.getOriginalsReleasedAt(), mapped);
     }
     private String trim(String value) { return value == null || value.isBlank() ? null : value.trim(); }
+    private String retainedUrl(MediaAsset asset) {
+        retentionAccess.requireAccessible(asset);
+        return storage.createPresignedGetUrl(asset.getS3Bucket(), asset.getS3Key());
+    }
 }

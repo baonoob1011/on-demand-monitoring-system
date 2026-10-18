@@ -17,6 +17,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import com.ondemandmonitoring.order.validation.AllowedRetentionDays;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -148,7 +149,9 @@ public class OrderCreateRequest {
     @Schema(description = "How the result is received; defaults to [DOWNLOAD]", example = "[\"DOWNLOAD\",\"EMAIL\"]")
     List<@NotNull OrderDeliveryMethod> deliveryMethods;
 
-    @Schema(description = "Days the result data is kept: 30, 90, 180 or 365; defaults to 90", example = "90")
+    @NotNull(message = "Vui lòng chọn thời hạn lưu trữ kết quả.")
+    @AllowedRetentionDays
+    @Schema(description = "Days the result data is kept: 30, 90, 180 or 365", example = "90")
     Integer dataRetentionDays;
 
     @Schema(description = "Customer accepts the terms and the data-security commitment; must be true")

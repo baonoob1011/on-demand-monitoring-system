@@ -24,7 +24,8 @@ class CustomerMissionMediaServiceTest {
     final IMediaObjectStorage storage = mock(IMediaObjectStorage.class);
     final ICustomerMediaService service = new CustomerMediaServiceImpl(access, media,
             mock(MediaNotificationOutboxRepository.class), storage,
-            org.mapstruct.factory.Mappers.getMapper(MediaWorkflowMapper.class));
+            org.mapstruct.factory.Mappers.getMapper(MediaWorkflowMapper.class),
+            mock(IResultRetentionAccessService.class));
 
     @BeforeEach
     void setup() {
