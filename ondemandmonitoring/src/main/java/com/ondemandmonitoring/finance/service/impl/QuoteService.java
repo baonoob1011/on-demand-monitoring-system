@@ -75,12 +75,15 @@ public class QuoteService implements IQuoteService {
                 || q.status() == QuoteStatus.APPROVED || q.status() == QuoteStatus.PENDING_REVIEW).findFirst().orElse(null);
         PricingBreakdown calculation = pricingEngine.calculate(order,
                 checklistItems.findAllByOrderIdOrderByDisplayOrderAscIdAsc(orderId));
+        Optional<PricingPolicy> policy = pricingPolicies.findById(calculation.policyId());
         // New orders have no package line: the checklists are the whole price.
         BigDecimal basePackagePrice = calculation.items().stream().filter(i -> i.category() == PricingCategory.PACKAGE)
                 .map(PricingBreakdownItem::amount).findFirst().orElse(ZERO);
         return new PricingReviewResponse(orderId, order.getOrderCode(), order.getCustomer().getFullName(),
                 order.getService().getName(), basePackagePrice, items, current, history, calculation,
-                currentUser.getCurrentUserId());
+                currentUser.getCurrentUserId(),
+                policy.map(PricingPolicy::getManagerMaxDiscountPercent).orElse(null),
+                policy.map(PricingPolicy::getManagerMaxMarkupPercent).orElse(null));
     }
 
     @Transactional
@@ -142,9 +145,14 @@ public class QuoteService implements IQuoteService {
             throw new ApiException(ErrorCode.CUSTOM_WORK_PRICING_INCOMPLETE,
                     "Complete the structured assessment before pricing these custom checklist items: "
                             + String.join("; ", calculation.pendingQuoteItems()));
+        // The Manager priced against the policy on screen; if an Admin published a newer one meanwhile, nothing is saved.
+        if (request.expectedPolicyVersion() != null && request.expectedPolicyVersion() != calculation.policyVersion())
+            throw new ApiException(ErrorCode.STALE_PRICING_POLICY);
         Map<String, BigDecimal> systemChecklistPrices = checklistSystemPrices(calculation);
+        PricingPolicy policy = pricingPolicies.findById(calculation.policyId())
+                .orElseThrow(() -> new ApiException(ErrorCode.PRICING_POLICY_NOT_FOUND));
         applyManagerQuotes(reviewed, request.additionalUnitPrices(), systemChecklistPrices,
-                trimToNull(request.adjustmentReason()));
+                trimToNull(request.adjustmentReason()), policy);
 
         Optional<Quote> active = quotes.findFirstByOrderIdAndStatusInOrderByQuoteVersionDesc(orderId,
                 List.of(QuoteStatus.DRAFT, QuoteStatus.PENDING_REVIEW, QuoteStatus.APPROVED));
@@ -175,8 +183,6 @@ public class QuoteService implements IQuoteService {
         String reason = trimToNull(request.adjustmentReason());
         if (adjustment.signum() != 0 && (reason == null || reason.length() < 10))
             throw new ApiException(ErrorCode.PRICING_ADJUSTMENT_REASON_REQUIRED);
-        PricingPolicy policy = pricingPolicies.findById(calculation.policyId())
-                .orElseThrow(() -> new ApiException(ErrorCode.PRICING_POLICY_NOT_FOUND));
         List<PricingRiskFlag> risks = evaluateGuardrails(policy, calculation.systemCalculatedAmount(), adjustment,
                 calculation.customWork(), orderId);
         List<QuoteItem> lines = buildLines(calculation, vnd(request.adjustmentAmount()), reviewed,
@@ -349,13 +355,14 @@ public class QuoteService implements IQuoteService {
      * overwrite a policy price.
      */
     private void applyManagerQuotes(List<OrderChecklistItem> items, Map<String, BigDecimal> quotes,
-            Map<String, BigDecimal> systemPrices, String adjustmentReason) {
+            Map<String, BigDecimal> systemPrices, String adjustmentReason, PricingPolicy policy) {
         Map<String, BigDecimal> submitted = quotes == null ? Map.of() : quotes;
         List<String> missing = new ArrayList<>();
         for (OrderChecklistItem item : items) {
             if (!requiresManagerPrice(item)) continue;
             BigDecimal system = systemPrices.getOrDefault(item.getId(), ZERO);
-            if (item.getSystemCalculatedPrice() == null) item.setSystemCalculatedPrice(system);
+            // Keep the stored system price on the policy in force: it is what the audit compares the Manager's price with.
+            item.setSystemCalculatedPrice(system);
             BigDecimal quoted = submitted.get(item.getId());
             if (quoted == null) quoted = item.getManagerQuotedPrice();
             if (quoted == null) {
@@ -366,6 +373,7 @@ public class QuoteService implements IQuoteService {
             BigDecimal approved = quoted.setScale(0, RoundingMode.HALF_UP);
             if (approved.compareTo(system) != 0 && (adjustmentReason == null || adjustmentReason.length() < 10))
                 throw new ApiException(ErrorCode.PRICING_ADJUSTMENT_REASON_REQUIRED);
+            requireWithinItemLimits(item, system, approved, policy);
             item.setManagerQuotedPrice(approved);
             item.setManagerApprovedAmount(approved);
             item.setFinalAmount(approved);
@@ -376,6 +384,24 @@ public class QuoteService implements IQuoteService {
         }
         if (!missing.isEmpty()) throw new ApiException(ErrorCode.CUSTOM_WORK_PRICING_INCOMPLETE,
                 "Enter an approved price for: " + String.join("; ", missing));
+    }
+
+    /**
+     * The Manager's room to move is per checklist, not only across the whole order: one item cannot be marked down (or up)
+     * past the policy limit just because the other items in the order are large.
+     */
+    private void requireWithinItemLimits(OrderChecklistItem item, BigDecimal system, BigDecimal approved, PricingPolicy policy) {
+        if (system.signum() <= 0 || approved.compareTo(system) == 0) return;
+        BigDecimal lowest = system.multiply(BigDecimal.valueOf(100).subtract(policy.getManagerMaxDiscountPercent()))
+                .divide(BigDecimal.valueOf(100), 0, RoundingMode.CEILING);
+        BigDecimal highest = system.multiply(BigDecimal.valueOf(100).add(policy.getManagerMaxMarkupPercent()))
+                .divide(BigDecimal.valueOf(100), 0, RoundingMode.FLOOR);
+        if (approved.compareTo(lowest) < 0 || approved.compareTo(highest) > 0)
+            throw new ApiException(ErrorCode.PRICING_OVERRIDE_EXCEEDS_LIMIT,
+                    "Giá duyệt của \"" + shortenDescription(item.getContent()) + "\" phải từ " + lowest.toPlainString()
+                            + " đến " + highest.toPlainString() + " VND (giá hệ thống " + system.toPlainString()
+                            + " VND, giảm tối đa " + policy.getManagerMaxDiscountPercent().stripTrailingZeros().toPlainString()
+                            + "%, tăng tối đa " + policy.getManagerMaxMarkupPercent().stripTrailingZeros().toPlainString() + "%).");
     }
 
     private Map<String, BigDecimal> checklistSystemPrices(PricingBreakdown calculation) {

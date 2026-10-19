@@ -146,6 +146,18 @@ class ChecklistPricingPreviewServiceTest {
         assertThat(result.checklists().getFirst().subtotal()).isEqualByComparingTo("270000");
     }
 
+    @Test void aRepeatingOrderQuoteIsMultipliedByTheNumberOfVisits() {
+        var once = preview.customerQuote(new Customer("s1", null));
+        var thrice = preview.customerQuote(new Customer("s1", null, null, null, null, null, 3));
+        assertThat(thrice.occurrences()).isEqualTo(3);
+        assertThat(once.occurrences()).isEqualTo(1);
+        assertThat(thrice.checklistSubtotal()).isEqualByComparingTo(once.checklistSubtotal().multiply(new BigDecimal("3")));
+        assertThat(thrice.total()).isEqualByComparingTo(once.total().multiply(new BigDecimal("3")));
+        // every line keeps quantity x unit price = amount
+        assertThat(thrice.checklists().stream().flatMap(row -> row.lines().stream()))
+                .allSatisfy(line -> assertThat(line.unitPrice().multiply(line.quantity())).isEqualByComparingTo(line.amount()));
+    }
+
     @Test void customerQuoteUsesBackendPricesAndTheRequestedQuantities() {
         var result = preview.customerQuote(new Customer("s1", List.of(new CustomerItem("c1", null, 30, 3), new CustomerItem("c2", null, null, null))));
         // roof: 200k + 50k + 120k + (50k+40k) images + 2 extra videos x 90k

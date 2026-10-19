@@ -60,19 +60,21 @@ public class PricingPolicyService {
         draft.setHighRiskDiscountPercent(source.getHighRiskDiscountPercent());
         draft.setMinimumPriceRatio(source.getMinimumPriceRatio());
         draft.setMinimumPrice(source.getMinimumPrice());
-        draft.replaceRules(source.getRules().stream().map(this::copyRule).toList());
+        draft.replaceRules(migrateLegacyCustomerAdded(source.getRules()).stream().map(this::copyRule).toList());
         return response(policies.save(draft));
     }
 
     @Transactional
     public PricingPolicyResponse updateDraft(String id, PricingPolicyRequest request) {
-        PricingPolicy policy = policies.findById(id).orElseThrow(() -> new ApiException(ErrorCode.PRICING_POLICY_NOT_FOUND));
+        PricingPolicy policy = policies.findById(id).orElseThrow(() -> new ApiException(ErrorCode.PRICING_POLICY_NOT_FOUND,
+                "Pricing policy draft no longer exists. Reload the page to get the current version."));
         requireDraft(policy); apply(policy, request); return response(policy);
     }
 
     @Transactional
     public PricingPolicyResponse publish(String id) {
-        PricingPolicy policy = policies.findById(id).orElseThrow(() -> new ApiException(ErrorCode.PRICING_POLICY_NOT_FOUND));
+        PricingPolicy policy = policies.findById(id).orElseThrow(() -> new ApiException(ErrorCode.PRICING_POLICY_NOT_FOUND,
+                "Pricing policy draft no longer exists. Reload the page to get the current version."));
         requireDraft(policy); Instant now = Instant.now();
         for (PricingPolicy active : policies.findAllByStatus(PricingPolicyStatus.ACTIVE)) {
             active.setStatus(PricingPolicyStatus.SUPERSEDED); active.setEffectiveTo(now);
@@ -150,6 +152,10 @@ public class PricingPolicyService {
         if (r.getPricingProfile() == null || !PROFILE.matcher(r.getPricingProfile()).matches())
             throw invalid("MEDIA rule '" + r.getRuleKey() + "' needs a pricing profile of letters, digits and underscore");
         if (r.getMediaComponent() == null) throw invalid("MEDIA rule '" + r.getRuleKey() + "' needs a media component");
+        if ((r.getMediaComponent() == MediaPricingComponent.INCLUDED_AREA || r.getMediaComponent() == MediaPricingComponent.EXTRA_AREA)
+                && !(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE.equals(r.getPricingProfile())
+                || ChecklistPriceCalculator.LEGACY_CUSTOM_PROFILE.equals(r.getPricingProfile())))
+            throw invalid("Included area and extra-area price apply to the customer-added profile only");
         if (r.getChecklistDefinitionId() != null) {
             if (checklistDefinitions == null || !checklistDefinitions.existsById(r.getChecklistDefinitionId()))
                 throw invalid("MEDIA rule '" + r.getRuleKey() + "' targets an unknown checklist");
@@ -170,7 +176,8 @@ public class PricingPolicyService {
             if (r.getMinValue() != null || r.getMaxValue() != null || r.getUnitSize() != null || r.getRoundingMode() != null)
                 throw invalid("Only extra-media tiers have ranges, block sizes and rounding");
             r.setCalculationType(PricingCalculationType.FIXED);
-            boolean included = r.getMediaComponent() == MediaPricingComponent.INCLUDED_IMAGE || r.getMediaComponent() == MediaPricingComponent.INCLUDED_VIDEO;
+            boolean included = r.getMediaComponent() == MediaPricingComponent.INCLUDED_IMAGE || r.getMediaComponent() == MediaPricingComponent.INCLUDED_VIDEO
+                    || r.getMediaComponent() == MediaPricingComponent.INCLUDED_AREA;
             if (r.getIncludedQuantity() != null && !(included
                     && (ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE.equals(r.getPricingProfile())
                     || ChecklistPriceCalculator.LEGACY_CUSTOM_PROFILE.equals(r.getPricingProfile()))))
@@ -223,6 +230,34 @@ public class PricingPolicyService {
     private ApiException invalid(String message) { return new ApiException(ErrorCode.INVALID_REQUEST, message); }
 
     private void requireDraft(PricingPolicy p) { if (p.getStatus() != PricingPolicyStatus.DRAFT) throw new ApiException(ErrorCode.INVALID_REQUEST, "Published pricing policies are immutable"); }
+    private static final Set<MediaPricingComponent> CUSTOMER_ADDED_COMPONENTS = EnumSet.of(MediaPricingComponent.CHECKLIST_BASE,
+            MediaPricingComponent.INCLUDED_IMAGE, MediaPricingComponent.INCLUDED_VIDEO, MediaPricingComponent.INCLUDED_AREA,
+            MediaPricingComponent.EXTRA_AREA);
+
+    /**
+     * Customer-added prices used to live under the CUSTOM profile. A new draft keeps one set only: the legacy rule becomes the
+     * GENERIC_CUSTOMER_ADDED one, or is dropped when the policy already has that one.
+     */
+    private List<PricingRule> migrateLegacyCustomerAdded(List<PricingRule> rules) {
+        String generic = ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE;
+        String legacy = ChecklistPriceCalculator.LEGACY_CUSTOM_PROFILE;
+        List<PricingRule> out = new ArrayList<>();
+        for (PricingRule rule : rules) {
+            boolean old = rule.getCategory() == PricingCategory.MEDIA && legacy.equals(rule.getPricingProfile())
+                    && rule.getChecklistDefinitionId() == null && CUSTOMER_ADDED_COMPONENTS.contains(rule.getMediaComponent());
+            if (!old) { out.add(rule); continue; }
+            boolean covered = rules.stream().anyMatch(other -> other.getCategory() == PricingCategory.MEDIA
+                    && generic.equals(other.getPricingProfile()) && other.getChecklistDefinitionId() == null
+                    && other.getMediaComponent() == rule.getMediaComponent());
+            if (covered) continue;
+            PricingRule moved = copyRule(rule);
+            moved.setPricingProfile(generic);
+            moved.setRuleKey(moved.getRuleKey().replaceFirst("^(?i)" + legacy + ":", generic + ":"));
+            if (moved.getDescription() != null) moved.setDescription(moved.getDescription().replaceFirst("^(?i)" + legacy, generic));
+            out.add(moved);
+        }
+        return out;
+    }
     private PricingRule copyRule(PricingRule source) {
         PricingRule rule = new PricingRule();
         rule.setCategory(source.getCategory()); rule.setCalculationType(source.getCalculationType());
