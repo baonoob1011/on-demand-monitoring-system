@@ -31,6 +31,7 @@ public interface OrderMapper {
     @Mapping(target = "termsAcceptedAt", ignore = true)
     @Mapping(target = "termsVersion", ignore = true)
     @Mapping(target = "rejectReason", ignore = true)
+    @Mapping(target = "requestedUpdateScope", ignore = true)
     @Mapping(target = "reviewBy", ignore = true)
     @Mapping(target = "reviewAt", ignore = true)
     @Mapping(target = "legalReviewStatus", ignore = true)

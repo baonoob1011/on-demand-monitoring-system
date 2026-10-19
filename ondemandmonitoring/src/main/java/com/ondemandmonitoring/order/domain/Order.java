@@ -225,6 +225,10 @@ public class Order extends BaseEntity {
     @Column(name = "reject_reason", columnDefinition = "TEXT")
     private String rejectReason;
 
+    /** Customer-facing section that the manager explicitly asked to be corrected. */
+    @Column(name = "requested_update_scope", length = 40)
+    private String requestedUpdateScope;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "review_by")
     private User reviewBy;

@@ -96,6 +96,7 @@ public class OrderCreateResponse {
     long executionPlanRevision;
     ExecutionPlanStatus executionPlanStatus;
     String rejectReason;
+    String requestedUpdateScope;
     String reviewById;
     String reviewByName;
     Instant reviewAt;

@@ -22,7 +22,7 @@ public interface IOrderService {
 
     void rejectOrder(String orderId, String reason);
 
-    void requestMoreInformation(String orderId, String reason);
+    void requestMoreInformation(String orderId, String reason, String requestedUpdateScope);
 
     OrderCreateResponse submitAdditionalInformation(String orderId,
             OrderAdditionalInformationRequest request);

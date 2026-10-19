@@ -138,7 +138,7 @@ class OrderControllerTest {
                 "ord-123", Map.of("decision", "NEED_INFO", "reason", "More details"));
 
         assertEquals(HttpStatus.OK, responseEntity.getStatusCode());
-        verify(orderService).requestMoreInformation("ord-123", "More details");
+        verify(orderService).requestMoreInformation("ord-123", "More details", null);
     }
 
     @Test

@@ -42,7 +42,8 @@ public class PaymentPersistenceService implements IPaymentPersistenceService {
         Invoice invoice = invoices.findByIdForUpdate(invoiceId).orElseThrow(() -> new ApiException(ErrorCode.INVOICE_NOT_FOUND));
         if (!invoice.getOrder().getCustomer().getId().equals(currentUser.getCurrentUserId())) throw new ApiException(ErrorCode.ACCESS_DENIED);
         if (invoice.getOrder().getLegalReviewStatus() != LegalReviewStatus.NOT_REQUIRED
-                && invoice.getOrder().getLegalReviewStatus() != LegalReviewStatus.APPROVED) {
+                && invoice.getOrder().getLegalReviewStatus() != LegalReviewStatus.APPROVED
+                && invoice.getOrder().getLegalReviewStatus() != LegalReviewStatus.PENDING_PERMIT) {
             throw new ApiException(ErrorCode.ORDER_LEGAL_REVIEW_NOT_READY);
         }
         if (invoice.getStatus() == InvoiceStatus.PAID || invoice.getRemainingAmount().signum() == 0) {

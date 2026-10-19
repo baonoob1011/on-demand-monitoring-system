@@ -117,6 +117,7 @@ public class OrderController {
             @RequestBody java.util.Map<String, String> body) {
         String decision = body != null ? body.get("decision") : null;
         String reason = body != null ? body.get("reason") : null;
+        String requestedUpdateScope = body != null ? body.get("requestedUpdateScope") : null;
         if (!"REJECTED".equalsIgnoreCase(decision) && !"NEED_INFO".equalsIgnoreCase(decision)) {
             throw new ApiException(
                     ErrorCode.INVALID_REQUEST,
@@ -126,7 +127,7 @@ public class OrderController {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Rejection reason is required");
         }
         if ("NEED_INFO".equalsIgnoreCase(decision)) {
-            orderService.requestMoreInformation(orderId, reason);
+            orderService.requestMoreInformation(orderId, reason, requestedUpdateScope);
         } else {
             orderService.rejectOrder(orderId, reason);
         }
