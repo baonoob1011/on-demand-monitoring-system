@@ -31,6 +31,10 @@ public class DeviceSeedDataInitializer implements ApplicationRunner {
 
     static final String DEVICE_CODE = "DRN-001";
     static final String SERIAL_NUMBER = "M3E-DEMO-001";
+    static final String DEVICE_CODE_2 = "DRN-002";
+    static final String SERIAL_NUMBER_2 = "M3E-DEMO-002";
+    static final String DEVICE_CODE_3 = "DRN-003";
+    static final String SERIAL_NUMBER_3 = "M3E-DEMO-003";
 
     DeviceTypeRepository deviceTypeRepository;
     DeviceModelRepository deviceModelRepository;
@@ -47,8 +51,10 @@ public class DeviceSeedDataInitializer implements ApplicationRunner {
         DeviceModel model = ensureDeviceModel(droneType);
 
         ensureDevice(SERIAL_NUMBER, DEVICE_CODE, "DJI Mavic 3 Enterprise", model, DeviceStatus.AVAILABLE);
+        ensureDevice(SERIAL_NUMBER_2, DEVICE_CODE_2, "DJI Mavic 3 Enterprise 02", model, DeviceStatus.AVAILABLE);
+        ensureDevice(SERIAL_NUMBER_3, DEVICE_CODE_3, "DJI Mavic 3 Enterprise 03", model, DeviceStatus.AVAILABLE);
 
-        log.info("DJI Mavic 3 Enterprise seed data ready.");
+        log.info("3 DJI Mavic 3 Enterprise seed devices ready.");
     }
 
     // Upsert: refresh seed fields on existing rows so edits here take effect after restart.

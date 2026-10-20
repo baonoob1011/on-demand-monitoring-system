@@ -61,5 +61,13 @@ public class PersistedPreDeviceCheckController {
             @Valid @RequestBody PreDeviceCheckItemUpdateRequest request) {
         return ApiResponse.ok(service.update(id, checkType, request));
     }
+
+    @PostMapping("/api/pre-device-checks/{id}/items/{checkType}/recheck")
+    @PreAuthorize("@deviceCheckAuthorizationService.canInspectPreCheck(#id)")
+    public ApiResponse<PersistedPreDeviceCheckResponse> recheck(
+            @PathVariable String id,
+            @PathVariable String checkType) {
+        return ApiResponse.ok(service.recheck(id, checkType));
+    }
 }
 

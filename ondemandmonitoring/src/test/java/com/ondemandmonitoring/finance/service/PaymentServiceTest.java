@@ -25,7 +25,9 @@ class PaymentServiceTest {
     private final IPaymentWebhookService webhook = mock(IPaymentWebhookService.class);
     private final PaymentGateway paymentGateway = mock(PaymentGateway.class);
     private final PaymentStatusGateway statusGateway = mock(PaymentStatusGateway.class);
-    private final PaymentService service = new PaymentService(persistence, webhook, paymentGateway, statusGateway);
+    private final PaymentService service = new PaymentService(
+            persistence, webhook, paymentGateway, statusGateway,
+            mock(org.springframework.core.env.Environment.class));
 
     @Test
     void refreshUsesQueryDrAndAppliesVerifiedSuccess() {

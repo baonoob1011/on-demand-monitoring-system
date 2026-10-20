@@ -50,7 +50,7 @@ class PreDeviceCheckSafeStopTest {
         when(repository.findByIdForUpdate("m")).thenReturn(Optional.of(mission));
         var writer = new PreDeviceCheckCompletionServiceImpl(repository, null, null, null, null, null, null);
         assertThatThrownBy(() -> writer.complete("m", "device")).isInstanceOf(ApiException.class);
-        var start = new PersistedPreDeviceCheckService(null, repository);
+        var start = new PersistedPreDeviceCheckService(null, repository, null, null, null, null);
         assertThatThrownBy(() -> start.start("m")).isInstanceOf(ApiException.class);
         verify(repository, never()).save(any());
         assertThat(mission.getStatus()).isEqualTo(MissionStatus.READY_TO_FLY); // persisted lifecycle is not a reset

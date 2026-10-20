@@ -159,7 +159,7 @@ public class WeatherPreflightController {
         PreDeviceCheckItemUpdateRequest update = new PreDeviceCheckItemUpdateRequest();
         update.setStatus(safeToFly ? PreDeviceItemStatus.PASSED : PreDeviceItemStatus.FAILED);
         update.setMessage(summary);
-        preDeviceChecks.update(current.getId(), PreDeviceCheckType.WEATHER.code(), update);
+        // The next pre-flight evaluation consumes this persisted weather observation.
     }
 
     private static double round1(double value) {

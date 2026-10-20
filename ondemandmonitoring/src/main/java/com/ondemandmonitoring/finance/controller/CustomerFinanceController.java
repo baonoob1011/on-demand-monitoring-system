@@ -39,6 +39,11 @@ public class CustomerFinanceController {
         return ApiResponse.ok("Deposit payment link ready", paymentService.createDeposit(invoiceId, request.getRemoteAddr()));
     }
 
+    @PostMapping("/invoices/{invoiceId}/payments/test-deposit")
+    public ApiResponse<PaymentResponse> testDeposit(@PathVariable String invoiceId) {
+        return ApiResponse.ok("Test deposit completed", paymentService.completeTestDeposit(invoiceId));
+    }
+
     @PostMapping("/invoices/{invoiceId}/payments/final")
     public ApiResponse<PaymentResponse> finalPayment(@PathVariable String invoiceId, HttpServletRequest request) {
         return ApiResponse.ok("Final payment link ready", paymentService.createFinal(invoiceId, request.getRemoteAddr()));
