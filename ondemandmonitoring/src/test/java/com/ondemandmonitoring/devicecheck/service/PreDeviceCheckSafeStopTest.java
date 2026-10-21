@@ -35,7 +35,7 @@ class PreDeviceCheckSafeStopTest {
         run.setStatus(com.ondemandmonitoring.devicecheck.enums.PreDeviceCheckStatus.PASSED);
         when(runs.findFirstByMissionIdOrderByCreatedAtDesc("m")).thenReturn(Optional.of(run));
         var tokens=mock(com.ondemandmonitoring.mission.service.IFlightTokenService.class);
-        var weather=mock(com.ondemandmonitoring.environment.repository.MissionWeatherCheckRepository.class);
+        var weather=mock(com.ondemandmonitoring.weather.repository.MissionWeatherCheckRepository.class);
         var mapper=mock(com.ondemandmonitoring.devicecheck.mapper.PreDeviceCheckCompletionMapper.class);
         new PreDeviceCheckCompletionServiceImpl(missions,devices,crew,runs,weather,tokens,mapper).complete("m","d");
         assertThat(mission.getStatus()).isEqualTo(MissionStatus.READY_TO_FLY);

@@ -6,7 +6,7 @@ import com.ondemandmonitoring.devicecheck.domain.PersistedPreDeviceCheckItem;
 import com.ondemandmonitoring.devicecheck.dto.response.PreDeviceCheckResponse;
 import com.ondemandmonitoring.devicecheck.enums.PreDeviceCheckType;
 import com.ondemandmonitoring.devicecheck.enums.PreDeviceItemStatus;
-import com.ondemandmonitoring.environment.domain.MissionWeatherCheck;
+import com.ondemandmonitoring.weather.domain.MissionWeatherCheck;
 import com.ondemandmonitoring.mission.domain.FlightToken;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.mapper.FlightTokenMapper;
