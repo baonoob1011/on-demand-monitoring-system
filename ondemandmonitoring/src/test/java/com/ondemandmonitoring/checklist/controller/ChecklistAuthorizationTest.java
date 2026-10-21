@@ -60,7 +60,6 @@ class ChecklistAuthorizationTest {
     @BeforeEach void setup() {
         reset(catalog, assignments, services, resolver, priceResolver);
         when(priceResolver.forDisplay(any())).thenReturn(ServicePriceResolver.of(new BigDecimal("3200000")));
-        when(priceResolver.aiImageAnalysisPrice()).thenReturn(java.util.Optional.of(new BigDecimal("500000")));
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         var response = new ChecklistResponse(); response.setId("c1"); response.setContent("Check exits");
         when(catalog.create(any())).thenReturn(response);
@@ -129,24 +128,23 @@ class ChecklistAuthorizationTest {
         role(RoleCode.CUSTOMER);
         mvc.perform(get("/api/services/pricing-estimate")
                         .param("serviceId", "s1")
-                        .param("aiImageAnalysis", "true")
                         .with(jwt().authorities(() -> "ROLE_CUSTOMER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.servicePrice").value(3200000))
-                .andExpect(jsonPath("$.data.additionalRequirements[0].additionalPrice").value(500000))
-                .andExpect(jsonPath("$.data.totalPrice").value(3700000));
+                .andExpect(jsonPath("$.data.additionalRequirements").isEmpty())
+                .andExpect(jsonPath("$.data.totalPrice").value(3200000));
     }
 
     @Test void pricingEstimateKeepsItsShapeButFollowsTheChecklistDefaultPrice() throws Exception {
         role(RoleCode.CUSTOMER);
         when(priceResolver.forDisplay(any())).thenReturn(ServicePriceResolver.of(new BigDecimal("470000")));
-        mvc.perform(get("/api/services/pricing-estimate").param("serviceId", "s1").param("aiImageAnalysis", "true")
+        mvc.perform(get("/api/services/pricing-estimate").param("serviceId", "s1")
                         .with(jwt().authorities(() -> "ROLE_CUSTOMER")))
                 .andExpect(status().isOk())
                 // the legacy catalog price is NOT added on top of priced checklists
                 .andExpect(jsonPath("$.data.servicePrice").value(470000))
-                .andExpect(jsonPath("$.data.additionalRequirements[0].additionalPrice").value(500000))
-                .andExpect(jsonPath("$.data.totalPrice").value(970000))
+                .andExpect(jsonPath("$.data.additionalRequirements").isEmpty())
+                .andExpect(jsonPath("$.data.totalPrice").value(470000))
                 .andExpect(jsonPath("$.data.serviceId").value("s1"));
     }
 

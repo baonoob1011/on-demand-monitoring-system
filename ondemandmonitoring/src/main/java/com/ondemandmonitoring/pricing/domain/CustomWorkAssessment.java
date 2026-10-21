@@ -22,7 +22,6 @@ public class CustomWorkAssessment extends BaseEntity {
     @Enumerated(EnumType.STRING) @Column(length = 30) private TerrainType terrain = TerrainType.FLAT;
     @Column(name = "thermal_required", nullable = false) private boolean thermalRequired;
     @Column(name = "multispectral_required", nullable = false) private boolean multispectralRequired;
-    @Column(name = "ai_report_required", nullable = false) private boolean aiReportRequired;
     @Column(name = "night_operation", nullable = false) private boolean nightOperation;
     @Column(name = "special_equipment", length = 500) private String specialEquipment;
     @Column(name = "other_cost_drivers", length = 1000) private String otherCostDrivers;

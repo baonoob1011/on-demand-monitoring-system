@@ -49,14 +49,36 @@ public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckS
             PreDeviceCheckType.COMPASS_HEALTH,
             PreDeviceCheckType.IMU_HEALTH,
             PreDeviceCheckType.HOME_POSITION,
-            PreDeviceCheckType.ALTITUDE_SENSOR);
+            PreDeviceCheckType.ALTITUDE_SENSOR,
+            PreDeviceCheckType.SYSTEM_SELF_CHECK,
+            PreDeviceCheckType.CONNECTION_FAILSAFE,
+            PreDeviceCheckType.RETURN_TO_HOME,
+            PreDeviceCheckType.LOW_BATTERY_PROTECTION,
+            PreDeviceCheckType.FLIGHT_GEOFENCE,
+            PreDeviceCheckType.EMERGENCY_LANDING,
+            PreDeviceCheckType.FLIGHT_ROUTE,
+            PreDeviceCheckType.FLIGHT_LIMITS,
+            PreDeviceCheckType.MISSION_ENERGY,
+            PreDeviceCheckType.LANDING_DESTINATION,
+            PreDeviceCheckType.RENTAL_BOOKING,
+            PreDeviceCheckType.AIRCRAFT_PERMISSION,
+            PreDeviceCheckType.AIRCRAFT_HANDOVER,
+            PreDeviceCheckType.MAINTENANCE_STATUS,
+            PreDeviceCheckType.MANAGEMENT_CONNECTION,
+            PreDeviceCheckType.MEDIA_STORAGE);
+
     private static final List<PreDeviceCheckType> CHECKS = Arrays.stream(PreDeviceCheckType.values())
             .filter(check -> !REMOVED_CHECKS.contains(check))
             .toList();
     private static final Set<String> IGNORED_CHECK_TYPES = Set.of(
             "GAZEBO", "LOCAL_POSITION", "MODULES", "motor_esc_health",
             "satellite_signal", "positioning_health", "compass_health",
-            "imu_health", "home_position", "altitude_sensor");
+            "imu_health", "home_position", "altitude_sensor",
+            "system_self_check", "connection_failsafe", "return_to_home",
+            "low_battery_protection", "flight_geofence", "emergency_landing",
+            "flight_route", "flight_limits", "mission_energy", "landing_destination",
+            "rental_booking", "aircraft_permission", "aircraft_handover",
+            "maintenance_status", "management_connection", "media_storage");
     private static final Set<String> CONNECTION_MANUAL_FALLBACK_TYPES = Set.of(
             "aircraft_connection", "command_link", "flight_controller",
             "aircraft_readiness", "monitoring_connection");

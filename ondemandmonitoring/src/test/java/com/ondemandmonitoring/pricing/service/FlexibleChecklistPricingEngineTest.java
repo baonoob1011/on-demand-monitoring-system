@@ -174,25 +174,6 @@ class FlexibleChecklistPricingEngineTest {
         assertThat(result.items()).extracting(i -> i.category()).doesNotContain(PricingCategory.PACKAGE);
     }
 
-    private Order withAiAnalysis(Order o) {
-        o.setServiceBasePriceSnapshot(null);
-        o.setDeliverables(new java.util.ArrayList<>(List.of(com.ondemandmonitoring.order.domain.OrderDeliverable.builder()
-                .requirement(java.util.Map.of("aiAnalysisRequested", true)).build())));
-        return o;
-    }
-
-    @Test void aiImageAnalysisIsPricedByThePolicyRuleWhenRequested() {
-        policy(4, rule(PricingCategory.OUTPUT, "AI_IMAGE_ANALYSIS", PricingCalculationType.FIXED, "500000"));
-        var result = engine.calculate(withAiAnalysis(order("0")), List.of(snapshot("200000", 0, 0, 0, 0)));
-        assertThat(result.systemCalculatedAmount()).isEqualByComparingTo("700000");
-    }
-
-    @Test void aiImageAnalysisWithoutAPolicyPriceFailsInsteadOfBeingFree() {
-        policy(4);
-        assertThatThrownBy(() -> engine.calculate(withAiAnalysis(order("0")), List.of(snapshot("200000", 0, 0, 0, 0))))
-                .isInstanceOf(ApiException.class);
-    }
-
     @Test void highResolutionOutputUsesThePerTypeQuantitiesFromTheChecklists() {
         policy(4, rule(PricingCategory.OUTPUT, "4K_VIDEO", PricingCalculationType.PER_UNIT, "150000"));
         Order o = order("0");

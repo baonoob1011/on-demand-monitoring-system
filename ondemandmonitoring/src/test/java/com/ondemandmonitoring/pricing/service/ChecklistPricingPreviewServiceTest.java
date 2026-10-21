@@ -148,7 +148,7 @@ class ChecklistPricingPreviewServiceTest {
 
     @Test void aRepeatingOrderQuoteIsMultipliedByTheNumberOfVisits() {
         var once = preview.customerQuote(new Customer("s1", null));
-        var thrice = preview.customerQuote(new Customer("s1", null, null, null, null, null, 3));
+        var thrice = preview.customerQuote(new Customer("s1", null, null, null, null, 3));
         assertThat(thrice.occurrences()).isEqualTo(3);
         assertThat(once.occurrences()).isEqualTo(1);
         assertThat(thrice.checklistSubtotal()).isEqualByComparingTo(once.checklistSubtotal().multiply(new BigDecimal("3")));
@@ -166,22 +166,6 @@ class ChecklistPricingPreviewServiceTest {
         assertThat(result.checklists().getFirst().extraVideoCount()).isEqualTo(2);
         assertThat(result.packageFee()).isZero();
         assertThat(result.total()).isEqualByComparingTo("740000");
-    }
-
-    @Test void aiImageAnalysisIsAnAddOnPricedByThePolicyAndIncludedInTheQuoteTotal() {
-        var policy = policies.findEffectiveActive(Instant.now()).getFirst();
-        var rules = new ArrayList<>(policy.getRules());
-        var ai = included(MediaPricingComponent.INCLUDED_IMAGE, "500000");
-        ai.setCategory(PricingCategory.OUTPUT); ai.setMediaComponent(null); ai.setPricingProfile(null); ai.setRuleKey("AI_IMAGE_ANALYSIS");
-        rules.add(ai); policy.replaceRules(rules);
-
-        var without = preview.customerQuote(new Customer("s1", null));
-        var with = preview.customerQuote(new Customer("s1", null, null, null, null, true));
-
-        assertThat(without.addOns()).isEmpty();
-        assertThat(with.addOns()).extracting(a -> a.key()).containsExactly("AI_IMAGE_ANALYSIS");
-        assertThat(with.total().subtract(without.total())).isEqualByComparingTo("500000");
-        assertThat(with.checklistSubtotal()).isEqualByComparingTo(without.checklistSubtotal());
     }
 
     @Test void withoutAnyPricedChecklistTheServiceIsUnpricedAndTheCatalogPriceIsNotAFallback() {

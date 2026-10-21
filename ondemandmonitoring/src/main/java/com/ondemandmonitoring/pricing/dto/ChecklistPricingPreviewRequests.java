@@ -29,17 +29,13 @@ public final class ChecklistPricingPreviewRequests {
     /** Customer selection. No prices are accepted from the client, only choices and quantities. */
     public record Customer(@NotBlank String serviceId, @Size(max = 100) List<@Valid CustomerItem> items,
             @DecimalMin("0") BigDecimal areaHa, @DecimalMin("0") BigDecimal lengthKm,
-            @DecimalMin("0") BigDecimal altitudeM, Boolean aiAnalysisRequested,
+            @DecimalMin("0") BigDecimal altitudeM,
             @Min(1) @Max(100) Integer occurrences) {
         public Customer(String serviceId, List<CustomerItem> items) {
-            this(serviceId, items, null, null, null, null, null);
+            this(serviceId, items, null, null, null, null);
         }
         public Customer(String serviceId, List<CustomerItem> items, BigDecimal areaHa, BigDecimal lengthKm, BigDecimal altitudeM) {
-            this(serviceId, items, areaHa, lengthKm, altitudeM, null, null);
-        }
-        public Customer(String serviceId, List<CustomerItem> items, BigDecimal areaHa, BigDecimal lengthKm, BigDecimal altitudeM,
-                Boolean aiAnalysisRequested) {
-            this(serviceId, items, areaHa, lengthKm, altitudeM, aiAnalysisRequested, null);
+            this(serviceId, items, areaHa, lengthKm, altitudeM, null);
         }
     }
 

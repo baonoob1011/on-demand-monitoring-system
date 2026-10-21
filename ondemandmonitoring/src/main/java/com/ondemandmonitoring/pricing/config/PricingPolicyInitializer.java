@@ -19,8 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @org.springframework.core.annotation.Order(100) // before the checklist pricing seed (150) and the default-price backfill (200)
 public class PricingPolicyInitializer implements ApplicationRunner {
-    public static final String AI_IMAGE_ANALYSIS_KEY = "AI_IMAGE_ANALYSIS";
-
     private final PricingPolicyRepository policies;
 
     @Override @Transactional
@@ -59,8 +57,6 @@ public class PricingPolicyInitializer implements ApplicationRunner {
         rules.add(rule(PricingCategory.OUTPUT, "4K_VIDEO", "Mỗi video 4K theo yêu cầu", PricingCalculationType.PER_UNIT, null, null, "150000", null, null, null, i++));
         rules.add(fixed(PricingCategory.OUTPUT, "THERMAL", "Dữ liệu ảnh nhiệt", "500000", i++));
         rules.add(fixed(PricingCategory.OUTPUT, "MULTISPECTRAL", "Dữ liệu đa phổ", "700000", i++));
-        rules.add(fixed(PricingCategory.OUTPUT, "AI_REPORT", "Báo cáo phân tích bằng AI", "400000", i++));
-        rules.add(fixed(PricingCategory.OUTPUT, AI_IMAGE_ANALYSIS_KEY, "Phân tích hình ảnh và đánh dấu dấu hiệu bất thường", "500000", i++));
         rules.add(fixed(PricingCategory.RESOURCE, "CUSTOM_BASE", "Chi phí cơ sở cho công việc tùy chỉnh", "2000000", i++));
         rules.add(fixed(PricingCategory.RESOURCE, "PILOT", "Nhân sự điều khiển", "800000", i++));
         rules.add(fixed(PricingCategory.RESOURCE, "DRONE", "Thiết bị bay", "600000", i++));
@@ -96,9 +92,7 @@ public class PricingPolicyInitializer implements ApplicationRunner {
                         && required.profile().equalsIgnoreCase(rule.getPricingProfile())
                         && rule.getMediaComponent() == required.component()))
                 .toList();
-        boolean aiMissing = active.getRules().stream().noneMatch(rule -> rule.isEnabled()
-                && rule.getCategory() == PricingCategory.OUTPUT && AI_IMAGE_ANALYSIS_KEY.equalsIgnoreCase(rule.getRuleKey()));
-        if (missing.isEmpty() && !aiMissing) return;
+        if (missing.isEmpty()) return;
 
         Instant now = Instant.now();
         PricingPolicy repaired = copyPolicy(active);
@@ -142,11 +136,6 @@ public class PricingPolicyInitializer implements ApplicationRunner {
         if (missing.contains(new RequiredMedia(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.EXTRA_AREA))) {
             rules.add(media(ChecklistPriceCalculator.GENERIC_CUSTOMER_ADDED_PROFILE, MediaPricingComponent.EXTRA_AREA,
                     null, null, null, "10000", priority));
-        }
-        if (aiMissing) {
-            rules.removeIf(rule -> rule.getCategory() == PricingCategory.OUTPUT && AI_IMAGE_ANALYSIS_KEY.equalsIgnoreCase(rule.getRuleKey()));
-            rules.add(fixed(PricingCategory.OUTPUT, AI_IMAGE_ANALYSIS_KEY, "Phân tích hình ảnh và đánh dấu dấu hiệu bất thường",
-                    "500000", priority++));
         }
         repaired.replaceRules(rules);
 

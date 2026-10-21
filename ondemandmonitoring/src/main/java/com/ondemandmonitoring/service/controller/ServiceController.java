@@ -100,8 +100,7 @@ public class ServiceController {
     @Operation(summary = "Estimate service pricing", description = "Returns backend-owned pricing for the selected service and optional add-ons.")
     @GetMapping("/pricing-estimate")
     public ResponseEntity<ApiResponse<ServicePricingEstimateResponse>> estimatePricing(
-            @RequestParam String serviceId,
-            @RequestParam(defaultValue = "false") boolean aiImageAnalysis) {
+            @RequestParam String serviceId) {
 
         Service service = serviceService.getEntityById(serviceId);
         if (!Boolean.TRUE.equals(service.getIsActive())) {
@@ -110,15 +109,6 @@ public class ServiceController {
 
         List<ServicePricingEstimateResponse.AdditionalRequirementPrice> additionalRequirements =
                 new ArrayList<>();
-
-        if (aiImageAnalysis) {
-            additionalRequirements.add(ServicePricingEstimateResponse.AdditionalRequirementPrice.builder()
-                    .type("AI_IMAGE_ANALYSIS")
-                    .description("Phân tích hình ảnh và đánh dấu dấu hiệu bất thường")
-                    .additionalPrice(priceResolver.aiImageAnalysisPrice().orElseThrow(() -> new ApiException(
-                            ErrorCode.PRICING_RULE_NOT_FOUND, "AI image analysis is not priced in the active pricing policy")))
-                    .build());
-        }
 
         BigDecimal additionalTotal = additionalRequirements.stream()
                 .map(ServicePricingEstimateResponse.AdditionalRequirementPrice::additionalPrice)

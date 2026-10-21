@@ -7,9 +7,7 @@ import com.ondemandmonitoring.checklist.repository.ServiceChecklistRepository;
 import com.ondemandmonitoring.checklist.util.ChecklistContentNormalizer;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.pricing.config.PricingPolicyInitializer;
 import com.ondemandmonitoring.pricing.domain.PricingPolicy;
-import com.ondemandmonitoring.pricing.enums.PricingCategory;
 import com.ondemandmonitoring.pricing.dto.ChecklistPriceBreakdown;
 import com.ondemandmonitoring.pricing.dto.ChecklistPricingPreviewRequests;
 import com.ondemandmonitoring.pricing.dto.ServicePricePreviewResponse;
@@ -125,14 +123,6 @@ public class ChecklistPricingPreviewService {
         }
         // The price source follows the service's default checklist set, exactly as at order creation.
         List<ServicePricePreviewResponse.AddOn> addOns = new ArrayList<>();
-        if (Boolean.TRUE.equals(request.aiAnalysisRequested())) {
-            var rule = policy.getRules().stream().filter(r -> r.isEnabled() && r.getCategory() == PricingCategory.OUTPUT
-                    && PricingPolicyInitializer.AI_IMAGE_ANALYSIS_KEY.equalsIgnoreCase(r.getRuleKey())).findFirst()
-                    .orElseThrow(() -> new ApiException(ErrorCode.PRICING_RULE_NOT_FOUND,
-                            "AI image analysis is not priced in the active pricing policy"));
-            addOns.add(new ServicePricePreviewResponse.AddOn(rule.getRuleKey(), rule.getDescription(),
-                    whole(rule.getFixedAmount())));
-        }
         int occurrences = request.occurrences() == null ? 1 : Math.max(1, Math.min(PricingOccurrences.MAX, request.occurrences()));
         if (occurrences > 1) {
             priced = priced.stream().map(row -> row.times(occurrences)).toList();
