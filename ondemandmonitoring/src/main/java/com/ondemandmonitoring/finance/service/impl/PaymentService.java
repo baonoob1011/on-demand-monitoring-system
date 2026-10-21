@@ -16,6 +16,8 @@ import com.ondemandmonitoring.finance.record.PreparedPayment;
 import com.ondemandmonitoring.finance.service.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 
 /** Orchestrates payment use cases without containing provider checksum details. */
 @Service
@@ -25,8 +27,19 @@ public class PaymentService implements IPaymentService {
     private final IPaymentWebhookService webhookProcessor;
     private final PaymentGateway gateway;
     private final PaymentStatusGateway statusGateway;
+    private final Environment environment;
 
     public PaymentResponse createDeposit(String invoiceId, String clientIp) { return create(invoiceId, PaymentType.DEPOSIT, clientIp); }
+    public PaymentResponse completeTestDeposit(String invoiceId) {
+        if (!environment.acceptsProfiles(Profiles.of("!prod"))) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Test payment is disabled in production");
+        }
+        PreparedPayment prepared = persistence.prepare(invoiceId, PaymentType.DEPOSIT);
+        webhookProcessor.process(new VerifiedWebhook(
+                prepared.transactionReference(), prepared.amount(), "VND",
+                "TEST-" + prepared.transactionReference(), null, "00", "00", true));
+        return persistence.getByReference(prepared.transactionReference());
+    }
     public PaymentResponse createFinal(String invoiceId, String clientIp) { return create(invoiceId, PaymentType.FINAL_PAYMENT, clientIp); }
     public PaymentResponse get(String paymentId) { return persistence.get(paymentId); }
     public PaymentResponse getByReference(String transactionReference) {

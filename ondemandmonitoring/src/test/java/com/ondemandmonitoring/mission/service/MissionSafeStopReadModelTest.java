@@ -79,12 +79,14 @@ class MissionSafeStopReadModelTest {
     @ParameterizedTest @EnumSource(value=RoleCode.class, names={"MANAGER","ADMIN"})
     void managerAdminCapabilitiesUseExistingGuardsAndNeverConfirmLanding(RoleCode role) {
         authenticate(role,"manager"); requested(true); mission.setStatus(MissionStatus.IN_FLIGHT);
+        order.setExecutionPlanStatus(ExecutionPlanStatus.FINALIZED);
         var response = service.get("m1");
         assertTrue(response.canRequestSafeStop()); assertFalse(response.canConfirmSafeStop());
         assertFalse(response.canCleanupSafeStop()); assertFalse(response.canCancelMission());
         assertEquals("manager", response.requestedBy()); assertEquals("Weather", response.reason());
         mission.setStatus(MissionStatus.PENDING_REVIEW); mission.setSafeStopStatus(MissionSafeStopStatus.READY_FOR_CANCELLATION);
         mission.setSafeStopConfirmedAt(Instant.now()); mission.setSafeStopCleanedAt(Instant.now());
+        order.setExecutionPlanStatus(ExecutionPlanStatus.DRAFT); // Manager opens an amendment before cancellation.
         response = service.get("m1");
         assertTrue(response.canCleanupSafeStop(),"cleanup replay is intentionally idempotent"); assertTrue(response.canCancelMission());
         assertFalse(response.canConfirmSafeStop());

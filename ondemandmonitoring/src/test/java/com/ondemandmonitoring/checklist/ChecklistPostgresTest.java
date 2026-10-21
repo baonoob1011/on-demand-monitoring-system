@@ -554,7 +554,8 @@ class ChecklistPostgresTest {
             return new OrderService(orders, services, deliverables, links, times, resolver,
                     mock(com.ondemandmonitoring.user.repository.CustomerProfileRepository.class),
                     Mappers.getMapper(OrderMapper.class), snapshots, reviewRecords,
-                    mock(com.ondemandmonitoring.finance.repository.QuoteRepository.class));
+                    mock(com.ondemandmonitoring.finance.repository.QuoteRepository.class),
+                    mock(com.ondemandmonitoring.finance.repository.InvoiceRepository.class));
         }
 
         @Bean com.ondemandmonitoring.review.service.OrderReviewRecordInitializer reviewRecords() {

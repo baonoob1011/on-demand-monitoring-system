@@ -20,6 +20,7 @@ import com.ondemandmonitoring.mission.dto.request.AssignStaffRequest;
 import com.ondemandmonitoring.mission.dto.response.FlightTokenResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.enums.MissionStaffRole;
+import com.ondemandmonitoring.mission.enums.FlightPermitStatus;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
 import com.ondemandmonitoring.mission.enums.StaffResponseStatus;
 import com.ondemandmonitoring.mission.mapper.FlightTokenMapper;
@@ -620,6 +621,18 @@ class MissionServiceTest {
     class F3_3_TakeoffAndFlightLifecycle {
 
         @Test
+        @DisplayName("startMission is blocked until the flight permit is approved")
+        void startMission_withoutApprovedPermit_throws() {
+            Mission mission = buildMission("m-no-permit", MissionStatus.READY_TO_FLY);
+            mission.setFlightPermitStatus(FlightPermitStatus.PENDING);
+            when(missionRepository.findById("m-no-permit")).thenReturn(Optional.of(mission));
+
+            assertThatThrownBy(() -> missionService.startMission("m-no-permit"))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessageContaining("Flight permit must be approved");
+        }
+
+        @Test
         @DisplayName("1. startMission success with valid FlightToken")
         void startMission_success_withValidToken() {
             Mission mission = buildMission("m-7", MissionStatus.READY_TO_FLY);
@@ -955,6 +968,7 @@ class MissionServiceTest {
         m.setId(id);
         m.setMissionCode("MC-" + id);
         m.setStatus(status);
+        m.setFlightPermitStatus(FlightPermitStatus.APPROVED);
         var order = new com.ondemandmonitoring.order.domain.Order(); order.setId("order-" + id);
         m.setOrder(order);
         lenient().when(orderRepository.findByIdForUpdate(order.getId())).thenReturn(Optional.of(order));

@@ -69,6 +69,7 @@ public class OrderService implements IOrderService {
     IOrderChecklistSnapshotService checklistSnapshots;
     OrderReviewRecordInitializer reviewRecords;
     com.ondemandmonitoring.finance.repository.QuoteRepository quoteRepository;
+    com.ondemandmonitoring.finance.repository.InvoiceRepository invoiceRepository;
 
     @Override
     @Transactional
@@ -617,6 +618,11 @@ public class OrderService implements IOrderService {
             var response = orderMapper.toResponse(order);
             enrichCustomerProfile(response, order);
             response.setChecklistItems(snapshots.getOrDefault(order.getId(), List.of()));
+            if (order.getOrderStatus() == OrderStatus.APPROVED) {
+                response.setDepositSatisfied(invoiceRepository.findByOrderId(order.getId())
+                        .map(invoice -> invoice.getPaidAmount().compareTo(invoice.getDepositAmount()) >= 0)
+                        .orElse(false));
+            }
             return response;
         }).toList();
     }

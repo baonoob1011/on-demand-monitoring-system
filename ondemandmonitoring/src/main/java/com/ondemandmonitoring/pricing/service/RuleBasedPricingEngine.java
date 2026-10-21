@@ -107,12 +107,6 @@ public class RuleBasedPricingEngine implements PricingEngine {
         BigDecimal highResolutionVideo = requestedQualityQuantity(order, "VIDEO", "4K");
         if (highResolutionVideo.signum() > 0)
             keyed(policy, PricingCategory.OUTPUT, "4K_VIDEO").ifPresent(rule -> applyRule(result, rule, highResolutionVideo, base));
-        if (aiAnalysisRequested(order)) {
-            PricingRule ai = keyed(policy, PricingCategory.OUTPUT, PricingPolicyInitializer.AI_IMAGE_ANALYSIS_KEY)
-                    .orElseThrow(() -> new ApiException(ErrorCode.PRICING_RULE_NOT_FOUND,
-                            "AI image analysis is requested but the active pricing policy has no price for it"));
-            addFixed(result, ai, BigDecimal.ONE);
-        }
         scaleVisitLines(result, visitStart, occurrences);
         if (Boolean.TRUE.equals(order.getPermitRequired()) || order.getPermitStatus() == OrderPermitStatus.NEED_SUPPORT)
             keyed(policy, PricingCategory.PERMIT, "REQUIRED").ifPresent(rule -> addFixed(result, rule, BigDecimal.ONE));
@@ -180,12 +174,6 @@ public class RuleBasedPricingEngine implements PricingEngine {
     }
     private List<PricingRule> enabled(PricingPolicy policy, PricingCategory category) {
         return policy.getRules().stream().filter(PricingRule::isEnabled).filter(r -> r.getCategory() == category).toList();
-    }
-    /** The customer's AI image analysis choice travels in the deliverable requirement JSON; the price is a policy rule. */
-    static boolean aiAnalysisRequested(Order order) {
-        if (order.getDeliverables() == null) return false;
-        return order.getDeliverables().stream().map(d -> d.getRequirement())
-                .anyMatch(r -> r != null && Boolean.TRUE.equals(r.get("aiAnalysisRequested")));
     }
     private BigDecimal polygonHectares(Order order) {
         if (order.getTargetArea() == null) return BigDecimal.ZERO;

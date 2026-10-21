@@ -69,6 +69,7 @@ public interface OrderMapper {
     @Mapping(target = "coverageArea", expression = "java(toCoverageArea(order.getTargetArea()))")
     @Mapping(source = "deliverables", target = "deliverables")
     @Mapping(target = "checklistItems", ignore = true)
+    @Mapping(target = "depositSatisfied", ignore = true)
     OrderCreateResponse toResponse(Order order);
 
     @Mapping(source = "deliverableType.id", target = "deliverableTypeId")

@@ -1,7 +1,6 @@
 package com.ondemandmonitoring.common.exception;
 
 import com.ondemandmonitoring.common.api.ApiResponse;
-import com.openai.errors.NotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -206,22 +205,6 @@ public class GlobalExceptionHandler {
                 .body(response);
     }
 
-    @ExceptionHandler(NotFoundException.class)
-    public ResponseEntity<ApiResponse<Void>> handleAiNotFoundException(
-            com.openai.errors.NotFoundException exception
-    ) {
-        log.warn(
-                "AI provider returned 404 Not Found: {}",
-                exception.getMessage()
-        );
-
-        return ResponseEntity
-                .status(HttpStatus.NOT_FOUND)
-                .body(ApiResponse.error(
-                        "AI_RESOURCE_NOT_FOUND",
-                        "AI provider resource or endpoint was not found"
-                ));
-    }
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleUnexpectedException(
             Exception exception,

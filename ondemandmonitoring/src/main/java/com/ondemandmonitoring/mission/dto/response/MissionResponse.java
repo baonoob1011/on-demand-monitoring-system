@@ -2,6 +2,7 @@ package com.ondemandmonitoring.mission.dto.response;
 
 import com.ondemandmonitoring.mission.enums.MediaType;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
+import com.ondemandmonitoring.mission.enums.FlightPermitStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -25,6 +26,12 @@ public class MissionResponse {
 
     @Schema(description = "Current status of the mission", example = "PENDING")
     MissionStatus status;
+
+    FlightPermitStatus flightPermitStatus;
+    String flightPermitNote;
+    String flightPermitFileName;
+    String flightPermitContentType;
+    String flightPermitDataUrl;
 
     com.ondemandmonitoring.mission.enums.MissionSafeStopStatus safeStopStatus;
     Instant safeStopRequestedAt;
