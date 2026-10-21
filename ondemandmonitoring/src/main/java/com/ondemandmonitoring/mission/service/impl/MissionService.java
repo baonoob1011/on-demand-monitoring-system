@@ -129,6 +129,8 @@ public class MissionService implements IMissionService {
     com.ondemandmonitoring.device.repository.DeviceTelemetryRepository telemetryRepository;
     @Autowired @NonFinal
     IDeliveryWorkflowService deliveryWorkflowService;
+    @Autowired(required = false) @NonFinal
+    ChecklistAssignmentStatusSync checklistAssignmentStatusSync;
     // =========================================================================
     // Query Methods
     // =========================================================================
@@ -1058,6 +1060,7 @@ public class MissionService implements IMissionService {
             mission.setActualStartAt(Instant.now());
         }
         updateDeviceStatus(mission, DeviceStatus.ACTIVE_MISSION);
+        if (checklistAssignmentStatusSync != null) checklistAssignmentStatusSync.syncForMission(mission);
 
         log.info("Mission {} IN_FLIGHT – WebSocket telemetry and RTSP video stream OPENED", missionId);
         Mission saved = missionRepository.save(mission);
@@ -1139,6 +1142,7 @@ public class MissionService implements IMissionService {
         }
         mission.setCompletedAt(completedAt);
         releaseMissionResources(mission, "MISSION_COMPLETE");
+        if (checklistAssignmentStatusSync != null) checklistAssignmentStatusSync.syncForMission(mission);
         log.info("Mission {} COMPLETED successfully", missionId);
         Mission saved = missionRepository.save(mission);
         missionResultService.ensureCompletedResult(saved);

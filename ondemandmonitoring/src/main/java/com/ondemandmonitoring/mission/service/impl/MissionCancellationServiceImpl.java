@@ -23,6 +23,8 @@ public class MissionCancellationServiceImpl implements IMissionCancellationServi
     private final MissionRepository missions;
     private final MissionResultRepository results;
     private final AuthenticatedUserResolver actor;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private ChecklistAssignmentStatusSync checklistAssignmentStatusSync;
 
     @Override
     @Transactional
@@ -40,6 +42,7 @@ public class MissionCancellationServiceImpl implements IMissionCancellationServi
         mission.setCancellationReason(request.reason().strip());
         order.setExecutionPlanRevision(order.getExecutionPlanRevision() + 1);
         missions.saveAndFlush(mission); orders.saveAndFlush(order);
+        if (checklistAssignmentStatusSync != null) checklistAssignmentStatusSync.syncForMission(mission);
         return new MissionCancellationResponse(missionId, mission.getStatus(), order.getExecutionPlanRevision(),
                 mission.getCancellationAt(), mission.getCancelledBy(), mission.getCancellationReason());
     }

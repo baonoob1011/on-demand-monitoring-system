@@ -64,6 +64,7 @@ public enum ErrorCode {
     MISSION_PLANNING_ONLY("Planning Mission cannot enter runtime before finalize/materialization cutover", HttpStatus.CONFLICT),
     CHECKLIST_ASSIGNMENT_CROSS_ORDER("Checklist assignment must belong to the same Mission and Order", HttpStatus.CONFLICT),
     CHECKLIST_ASSIGNMENT_DUPLICATE("Checklist selection contains duplicate items", HttpStatus.CONFLICT),
+    CHECKLIST_ALREADY_ASSIGNED("Checklist item is already assigned to another Mission; remove it there first", HttpStatus.CONFLICT),
     CHECKLIST_COVERAGE_INCOMPLETE("Every Order checklist item must be assigned to an effective Mission", HttpStatus.CONFLICT),
     CHECKLIST_ASSIGNMENT_NOT_FINALIZED("Mission checklist plan is not finalized", HttpStatus.CONFLICT),
     MISSION_STATUS_INVALID("Mission status is invalid for this operation", HttpStatus.CONFLICT),
