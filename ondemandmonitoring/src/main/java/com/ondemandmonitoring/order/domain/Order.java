@@ -1,6 +1,5 @@
 package com.ondemandmonitoring.order.domain;
 
-import com.ondemandmonitoring.Consultation.domains.CustomerConsultation;
 import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.order.dto.OrderAuthorizationDocument;
 import com.ondemandmonitoring.order.dto.OrderPermitDocument;
@@ -257,9 +256,6 @@ public class Order extends BaseEntity {
     @Column(name = "flight_area_reviewed_at")
     private Instant flightAreaReviewedAt;
 
-    @Builder.Default
-    @OneToMany(mappedBy = "order", fetch = FetchType.LAZY)
-    private List<CustomerConsultation> consultations = new ArrayList<>();
 
     @Builder.Default
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)

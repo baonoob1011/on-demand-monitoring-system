@@ -74,13 +74,6 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.ok("Resource preview retrieved", null));
     }
 
-    @Operation(summary = "Get order latest analysis", description = "Retrieves latest AI analysis for an order (returns null if none)")
-    @GetMapping("/{orderId}/analysis/latest")
-    @PreAuthorize("@orderAuthorizationService.canViewOrder(#orderId)")
-    public ResponseEntity<ApiResponse<Object>> getLatestAnalysis(@PathVariable String orderId) {
-        return ResponseEntity.ok(ApiResponse.ok("Latest analysis retrieved", null));
-    }
-
     @Operation(summary = "Approve an order", description = "Manager approves an order. Mission scheduling is assigned later by staff.")
     @PostMapping("/{orderId}/approve")
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")

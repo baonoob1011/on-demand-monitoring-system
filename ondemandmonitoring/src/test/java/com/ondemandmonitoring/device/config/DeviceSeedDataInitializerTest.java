@@ -54,15 +54,21 @@ class DeviceSeedDataInitializerTest {
         verify(deviceModelRepository, times(1)).save(any(DeviceModel.class));
 
         ArgumentCaptor<Device> deviceCaptor = ArgumentCaptor.forClass(Device.class);
-        verify(deviceRepository, times(1)).save(deviceCaptor.capture());
+        verify(deviceRepository, times(3)).save(deviceCaptor.capture());
 
-        Device device = deviceCaptor.getValue();
+        Device device = deviceCaptor.getAllValues().getFirst();
         assertThat(device.getSerialNumber()).isEqualTo("M3E-DEMO-001");
         assertThat(device.getDeviceCode()).isEqualTo("DRN-001");
         assertThat(device.getName()).isEqualTo("DJI Mavic 3 Enterprise");
         assertThat(device.getStatus()).isEqualTo(DeviceStatus.AVAILABLE);
         assertThat(device.getLastSeenAt()).isNull();
         assertThat(device.getDeviceModel()).isNotNull();
+        assertThat(deviceCaptor.getAllValues())
+                .extracting(Device::getDeviceCode)
+                .containsExactly("DRN-001", "DRN-002", "DRN-003");
+        assertThat(deviceCaptor.getAllValues())
+                .extracting(Device::getSerialNumber)
+                .containsExactly("M3E-DEMO-001", "M3E-DEMO-002", "M3E-DEMO-003");
     }
 
     @Test
@@ -81,7 +87,10 @@ class DeviceSeedDataInitializerTest {
         existingDevice.setName("Drone test 0052");
         existingDevice.setStatus(DeviceStatus.RESERVED);
 
-        when(deviceRepository.findBySerialNumber(anyString())).thenReturn(Optional.of(existingDevice));
+        when(deviceRepository.findBySerialNumber(anyString())).thenAnswer(invocation ->
+                "M3E-DEMO-001".equals(invocation.getArgument(0))
+                        ? Optional.of(existingDevice)
+                        : Optional.empty());
         when(deviceRepository.save(any(Device.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         initializer.run(null);

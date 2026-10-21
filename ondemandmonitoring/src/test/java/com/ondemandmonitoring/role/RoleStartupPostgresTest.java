@@ -52,7 +52,6 @@ class RoleStartupPostgresTest {
         properties.add("app.media.sqs.enabled", () -> "false");
         properties.add("app.media.reconciliation.enabled", () -> "false");
         properties.add("mission.replanning.enabled", () -> "false");
-        properties.add("spring.ai.openai.api-key", () -> "verification-not-a-real-key");
     }
 
     @Test

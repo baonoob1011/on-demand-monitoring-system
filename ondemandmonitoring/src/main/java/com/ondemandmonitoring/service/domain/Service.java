@@ -1,6 +1,5 @@
 package com.ondemandmonitoring.service.domain;
 
-import com.ondemandmonitoring.Consultation.domains.CustomerConsultation;
 import com.ondemandmonitoring.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -64,7 +63,5 @@ public class Service extends BaseEntity {
     private Boolean checklistDefaultsInitialized = false;
 
 
-    @Builder.Default
-    @OneToMany(mappedBy = "recommendedService", fetch = FetchType.LAZY)
-    private List<CustomerConsultation> consultations = new ArrayList<>();
+
 }

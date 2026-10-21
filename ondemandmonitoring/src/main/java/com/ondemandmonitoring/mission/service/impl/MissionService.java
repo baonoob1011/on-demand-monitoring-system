@@ -9,6 +9,9 @@ import com.ondemandmonitoring.device.enums.DeviceStatus;
 import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.devicecheck.dto.response.PreDeviceCheckResponse;
 import com.ondemandmonitoring.devicecheck.repository.PersistedPostDeviceCheckRepository;
+import com.ondemandmonitoring.devicecheck.repository.PersistedPreDeviceCheckRepository;
+import com.ondemandmonitoring.devicecheck.enums.PreDeviceCheckStatus;
+import com.ondemandmonitoring.devicecheck.enums.PreDeviceItemStatus;
 import com.ondemandmonitoring.devicecheck.service.IPreDeviceCheckCompletionService;
 import com.ondemandmonitoring.devicecheck.service.IPersistedPostDeviceCheckService;
 import com.ondemandmonitoring.mission.domain.ControlHandover;
@@ -109,6 +112,8 @@ public class MissionService implements IMissionService {
     DeviceConnectionRepository deviceConnectionRepository;
     ControlHandoverRepository controlHandoverRepository;
     PersistedPostDeviceCheckRepository postDeviceCheckRepository;
+    @Autowired @NonFinal
+    PersistedPreDeviceCheckRepository preDeviceCheckRepository;
     MaintenanceTicketRepository maintenanceTicketRepository;
     OrderRepository orderRepository;
     InvoiceRepository invoiceRepository;
@@ -134,6 +139,34 @@ public class MissionService implements IMissionService {
     // =========================================================================
     // Query Methods
     // =========================================================================
+
+    @Override
+    @Transactional
+    @PreAuthorize("@missionAuthorizationService.canManageMissions()")
+    public MissionResponse updateFlightPermit(String missionId, FlightPermitUpdateRequest request) {
+        Mission mission = getMissionByIdOrThrow(missionId);
+        boolean hasDevice = missionDeviceAssignmentRepository
+                .findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc(mission.getId()).stream()
+                .anyMatch(a -> a.getReleasedAt() == null && a.getDevice() != null);
+        boolean hasStaff = missionStaffAssignmentRepository
+                .findAllByMissionIdAndIsCurrentTrue(mission.getId()).stream()
+                .anyMatch(a -> a.getReleasedAt() == null);
+        if (!hasDevice || !hasStaff) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Assign a drone and staff before updating the flight permit");
+        }
+        if (request.dataUrl() != null && request.dataUrl().length() > 7_000_000) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Flight permit file must not exceed 5 MB");
+        }
+        mission.setFlightPermitStatus(request.status());
+        mission.setFlightPermitNote(blankToNull(request.note()));
+        if (request.dataUrl() != null && !request.dataUrl().isBlank()) {
+            mission.setFlightPermitFileName(request.fileName());
+            mission.setFlightPermitContentType(request.contentType());
+            mission.setFlightPermitDataUrl(request.dataUrl());
+        }
+        return missionMapper.toResponse(missionRepository.save(mission));
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -620,6 +653,7 @@ public class MissionService implements IMissionService {
     @PreAuthorize("@missionAuthorizationService.canStartMission(#missionId)")
     public MissionResponse startMissionWorkflow(String missionId) {
         Mission mission = getRuntimeMissionOrThrow(missionId);
+        requireFlightPermitApproved(mission);
         requireCrewConfirmationStatus(mission);
         if (!isRequiredCrewAccepted(mission.getId())) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
@@ -988,6 +1022,7 @@ public class MissionService implements IMissionService {
         MissionRuntimeGate.requireOperationalCommandsAllowed(mission);
         String resolvedMissionId = mission.getId();
         requireStatus(mission, MissionStatus.READY_TO_FLY);
+        requireFreshPreflightAuthorization(resolvedMissionId);
 
         // Record ControlHandover audit log linked to current DeviceConnection
         DeviceConnection activeConnection = deviceConnectionRepository
@@ -1017,6 +1052,7 @@ public class MissionService implements IMissionService {
     public MissionResponse startMission(String missionId, String tokenValue) {
         Mission mission = getRuntimeMissionOrThrow(missionId);
         MissionRuntimeGate.requireOperationalCommandsAllowed(mission);
+        requireFlightPermitApproved(mission);
         String resolvedMissionId = mission.getId();
         requireStatus(mission, MissionStatus.READY_TO_FLY);
 
@@ -1072,6 +1108,32 @@ public class MissionService implements IMissionService {
     @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse startMission(String missionId) {
         return startMission(missionId, null);
+    }
+
+    private void requireFlightPermitApproved(Mission mission) {
+        if (mission.getFlightPermitStatus() != FlightPermitStatus.APPROVED) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Flight permit must be approved before the mission can start");
+        }
+    }
+
+    private void requireFreshPreflightAuthorization(String missionId) {
+        var run = preDeviceCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId)
+                .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REQUEST,
+                        "Không tìm thấy phiên kiểm tra trước chuyến bay."));
+        Instant now = Instant.now();
+        boolean blocked = run.getStatus() != PreDeviceCheckStatus.PASSED
+                || run.getItems().stream().anyMatch(item -> Boolean.TRUE.equals(item.getRequired())
+                && (item.getStatus() != PreDeviceItemStatus.PASSED
+                || item.getExpiresAt() == null || !item.getExpiresAt().isAfter(now)));
+        if (blocked) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Kết quả kiểm tra trước chuyến bay không còn hợp lệ. Vui lòng kiểm tra lại.");
+        }
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     @Override

@@ -23,10 +23,10 @@ public class CustomWorkAssessmentService {
         });
         a.setEstimatedFlightHours(r.estimatedFlightHours()); a.setEstimatedDistanceKm(r.estimatedDistanceKm()); a.setEstimatedAreaHa(r.estimatedAreaHa());
         a.setPilotCount(r.pilotCount()); a.setDroneCount(r.droneCount()); a.setBatteryUnits(r.batteryUnits()); a.setTerrain(r.terrain());
-        a.setThermalRequired(r.thermalRequired()); a.setMultispectralRequired(r.multispectralRequired()); a.setAiReportRequired(r.aiReportRequired());
+        a.setThermalRequired(r.thermalRequired()); a.setMultispectralRequired(r.multispectralRequired());
         a.setNightOperation(r.nightOperation()); a.setSpecialEquipment(trim(r.specialEquipment())); a.setOtherCostDrivers(trim(r.otherCostDrivers()));
         a.setAssessmentComplete(r.assessmentComplete()); return response(assessments.save(a));
     }
-    private CustomWorkAssessmentResponse response(CustomWorkAssessment a) { return new CustomWorkAssessmentResponse(a.getId(), a.getOrder().getId(), a.getEstimatedFlightHours(), a.getEstimatedDistanceKm(), a.getEstimatedAreaHa(), a.getPilotCount(), a.getDroneCount(), a.getBatteryUnits(), a.getTerrain(), a.isThermalRequired(), a.isMultispectralRequired(), a.isAiReportRequired(), a.isNightOperation(), a.getSpecialEquipment(), a.getOtherCostDrivers(), a.isAssessmentComplete(), a.getVersion() == null ? 0 : a.getVersion()); }
+    private CustomWorkAssessmentResponse response(CustomWorkAssessment a) { return new CustomWorkAssessmentResponse(a.getId(), a.getOrder().getId(), a.getEstimatedFlightHours(), a.getEstimatedDistanceKm(), a.getEstimatedAreaHa(), a.getPilotCount(), a.getDroneCount(), a.getBatteryUnits(), a.getTerrain(), a.isThermalRequired(), a.isMultispectralRequired(), a.isNightOperation(), a.getSpecialEquipment(), a.getOtherCostDrivers(), a.isAssessmentComplete(), a.getVersion() == null ? 0 : a.getVersion()); }
     private String trim(String s) { return s == null || s.isBlank() ? null : s.trim(); }
 }

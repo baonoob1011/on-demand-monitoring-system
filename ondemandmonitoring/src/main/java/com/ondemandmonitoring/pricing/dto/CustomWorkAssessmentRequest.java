@@ -8,5 +8,5 @@ public record CustomWorkAssessmentRequest(@DecimalMin("0") BigDecimal estimatedF
         @DecimalMin("0") BigDecimal estimatedDistanceKm, @DecimalMin("0") BigDecimal estimatedAreaHa,
         @Min(1) Integer pilotCount, @Min(1) Integer droneCount, @Min(0) Integer batteryUnits,
         @NotNull TerrainType terrain, boolean thermalRequired, boolean multispectralRequired,
-        boolean aiReportRequired, boolean nightOperation, @Size(max = 500) String specialEquipment,
+        boolean nightOperation, @Size(max = 500) String specialEquipment,
         @Size(max = 1000) String otherCostDrivers, boolean assessmentComplete) {}

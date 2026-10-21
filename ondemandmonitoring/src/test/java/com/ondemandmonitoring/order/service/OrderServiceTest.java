@@ -71,7 +71,8 @@ class OrderServiceTest {
                 orderMapper,
                 mock(IOrderChecklistSnapshotService.class),
                 mock(OrderReviewRecordInitializer.class),
-                mock(com.ondemandmonitoring.finance.repository.QuoteRepository.class)
+                mock(com.ondemandmonitoring.finance.repository.QuoteRepository.class),
+                mock(com.ondemandmonitoring.finance.repository.InvoiceRepository.class)
         );
 
         String userId = UUID.randomUUID().toString();

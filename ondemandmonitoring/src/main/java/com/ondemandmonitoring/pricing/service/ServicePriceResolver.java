@@ -83,14 +83,6 @@ public class ServicePriceResolver {
         return of(BigDecimal.ZERO);
     }
 
-    /** Price of the AI image analysis add-on in the active policy; empty when the policy does not price it. */
-    @Transactional(readOnly = true)
-    public java.util.Optional<BigDecimal> aiImageAnalysisPrice() {
-        return policies.findEffectiveActive(Instant.now()).stream().findFirst().flatMap(policy -> policy.getRules().stream()
-                .filter(r -> r.isEnabled() && r.getCategory() == com.ondemandmonitoring.pricing.enums.PricingCategory.OUTPUT
-                        && com.ondemandmonitoring.pricing.config.PricingPolicyInitializer.AI_IMAGE_ANALYSIS_KEY.equalsIgnoreCase(r.getRuleKey()))
-                .findFirst()).map(r -> whole(r.getFixedAmount()));
-    }
 
     private static BigDecimal whole(BigDecimal v) { return v == null ? BigDecimal.ZERO : v.setScale(0, RoundingMode.HALF_UP); }
 }

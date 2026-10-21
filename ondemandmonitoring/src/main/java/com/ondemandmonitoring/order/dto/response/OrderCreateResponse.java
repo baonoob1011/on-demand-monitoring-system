@@ -101,6 +101,8 @@ public class OrderCreateResponse {
     String reviewByName;
     Instant reviewAt;
     LegalReviewStatus legalReviewStatus;
+    /** Customer-facing payment milestone for approved orders; null before approval. */
+    Boolean depositSatisfied;
     String flightAreaReviewReason;
     String flightAreaReviewNote;
     Boolean requestedScopeFeasible;

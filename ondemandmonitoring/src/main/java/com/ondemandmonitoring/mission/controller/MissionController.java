@@ -16,6 +16,7 @@ import com.ondemandmonitoring.mission.dto.request.MissionRejectRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionResourceAssignmentRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionUpdateRequest;
 import com.ondemandmonitoring.mission.dto.request.PostFlightStatusRequest;
+import com.ondemandmonitoring.mission.dto.request.FlightPermitUpdateRequest;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionTelemetryReadinessResponse;
@@ -181,6 +182,16 @@ public class MissionController {
             @Valid @RequestBody AssignStaffRequest request) {
         MissionResponse response = missionService.assignStaff(id, request);
         return ResponseEntity.ok(ApiResponse.ok("Gán staff cho mission thành công", response));
+    }
+
+    @PatchMapping("/{id}/flight-permit")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<MissionResponse>> updateFlightPermit(
+            @PathVariable String id,
+            @Valid @RequestBody FlightPermitUpdateRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                "Cập nhật giấy phép bay thành công",
+                missionService.updateFlightPermit(id, request)));
     }
 
 

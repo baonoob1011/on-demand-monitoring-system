@@ -26,6 +26,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
@@ -88,12 +89,16 @@ public class PreDeviceCheckCompletionServiceImpl implements IPreDeviceCheckCompl
                     ErrorCode.INVALID_REQUEST,
                     "Latest persisted pre-device is not passed: " + run.getStatus());
         }
+        Instant now = Instant.now();
         boolean hasNonPassingItem = run.getItems().stream()
-                .anyMatch(item -> item.getStatus() != PreDeviceItemStatus.PASSED);
+                .anyMatch(item -> Boolean.TRUE.equals(item.getRequired())
+                        && (item.getStatus() != PreDeviceItemStatus.PASSED
+                        || item.getExpiresAt() == null
+                        || !item.getExpiresAt().isAfter(now)));
         if (hasNonPassingItem) {
             throw new ApiException(
                     ErrorCode.INVALID_REQUEST,
-                    "Every pre-device check item must pass before a flight token can be issued.");
+                    "Every required pre-flight item must pass and remain valid before a flight token can be issued.");
         }
         return run;
     }
