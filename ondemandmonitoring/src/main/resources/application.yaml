@@ -77,14 +77,6 @@ app:
       enabled: ${MEDIA_SQS_ENABLED:false}
       queue-url: ${MEDIA_SQS_QUEUE_URL:}
 
-mission:
-  replanning:
-    enabled: ${MISSION_REPLANNING_ENABLED:true}
-    cooldown-seconds: ${MISSION_REPLANNING_COOLDOWN_SECONDS:10}
-    route-deviation-threshold-meters: ${MISSION_REPLANNING_ROUTE_DEVIATION_THRESHOLD_METERS:20.0}
-    minimum-battery-reserve-percent: ${MISSION_REPLANNING_MINIMUM_BATTERY_RESERVE_PERCENT:20.0}
-    max-replans-per-mission: ${MISSION_REPLANNING_MAX_REPLANS_PER_MISSION:5}
-
 springdoc:
   api-docs:
     path: /v3/api-docs
@@ -93,11 +85,6 @@ springdoc:
     operationsSorter: method
     tagsSorter: alpha
 
-mapillary:
-  enabled: ${MAPILLARY_ENABLED:true}
-  base-url: ${MAPILLARY_BASE_URL:https://graph.mapillary.com}
-  access-token: ${MAPILLARY_ACCESS_TOKEN}
-  search-radius-meters: ${MAPILLARY_SEARCH_RADIUS_METERS:50}
 
 simulation:
   telemetry:
@@ -158,27 +145,10 @@ weather:
 # External providers are configuration only; every value has a code default in FlightAreaProperties.
 flight-area-assessment:
   max-radius-m: ${FLIGHT_AREA_MAX_RADIUS_M:5000}
-  max-altitude-agl-m: 500
-  restricted-zone-warning-distance-m: ${FLIGHT_AREA_RESTRICTED_ZONE_WARNING_DISTANCE_M:500}
-  obstacle-clearance-margin-m: 10
-  aggregate-timeout-ms: 25000
-  elevation:
-    base-url: ${FLIGHT_AREA_ELEVATION_BASE_URL:https://api.open-meteo.com}
-    path: /v1/elevation
-    connect-timeout-ms: 2000
-    read-timeout-ms: 4000
-  osm:
-    overpass-url: ${FLIGHT_AREA_OVERPASS_URL:https://overpass-api.de/api/interpreter}
+  ministry-flight-ban:
+    base-url: ${MINISTRY_FLIGHT_BAN_BASE_URL:https://cambay.mod.gov.vn}
+    path: ${MINISTRY_FLIGHT_BAN_PATH:/api/calculate-area}
     connect-timeout-ms: 3000
-    read-timeout-ms: 10000
-    server-timeout-seconds: 9
-    max-attempts: 2
-    retry-delay-ms: 300
-    query-max-radius-m: ${FLIGHT_AREA_OSM_QUERY_MAX_RADIUS_M:1500}
-    max-important-features: 15
-  cache:
-    enabled: true
-    elevation-ttl-minutes: 1440
-    osm-ttl-minutes: 60
-    max-entries: 500
+    read-timeout-ms: 8000
+    polygon-points: 64
 

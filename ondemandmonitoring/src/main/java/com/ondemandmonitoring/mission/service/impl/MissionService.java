@@ -45,7 +45,6 @@ import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.finance.enums.QuoteStatus;
 import com.ondemandmonitoring.finance.repository.InvoiceRepository;
 import com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService;
-import com.ondemandmonitoring.planning.service.MissionPlanningService;
 import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.IStaffDirectoryService;
@@ -108,7 +107,6 @@ public class MissionService implements IMissionService {
 
     // Supporting audit & work order repositories
     MissionPlanRepository missionPlanRepository;
-    MissionPlanningService missionPlanningService;
     DeviceConnectionRepository deviceConnectionRepository;
     ControlHandoverRepository controlHandoverRepository;
     PersistedPostDeviceCheckRepository postDeviceCheckRepository;
@@ -189,7 +187,6 @@ public class MissionService implements IMissionService {
     @PreAuthorize("@missionAuthorizationService.canViewMission(#missionId)")
     public MissionResponse getByIdResponse(String missionId) {
         Mission mission = getMissionByIdOrThrow(missionId);
-        ensureAcceptedMissionPlan(mission);
         return missionMapper.toResponse(mission);
     }
         @Override
@@ -640,9 +637,6 @@ public class MissionService implements IMissionService {
         });
         missionStaffAssignmentRepository.saveAll(assignments);
 
-        if (isRequiredCrewAccepted(resolvedMissionId)) {
-            ensureAcceptedMissionPlan(mission);
-        }
         return missionMapper.toResponse(missionRepository.save(mission));
     }
 
@@ -657,7 +651,6 @@ public class MissionService implements IMissionService {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
                     "All required crew members must accept before the mission can start");
         }
-        ensureAcceptedMissionPlan(mission);
         mission.setStatus(MissionStatus.SCHEDULED);
         if (mission.getActualStartAt() == null) {
             mission.setActualStartAt(Instant.now());
@@ -908,24 +901,6 @@ public class MissionService implements IMissionService {
                 .toInstant());
     }
 
-    private void ensureAcceptedMissionPlan(Mission mission) {
-        if (mission == null || mission.getId() == null) {
-            return;
-        }
-        if (mission.getStatus() == MissionStatus.CREATED
-                || mission.getStatus() == MissionStatus.RESOURCE_ASSIGNING
-                || mission.getStatus() == MissionStatus.WAITING_CREW_CONFIRMATION
-                || mission.getStatus() == MissionStatus.WAITING_OPERATOR_ACCEPTANCE
-                || mission.getStatus() == MissionStatus.CANCELLED) {
-            return;
-        }
-        if (getCurrentDevice(mission.getId()) == null
-                || missionPlanRepository.findByMissionId(mission.getId()).isPresent()) {
-            return;
-        }
-
-        missionPlanningService.generateGpsDirectPlan(mission.getId());
-    }
 //
 //    @Override
 //    @Transactional

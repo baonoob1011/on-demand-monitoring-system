@@ -31,7 +31,7 @@ class PersistedPreDeviceCheckServiceTest {
     @Mock com.ondemandmonitoring.mission.repository.DeviceConnectionRepository connectionRepository;
     @Mock com.ondemandmonitoring.device.repository.DeviceTelemetryRepository telemetryRepository;
     @Mock com.ondemandmonitoring.user.service.AuthenticatedUserResolver authenticatedUserResolver;
-    @Mock com.ondemandmonitoring.environment.repository.MissionWeatherCheckRepository weatherCheckRepository;
+    @Mock com.ondemandmonitoring.weather.repository.MissionWeatherCheckRepository weatherCheckRepository;
     @InjectMocks PersistedPreDeviceCheckService service;
 
     @Test
