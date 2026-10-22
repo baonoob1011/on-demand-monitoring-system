@@ -22,11 +22,11 @@ public interface DepotRepository extends JpaRepository<Depot, String> {
         FROM depots d
         WHERE d.status = 'ACTIVE'
         ORDER BY ST_Distance(
-            d.location::geography,
+            CAST(d.location AS geography),
             ST_SetSRID(
                 ST_MakePoint(:longitude, :latitude),
                 4326
-            )::geography
+            ) AS geography)
         ) ASC, d.id ASC
         LIMIT 1
         """, nativeQuery = true)
@@ -37,11 +37,11 @@ public interface DepotRepository extends JpaRepository<Depot, String> {
 
     @Query(value = """
         SELECT ST_Distance(
-            d.location::geography,
+            CAST(d.location AS geography),
             ST_SetSRID(
                 ST_MakePoint(:longitude, :latitude),
                 4326
-            )::geography
+            ) AS geography)
         )
         FROM depots d
         WHERE d.id = :depotId
