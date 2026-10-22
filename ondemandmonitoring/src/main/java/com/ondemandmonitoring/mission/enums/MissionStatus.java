@@ -2,18 +2,19 @@ package com.ondemandmonitoring.mission.enums;
 
 public enum MissionStatus {
 
-    CREATED,
+    PLANNING,
 
     /** Financial gate: operational work is blocked until the required deposit is verified. */
     WAITING_DEPOSIT,
-
-    RESOURCE_ASSIGNING,
 
     WAITING_CREW_CONFIRMATION,
 
     WAITING_OPERATOR_ACCEPTANCE,
 
-    /** Operator on-site, mission assigned and acknowledged. */
+    /** Execution plan has been finalized and the mission is ready for crew confirmation. */
+    READY,
+
+    /** Required crew members accepted and the mission is scheduled for execution. */
     SCHEDULED,
 
     /** Device powered on, telemetry link with GCS app confirmed. */

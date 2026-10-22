@@ -200,7 +200,7 @@ Invoice/Payment: Invoice `ISSUED → PARTIALLY_PAID → PAID` (tính lại từ 
 ## 6. Order ↔ Mission 1:N, execution, evidence, finance (E–G)
 
 ### 6.1 Mission
-- Tạo: `POST /api/orders/{orderId}/missions` (`OrderMissionController` → `MissionService.createMissionWithOutcome`): idempotency key; plan DRAFT; Order APPROVED (hoặc IN_PROGRESS khi đã amend); `expectedPlanRevision` khớp; lịch trong khoảng ngày của Order; cọc đã trả ⇒ `RESOURCE_ASSIGNING`; tăng plan revision.
+- Tạo: `POST /api/missions/{orderId}` (`MissionController` → `MissionService.createMissionWithOutcome`): Order tồn tại, plan DRAFT, Order APPROVED (hoặc IN_PROGRESS khi đã amend), tiền cọc đã thanh toán; Mission bắt đầu đúng một giờ trước giờ khách mong muốn và kết thúc không muộn hơn giờ kết thúc mong muốn ⇒ `RESOURCE_ASSIGNING`.
 - `MissionStatus`: `CREATED, WAITING_DEPOSIT, RESOURCE_ASSIGNING, WAITING_CREW_CONFIRMATION, WAITING_OPERATOR_ACCEPTANCE, SCHEDULED, CONNECTED, PREFLIGHT_CHECKING, READY_TO_FLY, FAILED_PREFLIGHT, PENDING_APPROVAL, IN_FLIGHT, IN_PROGRESS (legacy), RETURNING, POSTFLIGHT_CHECKING, PENDING_REVIEW, COMPLETED, FAILED, CANCELLED`.
 - Gán: `assign-device`, `assign-staff` (RESOURCE_ASSIGNING/WAITING_CREW_CONFIRMATION) → crew `accept/reject` → `start` (flight token) → `return` → `postflight` → PENDING_REVIEW → `complete` (post-device check + `requireReadyForSubmission`) → COMPLETED (release resources, `ensureCompletedResult`, `markProcessing`). `fail` ⇒ FAILED.
 - Deposit: `MissionPaymentEligibilityService` — đủ cọc ⇔ `paidAmount ≥ depositAmount`; webhook gọi `unlockIfEligible` cho mọi Mission của Order (WAITING_DEPOSIT → RESOURCE_ASSIGNING).
@@ -332,7 +332,7 @@ stateDiagram-v2
 | Kết quả thanh toán | `PaymentResultPage` | GET/POST `/api/payments/by-reference/{ref}[/refresh]` | `PaymentService.refreshByReference` | `PaymentResponse` | `payments` |
 | Webhook | — | VNPay IPN/return | `VnPayWebhookController` → `PaymentWebhookProcessor.process` | `VerifiedWebhook` | `payments`, `invoices`, `missions` |
 | Execution plan | `OrderMissionPlanningSection`, `PlanningHeader` (`manager/api/planningApi.ts`) | GET `/api/orders/{id}/execution-plan`; POST `/finalize`, `/amend` | `ExecutionPlanController` / `ExecutionPlanServiceImpl` | `{expectedPlanRevision, decompositionConfirmed}` | `orders` (plan fields) |
-| Tạo Mission | `CreateMissionPage`, `OrderResourceAssignmentWizard` | POST/GET `/api/orders/{orderId}/missions` | `OrderMissionController` → `MissionService.createMissionWithOutcome` | — | `missions` |
+| Tạo Mission | `CreateMissionPage`, `OrderResourceAssignmentWizard` | POST `/api/missions/{orderId}`; GET `/api/orders/{orderId}/missions` | `MissionController` / `OrderMissionController` → command service / query service | — | `missions` |
 | Gán & vận hành | `MissionDetailPage`, `DispatchPage` (`manager/api/missionsApi.ts`) | POST `/api/missions/{id}/assign-device|assign-staff|accept|reject|start|return|postflight|complete|fail|cancel` | `MissionController` / `MissionService` | `MissionResponse` | `missions`, `mission_staff_assignments` |
 | Checklist execution | Staff pages (`mission/api/checklistExecutionApi.ts`) | `/api/missions/{id}/checklist-executions…` | `MissionChecklistExecutionController` | — | `mission_checklist_executions` |
 | Evidence/media | `operatorMediaApi`, `checklistEvidenceApi` | `/missions/{id}/media-uploads`, `/api/missions/{id}/…evidence` | media / `ChecklistEvidenceController` | — | media assets, evidence |

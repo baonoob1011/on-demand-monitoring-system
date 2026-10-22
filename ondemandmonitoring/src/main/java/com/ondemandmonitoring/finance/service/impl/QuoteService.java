@@ -539,7 +539,7 @@ public class QuoteService implements IQuoteService {
             Mission mission = missions.findByIdForUpdate(id)
                     .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
             if (mission.getStatus() == MissionStatus.CANCELLED) continue;
-            if (mission.getStatus() == MissionStatus.CREATED || mission.getStatus() == MissionStatus.RESOURCE_ASSIGNING) {
+            if (mission.getStatus() == MissionStatus.PLANNING) {
                 mission.setStatus(MissionStatus.WAITING_DEPOSIT);
             } else if (mission.getStatus() != MissionStatus.WAITING_DEPOSIT) {
                 throw new ApiException(ErrorCode.MISSION_STATUS_INVALID, "Existing mission has already entered execution");

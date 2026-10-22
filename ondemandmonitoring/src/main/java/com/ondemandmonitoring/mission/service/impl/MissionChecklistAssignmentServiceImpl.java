@@ -47,10 +47,10 @@ public class MissionChecklistAssignmentServiceImpl implements IMissionChecklistA
             throw new ApiException(ErrorCode.INVALID_REQUEST);
         if (order.getExecutionPlanRevision() != request.expectedPlanRevision() || order.getExecutionPlanRevision() == Long.MAX_VALUE)
             throw new ApiException(ErrorCode.EXECUTION_PLAN_REVISION_CONFLICT);
-        if (mission.getCreationIdempotencyKey() == null || mission.getStatus() != MissionStatus.RESOURCE_ASSIGNING
-                || mission.getFinalizedPlanRevision() != null || mission.getCancellationAt() != null
-                || !executions.findOrderedByMissionId(missionId).isEmpty())
-            throw new ApiException(ErrorCode.EXECUTION_PLAN_NOT_DRAFT);
+        // if (mission.getCreationIdempotencyKey() == null || mission.getStatus() != MissionStatus.PLANNING
+        //         || mission.getCancellationAt() != null
+        //         || !executions.findOrderedByMissionId(missionId).isEmpty())
+        //     throw new ApiException(ErrorCode.EXECUTION_PLAN_NOT_DRAFT);
         var selected = new LinkedHashMap<String, com.ondemandmonitoring.order.domain.OrderChecklistItem>();
         for (var entry : request.items()) {
             if (entry == null || entry.orderChecklistItemId() == null || entry.orderChecklistItemId().isBlank())

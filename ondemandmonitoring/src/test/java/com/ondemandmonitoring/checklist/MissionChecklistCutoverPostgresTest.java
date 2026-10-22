@@ -50,11 +50,11 @@ class MissionChecklistCutoverPostgresTest extends ChecklistPostgresTest {
         first = create(); second = create();
     }
     String create() {
-        var r = new MissionCreateRequest(); r.setOrderId(orderId); r.setExpectedPlanRevision(revision());
-        r.setIdempotencyKey(UUID.randomUUID().toString()); r.setScopeLabel("Monitoring scope");
+        var r = new MissionCreateRequest();
+        r.setScopeLabel("Monitoring scope");
         var start = java.time.LocalDate.now().plusDays(7).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
         r.setScheduledStartAt(start); r.setScheduledEndAt(start.plusSeconds(3600));
-        return missionService.createMission(r).getId();
+        return missionService.createMission(orderId, r).getId();
     }
     long revision() { return jdbc.queryForObject("select execution_plan_revision from orders where id=?", Long.class, orderId); }
     ChecklistAssignmentSelectionRequest request(long revision, int... indices) {

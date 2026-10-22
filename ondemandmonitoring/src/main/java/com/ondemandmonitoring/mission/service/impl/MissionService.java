@@ -22,10 +22,7 @@ import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.dto.request.*;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
-import com.ondemandmonitoring.mission.dto.response.MissionCreationResult;
 import com.ondemandmonitoring.order.enums.ExecutionPlanStatus;
-import org.locationtech.jts.geom.Point;
-import org.locationtech.jts.geom.Polygon;
 import com.ondemandmonitoring.mission.dto.response.MissionTelemetryReadinessResponse;
 import com.ondemandmonitoring.mission.enums.*;
 import com.ondemandmonitoring.order.domain.Order;
@@ -71,6 +68,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -99,7 +97,6 @@ public class MissionService implements IMissionService {
             MissionStaffRole.PILOT, MissionStaffRole.OPERATOR,
             MissionStaffRole.MAINTAINER, MissionStaffRole.INSPECTOR);
 
-    MissionRescheduleHistoryRepository missionRescheduleHistoryRepository;
     MissionRepository missionRepository;
     DeviceRepository deviceRepository;
     FlightTokenRepository flightTokenRepository;
@@ -215,58 +212,49 @@ public class MissionService implements IMissionService {
     @Override
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canManageMissions()")
-    public MissionResponse createMission(MissionCreateRequest request) {
-        return createMissionWithOutcome(request).mission();
+    public MissionResponse createMission(String orderId, MissionCreateRequest request) {
+        return createMission(orderId, request, null);
+    }
+
+    /** @deprecated Creation now returns MissionResponse directly. */
+    @Deprecated
+    public com.ondemandmonitoring.mission.dto.response.MissionCreationResult createMissionWithOutcome(
+            String orderId, MissionCreateRequest request) {
+        return new com.ondemandmonitoring.mission.dto.response.MissionCreationResult(
+                createMission(orderId, request), true);
     }
 
     @Override
     @Transactional
     @PreAuthorize("@missionAuthorizationService.canManageMissions()")
-    public MissionCreationResult createMissionWithOutcome(MissionCreateRequest request) {
-        var intent = MissionCreationIntent.from(request);
-        Order order = orderRepository.findByIdForUpdate(intent.orderId())
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + intent.orderId()));
-        var replay = missionRepository.findByOrderIdAndCreationIdempotencyKey(order.getId(), intent.key());
-        if (replay.isPresent()) {
-            Mission original = replay.get();
-            // Compare using the original copied scope, not mutable Order state or current plan revision.
-            if (!intent.hash(original.getTargetPoint(), original.getTargetArea()).equals(original.getCreationRequestHash()))
-                throw new ApiException(ErrorCode.IDEMPOTENCY_KEY_REUSED);
-            return new MissionCreationResult(missionMapper.toResponse(original), false);
-        }
+    public MissionResponse replaceMission(String missionId, MissionCreateRequest request) {
+        String orderId = missionRepository.findOrderIdByMissionId(missionId)
+                .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
+        return createMission(orderId, request, missionId);
+    }
+
+    private MissionResponse createMission(String orderId, MissionCreateRequest request, String replacesMissionId) {
+        String scopeLabel = Normalizer.normalize(
+                request.getScopeLabel().strip().replaceAll("\\s+", " "), Normalizer.Form.NFC);
+        Order order = orderRepository.findByIdForUpdate(orderId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
         if (order.getExecutionPlanStatus() != ExecutionPlanStatus.DRAFT)
             throw new ApiException(ErrorCode.EXECUTION_PLAN_NOT_DRAFT);
-        if (order.getOrderStatus() != OrderStatus.APPROVED
-                && (order.getOrderStatus() != OrderStatus.IN_PROGRESS || order.getExecutionPlanAmendedAt() == null))
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Only APPROVED Orders allow new planning Missions in this phase");
-        if (missionRepository.findAllByOrderIdOrderByScheduledStartAtAscIdAsc(order.getId()).stream()
-                .anyMatch(MissionRuntimeGate::allowsLegacyRuntime))
-            throw new ApiException(ErrorCode.MULTI_MISSION_LEGACY_ORDER_NOT_MIGRATED);
-        if (request.getExpectedPlanRevision() != order.getExecutionPlanRevision())
-            throw new ApiException(ErrorCode.EXECUTION_PLAN_REVISION_CONFLICT);
-        if (intent.replacesMissionId() != null) {
-            String originalOrderId = missionRepository.findOrderIdByMissionId(intent.replacesMissionId())
+      
+        if (replacesMissionId != null) {
+            Mission original = missionRepository.findByIdForUpdate(replacesMissionId)
                     .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
-            if (!order.getId().equals(originalOrderId)) throw new ApiException(ErrorCode.MISSION_REPLACEMENT_CROSS_ORDER);
-            Mission original = missionRepository.findByIdForUpdate(intent.replacesMissionId())
-                    .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
-            if (!order.getId().equals(original.getOrder().getId())) throw new ApiException(ErrorCode.MISSION_REPLACEMENT_CROSS_ORDER);
-            if (missionRepository.hasApprovedResult(original.getId())) throw new ApiException(ErrorCode.MISSION_RESULT_ALREADY_APPROVED);
+            if (!order.getId().equals(original.getOrder().getId()))
+                throw new ApiException(ErrorCode.MISSION_REPLACEMENT_CROSS_ORDER);
+            if (missionRepository.hasApprovedResult(original.getId()))
+                throw new ApiException(ErrorCode.MISSION_RESULT_ALREADY_APPROVED);
             if (original.getStatus() != MissionStatus.CANCELLED || original.getCancellationAt() == null)
                 throw new ApiException(ErrorCode.MISSION_REPLACEMENT_ORIGINAL_NOT_CANCELLED);
             if (missionRepository.existsByReplacesMissionIdAndStatusNot(original.getId(), MissionStatus.CANCELLED))
                 throw new ApiException(ErrorCode.MISSION_REPLACEMENT_ALREADY_EXISTS);
         }
-        validatePlanningSchedule(intent, order);
-        if (order.getPoint() == null || order.getPoint().getSRID() != 4326 || !order.getPoint().isValid()
-                || order.getPoint().isEmpty() || !Double.isFinite(order.getPoint().getX())
-                || !Double.isFinite(order.getPoint().getY()) || Math.abs(order.getPoint().getX()) > 180
-                || Math.abs(order.getPoint().getY()) > 90
-                || (order.getTargetArea() != null && (order.getTargetArea().getSRID() != 4326
-                    || !order.getTargetArea().isValid() || order.getTargetArea().isEmpty()
-                    || !order.getTargetArea().covers(order.getPoint()))))
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Order scope must be valid WGS84 geometry");
-
+        validatePlanningSchedule(request.getScheduledStartAt(), request.getScheduledEndAt(), order);
+        
         var invoice = invoiceRepository.findByOrderId(order.getId())
                 .filter(value -> value.getQuote().getStatus() == QuoteStatus.ACCEPTED_BY_CUSTOMER)
                 .orElseThrow(() -> new ApiException(ErrorCode.INVOICE_NOT_PAYABLE,
@@ -277,29 +265,32 @@ public class MissionService implements IMissionService {
         }
         Mission mission = new Mission();
         mission.setMissionCode(generateMissionCode());
-        mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
+        mission.setStatus(MissionStatus.PLANNING);
         mission.setOrder(order);
-        mission.setScheduledStartAt(intent.start()); mission.setScheduledEndAt(intent.end());
-        mission.setScopeLabel(intent.label());
-        mission.setReplacesMissionId(intent.replacesMissionId());
-        mission.setTargetPoint((Point) order.getPoint().copy());
-        mission.setTargetArea(order.getTargetArea() == null ? null : (Polygon) order.getTargetArea().copy());
-        mission.setCreationIdempotencyKey(intent.key());
-        mission.setCreationRequestHash(intent.hash(mission.getTargetPoint(), mission.getTargetArea()));
-        if (order.getExecutionPlanRevision() == Long.MAX_VALUE) throw new ApiException(ErrorCode.EXECUTION_PLAN_REVISION_CONFLICT);
-        order.setExecutionPlanRevision(order.getExecutionPlanRevision() + 1);
+        mission.setScheduledStartAt(request.getScheduledStartAt()); mission.setScheduledEndAt(request.getScheduledEndAt());
+        mission.setScopeLabel(scopeLabel);
+        mission.setReplacesMissionId(replacesMissionId);
         Mission saved = missionRepository.saveAndFlush(mission);
         // Planning creation never materializes executions; the canonical plan finalizer owns that boundary.
-        return new MissionCreationResult(missionMapper.toResponse(saved), true);
+        return missionMapper.toResponse(saved);
     }
 
-    private void validatePlanningSchedule(MissionCreationIntent intent, Order order) {
+    private void validatePlanningSchedule(Instant start, Instant end, Order order) {
         var businessZone = ZoneId.of("Asia/Ho_Chi_Minh");
-        if (!intent.start().isBefore(intent.end()) || order.getPreferredDateFrom() == null || order.getPreferredDateTo() == null
-                || intent.start().isBefore(order.getPreferredDateFrom().atStartOfDay(businessZone).toInstant())
-                || intent.end().isAfter(order.getPreferredDateTo().plusDays(1).atStartOfDay(businessZone).toInstant()))
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Schedule must fit approved Order dates (Asia/Ho_Chi_Minh)");
+        if (order.getPreferredDateFrom() == null || order.getPreferredDateTo() == null
+                || order.getPreferredTime() == null || order.getPreferredTime().getStartTime() == null
+                || order.getPreferredTime().getEndTime() == null)
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Order preferred schedule is incomplete");
+        Instant customerStart = order.getPreferredDateFrom()
+                .atTime(order.getPreferredTime().getStartTime()).atZone(businessZone).toInstant();
+        Instant preparationStart = customerStart.minus(java.time.Duration.ofHours(1));
+        Instant customerEnd = order.getPreferredDateTo()
+                .atTime(order.getPreferredTime().getEndTime()).atZone(businessZone).toInstant();
+        if (!start.isBefore(end) || !start.equals(preparationStart) || end.isAfter(customerEnd))
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Mission must start exactly one hour before the customer's preferred start time and end by the preferred end time");
     }
+
 
     @Override
     @Transactional(readOnly = true)
@@ -328,9 +319,7 @@ public class MissionService implements IMissionService {
     @Transactional(readOnly = true)
     @PreAuthorize("@missionAuthorizationService.canManageMissions()")
     public List<MissionResponse> getPendingAssignmentMissions() {
-        return missionRepository.findByStatusIn(List.of(
-                MissionStatus.CREATED,
-                MissionStatus.RESOURCE_ASSIGNING))
+        return missionRepository.findByStatusIn(List.of(MissionStatus.READY))
                 .stream()
                 .sorted(java.util.Comparator.comparing(
                         Mission::getCreatedAt,
@@ -393,10 +382,10 @@ public class MissionService implements IMissionService {
         Mission mission = lockPlanningResourceMission(missionId);
         resources.lockResources(resourceIds(mission, deviceId));
         String resolvedMissionId = mission.getId();
-        if (mission.getStatus() != MissionStatus.RESOURCE_ASSIGNING
+        if (mission.getStatus() != MissionStatus.READY
                 && mission.getStatus() != MissionStatus.WAITING_CREW_CONFIRMATION) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
-                    "Mission status must be RESOURCE_ASSIGNING to assign a device.");
+                    "Mission status must be READY to assign a device.");
         }
 
         Device device = deviceRepository.findById(deviceId)
@@ -479,10 +468,10 @@ public class MissionService implements IMissionService {
         Mission mission = lockPlanningResourceMission(missionId);
         resources.lockResources(resourceIds(mission, staffId));
         String resolvedMissionId = mission.getId();
-        if (mission.getStatus() != MissionStatus.RESOURCE_ASSIGNING
+        if (mission.getStatus() != MissionStatus.READY
                 && mission.getStatus() != MissionStatus.WAITING_CREW_CONFIRMATION) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
-                    "Mission status must be RESOURCE_ASSIGNING to assign staff.");
+                    "Mission status must be READY to assign staff.");
         }
 
         User staff = staffDirectory.requireActiveStaff(staffId);
@@ -546,16 +535,13 @@ public class MissionService implements IMissionService {
         Order order = orderRepository.findByIdForUpdate(orderId).orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND));
         Mission mission = missionRepository.findByIdForUpdate(missionId).orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
         if (!orderId.equals(mission.getOrder().getId())) throw new ApiException(ErrorCode.CHECKLIST_ASSIGNMENT_CROSS_ORDER);
-        if (mission.getFinalizedPlanRevision() != null || order.getExecutionPlanStatus() != ExecutionPlanStatus.DRAFT
-                || mission.getStatus() != MissionStatus.RESOURCE_ASSIGNING)
+        if (order.getExecutionPlanStatus() != ExecutionPlanStatus.DRAFT
+                || mission.getStatus() != MissionStatus.PLANNING)
             throw new ApiException(ErrorCode.EXECUTION_PLAN_NOT_DRAFT);
-        if (mission.getCreationIdempotencyKey() == null) throw new ApiException(ErrorCode.MULTI_MISSION_LEGACY_ORDER_NOT_MIGRATED);
+        // if (mission.getCreationIdempotencyKey() == null) throw new ApiException(ErrorCode.MULTI_MISSION_LEGACY_ORDER_NOT_MIGRATED);
         if (order.getOrderStatus() != OrderStatus.APPROVED && order.getOrderStatus() != OrderStatus.IN_PROGRESS)
             throw new ApiException(ErrorCode.INVALID_REQUEST);
-        if (request == null || request.getExpectedPlanRevision() == null
-                || request.getExpectedPlanRevision() != order.getExecutionPlanRevision()
-                || order.getExecutionPlanRevision() == Long.MAX_VALUE)
-            throw new ApiException(ErrorCode.EXECUTION_PLAN_REVISION_CONFLICT);
+        if (request == null) throw new ApiException(ErrorCode.INVALID_REQUEST);
 
         Instant previousStart = mission.getScheduledStartAt();
         Instant previousEnd = mission.getScheduledEndAt();
@@ -568,23 +554,8 @@ public class MissionService implements IMissionService {
 
         mission.setScheduledStartAt(newStart);
         mission.setScheduledEndAt(newEnd);
-        order.setExecutionPlanRevision(order.getExecutionPlanRevision() + 1);
-        orderRepository.saveAndFlush(order);
 
         Mission saved = missionRepository.save(mission);
-
-        String rescheduledBy = authenticatedUserResolver.getCurrentUser().getId();
-
-        MissionRescheduleHistory history = new MissionRescheduleHistory();
-        history.setMission(saved);
-        history.setPreviousStartTime(previousStart);
-        history.setPreviousEndTime(previousEnd);
-        history.setNewStartTime(saved.getScheduledStartAt());
-        history.setNewEndTime(saved.getScheduledEndAt());
-        history.setRescheduleReason(request.getRescheduleReason());
-        history.setRescheduledBy(rescheduledBy);
-        history.setRescheduledAt(Instant.now());
-        missionRescheduleHistoryRepository.save(history);
 
         return missionMapper.toResponse(saved);
     }
@@ -619,7 +590,7 @@ public class MissionService implements IMissionService {
         });
         missionStaffAssignmentRepository.saveAll(assignments);
 
-        mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
+        mission.setStatus(MissionStatus.READY);
         Mission saved = missionRepository.save(mission);
         return missionMapper.toResponse(saved);
     }
@@ -744,7 +715,7 @@ public class MissionService implements IMissionService {
 //    /**
 //     * BATTERY fault auto-swap: find the next AVAILABLE device from the pool and
 //     * assign it.
-//     * If none available, fall back to RESOURCE_ASSIGNING for manager intervention.
+//     * If none available, fall back to PLANNING for manager intervention.
 //     */
 //    private void attemptAutoSwapDevice(Mission mission, Device faultyDevice) {
 //        String missionId = mission.getId();
@@ -764,9 +735,9 @@ public class MissionService implements IMissionService {
 //
 //                    if (hasConflict) {
 //                        log.warn(
-//                                "[AUTO-SWAP] Candidate device {} has a schedule conflict – falling back to RESOURCE_ASSIGNING.",
+//                                "[AUTO-SWAP] Candidate device {} has a schedule conflict – falling back to PLANNING.",
 //                                replacementDevice.getDeviceCode());
-//                        mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
+//                        mission.setStatus(MissionStatus.PLANNING);
 //                        return;
 //                    }
 //
@@ -782,18 +753,18 @@ public class MissionService implements IMissionService {
 //                    newMda.setAssignedAt(Instant.now());
 //                    missiondeviceAssignmentRepository.save(newMda);
 //
-//                    // Mission returns to RESOURCE_ASSIGNING so manager can confirm before
+//                    // Mission returns to PLANNING so manager can confirm before
 //                    // re-dispatch
-//                    mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
+//                    mission.setStatus(MissionStatus.PLANNING);
 //                    log.info(
-//                            "[AUTO-SWAP] Mission {} – swapped faulty device {} → replacement device {} (AUTO_SYSTEM). Mission → RESOURCE_ASSIGNING.",
+//                            "[AUTO-SWAP] Mission {} – swapped faulty device {} → replacement device {} (AUTO_SYSTEM). Mission → PLANNING.",
 //                            missionId, faultyDevice.getDeviceCode(), replacementDevice.getDeviceCode());
 //
 //                }, () -> {
 //                    // No available replacement in the pool
-//                    mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
+//                    mission.setStatus(MissionStatus.PLANNING);
 //                    log.warn(
-//                            "[AUTO-SWAP] Mission {} – no AVAILABLE devices in pool. Mission → RESOURCE_ASSIGNING for manager intervention.",
+//                            "[AUTO-SWAP] Mission {} – no AVAILABLE devices in pool. Mission → PLANNING for manager intervention.",
 //                            missionId);
 //                });
 //    }
@@ -914,8 +885,7 @@ public class MissionService implements IMissionService {
         if (mission == null || mission.getId() == null) {
             return;
         }
-        if (mission.getStatus() == MissionStatus.CREATED
-                || mission.getStatus() == MissionStatus.RESOURCE_ASSIGNING
+        if (mission.getStatus() == MissionStatus.PLANNING
                 || mission.getStatus() == MissionStatus.WAITING_CREW_CONFIRMATION
                 || mission.getStatus() == MissionStatus.WAITING_OPERATOR_ACCEPTANCE
                 || mission.getStatus() == MissionStatus.CANCELLED) {

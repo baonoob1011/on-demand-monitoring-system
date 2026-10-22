@@ -8,7 +8,6 @@ import com.ondemandmonitoring.mission.dto.request.FlightPermitUpdateRequest;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
-import com.ondemandmonitoring.mission.dto.response.MissionCreationResult;
 import com.ondemandmonitoring.mission.dto.response.MissionTelemetryReadinessResponse;
 import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.device.enums.DeviceStatus;
@@ -27,9 +26,10 @@ import java.util.List;
  */
 public interface IMissionService {
 
-    MissionResponse createMission(MissionCreateRequest request);
+    MissionResponse createMission(String orderId, MissionCreateRequest request);
 
-    MissionCreationResult createMissionWithOutcome(MissionCreateRequest request);
+
+    MissionResponse replaceMission(String missionId, MissionCreateRequest request);
 
     MissionResponse updateMission(String missionId, MissionUpdateRequest request);
 
@@ -115,7 +115,7 @@ public interface IMissionService {
 
     /**
      * Rejects a mission assignment by the Staff (resets mission to
-     * RESOURCE_ASSIGNING for re-assignment).
+     * PLANNING for re-assignment).
      *
      * @param missionId  Mission ID
      * @param staffId Staff ID

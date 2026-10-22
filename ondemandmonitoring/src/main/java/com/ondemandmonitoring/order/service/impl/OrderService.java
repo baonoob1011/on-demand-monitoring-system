@@ -212,8 +212,8 @@ public class OrderService implements IOrderService {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
                     "Monitoring authorization must be confirmed");
         }
-        List<OrderAuthorizationDocument> authorizationDocuments =
-                validateAuthorizationDocuments(request.getMonitoringAuthorizationDocuments());
+        List<OrderAuthorizationDocument> authorizationDocuments = validateAuthorizationDocuments(
+                request.getMonitoringAuthorizationDocuments());
         int retentionDays = request.getDataRetentionDays();
         if (!ALLOWED_RETENTION_DAYS.contains(retentionDays)) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
@@ -237,7 +237,8 @@ public class OrderService implements IOrderService {
 
         // 5b. The customer self-checks the official portal and declares the result.
         OrderPermitStatus permitStatus = request.getPermitStatus() == null
-                ? OrderPermitStatus.NONE : request.getPermitStatus();
+                ? OrderPermitStatus.NONE
+                : request.getPermitStatus();
         if (permitStatus == OrderPermitStatus.HAVE_PERMIT
                 && (request.getPermitNumber() == null || request.getPermitNumber().isBlank())) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
@@ -330,7 +331,8 @@ public class OrderService implements IOrderService {
 
     private static List<OrderAuthorizationDocument> validateAuthorizationDocuments(
             List<OrderAuthorizationDocument> documents) {
-        if (documents == null || documents.isEmpty()) return List.of();
+        if (documents == null || documents.isEmpty())
+            return List.of();
         if (documents.size() > 10) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
                     "At most 10 authorization documents are allowed");
@@ -342,8 +344,8 @@ public class OrderService implements IOrderService {
                     || document.fileName() == null || document.fileName().isBlank()
                     || document.contentType() == null
                     || !(document.contentType().equals("application/pdf")
-                        || document.contentType().equals("image/jpeg")
-                        || document.contentType().equals("image/png"))
+                            || document.contentType().equals("image/jpeg")
+                            || document.contentType().equals("image/png"))
                     || document.sizeBytes() <= 0 || document.sizeBytes() > 5 * 1024 * 1024
                     || document.dataUrl() == null || document.dataUrl().isBlank()) {
                 throw new ApiException(ErrorCode.INVALID_REQUEST,
@@ -354,7 +356,8 @@ public class OrderService implements IOrderService {
                     document.fileName(), document.contentType(), document.sizeBytes(),
                     document.dataUrl(),
                     document.notes() == null || document.notes().isBlank()
-                            ? null : document.notes().trim(),
+                            ? null
+                            : document.notes().trim(),
                     DocumentVerificationStatus.PENDING, null, null, null);
         }).toList();
     }
@@ -422,9 +425,12 @@ public class OrderService implements IOrderService {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
                     "This request requires the monitoring location to be updated");
         }
-        if (request.siteContactName() != null) order.setSiteContactName(request.siteContactName());
-        if (request.siteContactPhone() != null) order.setSiteContactPhone(request.siteContactPhone());
-        if (request.accessNotes() != null) order.setAccessNotes(request.accessNotes());
+        if (request.siteContactName() != null)
+            order.setSiteContactName(request.siteContactName());
+        if (request.siteContactPhone() != null)
+            order.setSiteContactPhone(request.siteContactPhone());
+        if (request.accessNotes() != null)
+            order.setAccessNotes(request.accessNotes());
         if (request.monitoringRelationship() != null) {
             order.setMonitoringRelationship(request.monitoringRelationship());
         }
@@ -483,9 +489,12 @@ public class OrderService implements IOrderService {
             }
         }
 
-        if (request.title() != null && !request.title().isBlank()) order.setTitle(request.title().strip());
-        if (request.description() != null) order.setDescription(request.description().strip());
-        if (request.address() != null) order.setAddress(request.address().strip());
+        if (request.title() != null && !request.title().isBlank())
+            order.setTitle(request.title().strip());
+        if (request.description() != null)
+            order.setDescription(request.description().strip());
+        if (request.address() != null)
+            order.setAddress(request.address().strip());
         if (request.longitude() != null || request.latitude() != null || request.coverageArea() != null) {
             if (request.longitude() == null || request.latitude() == null || request.coverageArea() == null) {
                 throw new ApiException(ErrorCode.INVALID_REQUEST,
@@ -500,37 +509,59 @@ public class OrderService implements IOrderService {
         if (request.radiusM() != null) {
             order.getDeliverables().forEach(deliverable -> {
                 var requirement = new java.util.LinkedHashMap<String, Object>();
-                if (deliverable.getRequirement() != null) requirement.putAll(deliverable.getRequirement());
+                if (deliverable.getRequirement() != null)
+                    requirement.putAll(deliverable.getRequirement());
                 requirement.put("radiusM", request.radiusM());
                 deliverable.setRequirement(requirement);
             });
         }
-        if (request.usagePurpose() != null) order.setUsagePurpose(request.usagePurpose());
-        if (request.flightPurpose() != null) order.setFlightPurpose(request.flightPurpose());
-        if (request.altitudeM() != null) order.setAltitudeM(request.altitudeM());
-        if (request.estimatedLengthM() != null) order.setEstimatedLengthM(request.estimatedLengthM());
-        if (request.siteContactName() != null) order.setSiteContactName(request.siteContactName().strip());
-        if (request.siteContactPhone() != null) order.setSiteContactPhone(request.siteContactPhone().strip());
-        if (request.accessNotes() != null) order.setAccessNotes(request.accessNotes().strip());
-        if (request.monitoringRelationship() != null) order.setMonitoringRelationship(request.monitoringRelationship());
-        if (request.monitoringAuthorizationConfirmed() != null) order.setMonitoringAuthorizationConfirmed(request.monitoringAuthorizationConfirmed());
-        if (request.permitStatus() != null) order.setPermitStatus(request.permitStatus());
-        if (request.permitNumber() != null) order.setPermitNumber(request.permitNumber().strip());
-        if (request.permitExpiresOn() != null) order.setPermitExpiresOn(request.permitExpiresOn());
-        if (request.preferredDateFrom() != null) order.setPreferredDateFrom(request.preferredDateFrom());
-        if (request.preferredDateTo() != null) order.setPreferredDateTo(request.preferredDateTo());
+        if (request.usagePurpose() != null)
+            order.setUsagePurpose(request.usagePurpose());
+        if (request.flightPurpose() != null)
+            order.setFlightPurpose(request.flightPurpose());
+        if (request.altitudeM() != null)
+            order.setAltitudeM(request.altitudeM());
+        if (request.estimatedLengthM() != null)
+            order.setEstimatedLengthM(request.estimatedLengthM());
+        if (request.siteContactName() != null)
+            order.setSiteContactName(request.siteContactName().strip());
+        if (request.siteContactPhone() != null)
+            order.setSiteContactPhone(request.siteContactPhone().strip());
+        if (request.accessNotes() != null)
+            order.setAccessNotes(request.accessNotes().strip());
+        if (request.monitoringRelationship() != null)
+            order.setMonitoringRelationship(request.monitoringRelationship());
+        if (request.monitoringAuthorizationConfirmed() != null)
+            order.setMonitoringAuthorizationConfirmed(request.monitoringAuthorizationConfirmed());
+        if (request.permitStatus() != null)
+            order.setPermitStatus(request.permitStatus());
+        if (request.permitNumber() != null)
+            order.setPermitNumber(request.permitNumber().strip());
+        if (request.permitExpiresOn() != null)
+            order.setPermitExpiresOn(request.permitExpiresOn());
+        if (request.preferredDateFrom() != null)
+            order.setPreferredDateFrom(request.preferredDateFrom());
+        if (request.preferredDateTo() != null)
+            order.setPreferredDateTo(request.preferredDateTo());
         if (order.getPreferredDateFrom() != null && order.getPreferredDateTo() != null
                 && order.getPreferredDateTo().isBefore(order.getPreferredDateFrom()))
             throw new ApiException(ErrorCode.INVALID_REQUEST, "End date cannot be before start date");
-        if (request.recurrenceType() != null) order.setRecurrenceType(request.recurrenceType());
-        if (request.recurrenceOccurrences() != null) order.setRecurrenceOccurrences(request.recurrenceOccurrences());
-        if (request.weatherFallback() != null) order.setWeatherFallback(request.weatherFallback());
-        if (request.resultDeadline() != null) order.setResultDeadline(request.resultDeadline());
+        if (request.recurrenceType() != null)
+            order.setRecurrenceType(request.recurrenceType());
+        if (request.recurrenceOccurrences() != null)
+            order.setRecurrenceOccurrences(request.recurrenceOccurrences());
+        if (request.weatherFallback() != null)
+            order.setWeatherFallback(request.weatherFallback());
+        if (request.resultDeadline() != null)
+            order.setResultDeadline(request.resultDeadline());
         if (order.getResultDeadline() != null && order.getPreferredDateTo() != null
                 && order.getResultDeadline().isBefore(order.getPreferredDateTo()))
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Result deadline cannot be before the requested end date");
-        if (request.resultFormats() != null && !request.resultFormats().isEmpty()) order.setResultFormats(request.resultFormats());
-        if (request.deliveryMethods() != null && !request.deliveryMethods().isEmpty()) order.setDeliveryMethods(request.deliveryMethods());
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Result deadline cannot be before the requested end date");
+        if (request.resultFormats() != null && !request.resultFormats().isEmpty())
+            order.setResultFormats(request.resultFormats());
+        if (request.deliveryMethods() != null && !request.deliveryMethods().isEmpty())
+            order.setDeliveryMethods(request.deliveryMethods());
         if (request.dataRetentionDays() != null) {
             if (!java.util.Set.of(30, 90, 180, 365).contains(request.dataRetentionDays()))
                 throw new ApiException(ErrorCode.INVALID_REQUEST, "Data retention must be 30, 90, 180 or 365 days");
@@ -647,7 +678,8 @@ public class OrderService implements IOrderService {
     static final int MAX_PERMIT_DATA_URL_CHARS = 7_500_000;
 
     /**
-     * A permit number alone is unverifiable: the customer must attach the permit file
+     * A permit number alone is unverifiable: the customer must attach the permit
+     * file
      * and state until when it is valid, and that must cover the flight window.
      */
     private static void validatePermitEvidence(OrderCreateRequest request) {
@@ -681,15 +713,23 @@ public class OrderService implements IOrderService {
         }
     }
 
-    /** Version recorded with the customer's acceptance of the terms and security commitment. */
+    /**
+     * Version recorded with the customer's acceptance of the terms and security
+     * commitment.
+     */
     static final String TERMS_VERSION = "2026-10";
     static final java.util.List<Integer> ALLOWED_RETENTION_DAYS = java.util.List.of(30, 90, 180, 365);
 
-    /** Keeps the customer's order of choice, drops duplicates, falls back to one default. */
+    /**
+     * Keeps the customer's order of choice, drops duplicates, falls back to one
+     * default.
+     */
     private static <T> java.util.List<T> distinctOrDefault(java.util.List<T> values, T fallback) {
-        if (values == null || values.isEmpty()) return new java.util.ArrayList<>(java.util.List.of(fallback));
+        if (values == null || values.isEmpty())
+            return new java.util.ArrayList<>(java.util.List.of(fallback));
         return new java.util.ArrayList<>(new java.util.LinkedHashSet<>(values));
     }
+
     private String generateUniqueOrderCode() {
         for (int attempt = 0; attempt < 10; attempt++) {
             String orderCode = generateOrderCode();
@@ -710,7 +750,8 @@ public class OrderService implements IOrderService {
     }
 
     private static String trimToNull(String value) {
-        if (value == null || value.isBlank()) return null;
+        if (value == null || value.isBlank())
+            return null;
         return value.strip();
     }
 }

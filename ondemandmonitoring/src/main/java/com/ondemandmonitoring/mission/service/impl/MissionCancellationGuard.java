@@ -12,9 +12,9 @@ import java.util.Set;
 
 /** Shared existing cancellation preconditions for locked commands and non-mutating capability reads. */
 final class MissionCancellationGuard {
-    private static final Set<MissionStatus> SAFE_STATES = Set.of(MissionStatus.CREATED,
-            MissionStatus.RESOURCE_ASSIGNING, MissionStatus.WAITING_CREW_CONFIRMATION,
-            MissionStatus.WAITING_OPERATOR_ACCEPTANCE, MissionStatus.SCHEDULED,
+    private static final Set<MissionStatus> SAFE_STATES = Set.of(MissionStatus.PLANNING,
+            MissionStatus.WAITING_CREW_CONFIRMATION,
+            MissionStatus.WAITING_OPERATOR_ACCEPTANCE, MissionStatus.READY, MissionStatus.SCHEDULED,
             MissionStatus.FAILED_PREFLIGHT, MissionStatus.PENDING_APPROVAL, MissionStatus.FAILED, MissionStatus.COMPLETED);
 
     private MissionCancellationGuard() {}
@@ -29,7 +29,6 @@ final class MissionCancellationGuard {
         if (order.getExecutionPlanStatus() != ExecutionPlanStatus.DRAFT) throw new ApiException(ErrorCode.EXECUTION_PLAN_NOT_DRAFT);
         if (order.getExecutionPlanRevision() != expectedRevision || order.getExecutionPlanRevision() == Long.MAX_VALUE)
             throw new ApiException(ErrorCode.EXECUTION_PLAN_REVISION_CONFLICT);
-        if (mission.getCreationIdempotencyKey() == null) throw new ApiException(ErrorCode.MULTI_MISSION_LEGACY_ORDER_NOT_MIGRATED);
         if (results.existsByMissionIdAndApprovalStatus(mission.getId(), MissionResultApprovalStatus.APPROVED))
             throw new ApiException(ErrorCode.MISSION_RESULT_ALREADY_APPROVED);
         if ((!SAFE_STATES.contains(mission.getStatus()) && !(mission.getStatus() == MissionStatus.PENDING_REVIEW

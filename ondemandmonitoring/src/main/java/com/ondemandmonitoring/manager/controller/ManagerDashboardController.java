@@ -51,8 +51,7 @@ public class ManagerDashboardController {
         long readyDevices = countDevices(devices, DeviceStatus.AVAILABLE);
         long maintenanceDevices = countDevices(devices, DeviceStatus.MAINTENANCE);
         long unassignedMissions = missions.stream()
-                .filter(mission -> mission.getStatus() == MissionStatus.CREATED
-                        || mission.getStatus() == MissionStatus.RESOURCE_ASSIGNING)
+                .filter(mission -> mission.getStatus() == MissionStatus.PLANNING)
                 .count();
 
         Map<String, Object> data = new LinkedHashMap<>();
@@ -153,8 +152,7 @@ public class ManagerDashboardController {
                 .toList();
 
         List<Map<String, Object>> missionItems = missions.stream()
-                .filter(mission -> mission.getStatus() == MissionStatus.CREATED
-                        || mission.getStatus() == MissionStatus.RESOURCE_ASSIGNING)
+                .filter(mission -> mission.getStatus() == MissionStatus.PLANNING)
                 .limit(5)
                 .map(mission -> Map.<String, Object>of(
                         "id", "mission-" + mission.getId(),

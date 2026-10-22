@@ -99,7 +99,7 @@ class DirectPlanningE2ETest {
 
         Mission mission = new Mission();
         mission.setMissionCode("E2E_DIRECT_PLANNING_TEST_" + UUID.randomUUID().toString().substring(0, 8));
-        mission.setStatus(MissionStatus.CREATED);
+        mission.setStatus(MissionStatus.PLANNING);
         mission.setOrder(testOrder);
         mission.setScheduledStartAt(Instant.now());
         mission.setScheduledEndAt(Instant.now().plus(Duration.ofHours(2)));

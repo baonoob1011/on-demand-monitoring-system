@@ -8,8 +8,6 @@ import java.time.Instant;
 @Getter
 @Setter
 public class MissionUpdateRequest {
-    private Long expectedPlanRevision;
     private Instant scheduledStartAt;
     private Instant scheduledEndAt;
-    private String rescheduleReason;
 }

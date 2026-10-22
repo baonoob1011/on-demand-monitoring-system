@@ -188,7 +188,7 @@ class PlanningResearchAnalysisE2ETest {
         Order order = orderRepository.saveAndFlush(copyOrder(source, point(200.0, -280.0)));
         Mission mission = new Mission();
         mission.setMissionCode("E2E_RESEARCH_READ_ONLY_" + UUID.randomUUID().toString().substring(0, 8));
-        mission.setStatus(MissionStatus.CREATED);
+        mission.setStatus(MissionStatus.PLANNING);
         mission.setOrder(order);
         mission.setScheduledStartAt(Instant.now());
         mission.setScheduledEndAt(Instant.now().plus(Duration.ofHours(2)));

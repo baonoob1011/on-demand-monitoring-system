@@ -31,7 +31,6 @@ import com.ondemandmonitoring.mission.repository.FlightTokenRepository;
 import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.MissionPlanRepository;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
-import com.ondemandmonitoring.mission.repository.MissionRescheduleHistoryRepository;
 import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepository;
 import com.ondemandmonitoring.mission.repository.ResourceTimeLockRepository;
 import com.ondemandmonitoring.mission.service.impl.DeviceConnectionService;
@@ -67,7 +66,6 @@ import static org.mockito.Mockito.*;
 
 class MissionServiceTest {
 
-    MissionRescheduleHistoryRepository missionRescheduleHistoryRepository;
     MissionRepository missionRepository;
     DeviceRepository deviceRepository;
     FlightTokenRepository flightTokenRepository;
@@ -99,7 +97,6 @@ class MissionServiceTest {
 
     @BeforeEach
     void setUp() {
-        missionRescheduleHistoryRepository = mock(MissionRescheduleHistoryRepository.class);
         missionRepository = mock(MissionRepository.class);
         deviceRepository = mock(DeviceRepository.class);
         flightTokenRepository = mock(FlightTokenRepository.class);
@@ -139,7 +136,6 @@ class MissionServiceTest {
                 missionStaffAssignmentRepository);
 
         missionService = new MissionService(
-                missionRescheduleHistoryRepository,
                 missionRepository,
                 deviceRepository,
                 flightTokenRepository,
@@ -205,7 +201,7 @@ class MissionServiceTest {
         var request = MissionCreationServiceTest.request("order-1", java.util.UUID.randomUUID().toString(), 0);
         var failure = new org.springframework.dao.DataAccessResourceFailureException("Database unavailable");
         when(orderRepository.findByIdForUpdate("order-1")).thenThrow(failure);
-        assertThatThrownBy(() -> missionService.createMission(request)).isSameAs(failure);
+        assertThatThrownBy(() -> missionService.createMission("order-1", request)).isSameAs(failure);
         verifyNoInteractions(missionRepository);
     }
 
@@ -290,7 +286,7 @@ class MissionServiceTest {
 
         @Test
         void assignStaffWithoutTelemetryDefersPlanning() {
-            Mission mission = buildMission("m-assign", MissionStatus.RESOURCE_ASSIGNING);
+            Mission mission = buildMission("m-assign", MissionStatus.READY);
             mission.setScheduledStartAt(Instant.now().plusSeconds(3600));
             mission.setScheduledEndAt(Instant.now().plusSeconds(7200));
 
@@ -311,7 +307,7 @@ class MissionServiceTest {
 
             AssignStaffRequest request = AssignStaffRequest.builder().staffId("op-01").build();
             assertThat(missionService.assignStaff("m-assign", request).getStatus())
-                    .isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
+                    .isEqualTo(MissionStatus.READY);
             verifyNoInteractions(missionPlanningService);
         }
 
@@ -401,7 +397,7 @@ class MissionServiceTest {
 
             MissionResponse result = missionService.rejectMission("m-2", "op-01", "Trùng lịch cá nhân");
 
-            assertThat(result.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
+            assertThat(result.getStatus()).isEqualTo(MissionStatus.READY);
             verify(missionStaffAssignmentRepository).saveAll(any());
         }
 
@@ -942,7 +938,7 @@ class MissionServiceTest {
         @Test
         @DisplayName("AC-1. assignDevice throws when device is under MAINTENANCE")
         void assignDevice_maintenanceDevice_blocked() {
-            Mission mission = buildMission("m-assign", MissionStatus.RESOURCE_ASSIGNING);
+            Mission mission = buildMission("m-assign", MissionStatus.READY);
             mission.setScheduledStartAt(Instant.now().plusSeconds(3600));
             mission.setScheduledEndAt(Instant.now().plusSeconds(7200));
             Device maintenanceDevice = buildDevice("DEV-BROKEN", DeviceStatus.MAINTENANCE);

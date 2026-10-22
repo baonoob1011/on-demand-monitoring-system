@@ -45,7 +45,6 @@ public enum ErrorCode {
      *
      */
     MISSION_NOT_FOUND("Mission not found", HttpStatus.NOT_FOUND),
-    IDEMPOTENCY_KEY_REUSED("Idempotency key was used for a different Mission creation intent", HttpStatus.CONFLICT),
     EXECUTION_PLAN_REVISION_CONFLICT("Execution plan changed; refresh and retry", HttpStatus.CONFLICT),
     EXECUTION_PLAN_NOT_DRAFT("Execution plan must be DRAFT", HttpStatus.CONFLICT),
     EXECUTION_PLAN_NOT_FINALIZED("Execution plan must be FINALIZED", HttpStatus.CONFLICT),

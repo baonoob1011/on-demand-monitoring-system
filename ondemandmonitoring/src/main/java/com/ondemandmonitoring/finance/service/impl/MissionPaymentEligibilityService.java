@@ -26,7 +26,7 @@ public class MissionPaymentEligibilityService implements IMissionPaymentEligibil
 
     public boolean unlockIfEligible(Invoice invoice, Mission mission) {
         if (!canUnlockMission(invoice, mission)) return false;
-        mission.setStatus(MissionStatus.RESOURCE_ASSIGNING);
+        mission.setStatus(MissionStatus.PLANNING);
         return true;
     }
 }

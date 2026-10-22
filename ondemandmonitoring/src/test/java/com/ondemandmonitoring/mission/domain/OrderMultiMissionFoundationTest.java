@@ -35,8 +35,6 @@ class OrderMultiMissionFoundationTest {
         var mission = new Mission();
         assertNull(mission.getTargetPoint());
         assertNull(mission.getTargetArea());
-        assertNull(mission.getCreationIdempotencyKey());
-        assertNull(mission.getCreationRequestHash());
         assertNull(mission.getReplacesMissionId());
         assertNull(mission.getFinalizedPlanRevision());
         assertEquals("geometry(Point,4326)", Mission.class.getDeclaredField("targetPoint").getAnnotation(Column.class).columnDefinition());

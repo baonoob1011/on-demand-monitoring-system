@@ -17,7 +17,7 @@ class ExecutionPlanCoverageTest {
     final List<OrderChecklistItem> items = new ArrayList<>();
     @BeforeEach void setup() {
         order.setId("o"); first.setId("m1"); second.setId("m2");
-        for (var m : List.of(first,second)) { m.setOrder(order); m.setStatus(MissionStatus.RESOURCE_ASSIGNING); }
+        for (var m : List.of(first,second)) { m.setOrder(order); m.setStatus(MissionStatus.PLANNING); }
         for (var id : List.of("A","B","C","D","E")) { var i=new OrderChecklistItem(); i.setId(id); i.setOrder(order); items.add(i); }
     }
     MissionChecklistAssignment assign(Mission m, String id) {

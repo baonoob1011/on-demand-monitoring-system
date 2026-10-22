@@ -5,7 +5,7 @@ import java.util.List;
 
 public record ExecutionPlanResponse(String orderId, ExecutionPlanStatus planStatus, long revision,
         List<MissionScope> missions, Coverage coverage, List<String> blockers) {
-    public record MissionScope(String missionId, String scopeLabel, int assignmentCount, Long finalizedPlanRevision) {}
+    public record MissionScope(String missionId, String scopeLabel, int assignmentCount) {}
     public record Coverage(int total, int covered, int uncovered, int repeated,
             boolean coverageReady, List<String> uncoveredItemIds) {}
 }

@@ -1,4 +1,5 @@
 package com.ondemandmonitoring.mission.dto.response;
 
-/** Command outcome only; controllers keep the existing MissionResponse wire shape. */
+/** @deprecated Mission creation now returns {@link MissionResponse} directly. */
+@Deprecated
 public record MissionCreationResult(MissionResponse mission, boolean created) {}

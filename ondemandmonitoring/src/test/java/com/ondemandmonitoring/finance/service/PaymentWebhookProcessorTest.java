@@ -58,7 +58,7 @@ class PaymentWebhookProcessorTest {
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCESS);
         assertThat(invoice.getPaidAmount()).isEqualByComparingTo("300");
         assertThat(invoice.getStatus()).isEqualTo(InvoiceStatus.PARTIALLY_PAID);
-        assertThat(mission.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
+        assertThat(mission.getStatus()).isEqualTo(MissionStatus.PLANNING);
     }
 
     @Test void duplicateSuccessWebhookDoesNotCreditAgain() {
@@ -75,8 +75,8 @@ class PaymentWebhookProcessorTest {
         when(missions.findByIdForUpdate("m2")).thenReturn(Optional.of(sibling));
         when(payments.sumSuccessfulPayments("i1")).thenReturn(new BigDecimal("300"));
         assertThat(processor.process(webhook(300))).isEqualTo(PaymentWebhookResult.PROCESSED);
-        assertThat(mission.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
-        assertThat(sibling.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
+        assertThat(mission.getStatus()).isEqualTo(MissionStatus.PLANNING);
+        assertThat(sibling.getStatus()).isEqualTo(MissionStatus.PLANNING);
         var locks = inOrder(orders, payments, invoices, missions);
         locks.verify(orders).findByIdForUpdate("o1");
         locks.verify(payments).findByTransactionReferenceForUpdate("123");

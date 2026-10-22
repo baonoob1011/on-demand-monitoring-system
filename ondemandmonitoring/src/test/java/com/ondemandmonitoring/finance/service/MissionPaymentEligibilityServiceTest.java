@@ -27,7 +27,7 @@ class MissionPaymentEligibilityServiceTest {
         Quote quote = new Quote(); quote.setStatus(QuoteStatus.ACCEPTED_BY_CUSTOMER); invoice.setQuote(quote);
         Mission mission = new Mission(); mission.setOrder(order); mission.setStatus(MissionStatus.WAITING_DEPOSIT);
         assertThat(service.unlockIfEligible(invoice, mission)).isTrue();
-        assertThat(mission.getStatus()).isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
+        assertThat(mission.getStatus()).isEqualTo(MissionStatus.PLANNING);
     }
 
     @Test void insufficientDepositDoesNotUnlockMission() {

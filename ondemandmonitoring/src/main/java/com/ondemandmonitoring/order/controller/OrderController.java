@@ -158,8 +158,7 @@ public class OrderController {
     @GetMapping("/managed")
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<java.util.List<OrderCreateResponse>>> getManagedOrders(
-            @org.springframework.web.bind.annotation.RequestParam(required = false)
-            com.ondemandmonitoring.order.enums.OrderStatus status) {
+            @org.springframework.web.bind.annotation.RequestParam(required = false) com.ondemandmonitoring.order.enums.OrderStatus status) {
         return ResponseEntity.ok(ApiResponse.ok("Orders retrieved", orderService.getManagedOrders(status)));
     }
 

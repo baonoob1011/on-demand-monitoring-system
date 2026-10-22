@@ -13,7 +13,6 @@ import com.ondemandmonitoring.mission.dto.request.AssignStaffRequest;
 import com.ondemandmonitoring.mission.dto.request.DeviceReplacementRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionFailRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionRejectRequest;
-import com.ondemandmonitoring.mission.dto.request.MissionResourceAssignmentRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionUpdateRequest;
 import com.ondemandmonitoring.mission.dto.request.PostFlightStatusRequest;
 import com.ondemandmonitoring.mission.dto.request.FlightPermitUpdateRequest;
@@ -66,13 +65,23 @@ public class MissionController {
     // Query
     // ------------------------------------------------------------------
 
-    @PostMapping
+    @PostMapping("/{orderId}")
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<MissionResponse>> createMission(
+            @PathVariable String orderId,
             @Valid @RequestBody MissionCreateRequest request) {
-        var result = missionService.createMissionWithOutcome(request);
-        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK)
-                .body(ApiResponse.ok(result.created() ? "Planning Mission created" : "Mission creation replayed", result.mission()));
+        var result = missionService.createMission(orderId, request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok("Mission created", result));
+    }
+
+    @PostMapping("/{missionId}/replacement")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<MissionResponse>> replaceMission(
+            @PathVariable String missionId,
+            @Valid @RequestBody MissionCreateRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok("Replacement mission created", missionService.replaceMission(missionId, request)));
     }
 
     @GetMapping("/all")
@@ -263,7 +272,7 @@ public class MissionController {
     /**
      * PATCH /api/missions/{id}/reject
      * Staff rejects the mission with a mandatory reason.
-     * Transitions: WAITING_OPERATOR_ACCEPTANCE → RESOURCE_ASSIGNING
+     * Transitions: WAITING_OPERATOR_ACCEPTANCE → PLANNING
      */
     @PatchMapping("/{id}/reject")
     @PreAuthorize("@missionAuthorizationService.canRespondToMission(#id)")

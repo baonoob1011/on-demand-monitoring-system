@@ -11,8 +11,6 @@ import lombok.Setter;
 import lombok.experimental.FieldDefaults;
 
 import java.time.Instant;
-import org.locationtech.jts.geom.Point;
-import org.locationtech.jts.geom.Polygon;
 
 @Getter
 @Setter
@@ -53,21 +51,17 @@ public class Mission extends BaseEntity {
     @Column(name = "scope_label", length = 255)
     String scopeLabel;
 
-    @Column(name = "target_point", columnDefinition = "geometry(Point,4326)")
-    Point targetPoint;
+    /** @deprecated Geometry is owned by Order; retained only for source compatibility. */
+    @Deprecated @Transient
+    org.locationtech.jts.geom.Point targetPoint;
 
-    @Column(name = "target_area", columnDefinition = "geometry(Polygon,4326)")
-    Polygon targetArea;
+    /** @deprecated Geometry is owned by Order; retained only for source compatibility. */
+    @Deprecated @Transient
+    org.locationtech.jts.geom.Polygon targetArea;
 
-    @jakarta.validation.constraints.PositiveOrZero
-    @Column(name = "finalized_plan_revision")
+    /** @deprecated Materialization state replaces the former per-mission revision snapshot. */
+    @Deprecated @Transient
     Long finalizedPlanRevision;
-
-    @Column(name = "creation_idempotency_key", length = 36, updatable = false)
-    String creationIdempotencyKey;
-
-    @Column(name = "creation_request_hash", length = 64, updatable = false)
-    String creationRequestHash;
 
     @Column(name = "replaces_mission_id", length = 255)
     String replacesMissionId;
