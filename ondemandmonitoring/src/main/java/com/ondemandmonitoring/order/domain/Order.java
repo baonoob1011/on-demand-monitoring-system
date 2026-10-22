@@ -44,7 +44,9 @@ import org.locationtech.jts.geom.Point;
 import org.locationtech.jts.geom.Polygon;
 
 @Entity
-@Table(name = "orders")
+@Table(name = "orders", indexes = {
+        @jakarta.persistence.Index(name = "ix_orders_status_created", columnList = "order_status,created_at"),
+        @jakarta.persistence.Index(name = "ix_orders_created", columnList = "created_at")})
 @Getter
 @Setter
 @Builder

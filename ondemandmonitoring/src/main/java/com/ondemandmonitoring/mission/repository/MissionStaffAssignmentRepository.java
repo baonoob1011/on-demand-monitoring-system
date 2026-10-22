@@ -39,4 +39,7 @@ public interface MissionStaffAssignmentRepository extends JpaRepository<MissionS
 
     List<MissionStaffAssignment> findByMissionId(String missionId);
 
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = "staff")
+    List<MissionStaffAssignment> findAllByMissionIdInAndIsCurrentTrue(List<String> missionIds);
+
 }

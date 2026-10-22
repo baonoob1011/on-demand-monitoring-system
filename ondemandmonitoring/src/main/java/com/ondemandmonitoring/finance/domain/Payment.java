@@ -12,7 +12,9 @@ import lombok.Setter;
 @Table(name = "payments", uniqueConstraints = {
         @UniqueConstraint(name = "uk_payment_code", columnNames = "payment_code"),
         @UniqueConstraint(name = "uk_payment_transaction_reference", columnNames = "transaction_reference")},
-        indexes = @Index(name = "ix_payments_invoice_status", columnList = "invoice_id,status"))
+        indexes = {
+                @Index(name = "ix_payments_invoice_status", columnList = "invoice_id,status"),
+                @Index(name = "ix_payments_invoice_type_status", columnList = "invoice_id,payment_type,status")})
 @Getter @Setter
 public class Payment extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

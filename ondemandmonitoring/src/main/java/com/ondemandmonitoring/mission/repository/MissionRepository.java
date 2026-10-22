@@ -78,4 +78,37 @@ public interface MissionRepository extends JpaRepository<Mission, String>, JpaSp
 
     List<Mission> findByStatusIn(List<MissionStatus> statuses);
 
+    long countByStatusIn(java.util.Collection<MissionStatus> statuses);
+
+    long countByStatus(MissionStatus status);
+
+    long countByStatusAndCompletedAtGreaterThanEqual(MissionStatus status, java.time.Instant completedAt);
+
+    @EntityGraph(attributePaths = "order")
+    Page<Mission> findByStatusInOrderByScheduledStartAtAsc(
+            java.util.Collection<MissionStatus> statuses, Pageable pageable);
+
+    @EntityGraph(attributePaths = "order")
+    Page<Mission> findByStatusInOrderByUpdatedAtDesc(
+            java.util.Collection<MissionStatus> statuses, Pageable pageable);
+
+    @Query("""
+            select count(m) from Mission m
+            where m.status in :statuses
+              and (not exists (select a.id from MissionStaffAssignment a where a.mission = m and a.isCurrent = true)
+                or not exists (select d.id from MissionDeviceAssignment d where d.mission = m and d.isCurrent = true))
+            """)
+    long countMissingResources(@Param("statuses") java.util.Collection<MissionStatus> statuses);
+
+    @EntityGraph(attributePaths = "order")
+    @Query("""
+            select m from Mission m
+            where m.status in :statuses
+              and (not exists (select a.id from MissionStaffAssignment a where a.mission = m and a.isCurrent = true)
+                or not exists (select d.id from MissionDeviceAssignment d where d.mission = m and d.isCurrent = true))
+            order by m.scheduledStartAt asc
+            """)
+    List<Mission> findMissingResources(
+            @Param("statuses") java.util.Collection<MissionStatus> statuses, Pageable pageable);
+
 }
