@@ -86,7 +86,7 @@ public class DepotServiceImpl implements DepotService {
 
         Depot depot = findDepotOrThrow(id);
 
-        depotRepository.delete(depot);
+        depot.setStatus(DepotStatus.INACTIVE);
     }
 
     @Override
