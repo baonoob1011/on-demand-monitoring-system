@@ -91,6 +91,7 @@ public class PreDeviceCheckCompletionServiceImpl implements IPreDeviceCheckCompl
         }
         Instant now = Instant.now();
         boolean hasNonPassingItem = run.getItems().stream()
+                .filter(item -> PersistedPreDeviceCheckService.isActiveCheckType(item.getCheckType()))
                 .anyMatch(item -> Boolean.TRUE.equals(item.getRequired())
                         && (item.getStatus() != PreDeviceItemStatus.PASSED
                         || item.getExpiresAt() == null

@@ -83,6 +83,10 @@ public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckS
             "aircraft_connection", "command_link", "flight_controller",
             "aircraft_readiness", "monitoring_connection");
 
+    static boolean isActiveCheckType(String checkType) {
+        return !IGNORED_CHECK_TYPES.contains(checkType);
+    }
+
     private final PersistedPreDeviceCheckRepository runRepository;
     private final MissionRepository missionRepository;
     private final DeviceConnectionRepository connectionRepository;
@@ -346,7 +350,7 @@ public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckS
 
     private void refreshRunStatus(PersistedPreDeviceCheck run) {
         List<PersistedPreDeviceCheckItem> activeItems = run.getItems().stream()
-                .filter(i -> !IGNORED_CHECK_TYPES.contains(i.getCheckType())).toList();
+                .filter(i -> isActiveCheckType(i.getCheckType())).toList();
         int passed = (int) activeItems.stream().filter(i -> i.getStatus() == PreDeviceItemStatus.PASSED
                 || i.getStatus() == PreDeviceItemStatus.NOT_APPLICABLE).count();
         int failed = (int) activeItems.stream().filter(i -> i.getStatus() == PreDeviceItemStatus.FAILED).count();

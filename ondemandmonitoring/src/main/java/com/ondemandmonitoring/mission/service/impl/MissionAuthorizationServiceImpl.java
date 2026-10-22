@@ -39,7 +39,9 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
         return findRuntimeMissionById(missionId).filter(m -> PILOT_UPLOAD_STATUSES.contains(m.getStatus()))
                 .filter(m -> results.findByMissionId(m.getId()).map(r -> r.getApprovalStatus() != com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus.APPROVED
                         && r.getApprovalStatus() != com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL).orElse(true))
-                .map(m -> hasEligibleInspectorAssignment(m, currentUser.getCurrentUser())).orElse(false);
+                .map(m -> hasEligibleInspectorAssignment(m, currentUser.getCurrentUser())
+                        || hasEligiblePilotAssignment(m, currentUser.getCurrentUser()))
+                .orElse(false);
     }
 
     @Override
@@ -157,8 +159,7 @@ public class MissionAuthorizationServiceImpl implements IMissionAuthorizationSer
                 MissionStatus.IN_FLIGHT,
                 MissionStatus.IN_PROGRESS, MissionStatus.RETURNING, MissionStatus.POSTFLIGHT_CHECKING,
                 MissionStatus.PENDING_REVIEW, MissionStatus.COMPLETED).contains(mission.getStatus())).map(mission -> {
-                    return hasEligibleInspectorAssignment(mission, user)
-                            || hasEligiblePilotAssignment(mission, user)
+                    return hasEligiblePilotAssignment(mission, user)
                             || canExecuteAsReportingCrew(mission, user);
                 }).orElse(false);
     }

@@ -87,6 +87,19 @@ class MissionChecklistExecutionServiceTest {
         error(ErrorCode.ACCESS_DENIED, () -> service.update("m", "e", changeAssessment));
         assertEquals(ChecklistAssessmentStatus.NOT_ASSESSED, execution.getAssessmentStatus());
     }
+    @Test void inspectorMayAssessButCannotChangePilotExecutionFields() {
+        when(auth.canExecuteMonitoringChecklist("m")).thenReturn(false);
+        when(auth.canReviewMissionMedia("m")).thenReturn(true);
+        var assessment = request(ChecklistExecutionStatus.PENDING);
+        assessment.setAssessmentStatus(ChecklistAssessmentStatus.COMPLIANT);
+        service.update("m", "e", assessment);
+        assertEquals(ChecklistAssessmentStatus.COMPLIANT, execution.getAssessmentStatus());
+
+        var executionChange = request(ChecklistExecutionStatus.IN_PROGRESS);
+        executionChange.setAssessmentStatus(ChecklistAssessmentStatus.COMPLIANT);
+        error(ErrorCode.ACCESS_DENIED, () -> service.update("m", "e", executionChange));
+        assertEquals(ChecklistExecutionStatus.PENDING, execution.getExecutionStatus());
+    }
     void error(ErrorCode code, Runnable call) { assertEquals(code, assertThrows(ApiException.class, call::run).getErrorCode()); }
 
     @Test void progressesCompletesWithoutChangingSnapshotOrMissionAndClearsReason() {
@@ -183,6 +196,7 @@ class MissionChecklistExecutionServiceTest {
 
     @Test void serviceRechecksActorUnderMissionLock() {
         when(auth.canExecuteMonitoringChecklist("m")).thenReturn(false);
+        when(auth.canReviewMissionMedia("m")).thenReturn(false);
         error(ErrorCode.ACCESS_DENIED, () -> service.update("m", "e", request(ChecklistExecutionStatus.COMPLETED)));
         verify(executions, never()).saveAndFlush(any());
         when(auth.canViewMission("m")).thenReturn(false);
