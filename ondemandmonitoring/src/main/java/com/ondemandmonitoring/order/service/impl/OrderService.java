@@ -21,6 +21,8 @@ import com.ondemandmonitoring.order.enums.LegalReviewStatus;
 import com.ondemandmonitoring.order.mapper.OrderMapper;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.IOrderService;
+import com.ondemandmonitoring.order.service.support.OrderLookup;
+import com.ondemandmonitoring.order.service.validation.OrderApprovalValidator;
 import com.ondemandmonitoring.order.service.IOrderChecklistSnapshotService;
 import com.ondemandmonitoring.order.util.GeoReader;
 import com.ondemandmonitoring.order.util.ServiceAreaPolicy;
@@ -59,6 +61,8 @@ public class OrderService implements IOrderService {
     private static final int MINIMUM_FLIGHT_NOTICE_DAYS = 7;
 
     OrderRepository orderRepository;
+    OrderLookup orderLookup;
+    OrderApprovalValidator orderApprovalValidator;
     ServiceRepository serviceRepository;
     DeliverableTypeRepository deliverableTypeRepository;
     ServiceDeliverableRepository serviceDeliverableRepository;
@@ -75,22 +79,13 @@ public class OrderService implements IOrderService {
     @Transactional
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public OrderCreateResponse approveOrder(String orderId) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+        Order order = orderLookup.getRequired(orderId);
 
         if (order.getOrderStatus() == OrderStatus.APPROVED) {
             return toResponse(order);
         }
 
-        if (order.getOrderStatus() != OrderStatus.PENDING) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "Only PENDING orders can be approved");
-        }
-        if (order.getLegalReviewStatus() != LegalReviewStatus.NOT_REQUIRED
-                && order.getLegalReviewStatus() != LegalReviewStatus.APPROVED
-                && order.getLegalReviewStatus() != LegalReviewStatus.PENDING_PERMIT) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST,
-                    "Order legal review is not ready for approval");
-        }
+        orderApprovalValidator.validate(order);
 
         order.setOrderStatus(OrderStatus.APPROVED);
         order.setReviewBy(authenticatedUserResolver.getCurrentUser());
@@ -104,8 +99,7 @@ public class OrderService implements IOrderService {
     @Transactional
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public OrderCreateResponse reviewFlightArea(String orderId, FlightAreaReviewRequest request) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+        Order order = orderLookup.getRequired(orderId);
         if (order.getOrderStatus() != OrderStatus.PENDING) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Only PENDING orders can be reviewed");
         }
@@ -135,8 +129,7 @@ public class OrderService implements IOrderService {
     @Transactional
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public OrderCreateResponse resolveLegalReview(String orderId, LegalReviewResolutionRequest request) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+        Order order = orderLookup.getRequired(orderId);
         // The permit may still be pending after the order was approved and invoiced.
         if ((order.getOrderStatus() != OrderStatus.PENDING && order.getOrderStatus() != OrderStatus.APPROVED)
                 || order.getLegalReviewStatus() != LegalReviewStatus.PENDING_PERMIT) {
@@ -363,8 +356,7 @@ public class OrderService implements IOrderService {
     @Transactional(readOnly = true)
     @PreAuthorize("@orderAuthorizationService.canViewOrder(#orderId)")
     public OrderCreateResponse getOrderById(String orderId) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+        Order order = orderLookup.getRequired(orderId);
         return toResponse(order);
     }
 
@@ -372,8 +364,7 @@ public class OrderService implements IOrderService {
     @Transactional
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public void rejectOrder(String orderId, String reason) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+        Order order = orderLookup.getRequired(orderId);
 
         if (order.getOrderStatus() != OrderStatus.PENDING) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Only PENDING orders can be rejected");
@@ -389,8 +380,7 @@ public class OrderService implements IOrderService {
     @Transactional
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public void requestMoreInformation(String orderId, String reason, String requestedUpdateScope) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+        Order order = orderLookup.getRequired(orderId);
 
         if (order.getOrderStatus() != OrderStatus.PENDING) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Only PENDING orders can request more information");
@@ -409,8 +399,7 @@ public class OrderService implements IOrderService {
     @PreAuthorize("hasRole('CUSTOMER')")
     public OrderCreateResponse submitAdditionalInformation(String orderId,
             com.ondemandmonitoring.order.dto.request.OrderAdditionalInformationRequest request) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+        Order order = orderLookup.getRequired(orderId);
         User customer = authenticatedUserResolver.getCurrentUser();
         if (order.getCustomer() == null || !order.getCustomer().getId().equals(customer.getId())) {
             throw new ApiException(ErrorCode.ACCESS_DENIED, "This order does not belong to the current customer");
@@ -446,8 +435,7 @@ public class OrderService implements IOrderService {
     @PreAuthorize("hasRole('CUSTOMER')")
     public OrderCreateResponse updateCustomerOrder(String orderId,
             com.ondemandmonitoring.order.dto.request.OrderCustomerUpdateRequest request) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+        Order order = orderLookup.getRequired(orderId);
         User customer = authenticatedUserResolver.getCurrentUser();
         if (order.getCustomer() == null || !order.getCustomer().getId().equals(customer.getId()))
             throw new ApiException(ErrorCode.ACCESS_DENIED, "This order does not belong to the current customer");
