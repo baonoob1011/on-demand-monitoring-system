@@ -13,7 +13,6 @@ import com.ondemandmonitoring.service.controller.ServiceController;
 import com.ondemandmonitoring.pricing.service.ServicePriceResolver;
 import com.ondemandmonitoring.service.dto.response.ServiceResponse;
 import com.ondemandmonitoring.service.service.IServiceService;
-import com.ondemandmonitoring.service.repository.ServiceRequirementSuggestionRepository;
 import com.ondemandmonitoring.service.domain.Service;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.*;
@@ -220,7 +219,6 @@ class ChecklistAuthorizationTest {
         @Bean IChecklistService catalog() { return mock(IChecklistService.class); }
         @Bean IServiceChecklistService assignments() { return mock(IServiceChecklistService.class); }
         @Bean IServiceService services() { return mock(IServiceService.class); }
-        @Bean ServiceRequirementSuggestionRepository suggestions() { return mock(ServiceRequirementSuggestionRepository.class); }
         @Bean AuthenticatedUserResolver resolver() { return mock(AuthenticatedUserResolver.class); }
         @Bean ServicePriceResolver priceResolver() { return mock(ServicePriceResolver.class); }
         @Bean @Qualifier("cognitoAccessTokenDecoder") JwtDecoder decoder() { return mock(JwtDecoder.class); }
