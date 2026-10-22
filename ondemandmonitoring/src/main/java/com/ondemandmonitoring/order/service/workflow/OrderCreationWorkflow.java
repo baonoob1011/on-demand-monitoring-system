@@ -237,8 +237,8 @@ public class OrderCreationWorkflow {
         var items = checklistSnapshots.capture(savedOrder, request.getChecklistItems());
         reviewRecords.initialize(savedOrder);
         orderRepository.flush();
-        OrderCreateResponse response = orderMapper.responses.toResponse(savedOrder);
-        responses.responses.enrichCustomerProfile(response, savedOrder);
+        OrderCreateResponse response = orderMapper.toResponse(savedOrder);
+        responses.enrichCustomerProfile(response, savedOrder);
         response.setChecklistItems(items);
         return response;
     }
