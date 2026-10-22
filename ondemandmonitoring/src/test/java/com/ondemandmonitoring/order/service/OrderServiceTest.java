@@ -60,20 +60,28 @@ class OrderServiceTest {
         authenticatedUserResolver = mock(AuthenticatedUserResolver.class);
         orderMapper = Mappers.getMapper(OrderMapper.class);
 
-        orderService = new OrderService(
-                orderRepository,
-                serviceRepository,
-                deliverableTypeRepository,
-                serviceDeliverableRepository,
-                preferredTimeRepository,
-                authenticatedUserResolver,
-                mock(com.ondemandmonitoring.user.repository.CustomerProfileRepository.class),
-                orderMapper,
-                mock(IOrderChecklistSnapshotService.class),
-                mock(OrderReviewRecordInitializer.class),
-                mock(com.ondemandmonitoring.finance.repository.QuoteRepository.class),
-                mock(com.ondemandmonitoring.finance.repository.InvoiceRepository.class)
-        );
+        var profiles = mock(com.ondemandmonitoring.user.repository.CustomerProfileRepository.class);
+        var snapshots = mock(IOrderChecklistSnapshotService.class);
+        var reviews = mock(OrderReviewRecordInitializer.class);
+        var quotes = mock(com.ondemandmonitoring.finance.repository.QuoteRepository.class);
+        var invoices = mock(com.ondemandmonitoring.finance.repository.InvoiceRepository.class);
+
+        var lookup = new com.ondemandmonitoring.order.service.support.OrderLookup(orderRepository);
+        var approvals = new com.ondemandmonitoring.order.service.validation.OrderApprovalValidator();
+        var responses = new com.ondemandmonitoring.order.service.workflow.OrderResponseAssembler(
+                profiles, orderMapper, snapshots, invoices);
+        var creation = new com.ondemandmonitoring.order.service.workflow.OrderCreationWorkflow(
+                orderRepository, serviceRepository, deliverableTypeRepository,
+                serviceDeliverableRepository, preferredTimeRepository,
+                authenticatedUserResolver, orderMapper, snapshots, reviews, responses);
+        var review = new com.ondemandmonitoring.order.service.workflow.OrderReviewWorkflow(
+                orderRepository, authenticatedUserResolver, responses, lookup, approvals);
+        var updates = new com.ondemandmonitoring.order.service.workflow.OrderCustomerUpdateWorkflow(
+                orderRepository, authenticatedUserResolver, quotes, orderMapper,
+                reviews, responses, lookup);
+        var query = new com.ondemandmonitoring.order.service.workflow.OrderQueryWorkflow(
+                orderRepository, authenticatedUserResolver, responses, lookup);
+        orderService = new OrderService(creation, review, updates, query);
 
         String userId = UUID.randomUUID().toString();
         User mockUser = User.builder().fullName("Test Customer").email("test@example.com").build();
