@@ -64,94 +64,94 @@ public class OrderService implements IOrderService {
     OrderQueryWorkflow orderQueryWorkflow;
 
     @Override
-        @Transactional
-        @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @Transactional
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public OrderCreateResponse approveOrder(String orderId) {
         return orderReviewWorkflow.approveOrder(orderId);
     }
 
     @Override
-        @Transactional
-        @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @Transactional
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public OrderCreateResponse reviewFlightArea(String orderId, FlightAreaReviewRequest request) {
         return orderReviewWorkflow.reviewFlightArea(orderId, request);
     }
 
     @Override
-        @Transactional
-        @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @Transactional
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public OrderCreateResponse resolveLegalReview(String orderId, LegalReviewResolutionRequest request) {
         return orderReviewWorkflow.resolveLegalReview(orderId, request);
     }
 
     @Override
-        @Transactional
-        @PreAuthorize("hasRole('CUSTOMER')")
+    @Transactional
+    @PreAuthorize("hasRole('CUSTOMER')")
     public OrderCreateResponse createOrder(OrderCreateRequest request) {
         return orderCreationWorkflow.createOrder(request);
     }
 
     @Override
-        @Transactional(readOnly = true)
-        @PreAuthorize("@orderAuthorizationService.canViewOrder(#orderId)")
+    @Transactional(readOnly = true)
+    @PreAuthorize("@orderAuthorizationService.canViewOrder(#orderId)")
     public OrderCreateResponse getOrderById(String orderId) {
         return orderQueryWorkflow.getOrderById(orderId);
     }
 
     @Override
-        @Transactional
-        @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @Transactional
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public void rejectOrder(String orderId, String reason) {
         orderReviewWorkflow.rejectOrder(orderId, reason);
     }
 
     @Override
-        @Transactional
-        @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @Transactional
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public void requestMoreInformation(String orderId, String reason, String requestedUpdateScope) {
         orderReviewWorkflow.requestMoreInformation(orderId, reason, requestedUpdateScope);
     }
 
     @Override
-        @Transactional
-        @PreAuthorize("hasRole('CUSTOMER')")
+    @Transactional
+    @PreAuthorize("hasRole('CUSTOMER')")
     public OrderCreateResponse submitAdditionalInformation(String orderId,
             com.ondemandmonitoring.order.dto.request.OrderAdditionalInformationRequest request) {
         return orderCustomerUpdateWorkflow.submitAdditionalInformation(orderId, request);
     }
 
     @Override
-        @Transactional
-        @PreAuthorize("hasRole('CUSTOMER')")
+    @Transactional
+    @PreAuthorize("hasRole('CUSTOMER')")
     public OrderCreateResponse updateCustomerOrder(String orderId,
             com.ondemandmonitoring.order.dto.request.OrderCustomerUpdateRequest request) {
         return orderCustomerUpdateWorkflow.updateCustomerOrder(orderId, request);
     }
 
     @Override
-        @Transactional(readOnly = true)
-        @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public List<OrderCreateResponse> getPendingOrders() {
         return orderQueryWorkflow.getPendingOrders();
     }
 
     @Override
-        @Transactional(readOnly = true)
-        @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public List<OrderCreateResponse> getApprovedOrders() {
         return orderQueryWorkflow.getApprovedOrders();
     }
 
     @Override
-        @Transactional(readOnly = true)
-        @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public List<OrderCreateResponse> getManagedOrders(OrderStatus status) {
         return orderQueryWorkflow.getManagedOrders(status);
     }
 
     @Override
-        @Transactional(readOnly = true)
-        @PreAuthorize("hasRole('CUSTOMER')")
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasRole('CUSTOMER')")
     public List<OrderCreateResponse> getMyOrders(OrderStatus status) {
         return orderQueryWorkflow.getMyOrders(status);
     }
