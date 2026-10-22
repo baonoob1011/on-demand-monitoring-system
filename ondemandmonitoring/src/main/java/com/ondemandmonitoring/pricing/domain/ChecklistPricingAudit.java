@@ -15,7 +15,8 @@ import lombok.Setter;
 @Entity
 @Table(name = "checklist_pricing_audits", indexes = {
         @Index(name = "ix_checklist_pricing_audit_quote", columnList = "quote_id"),
-        @Index(name = "ix_checklist_pricing_audit_item", columnList = "order_checklist_item_id")})
+        @Index(name = "ix_checklist_pricing_audit_item", columnList = "order_checklist_item_id"),
+        @Index(name = "ix_checklist_pricing_audit_reviewed", columnList = "reviewed_at")})
 @Getter
 @Setter
 public class ChecklistPricingAudit extends BaseEntity {
