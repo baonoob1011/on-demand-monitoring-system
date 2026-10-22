@@ -68,18 +68,18 @@ class OrderServiceTest {
 
         var lookup = new com.ondemandmonitoring.order.service.support.OrderLookup(orderRepository);
         var approvals = new com.ondemandmonitoring.order.service.validation.OrderApprovalValidator();
-        var responses = new com.ondemandmonitoring.order.service.workflow.OrderResponseAssembler(
+        var responses = new com.ondemandmonitoring.order.service.support.OrderResponseAssembler(
                 profiles, orderMapper, snapshots, invoices);
-        var creation = new com.ondemandmonitoring.order.service.workflow.OrderCreationWorkflow(
+        var creation = new com.ondemandmonitoring.order.service.impl.OrderCreationService(
                 orderRepository, serviceRepository, deliverableTypeRepository,
                 serviceDeliverableRepository, preferredTimeRepository,
                 authenticatedUserResolver, orderMapper, snapshots, reviews, responses);
-        var review = new com.ondemandmonitoring.order.service.workflow.OrderReviewWorkflow(
+        var review = new com.ondemandmonitoring.order.service.impl.OrderReviewService(
                 orderRepository, authenticatedUserResolver, responses, lookup, approvals);
-        var updates = new com.ondemandmonitoring.order.service.workflow.OrderCustomerUpdateWorkflow(
+        var updates = new com.ondemandmonitoring.order.service.impl.OrderCustomerUpdateService(
                 orderRepository, authenticatedUserResolver, quotes, orderMapper,
                 reviews, responses, lookup);
-        var query = new com.ondemandmonitoring.order.service.workflow.OrderQueryWorkflow(
+        var query = new com.ondemandmonitoring.order.service.impl.OrderQueryService(
                 orderRepository, authenticatedUserResolver, responses, lookup);
         orderService = new OrderService(creation, review, updates, query);
 

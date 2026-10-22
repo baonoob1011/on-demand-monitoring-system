@@ -52,64 +52,64 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.access.prepost.PreAuthorize;
 
-import com.ondemandmonitoring.order.service.workflow.*;
+import com.ondemandmonitoring.order.service.impl.*;
 
 @Component
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class OrderService implements IOrderService {
-    OrderCreationWorkflow orderCreationWorkflow;
-    OrderReviewWorkflow orderReviewWorkflow;
-    OrderCustomerUpdateWorkflow orderCustomerUpdateWorkflow;
-    OrderQueryWorkflow orderQueryWorkflow;
+    OrderCreationService orderCreationService;
+    OrderReviewService orderReviewService;
+    OrderCustomerUpdateService orderCustomerUpdateService;
+    OrderQueryService orderQueryService;
 
     @Override
     @Transactional
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public OrderCreateResponse approveOrder(String orderId) {
-        return orderReviewWorkflow.approveOrder(orderId);
+        return orderReviewService.approveOrder(orderId);
     }
 
     @Override
     @Transactional
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public OrderCreateResponse reviewFlightArea(String orderId, FlightAreaReviewRequest request) {
-        return orderReviewWorkflow.reviewFlightArea(orderId, request);
+        return orderReviewService.reviewFlightArea(orderId, request);
     }
 
     @Override
     @Transactional
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public OrderCreateResponse resolveLegalReview(String orderId, LegalReviewResolutionRequest request) {
-        return orderReviewWorkflow.resolveLegalReview(orderId, request);
+        return orderReviewService.resolveLegalReview(orderId, request);
     }
 
     @Override
     @Transactional
     @PreAuthorize("hasRole('CUSTOMER')")
     public OrderCreateResponse createOrder(OrderCreateRequest request) {
-        return orderCreationWorkflow.createOrder(request);
+        return orderCreationService.createOrder(request);
     }
 
     @Override
     @Transactional(readOnly = true)
     @PreAuthorize("@orderAuthorizationService.canViewOrder(#orderId)")
     public OrderCreateResponse getOrderById(String orderId) {
-        return orderQueryWorkflow.getOrderById(orderId);
+        return orderQueryService.getOrderById(orderId);
     }
 
     @Override
     @Transactional
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public void rejectOrder(String orderId, String reason) {
-        orderReviewWorkflow.rejectOrder(orderId, reason);
+        orderReviewService.rejectOrder(orderId, reason);
     }
 
     @Override
     @Transactional
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public void requestMoreInformation(String orderId, String reason, String requestedUpdateScope) {
-        orderReviewWorkflow.requestMoreInformation(orderId, reason, requestedUpdateScope);
+        orderReviewService.requestMoreInformation(orderId, reason, requestedUpdateScope);
     }
 
     @Override
@@ -117,7 +117,7 @@ public class OrderService implements IOrderService {
     @PreAuthorize("hasRole('CUSTOMER')")
     public OrderCreateResponse submitAdditionalInformation(String orderId,
             com.ondemandmonitoring.order.dto.request.OrderAdditionalInformationRequest request) {
-        return orderCustomerUpdateWorkflow.submitAdditionalInformation(orderId, request);
+        return orderCustomerUpdateService.submitAdditionalInformation(orderId, request);
     }
 
     @Override
@@ -125,35 +125,35 @@ public class OrderService implements IOrderService {
     @PreAuthorize("hasRole('CUSTOMER')")
     public OrderCreateResponse updateCustomerOrder(String orderId,
             com.ondemandmonitoring.order.dto.request.OrderCustomerUpdateRequest request) {
-        return orderCustomerUpdateWorkflow.updateCustomerOrder(orderId, request);
+        return orderCustomerUpdateService.updateCustomerOrder(orderId, request);
     }
 
     @Override
     @Transactional(readOnly = true)
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public List<OrderCreateResponse> getPendingOrders() {
-        return orderQueryWorkflow.getPendingOrders();
+        return orderQueryService.getPendingOrders();
     }
 
     @Override
     @Transactional(readOnly = true)
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public List<OrderCreateResponse> getApprovedOrders() {
-        return orderQueryWorkflow.getApprovedOrders();
+        return orderQueryService.getApprovedOrders();
     }
 
     @Override
     @Transactional(readOnly = true)
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public List<OrderCreateResponse> getManagedOrders(OrderStatus status) {
-        return orderQueryWorkflow.getManagedOrders(status);
+        return orderQueryService.getManagedOrders(status);
     }
 
     @Override
     @Transactional(readOnly = true)
     @PreAuthorize("hasRole('CUSTOMER')")
     public List<OrderCreateResponse> getMyOrders(OrderStatus status) {
-        return orderQueryWorkflow.getMyOrders(status);
+        return orderQueryService.getMyOrders(status);
     }
 
 }

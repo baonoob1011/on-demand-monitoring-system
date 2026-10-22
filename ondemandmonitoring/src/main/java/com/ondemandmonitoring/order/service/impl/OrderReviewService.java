@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.order.service.workflow;
+package com.ondemandmonitoring.order.service.impl;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
@@ -51,12 +51,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 import com.ondemandmonitoring.order.service.support.OrderLookup;
+import com.ondemandmonitoring.order.service.support.OrderResponseAssembler;
 import com.ondemandmonitoring.order.service.validation.OrderApprovalValidator;
 
 @Component
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-public class OrderReviewWorkflow {
+public class OrderReviewService {
 
     OrderRepository orderRepository;
     AuthenticatedUserResolver authenticatedUserResolver;
