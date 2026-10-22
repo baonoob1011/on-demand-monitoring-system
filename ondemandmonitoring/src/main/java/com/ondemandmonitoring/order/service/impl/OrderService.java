@@ -431,6 +431,20 @@ public class OrderService implements IOrderService {
         if (request.monitoringAuthorizationConfirmed() != null) {
             order.setMonitoringAuthorizationConfirmed(request.monitoringAuthorizationConfirmed());
         }
+        if (request.monitoringAuthorizationDocuments() != null
+                && !request.monitoringAuthorizationDocuments().isEmpty()) {
+            List<OrderAuthorizationDocument> uploaded =
+                    validateAuthorizationDocuments(request.monitoringAuthorizationDocuments());
+            List<OrderAuthorizationDocument> combined = new ArrayList<>(
+                    order.getMonitoringAuthorizationDocuments() == null
+                            ? List.of() : order.getMonitoringAuthorizationDocuments());
+            combined.addAll(uploaded);
+            if (combined.size() > 10) {
+                throw new ApiException(ErrorCode.INVALID_REQUEST,
+                        "At most 10 authorization documents are allowed");
+            }
+            order.setMonitoringAuthorizationDocuments(combined);
+        }
         order.setDescription((order.getDescription() == null ? "" : order.getDescription().strip())
                 + "\n\nThông tin khách bổ sung: " + request.information().strip());
         order.setOrderStatus(OrderStatus.PENDING);
