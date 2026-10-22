@@ -1,12 +1,10 @@
 package com.ondemandmonitoring.order.domain;
 
-import com.ondemandmonitoring.Consultation.domains.CustomerConsultation;
 import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.order.dto.OrderAuthorizationDocument;
 import com.ondemandmonitoring.order.dto.OrderPermitDocument;
 import com.ondemandmonitoring.order.enums.OrderDeliveryMethod;
 import com.ondemandmonitoring.order.enums.OrderPermitStatus;
-import com.ondemandmonitoring.order.enums.OrderPriority;
 import com.ondemandmonitoring.order.enums.OrderRecurrenceType;
 import com.ondemandmonitoring.order.enums.OrderResultFormat;
 import com.ondemandmonitoring.order.enums.OrderStatus;
@@ -15,6 +13,7 @@ import com.ondemandmonitoring.order.enums.OrderFlightPurpose;
 import com.ondemandmonitoring.order.enums.OrderUsagePurpose;
 import com.ondemandmonitoring.order.enums.OrderWeatherFallback;
 import com.ondemandmonitoring.order.enums.MonitoringRelationship;
+import com.ondemandmonitoring.order.enums.LegalReviewStatus;
 import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.warehouse.domain.PreferredTime;
@@ -45,7 +44,9 @@ import org.locationtech.jts.geom.Point;
 import org.locationtech.jts.geom.Polygon;
 
 @Entity
-@Table(name = "orders")
+@Table(name = "orders", indexes = {
+        @jakarta.persistence.Index(name = "ix_orders_status_created", columnList = "order_status,created_at"),
+        @jakarta.persistence.Index(name = "ix_orders_created", columnList = "created_at")})
 @Getter
 @Setter
 @Builder
@@ -106,10 +107,6 @@ public class Order extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "flight_purpose", length = 30)
     private OrderFlightPurpose flightPurpose;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "priority", length = 20)
-    private OrderPriority priority;
 
     @Column(name = "altitude_m")
     private Double altitudeM;
@@ -208,8 +205,12 @@ public class Order extends BaseEntity {
     private List<OrderDeliveryMethod> deliveryMethods;
 
     /** Days the result data is kept after handover. */
-    @Column(name = "data_retention_days")
+    @Column(name = "data_retention_days", nullable = false)
     private Integer dataRetentionDays;
+
+    /** Customer result access expires at this instant; set only on first originals handover. */
+    @Column(name = "result_expires_at")
+    private Instant resultExpiresAt;
 
     /** When the customer accepted the terms and the data-security commitment. */
     @Column(name = "terms_accepted_at")
@@ -225,6 +226,10 @@ public class Order extends BaseEntity {
     @Column(name = "reject_reason", columnDefinition = "TEXT")
     private String rejectReason;
 
+    /** Customer-facing section that the manager explicitly asked to be corrected. */
+    @Column(name = "requested_update_scope", length = 40)
+    private String requestedUpdateScope;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "review_by")
     private User reviewBy;
@@ -232,9 +237,27 @@ public class Order extends BaseEntity {
     @Column(name = "review_at")
     private Instant reviewAt;
 
+    @Enumerated(EnumType.STRING)
     @Builder.Default
-    @OneToMany(mappedBy = "order", fetch = FetchType.LAZY)
-    private List<CustomerConsultation> consultations = new ArrayList<>();
+    @Column(name = "legal_review_status", length = 30)
+    private LegalReviewStatus legalReviewStatus = LegalReviewStatus.NOT_REVIEWED;
+
+    @Column(name = "flight_area_review_reason", length = 500)
+    private String flightAreaReviewReason;
+
+    @Column(name = "flight_area_review_note", columnDefinition = "TEXT")
+    private String flightAreaReviewNote;
+
+    @Column(name = "requested_scope_feasible")
+    private Boolean requestedScopeFeasible;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "flight_area_reviewed_by")
+    private User flightAreaReviewedBy;
+
+    @Column(name = "flight_area_reviewed_at")
+    private Instant flightAreaReviewedAt;
+
 
     @Builder.Default
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)

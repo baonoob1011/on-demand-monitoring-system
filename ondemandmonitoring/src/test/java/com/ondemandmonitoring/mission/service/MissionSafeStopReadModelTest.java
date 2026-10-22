@@ -2,7 +2,6 @@ package com.ondemandmonitoring.mission.service;
 
 import com.ondemandmonitoring.devicecheck.repository.PersistedPostDeviceCheckRepository;
 import com.ondemandmonitoring.mission.domain.*;
-import com.ondemandmonitoring.mission.dto.request.MissionSafeStopConfirmationRequest;
 import com.ondemandmonitoring.mission.dto.response.MissionSafeStopResponse;
 import com.ondemandmonitoring.mission.enums.*;
 import com.ondemandmonitoring.mission.repository.*;
@@ -11,7 +10,7 @@ import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.enums.*;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.role.domain.Role;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import com.ondemandmonitoring.userschedule.repository.UserScheduleRepository;
@@ -80,12 +79,14 @@ class MissionSafeStopReadModelTest {
     @ParameterizedTest @EnumSource(value=RoleCode.class, names={"MANAGER","ADMIN"})
     void managerAdminCapabilitiesUseExistingGuardsAndNeverConfirmLanding(RoleCode role) {
         authenticate(role,"manager"); requested(true); mission.setStatus(MissionStatus.IN_FLIGHT);
+        order.setExecutionPlanStatus(ExecutionPlanStatus.FINALIZED);
         var response = service.get("m1");
         assertTrue(response.canRequestSafeStop()); assertFalse(response.canConfirmSafeStop());
         assertFalse(response.canCleanupSafeStop()); assertFalse(response.canCancelMission());
         assertEquals("manager", response.requestedBy()); assertEquals("Weather", response.reason());
         mission.setStatus(MissionStatus.PENDING_REVIEW); mission.setSafeStopStatus(MissionSafeStopStatus.READY_FOR_CANCELLATION);
         mission.setSafeStopConfirmedAt(Instant.now()); mission.setSafeStopCleanedAt(Instant.now());
+        order.setExecutionPlanStatus(ExecutionPlanStatus.DRAFT); // Manager opens an amendment before cancellation.
         response = service.get("m1");
         assertTrue(response.canCleanupSafeStop(),"cleanup replay is intentionally idempotent"); assertTrue(response.canCancelMission());
         assertFalse(response.canConfirmSafeStop());

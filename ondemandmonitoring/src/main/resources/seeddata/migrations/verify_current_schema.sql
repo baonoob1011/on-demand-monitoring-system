@@ -27,6 +27,12 @@ DO $$ DECLARE e record; actual text; keys text[]; predicate text; meta record; B
         ('missions','uk_mission_id_order','u'),
         ('order_checklist_items','uk_checklist_item_id_order','u'),
         ('order_checklist_items','ck_snapshot_evidence_policy','c'),
+        ('order_checklist_items','ck_order_checklist_pricing_snapshot','c'),
+        ('order_checklist_items','ck_order_checklist_manager_quote','c'),
+        ('services','ck_services_default_price','c'),
+        ('checklist_definitions','ck_checklist_pricing','c'),
+        ('service_checklists','ck_service_checklist_overrides','c'),
+        ('pricing_rules','ck_pricing_rule_media','c'),
         ('mission_checklist_assignments','uk_assignment_identity','u'),
         ('mission_checklist_assignments','ck_assignment_shape','c'),
         ('mission_checklist_executions','uk_execution_assignment','u'),
@@ -116,6 +122,29 @@ DO $$ DECLARE e record; actual text; keys text[]; predicate text; meta record; B
         AND attname='mission_checklist_assignment_id' AND attnotnull) THEN
         RAISE EXCEPTION 'Execution assignment link must be NOT NULL';
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid='public.order_checklist_items'::regclass
+        AND attname='required_evidence_type' AND attnotnull
+        AND format_type(atttypid,atttypmod)='character varying(30)') THEN
+        RAISE EXCEPTION 'Order checklist required_evidence_type missing/invalid';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid='public.pricing_rules'::regclass
+        AND attname='checklist_definition_id'
+        AND format_type(atttypid,atttypmod)='character varying(36)') THEN
+        RAISE EXCEPTION 'Pricing rule checklist target missing/invalid';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid='public.order_checklist_items'::regclass
+        AND attname='pricing_status' AND attnotnull
+        AND format_type(atttypid,atttypmod)='character varying(40)') THEN
+        RAISE EXCEPTION 'Order checklist pricing_status missing/invalid';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.order_checklist_items'::regclass
+        AND conname='ck_snapshot_evidence_policy' AND contype='c' AND convalidated
+        AND pg_get_constraintdef(oid) LIKE '%evidence_policy_version%'
+        AND pg_get_constraintdef(oid) LIKE '%required_evidence_type%'
+        AND pg_get_constraintdef(oid) LIKE '%minimum_evidence_count%'
+        AND pg_get_constraintdef(oid) LIKE '%IMAGE_OR_VIDEO%') THEN
+        RAISE EXCEPTION 'Versioned configurable checklist evidence policy constraint missing';
+    END IF;
     SELECT pg_get_constraintdef(oid) INTO actual FROM pg_constraint
         WHERE conrelid='public.resource_time_locks'::regclass AND conname='ex_resource_reservation_window';
     IF actual IS DISTINCT FROM 'EXCLUDE USING gist (resource_id WITH =, tstzrange(start_time, end_time, ''[)''::text) WITH &&) WHERE ((released_at IS NULL))' THEN
@@ -132,6 +161,26 @@ DO $$ DECLARE e record; actual text; keys text[]; predicate text; meta record; B
         AND attname='resource_id' AND attnotnull AND format_type(atttypid,atttypmod)='character varying(100)')
         OR NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.resource_reservation_mutex'::regclass AND contype='p') THEN
         RAISE EXCEPTION 'Resource reservation mutex missing/invalid';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.media_upload_failure_events'::regclass
+        AND conname='uk_media_upload_failure_event' AND contype='u' AND convalidated
+        AND pg_get_constraintdef(oid) LIKE '%event_key%') THEN
+        RAISE EXCEPTION 'Upload failure event idempotency key missing';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid='public.media_upload_failure_events'::regclass
+        AND attname='category' AND attnotnull
+        AND format_type(atttypid,atttypmod)='character varying(40)') THEN
+        RAISE EXCEPTION 'Upload failure event category must be NOT NULL varchar(40)';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid='public.media_upload_failure_events'::regclass
+        AND attname='media_id' AND attnotnull AND format_type(atttypid,atttypmod)='uuid') THEN
+        RAISE EXCEPTION 'Upload failure event media_id must be NOT NULL uuid';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.media_upload_failure_events'::regclass
+        AND conname='ck_upload_failure_category' AND contype='c' AND convalidated
+        AND pg_get_constraintdef(oid) LIKE '%TRANSFER_FAILED%'
+        AND pg_get_constraintdef(oid) LIKE '%TRANSFER_ACK_LOST%') THEN
+        RAISE EXCEPTION 'Upload failure category check missing';
     END IF;
     RAISE NOTICE 'Current Order/Mission schema verification PASS';
 END $$;

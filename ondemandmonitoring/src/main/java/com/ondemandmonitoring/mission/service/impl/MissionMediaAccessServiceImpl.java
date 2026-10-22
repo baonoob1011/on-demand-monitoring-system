@@ -12,7 +12,6 @@ import com.ondemandmonitoring.mission.service.IMissionMediaAccessService;
 import com.ondemandmonitoring.mission.service.IMissionAuthorizationService;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.util.List;
-import java.util.Set;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -26,9 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class MissionMediaAccessServiceImpl implements IMissionMediaAccessService {
-    static Set<MissionStatus> REVIEW_STATUSES = Set.of(
-            MissionStatus.PENDING_REVIEW, MissionStatus.COMPLETED);
-
     MissionRepository missions;
     MissionDeviceAssignmentRepository deviceAssignments;
     AuthenticatedUserResolver currentUser;
@@ -37,7 +33,7 @@ public class MissionMediaAccessServiceImpl implements IMissionMediaAccessService
     @Override
     public void requireUploadPermission(String identifier) {
         if (!authorization.canUploadMissionMedia(identifier)) {
-            throw new ApiException(ErrorCode.ACCESS_DENIED, "An inspection assignment is required to upload media");
+            throw new ApiException(ErrorCode.ACCESS_DENIED, "An accepted Pilot or Inspector assignment is required to upload media");
         }
     }
 
@@ -52,8 +48,8 @@ public class MissionMediaAccessServiceImpl implements IMissionMediaAccessService
             throw new ApiException(ErrorCode.ACCESS_DENIED, "Operator is not assigned to mission");
         }
         return new MissionMediaContext(mission.getId(),
-                REVIEW_STATUSES.contains(mission.getStatus())
-                        && authorization.canUploadMissionMedia(mission.getId()), mission.getStatus());
+                authorization.canUploadMissionMedia(mission.getId()), mission.getStatus(),
+                mission.getScheduledStartAt(), mission.getScheduledEndAt());
     }
 
     @Override

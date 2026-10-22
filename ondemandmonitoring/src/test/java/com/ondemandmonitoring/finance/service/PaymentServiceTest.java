@@ -25,7 +25,9 @@ class PaymentServiceTest {
     private final IPaymentWebhookService webhook = mock(IPaymentWebhookService.class);
     private final PaymentGateway paymentGateway = mock(PaymentGateway.class);
     private final PaymentStatusGateway statusGateway = mock(PaymentStatusGateway.class);
-    private final PaymentService service = new PaymentService(persistence, webhook, paymentGateway, statusGateway);
+    private final PaymentService service = new PaymentService(
+            persistence, webhook, paymentGateway, statusGateway,
+            mock(org.springframework.core.env.Environment.class));
 
     @Test
     void refreshUsesQueryDrAndAppliesVerifiedSuccess() {
@@ -42,6 +44,30 @@ class PaymentServiceTest {
 
         assertThat(result.status()).isEqualTo(PaymentStatus.SUCCESS);
         verify(webhook).process(verified);
+    }
+
+    @Test
+    void staffRefreshReconcilesEveryPendingPaymentOfTheOrderWithoutTheCustomerOwnershipCheck() {
+        when(persistence.pendingReferencesForOrder("o1")).thenReturn(java.util.List.of("123456"));
+        when(persistence.getByReferenceForStaff("123456")).thenReturn(payment(PaymentStatus.PENDING), payment(PaymentStatus.SUCCESS));
+        when(persistence.reconciliationContextForStaff("123456")).thenReturn(
+                new PaymentReconciliationContext("123456", null, "20261007085000", null));
+        VerifiedWebhook verified = new VerifiedWebhook("123456", new BigDecimal("300000"), "VND",
+                "14587452", "20261007090000", "00", "00", true);
+        when(statusGateway.queryPayment(any(PaymentQueryCommand.class))).thenReturn(verified);
+
+        int checked = service.refreshOrderPayments("o1", "127.0.0.1");
+
+        assertThat(checked).isEqualTo(1);
+        verify(webhook).process(verified);
+        org.mockito.Mockito.verify(persistence, org.mockito.Mockito.never()).getByReference(any());
+    }
+
+    @Test
+    void staffRefreshWithNothingPendingChecksNothing() {
+        when(persistence.pendingReferencesForOrder("o1")).thenReturn(java.util.List.of());
+        assertThat(service.refreshOrderPayments("o1", "127.0.0.1")).isZero();
+        org.mockito.Mockito.verifyNoInteractions(statusGateway);
     }
 
     private PaymentResponse payment(PaymentStatus status) {

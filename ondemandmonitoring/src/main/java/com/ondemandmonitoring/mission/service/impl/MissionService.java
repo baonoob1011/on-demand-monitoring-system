@@ -9,6 +9,9 @@ import com.ondemandmonitoring.device.enums.DeviceStatus;
 import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.devicecheck.dto.response.PreDeviceCheckResponse;
 import com.ondemandmonitoring.devicecheck.repository.PersistedPostDeviceCheckRepository;
+import com.ondemandmonitoring.devicecheck.repository.PersistedPreDeviceCheckRepository;
+import com.ondemandmonitoring.devicecheck.enums.PreDeviceCheckStatus;
+import com.ondemandmonitoring.devicecheck.enums.PreDeviceItemStatus;
 import com.ondemandmonitoring.devicecheck.service.IPreDeviceCheckCompletionService;
 import com.ondemandmonitoring.devicecheck.service.IPersistedPostDeviceCheckService;
 import com.ondemandmonitoring.mission.domain.ControlHandover;
@@ -17,7 +20,6 @@ import com.ondemandmonitoring.mission.domain.FlightToken;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.dto.request.*;
-import com.ondemandmonitoring.mission.dto.response.FlightTokenResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionCreationResult;
@@ -43,8 +45,7 @@ import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.finance.enums.QuoteStatus;
 import com.ondemandmonitoring.finance.repository.InvoiceRepository;
 import com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService;
-import com.ondemandmonitoring.planning.service.MissionPlanningService;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.IStaffDirectoryService;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
@@ -69,7 +70,6 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -107,10 +107,11 @@ public class MissionService implements IMissionService {
 
     // Supporting audit & work order repositories
     MissionPlanRepository missionPlanRepository;
-    MissionPlanningService missionPlanningService;
     DeviceConnectionRepository deviceConnectionRepository;
     ControlHandoverRepository controlHandoverRepository;
     PersistedPostDeviceCheckRepository postDeviceCheckRepository;
+    @Autowired @NonFinal
+    PersistedPreDeviceCheckRepository preDeviceCheckRepository;
     MaintenanceTicketRepository maintenanceTicketRepository;
     OrderRepository orderRepository;
     InvoiceRepository invoiceRepository;
@@ -136,6 +137,34 @@ public class MissionService implements IMissionService {
     // =========================================================================
 
     @Override
+    @Transactional
+    @PreAuthorize("@missionAuthorizationService.canManageMissions()")
+    public MissionResponse updateFlightPermit(String missionId, FlightPermitUpdateRequest request) {
+        Mission mission = getMissionByIdOrThrow(missionId);
+        boolean hasDevice = missionDeviceAssignmentRepository
+                .findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc(mission.getId()).stream()
+                .anyMatch(a -> a.getReleasedAt() == null && a.getDevice() != null);
+        boolean hasStaff = missionStaffAssignmentRepository
+                .findAllByMissionIdAndIsCurrentTrue(mission.getId()).stream()
+                .anyMatch(a -> a.getReleasedAt() == null);
+        if (!hasDevice || !hasStaff) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Assign a drone and staff before updating the flight permit");
+        }
+        if (request.dataUrl() != null && request.dataUrl().length() > 7_000_000) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Flight permit file must not exceed 5 MB");
+        }
+        mission.setFlightPermitStatus(request.status());
+        mission.setFlightPermitNote(blankToNull(request.note()));
+        if (request.dataUrl() != null && !request.dataUrl().isBlank()) {
+            mission.setFlightPermitFileName(request.fileName());
+            mission.setFlightPermitContentType(request.contentType());
+            mission.setFlightPermitDataUrl(request.dataUrl());
+        }
+        return missionMapper.toResponse(missionRepository.save(mission));
+    }
+
+    @Override
     @Transactional(readOnly = true)
     @PreAuthorize("@missionAuthorizationService.canManageMissions()")
     public PageResponse<MissionResponse> searchStaffMissions(
@@ -158,7 +187,6 @@ public class MissionService implements IMissionService {
     @PreAuthorize("@missionAuthorizationService.canViewMission(#missionId)")
     public MissionResponse getByIdResponse(String missionId) {
         Mission mission = getMissionByIdOrThrow(missionId);
-        ensureAcceptedMissionPlan(mission);
         return missionMapper.toResponse(mission);
     }
         @Override
@@ -609,9 +637,23 @@ public class MissionService implements IMissionService {
         });
         missionStaffAssignmentRepository.saveAll(assignments);
 
-        if (isRequiredCrewAccepted(resolvedMissionId)) {
-            mission.setStatus(MissionStatus.SCHEDULED);
-            ensureAcceptedMissionPlan(mission);
+        return missionMapper.toResponse(missionRepository.save(mission));
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("@missionAuthorizationService.canStartMission(#missionId)")
+    public MissionResponse startMissionWorkflow(String missionId) {
+        Mission mission = getRuntimeMissionOrThrow(missionId);
+        requireFlightPermitApproved(mission);
+        requireCrewConfirmationStatus(mission);
+        if (!isRequiredCrewAccepted(mission.getId())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "All required crew members must accept before the mission can start");
+        }
+        mission.setStatus(MissionStatus.SCHEDULED);
+        if (mission.getActualStartAt() == null) {
+            mission.setActualStartAt(Instant.now());
         }
         return missionMapper.toResponse(missionRepository.save(mission));
     }
@@ -859,24 +901,6 @@ public class MissionService implements IMissionService {
                 .toInstant());
     }
 
-    private void ensureAcceptedMissionPlan(Mission mission) {
-        if (mission == null || mission.getId() == null) {
-            return;
-        }
-        if (mission.getStatus() == MissionStatus.CREATED
-                || mission.getStatus() == MissionStatus.RESOURCE_ASSIGNING
-                || mission.getStatus() == MissionStatus.WAITING_CREW_CONFIRMATION
-                || mission.getStatus() == MissionStatus.WAITING_OPERATOR_ACCEPTANCE
-                || mission.getStatus() == MissionStatus.CANCELLED) {
-            return;
-        }
-        if (getCurrentDevice(mission.getId()) == null
-                || missionPlanRepository.findByMissionId(mission.getId()).isPresent()) {
-            return;
-        }
-
-        missionPlanningService.generateGpsDirectPlan(mission.getId());
-    }
 //
 //    @Override
 //    @Transactional
@@ -971,6 +995,7 @@ public class MissionService implements IMissionService {
         MissionRuntimeGate.requireOperationalCommandsAllowed(mission);
         String resolvedMissionId = mission.getId();
         requireStatus(mission, MissionStatus.READY_TO_FLY);
+        requireFreshPreflightAuthorization(resolvedMissionId);
 
         // Record ControlHandover audit log linked to current DeviceConnection
         DeviceConnection activeConnection = deviceConnectionRepository
@@ -1000,6 +1025,7 @@ public class MissionService implements IMissionService {
     public MissionResponse startMission(String missionId, String tokenValue) {
         Mission mission = getRuntimeMissionOrThrow(missionId);
         MissionRuntimeGate.requireOperationalCommandsAllowed(mission);
+        requireFlightPermitApproved(mission);
         String resolvedMissionId = mission.getId();
         requireStatus(mission, MissionStatus.READY_TO_FLY);
 
@@ -1039,7 +1065,9 @@ public class MissionService implements IMissionService {
         }
 
         mission.setStatus(MissionStatus.IN_FLIGHT);
-        mission.setActualStartAt(Instant.now());
+        if (mission.getActualStartAt() == null) {
+            mission.setActualStartAt(Instant.now());
+        }
         updateDeviceStatus(mission, DeviceStatus.ACTIVE_MISSION);
 
         log.info("Mission {} IN_FLIGHT – WebSocket telemetry and RTSP video stream OPENED", missionId);
@@ -1052,6 +1080,32 @@ public class MissionService implements IMissionService {
     @PreAuthorize("@missionAuthorizationService.canControlFlight(#missionId)")
     public MissionResponse startMission(String missionId) {
         return startMission(missionId, null);
+    }
+
+    private void requireFlightPermitApproved(Mission mission) {
+        if (mission.getFlightPermitStatus() != FlightPermitStatus.APPROVED) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Flight permit must be approved before the mission can start");
+        }
+    }
+
+    private void requireFreshPreflightAuthorization(String missionId) {
+        var run = preDeviceCheckRepository.findFirstByMissionIdOrderByCreatedAtDesc(missionId)
+                .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REQUEST,
+                        "Không tìm thấy phiên kiểm tra trước chuyến bay."));
+        Instant now = Instant.now();
+        boolean blocked = run.getStatus() != PreDeviceCheckStatus.PASSED
+                || run.getItems().stream().anyMatch(item -> Boolean.TRUE.equals(item.getRequired())
+                && (item.getStatus() != PreDeviceItemStatus.PASSED
+                || item.getExpiresAt() == null || !item.getExpiresAt().isAfter(now)));
+        if (blocked) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Kết quả kiểm tra trước chuyến bay không còn hợp lệ. Vui lòng kiểm tra lại.");
+        }
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     @Override
@@ -1093,7 +1147,7 @@ public class MissionService implements IMissionService {
 
     @Override
     @Transactional
-    @PreAuthorize("@missionAuthorizationService.canUploadMissionMedia(#missionId)")
+    @PreAuthorize("@missionAuthorizationService.canCompleteMission(#missionId)")
     public MissionResponse completeMission(String missionId) {
         Mission resolved = getRuntimeMissionOrThrow(missionId);
         MissionRuntimeGate.requireOperationalCommandsAllowed(resolved);

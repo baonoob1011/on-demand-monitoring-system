@@ -27,4 +27,10 @@ public class PreDeviceMediaProbeController {
             @Valid @ModelAttribute MediaProbeRequest request) {
         return ApiResponse.ok(mediaProbeService.verify(runId, request));
     }
+
+    @PostMapping("/api/pre-device-checks/{runId}/media-probe/automatic")
+    @PreAuthorize("@deviceCheckAuthorizationService.canInspectPreCheck(#runId)")
+    public ApiResponse<MediaProbeResponse> verifyAutomatic(@PathVariable String runId) {
+        return ApiResponse.ok(mediaProbeService.verifyAutomatic(runId));
+    }
 }

@@ -11,6 +11,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OrderCreateRequestValidationTest {
 
     @Test
+    void requiresAnAllowedResultRetentionPeriod() {
+        try (var factory = Validation.buildDefaultValidatorFactory()) {
+            var validator = factory.getValidator();
+
+            assertTrue(validator.validate(OrderCreateRequest.builder().build()).stream()
+                    .anyMatch(v -> v.getPropertyPath().toString().equals("dataRetentionDays")));
+
+            for (int allowed : new int[] {30, 90, 180, 365}) {
+                assertTrue(validator.validate(OrderCreateRequest.builder().dataRetentionDays(allowed).build()).stream()
+                        .noneMatch(v -> v.getPropertyPath().toString().equals("dataRetentionDays")),
+                        "retention " + allowed);
+            }
+
+            assertTrue(validator.validate(OrderCreateRequest.builder().dataRetentionDays(60).build()).stream()
+                    .anyMatch(v -> v.getPropertyPath().toString().equals("dataRetentionDays")));
+        }
+    }
+
+    @Test
     void validatesNestedDeliverableFields() {
         try (var factory = Validation.buildDefaultValidatorFactory()) {
             var request = OrderCreateRequest.builder()
@@ -33,6 +52,27 @@ class OrderCreateRequestValidationTest {
             var violations = factory.getValidator().validate(request);
             assertTrue(violations.stream().noneMatch(v ->
                     v.getPropertyPath().toString().startsWith("deliverables")));
+        }
+    }
+
+    @Test
+    void validatesChecklistEvidenceMinimumWithinOneToFifty() {
+        try (var factory = Validation.buildDefaultValidatorFactory()) {
+            var missingDefaults = new OrderChecklistItemRequest();
+            var request = OrderCreateRequest.builder().checklistItems(List.of(missingDefaults)).build();
+            assertTrue(factory.getValidator().validate(request).stream()
+                    .noneMatch(v -> v.getPropertyPath().toString().startsWith("checklistItems")));
+
+            for (int invalid : new int[] {0, 51}) {
+                var item = new OrderChecklistItemRequest(); item.setMinimumEvidenceCount(invalid);
+                var invalidRequest = OrderCreateRequest.builder().checklistItems(List.of(item)).build();
+                assertTrue(factory.getValidator().validate(invalidRequest).stream()
+                        .anyMatch(v -> v.getPropertyPath().toString().equals("checklistItems[0].minimumEvidenceCount")));
+            }
+            var valid = new OrderChecklistItemRequest(); valid.setMinimumEvidenceCount(3);
+            var validRequest = OrderCreateRequest.builder().checklistItems(List.of(valid)).build();
+            assertTrue(factory.getValidator().validate(validRequest).stream()
+                    .noneMatch(v -> v.getPropertyPath().toString().startsWith("checklistItems")));
         }
     }
 

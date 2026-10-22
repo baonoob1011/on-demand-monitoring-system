@@ -16,6 +16,7 @@ import com.ondemandmonitoring.mission.dto.request.MissionRejectRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionResourceAssignmentRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionUpdateRequest;
 import com.ondemandmonitoring.mission.dto.request.PostFlightStatusRequest;
+import com.ondemandmonitoring.mission.dto.request.FlightPermitUpdateRequest;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionTelemetryReadinessResponse;
@@ -183,6 +184,16 @@ public class MissionController {
         return ResponseEntity.ok(ApiResponse.ok("Gán staff cho mission thành công", response));
     }
 
+    @PatchMapping("/{id}/flight-permit")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<MissionResponse>> updateFlightPermit(
+            @PathVariable String id,
+            @Valid @RequestBody FlightPermitUpdateRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                "Cập nhật giấy phép bay thành công",
+                missionService.updateFlightPermit(id, request)));
+    }
+
 
 
     // ------------------------------------------------------------------
@@ -210,6 +221,14 @@ public class MissionController {
         return ResponseEntity.ok(ApiResponse.ok(
                 "Mission accepted successfully",
                 missionService.acceptCurrentStaffMission(id)));
+    }
+
+    @PostMapping("/{id}/start-operation")
+    @PreAuthorize("@missionAuthorizationService.canStartMission(#id)")
+    public ResponseEntity<ApiResponse<MissionResponse>> startOperation(@PathVariable String id) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                "Mission workflow started; Operator may connect GCS",
+                missionService.startMissionWorkflow(id)));
     }
 
     @PatchMapping("/{id}/accept-staff")
@@ -399,7 +418,7 @@ public class MissionController {
 
     /** POST /api/missions/{id}/complete – Staff confirms complete */
     @PostMapping("/{id}/complete")
-    @PreAuthorize("@missionAuthorizationService.canUploadMissionMedia(#id)")
+    @PreAuthorize("@missionAuthorizationService.canCompleteMission(#id)")
     public ResponseEntity<ApiResponse<MissionResponse>> complete(@PathVariable String id) {
         MissionResponse response = missionService.completeMission(id);
         return ResponseEntity.ok(ApiResponse.ok("Mission đã hoàn thành", response));

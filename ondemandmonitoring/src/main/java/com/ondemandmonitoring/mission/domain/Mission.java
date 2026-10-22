@@ -2,6 +2,7 @@ package com.ondemandmonitoring.mission.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
+import com.ondemandmonitoring.mission.enums.FlightPermitStatus;
 import com.ondemandmonitoring.order.domain.Order;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -17,7 +18,8 @@ import org.locationtech.jts.geom.Polygon;
 @Setter
 @Entity
 @Table(name = "missions", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_mission_id_order", columnNames = {"id", "order_id"})})
+        @UniqueConstraint(name = "uk_mission_id_order", columnNames = {"id", "order_id"})},
+        indexes = @Index(name = "ix_missions_status_schedule", columnList = "status,scheduled_start_at"))
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class Mission extends BaseEntity {
 
@@ -27,6 +29,22 @@ public class Mission extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
     MissionStatus status;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "flight_permit_status", nullable = false, length = 30)
+    FlightPermitStatus flightPermitStatus = FlightPermitStatus.NOT_REQUESTED;
+
+    @Column(name = "flight_permit_note", length = 1000)
+    String flightPermitNote;
+
+    @Column(name = "flight_permit_file_name", length = 160)
+    String flightPermitFileName;
+
+    @Column(name = "flight_permit_content_type", length = 100)
+    String flightPermitContentType;
+
+    @Column(name = "flight_permit_data_url", columnDefinition = "TEXT")
+    String flightPermitDataUrl;
 
     // ===== Relationship to Order =====
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

@@ -1,7 +1,7 @@
 package com.ondemandmonitoring.role;
 
 import com.ondemandmonitoring.auth.port.out.IdentityProviderPort;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.role.infrastructure.RoleDataInitializer;
 import com.ondemandmonitoring.role.infrastructure.RoleModelMigration;
 import com.ondemandmonitoring.user.config.UserSeedDataInitializer;
@@ -52,7 +52,6 @@ class RoleStartupPostgresTest {
         properties.add("app.media.sqs.enabled", () -> "false");
         properties.add("app.media.reconciliation.enabled", () -> "false");
         properties.add("mission.replanning.enabled", () -> "false");
-        properties.add("spring.ai.openai.api-key", () -> "verification-not-a-real-key");
     }
 
     @Test

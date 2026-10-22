@@ -10,6 +10,7 @@ import com.ondemandmonitoring.device.domain.Device;
 import com.ondemandmonitoring.device.service.IDeviceService;
 import com.ondemandmonitoring.media.domain.*;
 import com.ondemandmonitoring.media.dto.request.PrepareMediaUploadRequest;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.media.repository.*;
 import com.ondemandmonitoring.media.service.impl.MediaUploadServiceImpl;
 import com.ondemandmonitoring.mission.domain.*;
@@ -46,7 +47,10 @@ class MediaUploadWorkflowTest {
     private final MissionMediaAccessServiceImpl missionAccess = new MissionMediaAccessServiceImpl(
             missions, deviceAssignments, userResolver, authorization);
     private final MediaUploadServiceImpl service = new MediaUploadServiceImpl(missionAccess, devices,
-            media, attempts, manualTasks, audit, storage, userResolver, mock(com.ondemandmonitoring.mission.service.IMissionMediaEvidenceGuard.class));
+            media, attempts, manualTasks,
+            new com.ondemandmonitoring.media.service.impl.ManualUploadTaskServiceImpl(manualTasks),
+            audit, storage, userResolver, mock(com.ondemandmonitoring.mission.service.IMissionMediaEvidenceGuard.class),
+            new com.ondemandmonitoring.media.policy.MediaUploadPolicy());
 
     @BeforeEach
     void setUp() {
@@ -162,6 +166,47 @@ class MediaUploadWorkflowTest {
     private PrepareMediaUploadRequest request(String type, String contentType) {
         return new PrepareMediaUploadRequest("device-id", "capture-1", type, "capture.jpg",
                 contentType, 100L, "a".repeat(64), Instant.now());
+    }
+
+    @Test
+    void rejectsAFileThatIsAlreadyStoredForTheMission() {
+        var request = request("IMAGE", "image/jpeg");
+        when(media.existsActiveDuplicate("mission-id", request.getChecksumSha256())).thenReturn(true);
+        assertThatThrownBy(() -> service.prepare("mission-id", request))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> assertThat(((ApiException) e).getErrorCode())
+                        .isEqualTo(com.ondemandmonitoring.common.exception.ErrorCode.MEDIA_DUPLICATE_CONTENT));
+        verify(media, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void rejectsACaptureOlderThanTheMissionsPlannedDuration() {
+        Mission mission = missions.findById("mission-id").orElseThrow();
+        Instant start = Instant.now().minusSeconds(3600);
+        mission.setScheduledStartAt(start);
+        mission.setScheduledEndAt(start.plusSeconds(1800)); // planned 30 minutes
+        var old = request("IMAGE", "image/jpeg");
+        old.setCapturedAt(Instant.now().minusSeconds(3 * 3600));
+        assertThatThrownBy(() -> service.prepare("mission-id", old))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> assertThat(((ApiException) e).getErrorCode())
+                        .isEqualTo(com.ondemandmonitoring.common.exception.ErrorCode.MEDIA_CAPTURE_TOO_OLD));
+    }
+
+    @Test
+    void acceptsACaptureInsideThePlannedDurationWindow() {
+        Mission mission = missions.findById("mission-id").orElseThrow();
+        Instant start = Instant.now().minusSeconds(3600);
+        mission.setScheduledStartAt(start);
+        mission.setScheduledEndAt(start.plusSeconds(1800));
+        var recent = request("IMAGE", "image/jpeg");
+        recent.setCapturedAt(Instant.now().minusSeconds(600));
+        when(media.saveAndFlush(any())).thenAnswer(call -> {
+            MediaAsset saved = call.getArgument(0); saved.setId("media-id"); return saved;
+        });
+        when(storage.createPresignedPutUrl(any(), any(), anyLong(), any()))
+                .thenReturn(new IMediaObjectStorage.PresignedUpload("https://test/upload", Map.of(), 300));
+        assertThat(service.prepare("mission-id", recent)).isNotNull();
     }
 
     @Test

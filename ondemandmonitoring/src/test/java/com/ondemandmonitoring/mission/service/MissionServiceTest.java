@@ -1,6 +1,7 @@
 package com.ondemandmonitoring.mission.service;
 
 import com.ondemandmonitoring.common.exception.ApiException;
+import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.device.domain.Device;
 import com.ondemandmonitoring.devicecheck.domain.PersistedPostDeviceCheck;
 import com.ondemandmonitoring.device.enums.DeviceStatus;
@@ -13,16 +14,14 @@ import com.ondemandmonitoring.mission.domain.DeviceConnection;
 import com.ondemandmonitoring.mission.domain.FlightToken;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
-import com.ondemandmonitoring.mission.domain.MissionPlan;
 import com.ondemandmonitoring.mission.domain.MissionStaffAssignment;
 import com.ondemandmonitoring.mission.dto.request.AssignDeviceRequest;
 import com.ondemandmonitoring.mission.dto.request.AssignStaffRequest;
 import com.ondemandmonitoring.mission.dto.response.FlightTokenResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
-import com.ondemandmonitoring.mission.enums.FeasibilityStatus;
 import com.ondemandmonitoring.mission.enums.MissionStaffRole;
+import com.ondemandmonitoring.mission.enums.FlightPermitStatus;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
-import com.ondemandmonitoring.mission.enums.PlanningAlgorithm;
 import com.ondemandmonitoring.mission.enums.StaffResponseStatus;
 import com.ondemandmonitoring.mission.mapper.FlightTokenMapper;
 import com.ondemandmonitoring.mission.mapper.MissionMapper;
@@ -41,9 +40,8 @@ import com.ondemandmonitoring.mission.service.impl.MissionService;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.finance.repository.InvoiceRepository;
 import com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService;
-import com.ondemandmonitoring.planning.service.MissionPlanningService;
 import com.ondemandmonitoring.role.domain.Role;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.IStaffDirectoryService;
 import com.ondemandmonitoring.userschedule.repository.UserScheduleRepository;
@@ -76,7 +74,6 @@ class MissionServiceTest {
     FlightTokenMapper flightTokenMapper;
 
     MissionPlanRepository missionPlanRepository;
-    MissionPlanningService missionPlanningService;
     DeviceConnectionRepository deviceConnectionRepository;
     ControlHandoverRepository controlHandoverRepository;
     PersistedPostDeviceCheckRepository postDeviceCheckRepository;
@@ -107,7 +104,6 @@ class MissionServiceTest {
         missionMapper = mock(MissionMapper.class);
         flightTokenMapper = mock(FlightTokenMapper.class);
         missionPlanRepository = mock(MissionPlanRepository.class);
-        missionPlanningService = mock(MissionPlanningService.class);
         deviceConnectionRepository = mock(DeviceConnectionRepository.class);
         controlHandoverRepository = mock(ControlHandoverRepository.class);
         postDeviceCheckRepository = mock(PersistedPostDeviceCheckRepository.class);
@@ -147,7 +143,6 @@ class MissionServiceTest {
                 missionMapper,
                 flightTokenMapper,
                 missionPlanRepository,
-                missionPlanningService,
                 deviceConnectionRepository,
                 controlHandoverRepository,
                 postDeviceCheckRepository,
@@ -313,7 +308,6 @@ class MissionServiceTest {
             AssignStaffRequest request = AssignStaffRequest.builder().staffId("op-01").build();
             assertThat(missionService.assignStaff("m-assign", request).getStatus())
                     .isEqualTo(MissionStatus.RESOURCE_ASSIGNING);
-            verifyNoInteractions(missionPlanningService);
         }
 
         @Test
@@ -333,12 +327,12 @@ class MissionServiceTest {
 
             MissionResponse result = missionService.acceptMission("m-1", "op-01");
 
-            assertThat(result.getStatus()).isEqualTo(MissionStatus.SCHEDULED);
+            assertThat(result.getStatus()).isEqualTo(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
             verify(missionStaffAssignmentRepository).saveAll(any());
         }
 
         @Test
-        void oneStaffCanAcceptAllAssignedRolesAndScheduleMission() {
+        void oneStaffCanAcceptAllAssignedRolesAndWaitForInspectorStart() {
             Mission mission = buildMission("m-solo", MissionStatus.WAITING_CREW_CONFIRMATION);
             var assignments = java.util.Arrays.stream(MissionStaffRole.values())
                     .map(role -> staffAssignment(mission, "seed-staff-1", role, "PENDING"))
@@ -353,7 +347,7 @@ class MissionServiceTest {
 
             MissionResponse result = missionService.acceptMission("m-solo", "seed-staff-1");
 
-            assertThat(result.getStatus()).isEqualTo(MissionStatus.SCHEDULED);
+            assertThat(result.getStatus()).isEqualTo(MissionStatus.WAITING_CREW_CONFIRMATION);
             assertThat(assignments).allMatch(entry -> entry.getResponseStatus() == StaffResponseStatus.ACCEPTED);
             verify(missionStaffAssignmentRepository).saveAll(assignments);
         }
@@ -622,6 +616,18 @@ class MissionServiceTest {
     class F3_3_TakeoffAndFlightLifecycle {
 
         @Test
+        @DisplayName("startMission is blocked until the flight permit is approved")
+        void startMission_withoutApprovedPermit_throws() {
+            Mission mission = buildMission("m-no-permit", MissionStatus.READY_TO_FLY);
+            mission.setFlightPermitStatus(FlightPermitStatus.PENDING);
+            when(missionRepository.findById("m-no-permit")).thenReturn(Optional.of(mission));
+
+            assertThatThrownBy(() -> missionService.startMission("m-no-permit"))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessageContaining("Flight permit must be approved");
+        }
+
+        @Test
         @DisplayName("1. startMission success with valid FlightToken")
         void startMission_success_withValidToken() {
             Mission mission = buildMission("m-7", MissionStatus.READY_TO_FLY);
@@ -646,6 +652,7 @@ class MissionServiceTest {
             MissionResponse result = missionService.startMission("m-7", "valid-token");
 
             assertThat(result.getStatus()).isEqualTo(MissionStatus.IN_FLIGHT);
+            assertThat(mission.getActualStartAt()).isNotNull();
             assertThat(device.getStatus()).isEqualTo(DeviceStatus.ACTIVE_MISSION);
             assertThat(token.isUsed()).isTrue();
         }
@@ -709,6 +716,7 @@ class MissionServiceTest {
             MissionResponse result = missionService.startMission("m-7");
 
             assertThat(result.getStatus()).isEqualTo(MissionStatus.IN_FLIGHT);
+            assertThat(mission.getActualStartAt()).isNotNull();
             assertThat(token.isUsed()).isTrue();
         }
     }
@@ -809,7 +817,10 @@ class MissionServiceTest {
             org.springframework.test.util.ReflectionTestUtils.setField(missionService, "missionResultService", results);
             org.springframework.test.util.ReflectionTestUtils.setField(missionService, "checklistExecutionService", checklist);
 
-            assertThatThrownBy(() -> missionService.completeMission(mission.getId())).isInstanceOf(ApiException.class).hasMessageContaining("not ready");
+            assertThatThrownBy(() -> missionService.completeMission(mission.getId()))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(exception -> ((ApiException) exception).getErrorCode())
+                    .isEqualTo(ErrorCode.CHECKLIST_NOT_READY);
             assertThat(deviceAssignment.getReleasedAt()).isNull();
             assertThat(staffAssignment.getReleasedAt()).isNull();
             verify(resultRepository, never()).save(any());
@@ -952,6 +963,7 @@ class MissionServiceTest {
         m.setId(id);
         m.setMissionCode("MC-" + id);
         m.setStatus(status);
+        m.setFlightPermitStatus(FlightPermitStatus.APPROVED);
         var order = new com.ondemandmonitoring.order.domain.Order(); order.setId("order-" + id);
         m.setOrder(order);
         lenient().when(orderRepository.findByIdForUpdate(order.getId())).thenReturn(Optional.of(order));
@@ -1015,7 +1027,6 @@ class MissionServiceTest {
                 .isEqualTo(MissionStatus.WAITING_CREW_CONFIRMATION);
         assertThat((Boolean) org.springframework.test.util.ReflectionTestUtils.invokeMethod(
                 missionService, "hasRequiredCrewAssigned", "crew-invalid")).isFalse();
-        verifyNoInteractions(missionPlanningService);
     }
 
     @Test
@@ -1051,6 +1062,7 @@ class MissionServiceTest {
         var executions = mock(com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository.class);
         var resultRepo = mock(com.ondemandmonitoring.mission.repository.MissionResultRepository.class);
         var item = new com.ondemandmonitoring.order.domain.OrderChecklistItem(); item.setId("item"); item.setOrder(order);
+        item.setEvidencePolicyVersion(0); item.setMinimumEvidenceCount(0);
         var execution = new com.ondemandmonitoring.mission.domain.MissionChecklistExecution();
         execution.setId("execution"); execution.setVersion(0L); execution.setMissionId(mission.getId());
         execution.setMission(mission); execution.setOrderId(order.getId()); execution.setOrderChecklistItemId(item.getId());
@@ -1059,6 +1071,21 @@ class MissionServiceTest {
         when(items.findAllByOrderIdInOrderByDisplayOrderAscIdAsc(List.of("order"))).thenReturn(List.of(item));
         when(executions.findOrderedByMissionId(mission.getId())).thenReturn(List.of(execution));
         when(executions.findById(execution.getId())).thenReturn(Optional.of(execution));
+        when(executions.findByIdForUpdate(execution.getId())).thenReturn(Optional.of(execution));
+        when(executions.updateIfVersionMatches(anyString(), anyLong(), anyString(), anyString(),
+                nullable(String.class), nullable(String.class), nullable(Instant.class), nullable(Instant.class),
+                nullable(String.class), any(Instant.class))).thenAnswer(call -> {
+                    execution.setExecutionStatus(com.ondemandmonitoring.mission.enums.ChecklistExecutionStatus.valueOf(call.getArgument(2)));
+                    execution.setAssessmentStatus(com.ondemandmonitoring.mission.enums.ChecklistAssessmentStatus.valueOf(call.getArgument(3)));
+                    execution.setObservation(call.getArgument(4));
+                    execution.setUnableToVerifyReason(call.getArgument(5));
+                    execution.setStartedAt(call.getArgument(6));
+                    execution.setCompletedAt(call.getArgument(7));
+                    execution.setLastModifiedBy(call.getArgument(8));
+                    execution.setUpdatedAt(call.getArgument(9));
+                    execution.setVersion(execution.getVersion() + 1);
+                    return 1;
+                });
         when(executions.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
         var checklist = new com.ondemandmonitoring.mission.service.impl.MissionChecklistExecutionServiceImpl(
                 missionRepository, ScopeTestFixture.validScope(), executions, resultRepo, policy, authenticatedUserResolver,
@@ -1086,9 +1113,11 @@ class MissionServiceTest {
         missionService.updatePostFlightStatus(mission.getId(), DeviceStatus.AVAILABLE, "Inspection passed");
         assertThat(mission.getStatus()).isEqualTo(MissionStatus.PENDING_REVIEW);
         assertThat(deviceAssignment.getReleasedAt()).isNull(); verify(resultRepo, never()).save(any());
+        // The inspector owns the final acceptance package, including the checklist assessment.
         var operator = crew.stream().filter(entry -> entry.getAssignedRole() == MissionStaffRole.OPERATOR).findFirst().orElseThrow();
-        when(authenticatedUserResolver.getCurrentUser()).thenReturn(operator.getStaff());
-        when(authenticatedUserResolver.getCurrentUserId()).thenReturn(operator.getStaff().getId());
+        var checklistActor = crew.stream().filter(entry -> entry.getAssignedRole() == MissionStaffRole.INSPECTOR).findFirst().orElseThrow();
+        when(authenticatedUserResolver.getCurrentUser()).thenReturn(checklistActor.getStaff());
+        when(authenticatedUserResolver.getCurrentUserId()).thenReturn(checklistActor.getStaff().getId());
         var update = new com.ondemandmonitoring.mission.dto.request.ChecklistExecutionUpdateRequest(); update.setExpectedVersion(0L);
         update.setExecutionStatus(com.ondemandmonitoring.mission.enums.ChecklistExecutionStatus.COMPLETED);
         update.setAssessmentStatus(com.ondemandmonitoring.mission.enums.ChecklistAssessmentStatus.NON_COMPLIANT);
@@ -1102,10 +1131,10 @@ class MissionServiceTest {
         assertThat(result.getSubmittedAt()).isNull(); assertThat(deviceAssignment.getReleasedAt()).isNotNull();
         assertThat(crew).allMatch(entry -> "MISSION_COMPLETE".equals(entry.getReleaseReason()));
         assertThat(replaced.getReleaseReason()).isEqualTo("REPLACED");
+        results.upsert(mission.getId(), new com.ondemandmonitoring.mission.dto.request.MissionResultRequest());
+        when(authenticatedUserResolver.getCurrentUser()).thenReturn(operator.getStaff());
         assertThatThrownBy(() -> results.upsert(mission.getId(), new com.ondemandmonitoring.mission.dto.request.MissionResultRequest()))
                 .isInstanceOf(ApiException.class);
-        when(authenticatedUserResolver.getCurrentUser()).thenReturn(operator.getStaff());
-        results.upsert(mission.getId(), new com.ondemandmonitoring.mission.dto.request.MissionResultRequest());
         assertThat(result.getApprovalStatus()).isEqualTo(com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL);
         assertThat(order.getOrderStatus()).isEqualTo(com.ondemandmonitoring.order.enums.OrderStatus.APPROVED);
         var manager = User.builder().isActive(true).role(Role.builder().code(RoleCode.MANAGER).active(true).build()).build();

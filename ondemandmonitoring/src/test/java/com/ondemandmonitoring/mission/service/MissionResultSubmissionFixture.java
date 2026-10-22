@@ -15,7 +15,7 @@ import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.enums.ExecutionPlanStatus;
 import com.ondemandmonitoring.order.service.IOrderExecutionCompletionPolicy;
 import com.ondemandmonitoring.role.domain.Role;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.time.Instant;
@@ -25,7 +25,7 @@ import static org.mockito.Mockito.*;
 /** Real submit service and actor policy; only persistence/readiness infrastructure is mocked. */
 public final class MissionResultSubmissionFixture {
     public enum Scenario {
-        OPERATOR(true), PILOT_FALLBACK(true), PILOT_WITH_OPERATOR(false), INSPECTOR(false),
+        OPERATOR(false), PILOT_FALLBACK(false), PILOT_WITH_OPERATOR(false), INSPECTOR(true),
         MAINTAINER(false), CUSTOMER(false), MANAGER(false), ADMIN(false), UNASSIGNED(false),
         SIBLING_OPERATOR(false), REPLACED_OPERATOR(false), UNACCEPTED_OPERATOR(false), INACTIVE_OPERATOR(false);
         public final boolean allowed;

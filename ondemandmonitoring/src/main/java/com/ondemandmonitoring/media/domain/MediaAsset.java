@@ -2,6 +2,7 @@ package com.ondemandmonitoring.media.domain;
 
 import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.device.domain.Device;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import jakarta.persistence.*;
@@ -81,7 +82,17 @@ public class MediaAsset extends BaseEntity {
     @Column(name = "available_at")
     Instant availableAt;
 
-    /** DRONE_CAMERA / SATELLITE_SNAPSHOT / MANUAL_UPLOAD / MAPILLARY_REFERENCE. Null means unknown legacy provenance. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "storage_status", nullable = false, length = 30)
+    MediaStorageStatus storageStatus = MediaStorageStatus.AVAILABLE;
+
+    @Column(name = "deleted_from_storage_at")
+    Instant deletedFromStorageAt;
+
+    @Column(name = "storage_deletion_error", length = 500)
+    String storageDeletionError;
+
+    /** DRONE_CAMERA / SATELLITE_SNAPSHOT / MANUAL_UPLOAD. Null means unknown legacy provenance. */
     @Column(name = "source_type", length = 40)
     String sourceType;
 

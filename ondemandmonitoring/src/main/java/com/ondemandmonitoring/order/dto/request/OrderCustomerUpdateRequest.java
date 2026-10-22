@@ -4,15 +4,19 @@ import com.ondemandmonitoring.order.enums.*;
 import jakarta.validation.constraints.*;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 /** Customer-editable fields while an Order is still under review. */
 public record OrderCustomerUpdateRequest(
         @Size(max = 255) String title,
         @Size(max = 4000) String description,
         @Size(max = 2000) String address,
+        @DecimalMin("-180") @DecimalMax("180") Double longitude,
+        @DecimalMin("-90") @DecimalMax("90") Double latitude,
+        @DecimalMin("50") @DecimalMax("5000") Double radiusM,
+        Map<String, Object> coverageArea,
         OrderUsagePurpose usagePurpose,
         OrderFlightPurpose flightPurpose,
-        OrderPriority priority,
         @DecimalMin("10") @DecimalMax("120") Double altitudeM,
         @DecimalMin(value = "0", inclusive = false) @DecimalMax("100000") Double estimatedLengthM,
         @Size(max = 120) String siteContactName,

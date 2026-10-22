@@ -4,6 +4,8 @@ import com.ondemandmonitoring.media.domain.*;
 import com.ondemandmonitoring.media.dto.response.*;
 import java.util.List;
 import java.util.Map;
+
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import org.mapstruct.Builder;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;

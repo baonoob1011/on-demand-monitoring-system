@@ -2,6 +2,7 @@ package com.ondemandmonitoring.mission.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ondemandmonitoring.common.exception.*;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.mission.domain.*;
 import com.ondemandmonitoring.mission.enums.*;
 import com.ondemandmonitoring.mission.mapper.CustomerMissionReportMapper;
@@ -12,6 +13,7 @@ import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.enums.OrderChecklistSourceType;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.role.domain.*;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.util.*;
@@ -140,15 +142,16 @@ class CustomerMissionReportQueryServiceTest {
         var access = mock(IMissionMediaAccessService.class); when(access.authorizeCustomer("m1")).thenReturn("m1");
         var media = mock(com.ondemandmonitoring.media.repository.MediaAssetRepository.class);
         var asset = new com.ondemandmonitoring.media.domain.MediaAsset(); asset.setId("X"); asset.setMissionId("m1");
-        asset.setMediaStatus(com.ondemandmonitoring.media.domain.MediaStatus.AVAILABLE); asset.setFileSize(42L);
-        when(media.findByMissionIdAndMediaStatus(eq("m1"),eq(com.ondemandmonitoring.media.domain.MediaStatus.AVAILABLE),any(org.springframework.data.domain.Pageable.class)))
+        asset.setMediaStatus(MediaStatus.AVAILABLE); asset.setFileSize(42L);
+        when(media.findByMissionIdAndMediaStatus(eq("m1"),eq(MediaStatus.AVAILABLE),any(org.springframework.data.domain.Pageable.class)))
                 .thenAnswer(i -> new org.springframework.data.domain.PageImpl<>(List.of(asset),i.getArgument(2),1));
         var storage = mock(com.ondemandmonitoring.media.service.IMediaObjectStorage.class);
         var gallery = new com.ondemandmonitoring.media.service.impl.CustomerMediaServiceImpl(access,media,
                 mock(com.ondemandmonitoring.media.repository.MediaNotificationOutboxRepository.class),storage,
-                Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class));
+                Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class),
+                mock(com.ondemandmonitoring.media.service.IResultRetentionAccessService.class));
         assertEquals("X",gallery.listAvailablePage("m1",0,12).getItems().getFirst().getMediaId());
-        verify(media).findByMissionIdAndMediaStatus(eq("m1"),eq(com.ondemandmonitoring.media.domain.MediaStatus.AVAILABLE),any(org.springframework.data.domain.Pageable.class));
+        verify(media).findByMissionIdAndMediaStatus(eq("m1"),eq(MediaStatus.AVAILABLE),any(org.springframework.data.domain.Pageable.class));
         verifyNoInteractions(executions);
     }
 }

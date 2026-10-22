@@ -6,16 +6,18 @@ import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.domain.OrderDeliverable;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.request.OrderDeliverableRequest;
+import com.ondemandmonitoring.order.dto.request.FlightAreaReviewRequest;
+import com.ondemandmonitoring.order.dto.request.LegalReviewResolutionRequest;
 import com.ondemandmonitoring.order.dto.OrderAuthorizationDocument;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
 import com.ondemandmonitoring.order.enums.OrderDeliveryMethod;
 import com.ondemandmonitoring.order.enums.OrderPermitStatus;
-import com.ondemandmonitoring.order.enums.OrderPriority;
 import com.ondemandmonitoring.order.enums.OrderRecurrenceType;
 import com.ondemandmonitoring.order.enums.OrderResultFormat;
 import com.ondemandmonitoring.order.enums.OrderWeatherFallback;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.enums.DocumentVerificationStatus;
+import com.ondemandmonitoring.order.enums.LegalReviewStatus;
 import com.ondemandmonitoring.order.mapper.OrderMapper;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.IOrderService;
@@ -29,6 +31,7 @@ import com.ondemandmonitoring.service.repository.DeliverableTypeRepository;
 import com.ondemandmonitoring.service.repository.ServiceDeliverableRepository;
 import com.ondemandmonitoring.service.repository.ServiceRepository;
 import com.ondemandmonitoring.user.domain.User;
+import com.ondemandmonitoring.user.repository.CustomerProfileRepository;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import com.ondemandmonitoring.warehouse.domain.PreferredTime;
 import com.ondemandmonitoring.warehouse.repository.PreferredTimeRepository;
@@ -61,10 +64,12 @@ public class OrderService implements IOrderService {
     ServiceDeliverableRepository serviceDeliverableRepository;
     PreferredTimeRepository preferredTimeRepository;
     AuthenticatedUserResolver authenticatedUserResolver;
+    CustomerProfileRepository customerProfileRepository;
     OrderMapper orderMapper;
     IOrderChecklistSnapshotService checklistSnapshots;
     OrderReviewRecordInitializer reviewRecords;
     com.ondemandmonitoring.finance.repository.QuoteRepository quoteRepository;
+    com.ondemandmonitoring.finance.repository.InvoiceRepository invoiceRepository;
 
     @Override
     @Transactional
@@ -80,6 +85,12 @@ public class OrderService implements IOrderService {
         if (order.getOrderStatus() != OrderStatus.PENDING) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Only PENDING orders can be approved");
         }
+        if (order.getLegalReviewStatus() != LegalReviewStatus.NOT_REQUIRED
+                && order.getLegalReviewStatus() != LegalReviewStatus.APPROVED
+                && order.getLegalReviewStatus() != LegalReviewStatus.PENDING_PERMIT) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Order legal review is not ready for approval");
+        }
 
         order.setOrderStatus(OrderStatus.APPROVED);
         order.setReviewBy(authenticatedUserResolver.getCurrentUser());
@@ -87,6 +98,63 @@ public class OrderService implements IOrderService {
         orderRepository.save(order);
 
         return toResponse(order);
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public OrderCreateResponse reviewFlightArea(String orderId, FlightAreaReviewRequest request) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+        if (order.getOrderStatus() != OrderStatus.PENDING) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Only PENDING orders can be reviewed");
+        }
+        String reason = trimToNull(request.reason());
+        String note = trimToNull(request.note());
+        if (request.status() != LegalReviewStatus.NOT_REQUIRED
+                && request.status() != LegalReviewStatus.PENDING_PERMIT
+                && request.status() != LegalReviewStatus.REJECTED) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Initial legal review must be NOT_REQUIRED, PENDING_PERMIT, or REJECTED");
+        }
+        if (request.status() == LegalReviewStatus.REJECTED && reason == null) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "A reason is required for an unsuitable area");
+        }
+        order.setLegalReviewStatus(request.status());
+        order.setFlightAreaReviewReason(reason);
+        order.setFlightAreaReviewNote(note);
+        if (request.requestedScopeFeasible() != null) {
+            order.setRequestedScopeFeasible(request.requestedScopeFeasible());
+        }
+        order.setFlightAreaReviewedBy(authenticatedUserResolver.getCurrentUser());
+        order.setFlightAreaReviewedAt(Instant.now());
+        return toResponse(orderRepository.save(order));
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public OrderCreateResponse resolveLegalReview(String orderId, LegalReviewResolutionRequest request) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
+        // The permit may still be pending after the order was approved and invoiced.
+        if ((order.getOrderStatus() != OrderStatus.PENDING && order.getOrderStatus() != OrderStatus.APPROVED)
+                || order.getLegalReviewStatus() != LegalReviewStatus.PENDING_PERMIT) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "Only an order pending external permit verification can be resolved");
+        }
+        if (request.status() != LegalReviewStatus.APPROVED
+                && request.status() != LegalReviewStatus.REJECTED) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "Resolution must be APPROVED or REJECTED");
+        }
+        order.setLegalReviewStatus(request.status());
+        order.setFlightAreaReviewNote(trimToNull(request.note()));
+        order.setFlightAreaReviewedBy(authenticatedUserResolver.getCurrentUser());
+        order.setFlightAreaReviewedAt(Instant.now());
+        if (request.status() == LegalReviewStatus.REJECTED) {
+            order.setFlightAreaReviewReason("Permit verification was rejected");
+        }
+        return toResponse(orderRepository.save(order));
     }
 
     @Override
@@ -146,9 +214,7 @@ public class OrderService implements IOrderService {
         }
         List<OrderAuthorizationDocument> authorizationDocuments =
                 validateAuthorizationDocuments(request.getMonitoringAuthorizationDocuments());
-        int retentionDays = request.getDataRetentionDays() == null
-                ? DEFAULT_RETENTION_DAYS
-                : request.getDataRetentionDays();
+        int retentionDays = request.getDataRetentionDays();
         if (!ALLOWED_RETENTION_DAYS.contains(retentionDays)) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
                     "dataRetentionDays must be one of " + ALLOWED_RETENTION_DAYS);
@@ -212,7 +278,6 @@ public class OrderService implements IOrderService {
         Order order = orderMapper.toEntity(request);
         order.setCustomer(customer);
         order.setService(service);
-        order.setServiceBasePriceSnapshot(service.getBasePrice());
         order.setPreferredTime(preferredTime);
         order.setPoint(location);
         order.setTargetArea(targetArea);
@@ -236,9 +301,6 @@ public class OrderService implements IOrderService {
         if (order.getWeatherFallback() == null) {
             order.setWeatherFallback(OrderWeatherFallback.CONTACT_CUSTOMER);
         }
-        if (order.getPriority() == null) {
-            order.setPriority(OrderPriority.NORMAL);
-        }
         if (order.getFlightPurpose() == null) {
             order.setFlightPurpose(com.ondemandmonitoring.order.enums.OrderFlightPurpose.DEFAULT);
         }
@@ -261,6 +323,7 @@ public class OrderService implements IOrderService {
         reviewRecords.initialize(savedOrder);
         orderRepository.flush();
         OrderCreateResponse response = orderMapper.toResponse(savedOrder);
+        enrichCustomerProfile(response, savedOrder);
         response.setChecklistItems(items);
         return response;
     }
@@ -325,7 +388,7 @@ public class OrderService implements IOrderService {
     @Override
     @Transactional
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
-    public void requestMoreInformation(String orderId, String reason) {
+    public void requestMoreInformation(String orderId, String reason, String requestedUpdateScope) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
 
@@ -335,6 +398,8 @@ public class OrderService implements IOrderService {
 
         order.setOrderStatus(OrderStatus.NEEDS_INFO);
         order.setRejectReason(reason);
+        order.setRequestedUpdateScope(
+                "LOCATION".equalsIgnoreCase(requestedUpdateScope) ? "LOCATION" : "ADDITIONAL_INFORMATION");
         order.setReviewAt(java.time.Instant.now());
         orderRepository.save(order);
     }
@@ -353,6 +418,10 @@ public class OrderService implements IOrderService {
         if (order.getOrderStatus() != OrderStatus.NEEDS_INFO) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Order is not waiting for additional information");
         }
+        if ("LOCATION".equals(order.getRequestedUpdateScope())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "This request requires the monitoring location to be updated");
+        }
         if (request.siteContactName() != null) order.setSiteContactName(request.siteContactName());
         if (request.siteContactPhone() != null) order.setSiteContactPhone(request.siteContactPhone());
         if (request.accessNotes() != null) order.setAccessNotes(request.accessNotes());
@@ -362,10 +431,25 @@ public class OrderService implements IOrderService {
         if (request.monitoringAuthorizationConfirmed() != null) {
             order.setMonitoringAuthorizationConfirmed(request.monitoringAuthorizationConfirmed());
         }
+        if (request.monitoringAuthorizationDocuments() != null
+                && !request.monitoringAuthorizationDocuments().isEmpty()) {
+            List<OrderAuthorizationDocument> uploaded =
+                    validateAuthorizationDocuments(request.monitoringAuthorizationDocuments());
+            List<OrderAuthorizationDocument> combined = new ArrayList<>(
+                    order.getMonitoringAuthorizationDocuments() == null
+                            ? List.of() : order.getMonitoringAuthorizationDocuments());
+            combined.addAll(uploaded);
+            if (combined.size() > 10) {
+                throw new ApiException(ErrorCode.INVALID_REQUEST,
+                        "At most 10 authorization documents are allowed");
+            }
+            order.setMonitoringAuthorizationDocuments(combined);
+        }
         order.setDescription((order.getDescription() == null ? "" : order.getDescription().strip())
                 + "\n\nThông tin khách bổ sung: " + request.information().strip());
         order.setOrderStatus(OrderStatus.PENDING);
         order.setRejectReason(null);
+        order.setRequestedUpdateScope(null);
         order.setReviewAt(null);
         reviewRecords.reopenFailed(order, request.information());
         return toResponse(orderRepository.save(order));
@@ -389,12 +473,54 @@ public class OrderService implements IOrderService {
         if (acceptedQuote.isPresent())
             throw new ApiException(ErrorCode.INVALID_REQUEST, "An Order cannot be edited after its quote is accepted");
 
+        boolean submittingLocationCorrection = order.getOrderStatus() == OrderStatus.NEEDS_INFO
+                && "LOCATION".equals(order.getRequestedUpdateScope());
+        if (submittingLocationCorrection) {
+            boolean hasLocation = request.address() != null || request.longitude() != null
+                    || request.latitude() != null || request.radiusM() != null
+                    || request.coverageArea() != null;
+            boolean hasUnrequestedChanges = request.title() != null || request.description() != null
+                    || request.usagePurpose() != null || request.flightPurpose() != null
+                    || request.altitudeM() != null || request.estimatedLengthM() != null
+                    || request.siteContactName() != null || request.siteContactPhone() != null
+                    || request.accessNotes() != null || request.monitoringRelationship() != null
+                    || request.monitoringAuthorizationConfirmed() != null || request.permitStatus() != null
+                    || request.permitNumber() != null || request.permitExpiresOn() != null
+                    || request.preferredDateFrom() != null || request.preferredDateTo() != null
+                    || request.recurrenceType() != null || request.recurrenceOccurrences() != null
+                    || request.weatherFallback() != null || request.resultDeadline() != null
+                    || request.resultFormats() != null || request.deliveryMethods() != null
+                    || request.dataRetentionDays() != null;
+            if (!hasLocation || hasUnrequestedChanges) {
+                throw new ApiException(ErrorCode.INVALID_REQUEST,
+                        "Only the requested monitoring location can be updated");
+            }
+        }
+
         if (request.title() != null && !request.title().isBlank()) order.setTitle(request.title().strip());
         if (request.description() != null) order.setDescription(request.description().strip());
         if (request.address() != null) order.setAddress(request.address().strip());
+        if (request.longitude() != null || request.latitude() != null || request.coverageArea() != null) {
+            if (request.longitude() == null || request.latitude() == null || request.coverageArea() == null) {
+                throw new ApiException(ErrorCode.INVALID_REQUEST,
+                        "longitude, latitude and coverageArea must be updated together");
+            }
+            var point = orderMapper.toPoint(request.longitude(), request.latitude());
+            var targetArea = orderMapper.toPolygon(request.coverageArea());
+            com.ondemandmonitoring.order.util.ServiceAreaPolicy.assertSupported(point, targetArea);
+            order.setPoint(point);
+            order.setTargetArea(targetArea);
+        }
+        if (request.radiusM() != null) {
+            order.getDeliverables().forEach(deliverable -> {
+                var requirement = new java.util.LinkedHashMap<String, Object>();
+                if (deliverable.getRequirement() != null) requirement.putAll(deliverable.getRequirement());
+                requirement.put("radiusM", request.radiusM());
+                deliverable.setRequirement(requirement);
+            });
+        }
         if (request.usagePurpose() != null) order.setUsagePurpose(request.usagePurpose());
         if (request.flightPurpose() != null) order.setFlightPurpose(request.flightPurpose());
-        if (request.priority() != null) order.setPriority(request.priority());
         if (request.altitudeM() != null) order.setAltitudeM(request.altitudeM());
         if (request.estimatedLengthM() != null) order.setEstimatedLengthM(request.estimatedLengthM());
         if (request.siteContactName() != null) order.setSiteContactName(request.siteContactName().strip());
@@ -437,6 +563,25 @@ public class OrderService implements IOrderService {
             order.setReviewBy(null);
             order.setReviewAt(null);
         }
+        if (order.getOrderStatus() == OrderStatus.NEEDS_INFO) {
+            order.setOrderStatus(OrderStatus.PENDING);
+            order.setRejectReason(null);
+            order.setRequestedUpdateScope(null);
+            order.setReviewAt(null);
+        }
+        if (submittingLocationCorrection) {
+            // The previous legal review belongs to the old coordinates and must
+            // never be shown as the verdict for the newly submitted area.
+            order.setLegalReviewStatus(LegalReviewStatus.NOT_REVIEWED);
+            order.setRequestedScopeFeasible(null);
+            order.setFlightAreaReviewReason(null);
+            order.setFlightAreaReviewNote(null);
+            order.setFlightAreaReviewedBy(null);
+            order.setFlightAreaReviewedAt(null);
+            order.setPermitRequired(null);
+            order.setPermitZoneName(null);
+            reviewRecords.reopenFailed(order, "Khách hàng đã cập nhật lại khu vực giám sát");
+        }
         return toResponse(orderRepository.save(order));
     }
 
@@ -452,6 +597,17 @@ public class OrderService implements IOrderService {
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public List<OrderCreateResponse> getApprovedOrders() {
         return toResponses(orderRepository.findByOrderStatusOrderByCreatedAtAsc(OrderStatus.APPROVED));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public List<OrderCreateResponse> getManagedOrders(OrderStatus status) {
+        List<Order> orders = status == null
+                ? orderRepository.findAll(org.springframework.data.domain.Sort.by(
+                        org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))
+                : orderRepository.findByOrderStatusOrderByCreatedAtAsc(status).reversed();
+        return toResponses(orders);
     }
 
     @Override
@@ -474,9 +630,29 @@ public class OrderService implements IOrderService {
         var snapshots = checklistSnapshots.getByOrders(orders.stream().map(Order::getId).toList());
         return orders.stream().map(order -> {
             var response = orderMapper.toResponse(order);
+            enrichCustomerProfile(response, order);
             response.setChecklistItems(snapshots.getOrDefault(order.getId(), List.of()));
+            if (order.getOrderStatus() == OrderStatus.APPROVED) {
+                response.setDepositSatisfied(invoiceRepository.findByOrderId(order.getId())
+                        .map(invoice -> invoice.getPaidAmount().compareTo(invoice.getDepositAmount()) >= 0)
+                        .orElse(false));
+            }
             return response;
         }).toList();
+    }
+
+    private void enrichCustomerProfile(OrderCreateResponse response, Order order) {
+        if (order.getCustomer() == null || order.getCustomer().getId() == null) {
+            return;
+        }
+        customerProfileRepository.findById(order.getCustomer().getId()).ifPresent(profile -> {
+            response.setCustomerPhoneNumber(profile.getPhoneNumber());
+            response.setCustomerAddress(profile.getAddress());
+            response.setCustomerCompanyName(profile.getCompanyName());
+            response.setCustomerCitizenIdentificationNumber(
+                    profile.getCitizenIdentificationNumber());
+            response.setCustomerCompanyTaxCode(profile.getCompanyTaxCode());
+        });
     }
 
     static final int MAX_PERMIT_FILES = 3;
@@ -521,7 +697,6 @@ public class OrderService implements IOrderService {
 
     /** Version recorded with the customer's acceptance of the terms and security commitment. */
     static final String TERMS_VERSION = "2026-10";
-    static final int DEFAULT_RETENTION_DAYS = 90;
     static final java.util.List<Integer> ALLOWED_RETENTION_DAYS = java.util.List.of(30, 90, 180, 365);
 
     /** Keeps the customer's order of choice, drops duplicates, falls back to one default. */
@@ -546,5 +721,10 @@ public class OrderService implements IOrderService {
                 .substring(0, 6)
                 .toUpperCase();
         return "ORD-" + datePart + "-" + suffix;
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null || value.isBlank()) return null;
+        return value.strip();
     }
 }

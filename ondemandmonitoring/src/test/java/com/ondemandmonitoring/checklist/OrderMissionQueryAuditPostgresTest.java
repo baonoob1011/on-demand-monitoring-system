@@ -1,7 +1,6 @@
 package com.ondemandmonitoring.checklist;
 
-import com.ondemandmonitoring.media.domain.MediaAsset;
-import com.ondemandmonitoring.media.domain.MediaStatus;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.mission.domain.*;
 import com.ondemandmonitoring.mission.enums.*;
@@ -54,7 +53,8 @@ class OrderMissionQueryAuditPostgresTest {
         var helper = new MissionMapperHelper(repository(fixture.entityManagerFactory, MissionPlanRepository.class),
                 repository(fixture.entityManagerFactory, MissionDeviceAssignmentRepository.class),
                 repository(fixture.entityManagerFactory, MissionStaffAssignmentRepository.class),
-                plans, Mappers.getMapper(MissionStaffAssignmentMapper.class));
+                plans, Mappers.getMapper(MissionStaffAssignmentMapper.class),
+                repository(fixture.entityManagerFactory, UserRepository.class));
         mapper = Mappers.getMapper(MissionMapper.class);
         ReflectionTestUtils.setField(mapper, "missionMapperHelper", helper);
         ReflectionTestUtils.setField(mapper, "missionPlanMapper", plans);

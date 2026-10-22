@@ -2,12 +2,12 @@ package com.ondemandmonitoring.order.dto.response;
 
 import com.ondemandmonitoring.order.enums.OrderDeliveryMethod;
 import com.ondemandmonitoring.order.enums.OrderPermitStatus;
-import com.ondemandmonitoring.order.enums.OrderPriority;
 import com.ondemandmonitoring.order.enums.OrderRecurrenceType;
 import com.ondemandmonitoring.order.enums.OrderResultFormat;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.enums.ExecutionPlanStatus;
 import com.ondemandmonitoring.order.enums.OrderUsagePurpose;
+import com.ondemandmonitoring.order.enums.LegalReviewStatus;
 import com.ondemandmonitoring.order.enums.OrderWeatherFallback;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
@@ -37,6 +37,11 @@ public class OrderCreateResponse {
     String customerId;
     String customerName;
     String customerEmail;
+    String customerPhoneNumber;
+    String customerAddress;
+    String customerCompanyName;
+    String customerCitizenIdentificationNumber;
+    String customerCompanyTaxCode;
 
     // General Info
     String title;
@@ -46,7 +51,6 @@ public class OrderCreateResponse {
     String description;
     OrderUsagePurpose usagePurpose;
     com.ondemandmonitoring.order.enums.OrderFlightPurpose flightPurpose;
-    OrderPriority priority;
     Double altitudeM;
     Double estimatedLengthM;
     String siteContactName;
@@ -83,6 +87,7 @@ public class OrderCreateResponse {
     List<OrderResultFormat> resultFormats;
     List<OrderDeliveryMethod> deliveryMethods;
     Integer dataRetentionDays;
+    Instant resultExpiresAt;
     Instant termsAcceptedAt;
     String termsVersion;
 
@@ -91,14 +96,24 @@ public class OrderCreateResponse {
     long executionPlanRevision;
     ExecutionPlanStatus executionPlanStatus;
     String rejectReason;
+    String requestedUpdateScope;
     String reviewById;
     String reviewByName;
     Instant reviewAt;
+    LegalReviewStatus legalReviewStatus;
+    /** Customer-facing payment milestone for approved orders; null before approval. */
+    Boolean depositSatisfied;
+    String flightAreaReviewReason;
+    String flightAreaReviewNote;
+    Boolean requestedScopeFeasible;
+    String flightAreaReviewedById;
+    String flightAreaReviewedByName;
+    Instant flightAreaReviewedAt;
 
     // Deliverables
     List<OrderDeliverableResponse> deliverables;
 
-    List<OrderChecklistItemResponse> checklistItems;
+    List<CustomerOrderChecklistItemResponse> checklistItems;
     Instant checklistSnapshotAt;
 
     Instant createdAt;

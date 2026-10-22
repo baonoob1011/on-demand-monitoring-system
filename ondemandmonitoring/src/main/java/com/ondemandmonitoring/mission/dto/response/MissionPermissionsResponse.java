@@ -3,6 +3,7 @@ package com.ondemandmonitoring.mission.dto.response;
 /** Effective permissions for the authenticated account, not global role labels. */
 public record MissionPermissionsResponse(
         boolean canRespond,
+        boolean canStartMission,
         boolean canControlFlight,
         boolean canOperatePayload,
         boolean canInspectDevice,

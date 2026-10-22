@@ -67,14 +67,18 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
         // All execution mutations and result submissions/reviews lock the same Mission first.
         // This prevents a submit from racing an execution update across different rows.
         Mission mission = requireMission(missionId, true);
-        if (!authorization.canExecuteMonitoringChecklist(missionId)) throw new ApiException(ErrorCode.ACCESS_DENIED);
+        boolean canExecute = authorization.canExecuteMonitoringChecklist(missionId);
+        boolean canAssess = authorization.canReviewMissionMedia(missionId);
+        if (!canExecute && !canAssess) throw new ApiException(ErrorCode.ACCESS_DENIED);
         var result = results.findByMissionId(missionId);
         boolean rejected = result.map(r -> r.getApprovalStatus() == MissionResultApprovalStatus.REJECTED).orElse(false);
         if (result.map(r -> r.getApprovalStatus() == MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL
                 || r.getApprovalStatus() == MissionResultApprovalStatus.APPROVED).orElse(false)) {
             throw new ApiException(ErrorCode.CHECKLIST_EXECUTION_LOCKED);
         }
-        MissionChecklistExecution execution = executions.findById(executionId)
+        // Keep the aggregate lock order (Mission, then its execution row) and make
+        // the expected-version check observe the latest committed execution state.
+        MissionChecklistExecution execution = executions.findByIdForUpdate(executionId)
                 .orElseThrow(() -> new ApiException(ErrorCode.CHECKLIST_EXECUTION_NOT_FOUND));
         if (!missionId.equals(execution.getMissionId()))
             throw new ApiException(ErrorCode.CHECKLIST_EXECUTION_PARENT_MISMATCH);
@@ -91,27 +95,52 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
             throw new ApiException(ErrorCode.CONCURRENT_UPDATE);
         ChecklistExecutionStatus next = request.getExecutionStatus();
         ChecklistExecutionStatus previous = execution.getExecutionStatus();
+        String reason = trimmed(request.getUnableToVerifyReason(), 1000);
+        String observation = trimmed(request.getObservation(), 2000);
+        boolean executionChanged = next != previous
+                || !Objects.equals(observation, execution.getObservation())
+                || !Objects.equals(next == ChecklistExecutionStatus.UNABLE_TO_VERIFY ? reason : null,
+                        execution.getUnableToVerifyReason());
+        boolean assessmentChanged = request.getAssessmentStatus() != execution.getAssessmentStatus();
+        if (executionChanged && !canExecute) throw new ApiException(ErrorCode.ACCESS_DENIED);
+        if (assessmentChanged && !canAssess) throw new ApiException(ErrorCode.ACCESS_DENIED);
         if (!validTransition(previous, next, rejected))
             throw new ApiException(ErrorCode.CHECKLIST_EXECUTION_TRANSITION_INVALID);
-        String reason = trimmed(request.getUnableToVerifyReason(), 1000);
         if (next == ChecklistExecutionStatus.UNABLE_TO_VERIFY && reason == null)
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Unable to verify requires a non-blank reason");
-        String observation = trimmed(request.getObservation(), 2000);
         Instant now = Instant.now();
-        if (next == ChecklistExecutionStatus.PENDING) execution.setStartedAt(null);
-        else if (execution.getStartedAt() == null) execution.setStartedAt(now);
-        execution.setCompletedAt(next.isTerminal()
-                ? (previous == next ? execution.getCompletedAt() : now) : null);
-        execution.setExecutionStatus(next);
-        execution.setAssessmentStatus(request.getAssessmentStatus());
-        execution.setObservation(observation);
-        execution.setUnableToVerifyReason(next == ChecklistExecutionStatus.UNABLE_TO_VERIFY ? reason : null);
-        execution.setLastModifiedBy(currentUser.getCurrentUserId());
+        Instant startedAt = next == ChecklistExecutionStatus.PENDING
+                ? null : execution.getStartedAt() == null ? now : execution.getStartedAt();
+        Instant completedAt = next.isTerminal()
+                ? (previous == next ? execution.getCompletedAt() : now) : null;
+        String unableToVerifyReason = next == ChecklistExecutionStatus.UNABLE_TO_VERIFY ? reason : null;
+        if (next == ChecklistExecutionStatus.COMPLETED) {
+            var activeEvidence = evidenceService.active(missionId);
+            if (!evidenceService.evidenceRequirementsSatisfied(execution, activeEvidence, false)) {
+                String failure = evidenceService.readinessFailure(execution, activeEvidence, false);
+                throw new ApiException(ErrorCode.CHECKLIST_NOT_READY,
+                        failure == null ? "Attach eligible evidence before completing this checklist item." : failure);
+            }
+        }
         // A repeated command still records an audit event and consumes its expected version.
-        execution.setUpdatedAt(now);
+        // Keep the managed entity clean until the atomic version compare-and-set runs;
+        // otherwise flushAutomatically would increment @Version before the CAS.
         try {
-            var saved = executions.saveAndFlush(execution);
-            return evidenceService.enrich(mapper.toResponse(saved), saved, evidenceService.active(missionId));
+            int updated = executions.updateIfVersionMatches(
+                    executionId,
+                    request.getExpectedVersion(),
+                    next.name(),
+                    request.getAssessmentStatus().name(),
+                    observation,
+                    unableToVerifyReason,
+                    startedAt,
+                    completedAt,
+                    currentUser.getCurrentUserId(),
+                    now);
+            if (updated != 1) throw new ApiException(ErrorCode.CONCURRENT_UPDATE);
+            MissionChecklistExecution updatedExecution = executions.findById(executionId)
+                    .orElseThrow(() -> new ApiException(ErrorCode.CHECKLIST_EXECUTION_NOT_FOUND));
+            return evidenceService.enrich(mapper.toResponse(updatedExecution), updatedExecution, evidenceService.active(missionId));
         } catch (org.springframework.dao.DataIntegrityViolationException | org.hibernate.exception.ConstraintViolationException exception) {
             throw new ApiException(ErrorCode.CHECKLIST_EXECUTION_INTEGRITY_INVALID);
         }
@@ -150,7 +179,7 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
     @Override
     @Transactional(readOnly = true)
     public void requireReadyForSubmission(Mission mission) {
-        if (!isReadyForSubmission(mission)) throw new ApiException(ErrorCode.CHECKLIST_NOT_READY);
+        if (!isReadyForSubmission(mission)) throw new ApiException(ErrorCode.CHECKLIST_NOT_READY, readinessMessage(mission, false));
     }
 
     @Override
@@ -169,10 +198,43 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
         if (!scope.isMaterialized(mission)) throw new ApiException(ErrorCode.CHECKLIST_NOT_READY);
         var actual = executions.findOrderedByMissionId(mission.getId());
         var links = evidenceService.active(mission.getId());
-        if (!operationalReady(mission, actual, links)) throw new ApiException(ErrorCode.CHECKLIST_NOT_READY);
-        if (!actual.stream().allMatch(e -> evidenceService.ready(e, links, true)))
-            throw new ApiException(ErrorCode.CHECKLIST_NOT_READY, "Approve required evidence media first; remove rejected/pending evidence from required items");
+        if (!operationalReady(mission, actual, links)) {
+            String reason = actual.stream().map(e -> evidenceService.readinessFailure(e, links, false))
+                    .filter(Objects::nonNull).findFirst().orElse("Checklist execution is not operationally ready.");
+            throw new ApiException(ErrorCode.CHECKLIST_NOT_READY, reason);
+        }
+        if (!actual.stream().allMatch(e -> evidenceService.ready(e, links, true))) {
+            String reason = actual.stream().filter(e -> !evidenceService.ready(e, links, true))
+                    .map(e -> {
+                        String failure = evidenceService.readinessFailure(e, links, true);
+                        if (failure != null) return failure;
+                        var item = e.getOrderChecklistItem();
+                        return "Checklist item '" + item.getContent() + "' is not eligible for final approval.";
+                    }).filter(Objects::nonNull).findFirst().orElse("Evidence is not ready for final approval.");
+            throw new ApiException(ErrorCode.CHECKLIST_NOT_READY, reason);
+        }
     }
+
+    private String readinessMessage(Mission mission, boolean finalApproval) {
+        var rows = executions.findOrderedByMissionId(mission.getId());
+        var links = evidenceService.active(mission.getId());
+        return rows.stream()
+                .filter(execution -> !evidenceService.ready(execution, links, finalApproval))
+                .filter(execution -> execution.getExecutionStatus() != ChecklistExecutionStatus.UNABLE_TO_VERIFY)
+                .map(execution -> {
+                    String failure = evidenceService.readinessFailure(execution, links, finalApproval);
+                    if (failure != null) return failure;
+                    var item = execution.getOrderChecklistItem();
+                    return "Checklist item '" + item.getContent() + "' execution status "
+                            + execution.getExecutionStatus() + " is not terminal.";
+                })
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(finalApproval
+                        ? "Approve eligible evidence media before final MissionResult approval."
+                        : "Checklist execution or eligible evidence does not satisfy the saved Order requirement.");
+    }
+
 
     private void requireSameOrder(Mission mission, OrderChecklistItem item) {
         if (item == null || !Objects.equals(mission.getOrder().getId(), item.getOrder().getId()))

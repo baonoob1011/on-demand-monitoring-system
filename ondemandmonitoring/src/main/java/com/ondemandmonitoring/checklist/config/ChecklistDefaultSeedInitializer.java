@@ -44,6 +44,7 @@ public class ChecklistDefaultSeedInitializer implements ApplicationRunner {
                 row.setNormalizedContent(content.toLowerCase(Locale.ROOT));
                 return definitions.saveAndFlush(row);
             });
+            fillGuidanceIfEmpty(definition, i);
             catalog.put(code, definition);
         }
         var existingServices = services.findAll();
@@ -76,5 +77,18 @@ public class ChecklistDefaultSeedInitializer implements ApplicationRunner {
             }
         }
         assignments.flush();
+    }
+
+    /** Gives seeded checklists default guidance, but never overwrites anything an administrator wrote.
+     * The row is managed inside the surrounding transaction, so it is flushed with the rest of the bootstrap. */
+    private void fillGuidanceIfEmpty(ChecklistDefinition definition, int index) {
+        if (index >= ChecklistDefaultGuidance.BY_INDEX.size()) return;
+        if (definition.getDescription() != null || definition.getExecutionSteps() != null
+                || definition.getInputRequirements() != null || definition.getExpectedOutputs() != null) return;
+        var guidance = ChecklistDefaultGuidance.BY_INDEX.get(index);
+        definition.setDescription(guidance.description());
+        definition.setExecutionSteps(guidance.steps());
+        definition.setInputRequirements(guidance.inputs());
+        definition.setExpectedOutputs(guidance.outputs());
     }
 }

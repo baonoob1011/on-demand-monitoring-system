@@ -17,4 +17,11 @@ public interface IPaymentPersistenceService {
     PaymentResponse getByReference(String transactionReference);
     PaymentReconciliationContext reconciliationContext(String transactionReference);
     List<PaymentResponse> list(String invoiceId);
+
+    /** Staff reconciliation: references of the order's VNPAY payments still waiting for a result. */
+    List<String> pendingReferencesForOrder(String orderId);
+    /** Staff reconciliation: same as {@link #getByReference} without the customer-ownership check. */
+    PaymentResponse getByReferenceForStaff(String transactionReference);
+    /** Staff reconciliation: same as {@link #reconciliationContext} without the customer-ownership check. */
+    PaymentReconciliationContext reconciliationContextForStaff(String transactionReference);
 }

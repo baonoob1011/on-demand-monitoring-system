@@ -7,7 +7,7 @@ import com.ondemandmonitoring.auth.port.out.ManagedIdentity;
 import com.ondemandmonitoring.auth.service.impl.AdminAccountServiceImpl;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.IUserService;
 import org.junit.jupiter.api.BeforeEach;

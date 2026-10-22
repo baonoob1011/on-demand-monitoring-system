@@ -12,8 +12,8 @@ import com.ondemandmonitoring.mission.mapper.MissionMapper;
 import com.ondemandmonitoring.mission.repository.*;
 import com.ondemandmonitoring.mission.service.*;
 import com.ondemandmonitoring.mission.service.impl.*;
-import com.ondemandmonitoring.role.domain.*;
 import com.ondemandmonitoring.role.domain.Role;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.repository.UserRepository;
 import com.ondemandmonitoring.user.service.*;
@@ -79,7 +79,7 @@ class ResourceSafetyPostgresTest extends ExecutionPlanAmendmentPostgresTest {
                 repository(entityManagerFactory, DeviceRepository.class), mapper, scope, reservations);
         operational = new MissionService(repository(entityManagerFactory, MissionRescheduleHistoryRepository.class), missions,
                 repository(entityManagerFactory, DeviceRepository.class), repository(entityManagerFactory, FlightTokenRepository.class), mapper,
-                null,null,null,repository(entityManagerFactory, DeviceConnectionRepository.class),null,
+                null,null,repository(entityManagerFactory, DeviceConnectionRepository.class),null,
                 repository(entityManagerFactory, PersistedPostDeviceCheckRepository.class),null,orders,null,null,sessions,null,resultService,
                 null,null,directory,resolver,repository(entityManagerFactory, UserScheduleRepository.class),
                 repository(entityManagerFactory, MissionDeviceAssignmentRepository.class),repository(entityManagerFactory, MissionStaffAssignmentRepository.class),

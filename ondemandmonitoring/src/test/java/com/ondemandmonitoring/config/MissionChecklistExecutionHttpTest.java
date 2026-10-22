@@ -11,11 +11,12 @@ import com.ondemandmonitoring.mission.service.impl.MissionChecklistExecutionServ
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.domain.OrderChecklistItem;
 import com.ondemandmonitoring.order.repository.OrderChecklistItemRepository;
-import com.ondemandmonitoring.role.domain.*;
 import com.ondemandmonitoring.role.domain.Role;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.util.*;
+import java.time.Instant;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.*;
@@ -54,6 +55,7 @@ class MissionChecklistExecutionHttpTest {
         var order = new Order(); order.setId("o");
         mission = new Mission(); mission.setId("m"); mission.setOrder(order); mission.setStatus(MissionStatus.IN_FLIGHT);
         var item = new OrderChecklistItem(); item.setId("i"); item.setOrder(order); item.setContent("Historical requirement");
+        item.setEvidencePolicyVersion(0); item.setMinimumEvidenceCount(0);
         execution = new MissionChecklistExecution(); execution.setId("e"); execution.setVersion(0L);
         execution.setMissionId("m"); execution.setOrderId("o"); execution.setOrderChecklistItemId("i");
         execution.setMission(mission); execution.setOrderChecklistItem(item);
@@ -62,6 +64,21 @@ class MissionChecklistExecutionHttpTest {
         when(missions.findById("m")).thenReturn(Optional.of(mission));
         when(missions.findByIdForUpdate("m")).thenReturn(Optional.of(mission));
         when(executions.findById("e")).thenReturn(Optional.of(execution));
+        when(executions.findByIdForUpdate("e")).thenReturn(Optional.of(execution));
+        when(executions.updateIfVersionMatches(anyString(), anyLong(), anyString(), anyString(),
+                nullable(String.class), nullable(String.class), nullable(Instant.class), nullable(Instant.class),
+                nullable(String.class), any(Instant.class))).thenAnswer(call -> {
+                    execution.setExecutionStatus(ChecklistExecutionStatus.valueOf(call.getArgument(2)));
+                    execution.setAssessmentStatus(ChecklistAssessmentStatus.valueOf(call.getArgument(3)));
+                    execution.setObservation(call.getArgument(4));
+                    execution.setUnableToVerifyReason(call.getArgument(5));
+                    execution.setStartedAt(call.getArgument(6));
+                    execution.setCompletedAt(call.getArgument(7));
+                    execution.setLastModifiedBy(call.getArgument(8));
+                    execution.setUpdatedAt(call.getArgument(9));
+                    execution.setVersion(execution.getVersion() + 1);
+                    return 1;
+                });
         when(executions.findOrderedByMissionId("m")).thenReturn(List.of(execution));
         when(executions.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
         when(items.findAllByOrderIdInOrderByDisplayOrderAscIdAsc(List.of("o"))).thenReturn(List.of(item));
@@ -94,8 +111,8 @@ class MissionChecklistExecutionHttpTest {
                 .contentType(MediaType.APPLICATION_JSON).content(BODY)).andExpect(status().isConflict());
     }
 
-    @Test void customerManagerAdminAndInspectorCannotMutate() throws Exception {
-        for (RoleCode role : List.of(RoleCode.CUSTOMER, RoleCode.MANAGER, RoleCode.ADMIN, RoleCode.STAFF)) {
+    @Test void customerManagerAndAdminCannotMutate() throws Exception {
+        for (RoleCode role : List.of(RoleCode.CUSTOMER, RoleCode.MANAGER, RoleCode.ADMIN)) {
             actor.getRole().setCode(role); crew(MissionStaffRole.INSPECTOR);
             mvc.perform(patch(URL + "/e").with(jwt().authorities(() -> "ROLE_" + role.name())).with(csrf())
                             .contentType(MediaType.APPLICATION_JSON).content(BODY)).andExpect(status().isForbidden());

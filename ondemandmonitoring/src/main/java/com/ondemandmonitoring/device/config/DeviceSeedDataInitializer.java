@@ -7,7 +7,6 @@ import com.ondemandmonitoring.device.enums.DeviceStatus;
 import com.ondemandmonitoring.device.repository.DeviceModelRepository;
 import com.ondemandmonitoring.device.repository.DeviceRepository;
 import com.ondemandmonitoring.device.repository.DeviceTypeRepository;
-import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -28,8 +27,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class DeviceSeedDataInitializer implements ApplicationRunner {
 
     static final String DRONE_TYPE_CODE = "DRONE";
-    static final String CAMERA_TYPE_CODE = "CAMERA";
-    static final String MODEL_CODE = "ODM-ASTAR-X1";
+    static final String MODEL_CODE = "DJI-MAVIC-3E";
+
+    static final String DEVICE_CODE = "DRN-001";
+    static final String SERIAL_NUMBER = "M3E-DEMO-001";
+    static final String DEVICE_CODE_2 = "DRN-002";
+    static final String SERIAL_NUMBER_2 = "M3E-DEMO-002";
+    static final String DEVICE_CODE_3 = "DRN-003";
+    static final String SERIAL_NUMBER_3 = "M3E-DEMO-003";
 
     DeviceTypeRepository deviceTypeRepository;
     DeviceModelRepository deviceModelRepository;
@@ -40,48 +45,45 @@ public class DeviceSeedDataInitializer implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         DeviceType droneType = ensureDeviceType(
                 DRONE_TYPE_CODE,
-                "Drone giám sát",
-                "Thiết bị bay dùng cho mission giám sát.");
-        DeviceType cameraType = ensureDeviceType(
-                CAMERA_TYPE_CODE,
-                "Camera onboard",
-                "Camera gắn trên drone để ghi hình ảnh và video.");
+                "Drone",
+                "Thiết bị bay không người lái phục vụ nhiệm vụ giám sát và kiểm tra.");
 
-        DeviceModel model = ensureDeviceModel(droneType, cameraType);
+        DeviceModel model = ensureDeviceModel(droneType);
 
-        ensureDevice("ODM-DRN-0052", "DRN-0052", "Drone test 0052", model, DeviceStatus.AVAILABLE);
-        ensureDevice("ODM-DRN-0053", "DRN-0053", "Drone test 0053", model, DeviceStatus.AVAILABLE);
-        ensureDevice("ODM-DRN-0054", "DRN-0054", "Drone test 0054", model, DeviceStatus.AVAILABLE);
+        ensureDevice(SERIAL_NUMBER, DEVICE_CODE, "DJI Mavic 3 Enterprise", model, DeviceStatus.AVAILABLE);
+        ensureDevice(SERIAL_NUMBER_2, DEVICE_CODE_2, "DJI Mavic 3 Enterprise 02", model, DeviceStatus.AVAILABLE);
+        ensureDevice(SERIAL_NUMBER_3, DEVICE_CODE_3, "DJI Mavic 3 Enterprise 03", model, DeviceStatus.AVAILABLE);
 
-        log.info("Device seed data ready for mission assignment testing.");
+        log.info("3 DJI Mavic 3 Enterprise seed devices ready.");
     }
 
+    // Upsert: refresh seed fields on existing rows so edits here take effect after restart.
     private DeviceType ensureDeviceType(String code, String name, String description) {
-        return deviceTypeRepository.findByCode(code)
-                .orElseGet(() -> {
-                    DeviceType type = new DeviceType();
-                    type.setCode(code);
-                    type.setName(name);
-                    type.setDescription(description);
-                    return deviceTypeRepository.save(type);
-                });
+        DeviceType type = deviceTypeRepository.findByCode(code).orElseGet(DeviceType::new);
+        type.setCode(code);
+        type.setName(name);
+        type.setDescription(description);
+        return deviceTypeRepository.save(type);
     }
 
-    private DeviceModel ensureDeviceModel(DeviceType droneType, DeviceType cameraType) {
-        return deviceModelRepository.findByCode(MODEL_CODE)
-                .orElseGet(() -> {
-                    DeviceModel model = new DeviceModel();
-                    model.setCode(MODEL_CODE);
-                    model.setManufacturer("OnDemand Monitor");
-                    model.setModelName("A* Monitoring Drone X1");
-                    model.setSpecsMetadata(Map.of(
-                            "maxFlightMinutes", 35,
-                            "camera", "RGB",
-                            "supportsPreflight", true,
-                            "supportsPostflight", true));
-                    model.setDeviceTypes(new HashSet<>(Set.of(droneType, cameraType)));
-                    return deviceModelRepository.save(model);
-                });
+    private DeviceModel ensureDeviceModel(DeviceType droneType) {
+        DeviceModel model = deviceModelRepository.findByCode(MODEL_CODE).orElseGet(DeviceModel::new);
+        model.setCode(MODEL_CODE);
+        model.setManufacturer("DJI");
+        model.setModelName("Mavic 3 Enterprise");
+        // Camera is a payload of the drone, not a device type; "camera" key is read by MissionMapperHelper.
+        model.setSpecsMetadata(Map.of(
+                "aircraftType", "Multirotor",
+                "maxFlightMinutes", 45,
+                "camera", "RGB",
+                "cameraResolutionMp", 20,
+                "sensor", "4/3 CMOS",
+                "rtkSupported", true,
+                "gnss", "GPS/Galileo/BeiDou",
+                "supportsPreflight", true,
+                "supportsPostflight", true));
+        model.setDeviceTypes(new HashSet<>(Set.of(droneType)));
+        return deviceModelRepository.save(model);
     }
 
     private void ensureDevice(
@@ -90,16 +92,18 @@ public class DeviceSeedDataInitializer implements ApplicationRunner {
             String name,
             DeviceModel model,
             DeviceStatus status) {
-        deviceRepository.findBySerialNumber(serialNumber)
-                .orElseGet(() -> {
-                    Device device = new Device();
-                    device.setSerialNumber(serialNumber);
-                    device.setDeviceCode(deviceCode);
-                    device.setName(name);
-                    device.setDeviceModel(model);
-                    device.setStatus(status);
-                    device.setLastSeenAt(LocalDateTime.now());
-                    return deviceRepository.save(device);
-                });
+        Device device = deviceRepository.findBySerialNumber(serialNumber).orElse(null);
+        if (device == null) {
+            device = new Device();
+            device.setSerialNumber(serialNumber);
+            // Seed must not pretend the drone sent telemetry: lastSeenAt stays null until real telemetry arrives.
+            device.setLastSeenAt(null);
+            // Status is only seeded on create so a restart never resets a RESERVED/IN_USE device.
+            device.setStatus(status);
+        }
+        device.setDeviceCode(deviceCode);
+        device.setName(name);
+        device.setDeviceModel(model);
+        deviceRepository.save(device);
     }
 }

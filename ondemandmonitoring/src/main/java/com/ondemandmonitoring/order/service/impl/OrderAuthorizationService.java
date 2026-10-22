@@ -4,7 +4,7 @@ import com.ondemandmonitoring.mission.service.IMissionAuthorizationService;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.order.service.IOrderAuthorizationService;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import lombok.RequiredArgsConstructor;

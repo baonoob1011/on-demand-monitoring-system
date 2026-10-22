@@ -25,6 +25,8 @@ public enum ReviewCriterionCode {
             "Có người liên hệ tại hiện trường"),
     SCHEDULE_DATE(ReviewCriterionType.AUTO, false, "Thời gian thực hiện",
             "Ngày mong muốn còn hiệu lực và hạn nhận kết quả không quá sát"),
+    /** Kept only so existing database rows can still be read; it is no longer part of review. */
+    @Deprecated
     FLIGHT_SCALE(ReviewCriterionType.AUTO, false, "Quy mô chuyến bay",
             "Độ cao và chiều dài tuyến nằm trong ngưỡng một chuyến bay thông thường"),
 
@@ -41,6 +43,9 @@ public enum ReviewCriterionCode {
             "Đã xác nhận chủ đất hoặc đơn vị quản lý đồng ý cho bay và quay chụp"),
     CAPABILITY(ReviewCriterionType.MANUAL, true, "Năng lực thực hiện",
             "Công ty đủ thiết bị và nhân sự cho yêu cầu này"),
+    REQUESTED_SCOPE_FEASIBLE(ReviewCriterionType.MANUAL, true,
+            "Khả năng đáp ứng phạm vi và kết quả",
+            "Phạm vi và kết quả khách yêu cầu có khả năng thực hiện bằng hệ thống hiện tại"),
     PURPOSE(ReviewCriterionType.MANUAL, false, "Mục đích sử dụng",
             "Mục đích sử dụng dữ liệu của khách chấp nhận được"),
     RISK_LEVEL(ReviewCriterionType.MANUAL, false, "Mức rủi ro vận hành",
@@ -60,7 +65,8 @@ public enum ReviewCriterionCode {
     private final String description;
 
     public boolean isActive() {
-        return this != CHECKLIST_REVIEWED && this != SENSITIVE_AREA && this != AIRSPACE_PERMIT
+        return this != CHECKLIST_REVIEWED && this != FLIGHT_SCALE
+                && this != SENSITIVE_AREA && this != AIRSPACE_PERMIT
                 && this != PRICE_REASONABLE && this != SURVEY_NEEDED;
     }
 }

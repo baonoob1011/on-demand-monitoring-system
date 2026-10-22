@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.config;
 
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import lombok.extern.slf4j.Slf4j;
 import java.util.Collection;
 import java.util.List;
@@ -72,16 +72,7 @@ public class SecurityConfig {
             "/v3/api-docs/**",
             "/ws",
             "/ws/**",
-            // Simulation Viewer – static assets and the APIs called by viewer.js
-            "/simulation-viewer",
-            "/simulation-viewer/**",
-            "/api/zones",
-            "/api/zones/**",
-            "/api/thermal-sources",
             "/api/dev/ai/knowledge/index",
-            "/api/thermal-sources/**",
-            "/api/simulation-map",
-            "/api/simulation-map/**",
             "/api/planning/environment",
             "/api/planning/environment/**",
             "/api/geocoding/search",

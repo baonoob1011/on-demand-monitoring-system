@@ -20,7 +20,7 @@ public class CustomerFinanceController {
     private final IPaymentService paymentService;
 
     @GetMapping("/orders/{orderId}/quote")
-    public ApiResponse<QuoteResponse> quote(@PathVariable String orderId) {
+    public ApiResponse<CustomerQuoteResponse> quote(@PathVariable String orderId) {
         return ApiResponse.ok(quoteService.getCurrentForCustomer(orderId));
     }
 
@@ -37,6 +37,11 @@ public class CustomerFinanceController {
     @PostMapping("/invoices/{invoiceId}/payments/deposit")
     public ApiResponse<PaymentResponse> deposit(@PathVariable String invoiceId, HttpServletRequest request) {
         return ApiResponse.ok("Deposit payment link ready", paymentService.createDeposit(invoiceId, request.getRemoteAddr()));
+    }
+
+    @PostMapping("/invoices/{invoiceId}/payments/test-deposit")
+    public ApiResponse<PaymentResponse> testDeposit(@PathVariable String invoiceId) {
+        return ApiResponse.ok("Test deposit completed", paymentService.completeTestDeposit(invoiceId));
     }
 
     @PostMapping("/invoices/{invoiceId}/payments/final")

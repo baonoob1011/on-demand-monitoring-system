@@ -53,8 +53,8 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
                 .mapToObj(i -> selected(null, "Historical requirement " + i)).toList());
         String id = orderService.createOrder(cachedRequest).getId();
         // These Phase 5 regressions explicitly exercise historical policy-0 packages.
-        // Phase 6 service integration tests separately exercise new policy-1 snapshots.
-        new JdbcTemplate(dataSource).update("update order_checklist_items set evidence_policy_version=0, minimum_evidence_count=0 where order_id=?", id);
+        // Phase 6 service integration tests exercise configurable V2 snapshots.
+        new JdbcTemplate(dataSource).update("update order_checklist_items set evidence_policy_version=0, minimum_evidence_count=0, required_evidence_type='IMAGE_OR_VIDEO' where order_id=?", id);
         transaction.executeWithoutResult(tx -> orders.findById(id).orElseThrow().setOrderStatus(OrderStatus.APPROVED));
         return id;
     }
@@ -133,6 +133,7 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
         assignments.assign(service, assignment(catalogId, 3));
         var request = orderRequest(service);
         String order = orderService.createOrder(request).getId();
+        new JdbcTemplate(dataSource).update("update order_checklist_items set evidence_policy_version=0, minimum_evidence_count=0, required_evidence_type='IMAGE_OR_VIDEO' where order_id=?", order);
         transaction.executeWithoutResult(tx -> orders.findById(order).orElseThrow().setOrderStatus(OrderStatus.APPROVED));
         String mission = legacyMission(request(order)).getId(); setStatus(mission, MissionStatus.IN_FLIGHT);
         var row = executionService.getByMissionId(mission).executions().getFirst();

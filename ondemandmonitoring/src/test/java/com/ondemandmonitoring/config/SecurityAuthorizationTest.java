@@ -3,7 +3,7 @@ package com.ondemandmonitoring.config;
 import com.ondemandmonitoring.auth.controller.AdminAccountController;
 import com.ondemandmonitoring.auth.dto.response.ManagedAccountResponse;
 import com.ondemandmonitoring.auth.service.IAdminAccountService;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.role.domain.Role;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;

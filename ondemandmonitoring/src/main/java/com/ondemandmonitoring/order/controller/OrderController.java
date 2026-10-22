@@ -3,6 +3,8 @@ package com.ondemandmonitoring.order.controller;
 import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.order.dto.request.OrderCreateRequest;
 import com.ondemandmonitoring.order.dto.request.OrderAdditionalInformationRequest;
+import com.ondemandmonitoring.order.dto.request.FlightAreaReviewRequest;
+import com.ondemandmonitoring.order.dto.request.LegalReviewResolutionRequest;
 import com.ondemandmonitoring.order.dto.response.OrderCreateResponse;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.service.IOrderService;
@@ -72,19 +74,32 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.ok("Resource preview retrieved", null));
     }
 
-    @Operation(summary = "Get order latest analysis", description = "Retrieves latest AI analysis for an order (returns null if none)")
-    @GetMapping("/{orderId}/analysis/latest")
-    @PreAuthorize("@orderAuthorizationService.canViewOrder(#orderId)")
-    public ResponseEntity<ApiResponse<Object>> getLatestAnalysis(@PathVariable String orderId) {
-        return ResponseEntity.ok(ApiResponse.ok("Latest analysis retrieved", null));
-    }
-
     @Operation(summary = "Approve an order", description = "Manager approves an order. Mission scheduling is assigned later by staff.")
     @PostMapping("/{orderId}/approve")
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<OrderCreateResponse>> approveOrder(@PathVariable String orderId) {
         OrderCreateResponse order = orderService.approveOrder(orderId);
         return ResponseEntity.ok(ApiResponse.ok("Order approved successfully", order));
+    }
+
+    @Operation(summary = "Record preliminary flight-area review")
+    @PostMapping("/{orderId}/flight-area-review")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<OrderCreateResponse>> reviewFlightArea(
+            @PathVariable String orderId,
+            @Valid @RequestBody FlightAreaReviewRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok("Flight-area review recorded",
+                orderService.reviewFlightArea(orderId, request)));
+    }
+
+    @Operation(summary = "Record the result of external permit verification")
+    @PostMapping("/{orderId}/legal-review/resolve")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<OrderCreateResponse>> resolveLegalReview(
+            @PathVariable String orderId,
+            @Valid @RequestBody LegalReviewResolutionRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok("Legal review resolved",
+                orderService.resolveLegalReview(orderId, request)));
     }
 
     @Operation(summary = "Submit approval decision", description = "Manager submits rejection or need-info decision with reason")
@@ -95,6 +110,7 @@ public class OrderController {
             @RequestBody java.util.Map<String, String> body) {
         String decision = body != null ? body.get("decision") : null;
         String reason = body != null ? body.get("reason") : null;
+        String requestedUpdateScope = body != null ? body.get("requestedUpdateScope") : null;
         if (!"REJECTED".equalsIgnoreCase(decision) && !"NEED_INFO".equalsIgnoreCase(decision)) {
             throw new ApiException(
                     ErrorCode.INVALID_REQUEST,
@@ -104,7 +120,7 @@ public class OrderController {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Rejection reason is required");
         }
         if ("NEED_INFO".equalsIgnoreCase(decision)) {
-            orderService.requestMoreInformation(orderId, reason);
+            orderService.requestMoreInformation(orderId, reason, requestedUpdateScope);
         } else {
             orderService.rejectOrder(orderId, reason);
         }
@@ -136,6 +152,15 @@ public class OrderController {
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<java.util.List<OrderCreateResponse>>> getPendingOrders() {
         return ResponseEntity.ok(ApiResponse.ok("Pending orders retrieved", orderService.getPendingOrders()));
+    }
+
+    @Operation(summary = "List all orders", description = "Manager views every order, newest first, optionally filtered by status")
+    @GetMapping("/managed")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<java.util.List<OrderCreateResponse>>> getManagedOrders(
+            @org.springframework.web.bind.annotation.RequestParam(required = false)
+            com.ondemandmonitoring.order.enums.OrderStatus status) {
+        return ResponseEntity.ok(ApiResponse.ok("Orders retrieved", orderService.getManagedOrders(status)));
     }
 
     @Operation(summary = "Get approved orders", description = "Staff views approved orders that can be scheduled into missions")

@@ -3,6 +3,7 @@ package com.ondemandmonitoring.service.controller;
 import com.ondemandmonitoring.common.api.ApiResponse;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
+import com.ondemandmonitoring.pricing.service.ServicePriceResolver;
 import com.ondemandmonitoring.service.dto.request.ServiceRequest;
 import com.ondemandmonitoring.service.dto.response.ServicePricingEstimateResponse;
 import com.ondemandmonitoring.service.dto.response.ServiceRequirementSuggestionResponse;
@@ -46,10 +47,7 @@ public class ServiceController {
 
     IServiceService serviceService;
     ServiceRequirementSuggestionRepository suggestionRepository;
-
-    @NonFinal
-    @Value("${odm.pricing.addons.ai-image-analysis:500000}")
-    BigDecimal aiImageAnalysisPrice;
+    ServicePriceResolver priceResolver;
 
     @Operation(summary = "Create service", description = "Creates a new monitoring service")
     @PostMapping
@@ -65,7 +63,7 @@ public class ServiceController {
     @Operation(summary = "Get service by ID", description = "Retrieves a service by its ID")
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<ServiceResponse>> getById(@PathVariable String id) {
-        ServiceResponse response = serviceService.getById(id);
+        ServiceResponse response = withDefaultPrice(serviceService.getById(id));
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
@@ -76,6 +74,7 @@ public class ServiceController {
         List<ServiceResponse> response = activeOnly
                 ? serviceService.getAllActive()
                 : serviceService.getAll();
+        response.forEach(this::withDefaultPrice);
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
@@ -101,8 +100,7 @@ public class ServiceController {
     @Operation(summary = "Estimate service pricing", description = "Returns backend-owned pricing for the selected service and optional add-ons.")
     @GetMapping("/pricing-estimate")
     public ResponseEntity<ApiResponse<ServicePricingEstimateResponse>> estimatePricing(
-            @RequestParam String serviceId,
-            @RequestParam(defaultValue = "false") boolean aiImageAnalysis) {
+            @RequestParam String serviceId) {
 
         Service service = serviceService.getEntityById(serviceId);
         if (!Boolean.TRUE.equals(service.getIsActive())) {
@@ -112,26 +110,28 @@ public class ServiceController {
         List<ServicePricingEstimateResponse.AdditionalRequirementPrice> additionalRequirements =
                 new ArrayList<>();
 
-        if (aiImageAnalysis) {
-            additionalRequirements.add(ServicePricingEstimateResponse.AdditionalRequirementPrice.builder()
-                    .type("AI_IMAGE_ANALYSIS")
-                    .description("Phân tích hình ảnh và đánh dấu dấu hiệu bất thường")
-                    .additionalPrice(aiImageAnalysisPrice)
-                    .build());
-        }
-
         BigDecimal additionalTotal = additionalRequirements.stream()
                 .map(ServicePricingEstimateResponse.AdditionalRequirementPrice::additionalPrice)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        // Same figure as the checklist quote's default total: the sum of the default checklists, or the legacy catalog
+        // price while none of them is priced. The response shape is unchanged.
+        BigDecimal servicePrice = priceResolver.forDisplay(service).total();
         ServicePricingEstimateResponse response = ServicePricingEstimateResponse.builder()
                 .serviceId(serviceId)
-                .servicePrice(service.getBasePrice())
+                .servicePrice(servicePrice)
                 .additionalRequirements(additionalRequirements)
-                .totalPrice(service.getBasePrice().add(additionalTotal))
+                .totalPrice(servicePrice.add(additionalTotal))
                 .build();
 
         return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
+    private ServiceResponse withDefaultPrice(ServiceResponse response) {
+        var resolved = priceResolver.forDisplay(serviceService.getEntityById(response.getId()));
+        response.setDefaultPrice(resolved.total());
+        response.setPriceSource(resolved.source());
+        return response;
     }
 
     @Operation(summary = "Update service", description = "Updates an existing service by its ID")

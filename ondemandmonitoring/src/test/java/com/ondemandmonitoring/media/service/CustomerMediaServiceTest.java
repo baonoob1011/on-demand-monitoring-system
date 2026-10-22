@@ -6,17 +6,15 @@ import static org.mockito.Mockito.*;
 
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.media.domain.MediaAsset;
-import com.ondemandmonitoring.media.domain.MediaStatus;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.repository.MediaNotificationOutboxRepository;
 import com.ondemandmonitoring.media.service.impl.CustomerMediaServiceImpl;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.repository.MissionRepository;
 import com.ondemandmonitoring.mission.repository.MissionDeviceAssignmentRepository;
-import com.ondemandmonitoring.mission.repository.MissionStaffAssignmentRepository;
 import com.ondemandmonitoring.mission.service.impl.MissionMediaAccessServiceImpl;
 import com.ondemandmonitoring.order.domain.Order;
-import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.util.List;
@@ -30,7 +28,8 @@ class CustomerMediaServiceTest {
         var access = mock(com.ondemandmonitoring.mission.service.IMissionMediaAccessService.class);
         var delivery = mock(com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService.class);
         var gated = new CustomerMediaServiceImpl(access, media, notifications, storage,
-                org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class));
+                org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class),
+                mock(IResultRetentionAccessService.class));
         org.springframework.test.util.ReflectionTestUtils.setField(gated, "deliveryWorkflow", delivery);
         when(access.authorizeCustomer("m")).thenReturn("m");
         var asset = new MediaAsset(); asset.setId("asset"); asset.setMissionId("m");
@@ -55,7 +54,8 @@ class CustomerMediaServiceTest {
     private final CustomerMediaServiceImpl service = new CustomerMediaServiceImpl(
             new MissionMediaAccessServiceImpl(missions, mock(MissionDeviceAssignmentRepository.class),
                     currentUser, mock(com.ondemandmonitoring.mission.service.IMissionAuthorizationService.class)), media, notifications, storage,
-            org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class));
+            org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class),
+            mock(IResultRetentionAccessService.class));
 
     @Test
     void onlyAvailableMediaGetsDownloadUrl() {
@@ -94,7 +94,8 @@ class CustomerMediaServiceTest {
         var access = mock(com.ondemandmonitoring.mission.service.IMissionMediaAccessService.class);
         var delivery = mock(com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService.class);
         var gated = new CustomerMediaServiceImpl(access, media, notifications, storage,
-                org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class));
+                org.mapstruct.factory.Mappers.getMapper(com.ondemandmonitoring.media.mapper.MediaWorkflowMapper.class),
+                mock(IResultRetentionAccessService.class));
         org.springframework.test.util.ReflectionTestUtils.setField(gated, "deliveryWorkflow", delivery);
         var ids = List.of("m1", "m2");
         when(access.ownCustomerMissionIds()).thenReturn(ids);

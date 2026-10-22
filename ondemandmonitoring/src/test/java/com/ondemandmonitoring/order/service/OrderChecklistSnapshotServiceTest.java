@@ -41,11 +41,20 @@ class OrderChecklistSnapshotServiceTest {
         when(definitions.findByIdForUpdate("c2")).thenReturn(Optional.of(c2));
         when(snapshots.saveAllAndFlush(any())).thenAnswer(invocation -> {
             List<OrderChecklistItem> items = invocation.getArgument(0);
-            items.forEach(item -> { assertEquals(1, item.getEvidencePolicyVersion()); assertEquals(1, item.getMinimumEvidenceCount()); });
+            items.forEach(item -> {
+                assertEquals(2, item.getEvidencePolicyVersion());
+                assertTrue(item.getMinimumEvidenceCount() >= 1 && item.getMinimumEvidenceCount() <= 50);
+                assertNotNull(item.getRequiredEvidenceType());
+            });
             items.forEach(item -> item.setId(UUID.randomUUID().toString())); return items;
         });
         useCase = new OrderChecklistSnapshotService(services, definitions, assignments, snapshots,
-                Mappers.getMapper(OrderChecklistItemMapper.class), resolver);
+                Mappers.getMapper(OrderChecklistItemMapper.class), resolver,
+                mock(com.ondemandmonitoring.pricing.repository.PricingPolicyRepository.class),
+                new com.ondemandmonitoring.pricing.service.ChecklistPriceCalculator(),
+                new com.ondemandmonitoring.pricing.service.ServicePriceResolver(assignments,
+                        mock(com.ondemandmonitoring.pricing.repository.PricingPolicyRepository.class),
+                        new com.ondemandmonitoring.pricing.service.ChecklistPriceCalculator()));
     }
     ChecklistDefinition definition(String id, String content) {
         var c = new ChecklistDefinition(); c.setId(id); c.setContent(content); c.setVersion(2L); return c;
@@ -62,6 +71,45 @@ class OrderChecklistSnapshotServiceTest {
         locks.verify(services).findByIdForUpdate("s1");
         locks.verify(definitions).findByIdForUpdate("c1"); locks.verify(definitions).findByIdForUpdate("c2");
     }
+    @Test void guidanceIsFrozenAtOrderTimeAndSurvivesLaterCatalogEdits() {
+        c1.setDescription("Covers the roof"); c1.setExecutionSteps(List.of("Fly the grid", "Photograph defects"));
+        c1.setInputRequirements(List.of("Clear weather")); c1.setExpectedOutputs(List.of("Roof photos"));
+        var result = useCase.capture(order, List.of(item("c1", "Check exits"), item(null, "Own custom work")));
+        var captured = result.stream().filter(r -> "Check exits".equals(r.getContent())).findFirst().orElseThrow();
+        assertEquals("Covers the roof", captured.getDescription());
+        assertEquals(List.of("Fly the grid", "Photograph defects"), captured.getExecutionSteps());
+        assertEquals(List.of("Clear weather"), captured.getInputRequirements());
+        assertEquals(List.of("Roof photos"), captured.getExpectedOutputs());
+        var custom = result.stream().filter(r -> "Own custom work".equals(r.getContent())).findFirst().orElseThrow();
+        assertNull(custom.getDescription()); assertNull(custom.getExecutionSteps());
+        // The catalog is edited afterwards: the stored snapshot is a separate copy.
+        c1.setDescription("Rewritten"); c1.setExecutionSteps(List.of("Different"));
+        assertEquals("Covers the roof", captured.getDescription());
+        assertEquals(List.of("Fly the grid", "Photograph defects"), captured.getExecutionSteps());
+    }
+    @Test void configurableEvidenceRequirementIsSnapshottedAndReturned() {
+        var configured = item("c1", "Check exits");
+        configured.setMinimumEvidenceCount(2);
+        configured.setRequiredEvidenceType(RequiredEvidenceType.IMAGE);
+        doAnswer(invocation -> {
+            List<OrderChecklistItem> saved = invocation.getArgument(0);
+            saved.forEach(item -> item.setId(UUID.randomUUID().toString()));
+            return saved;
+        }).when(snapshots).saveAllAndFlush(any());
+        var result = useCase.capture(order, List.of(configured));
+        assertEquals(2, result.getFirst().getEvidencePolicyVersion());
+        assertEquals(2, result.getFirst().getMinimumEvidenceCount());
+        assertEquals(RequiredEvidenceType.IMAGE, result.getFirst().getRequiredEvidenceType());
+    }
+
+    @Test void invalidEvidenceRequirementIsRejected() {
+        var invalid = item("c1", "Check exits");
+        invalid.setMinimumEvidenceCount(51);
+        assertThrows(ApiException.class, () -> useCase.capture(order, List.of(invalid)));
+        invalid.setMinimumEvidenceCount(0);
+        assertThrows(ApiException.class, () -> useCase.capture(order, List.of(invalid)));
+    }
+
     @Test void supportsSubsetEditedAndCustomWithoutChangingCatalog() {
         var result = useCase.capture(order, List.of(item("c1", " Edited  exits "), item(null, "Customer custom")));
         assertEquals("Edited exits", result.getFirst().getContent());

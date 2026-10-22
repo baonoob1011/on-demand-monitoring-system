@@ -13,7 +13,8 @@ import lombok.Setter;
 @Table(name = "invoices", uniqueConstraints = {
         @UniqueConstraint(name = "uk_invoice_number", columnNames = "invoice_number"),
         @UniqueConstraint(name = "uk_invoice_order", columnNames = "order_id"),
-        @UniqueConstraint(name = "uk_invoice_quote", columnNames = "quote_id")})
+        @UniqueConstraint(name = "uk_invoice_quote", columnNames = "quote_id")},
+        indexes = @Index(name = "ix_invoices_status", columnList = "status"))
 @Getter @Setter
 public class Invoice extends BaseEntity {
     @Column(name = "invoice_number", nullable = false, length = 50)

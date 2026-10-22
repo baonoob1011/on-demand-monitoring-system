@@ -4,7 +4,7 @@ import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService;
 import com.ondemandmonitoring.media.domain.MediaAsset;
-import com.ondemandmonitoring.media.domain.MediaStatus;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.media.dto.response.CustomerMediaNotificationResponse;
 import com.ondemandmonitoring.media.dto.response.CustomerMediaResponse;
 import com.ondemandmonitoring.media.dto.response.CustomerMissionMediaStatusResponse;
@@ -14,6 +14,7 @@ import com.ondemandmonitoring.media.repository.MediaNotificationOutboxRepository
 import com.ondemandmonitoring.media.service.ICustomerMediaService;
 import com.ondemandmonitoring.mission.service.IMissionMediaAccessService;
 import com.ondemandmonitoring.media.service.IMediaObjectStorage;
+import com.ondemandmonitoring.media.service.IResultRetentionAccessService;
 import java.util.List;
 import com.ondemandmonitoring.common.api.PageResponse;
 import org.springframework.data.domain.PageRequest;
@@ -37,6 +38,7 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
     MediaNotificationOutboxRepository notifications;
     IMediaObjectStorage storage;
     MediaWorkflowMapper mapper;
+    IResultRetentionAccessService retentionAccess;
     @Autowired @NonFinal IDeliveryWorkflowService deliveryWorkflow;
 
     @Override
@@ -144,6 +146,7 @@ public class CustomerMediaServiceImpl implements ICustomerMediaService {
     }
 
     private CustomerMediaResponse toResponse(MediaAsset asset, boolean originalsAvailable) {
+        if (originalsAvailable) retentionAccess.requireAccessible(asset);
         return mapper.toCustomerResponse(asset,
                 originalsAvailable ? storage.createPresignedGetUrl(asset.getS3Bucket(), asset.getS3Key()) : null);
     }

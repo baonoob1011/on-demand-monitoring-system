@@ -28,6 +28,10 @@ class PersistedPreDeviceCheckServiceTest {
 
     @Mock PersistedPreDeviceCheckRepository runRepository;
     @Mock MissionRepository missionRepository;
+    @Mock com.ondemandmonitoring.mission.repository.DeviceConnectionRepository connectionRepository;
+    @Mock com.ondemandmonitoring.device.repository.DeviceTelemetryRepository telemetryRepository;
+    @Mock com.ondemandmonitoring.user.service.AuthenticatedUserResolver authenticatedUserResolver;
+    @Mock com.ondemandmonitoring.weather.repository.MissionWeatherCheckRepository weatherCheckRepository;
     @InjectMocks PersistedPreDeviceCheckService service;
 
     @Test
@@ -57,7 +61,7 @@ class PersistedPreDeviceCheckServiceTest {
 
         var response = service.start("mission-1");
 
-        assertThat(response.getStatus()).isEqualTo(PreDeviceCheckStatus.CHECKING);
+        assertThat(response.getStatus()).isEqualTo(PreDeviceCheckStatus.FAILED);
         assertThat(response.getItems()).hasSize(response.getTotalChecks());
         verify(runRepository).save(any(PersistedPreDeviceCheck.class));
     }

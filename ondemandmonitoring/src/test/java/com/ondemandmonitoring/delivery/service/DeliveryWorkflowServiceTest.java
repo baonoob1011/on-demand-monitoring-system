@@ -18,7 +18,7 @@ import com.ondemandmonitoring.finance.enums.InvoiceStatus;
 import com.ondemandmonitoring.finance.enums.QuoteStatus;
 import com.ondemandmonitoring.finance.repository.InvoiceRepository;
 import com.ondemandmonitoring.media.domain.MediaAsset;
-import com.ondemandmonitoring.media.domain.MediaStatus;
+import com.ondemandmonitoring.media.enums.MediaStatus;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import com.ondemandmonitoring.mission.domain.Mission;
@@ -30,7 +30,7 @@ import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.role.domain.Role;
-import com.ondemandmonitoring.role.domain.RoleCode;
+import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
 import java.math.BigDecimal;
@@ -55,6 +55,7 @@ class DeliveryWorkflowServiceTest {
     @BeforeEach void setUp() {
         customer = user("customer", RoleCode.CUSTOMER);
         order = new Order(); order.setId("order"); order.setCustomer(customer); order.setOrderStatus(OrderStatus.IN_PROGRESS);
+        order.setDataRetentionDays(90);
         mission = new Mission(); mission.setId("mission"); mission.setOrder(order); mission.setStatus(MissionStatus.COMPLETED);
         Quote quote = new Quote(); quote.setStatus(QuoteStatus.ACCEPTED_BY_CUSTOMER);
         invoice = new Invoice(); invoice.setOrder(order); invoice.setQuote(quote); invoice.setStatus(InvoiceStatus.PARTIALLY_PAID);
@@ -143,6 +144,11 @@ class DeliveryWorkflowServiceTest {
         service.releaseOriginals("order");
         assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.DELIVERED);
         assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.COMPLETED);
+        assertThat(order.getResultExpiresAt()).isEqualTo(delivery.getOriginalsReleasedAt().plusSeconds(90L * 24 * 60 * 60));
+
+        var firstExpiry = order.getResultExpiresAt();
+        service.releaseOriginals("order");
+        assertThat(order.getResultExpiresAt()).isEqualTo(firstExpiry);
     }
 
     @Test void completedMissionGetsDeliveryReadModelWithoutMutationOnFirstRead() {

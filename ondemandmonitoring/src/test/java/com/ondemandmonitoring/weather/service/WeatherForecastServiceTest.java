@@ -280,9 +280,9 @@ class WeatherForecastServiceTest {
     @Test
     void failuresAreNotCached() {
         expectForecastCall(DATE, withStatus(HttpStatus.SERVICE_UNAVAILABLE));
-        assertThrows(ApiException.class, () -> service.forecast(LAT, LON, DATE, "08:00"));
-
         expectForecastCall(DATE, withSuccess(dayBody(DATE), MediaType.APPLICATION_JSON));
+        assertThrows(ApiException.class, () -> service.forecast(LAT, LON, DATE, "08:00"));
         assertEquals(WeatherForecastStatus.AVAILABLE, service.forecast(LAT, LON, DATE, "08:00").status());
+        server.verify();
     }
 }
