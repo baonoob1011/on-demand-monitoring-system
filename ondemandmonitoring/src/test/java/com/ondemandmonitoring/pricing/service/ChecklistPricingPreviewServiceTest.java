@@ -108,6 +108,85 @@ class ChecklistPricingPreviewServiceTest {
         assertThat(withoutVideo.addOns()).isEmpty();
     }
 
+    @Test void areaMonitoringQuoteExplainsTheExactTwoHundredThousandDelta() {
+        inspection.setName("Giám sát khu vực");
+        inspectionRows.clear();
+        List<BigDecimal> defaultPrices = List.of(new BigDecimal("600000"), new BigDecimal("600000"),
+                new BigDecimal("400000"), new BigDecimal("500000"), new BigDecimal("400000"));
+        for (int index = 0; index < defaultPrices.size(); index++) {
+            ChecklistDefinition definition = checklist("area-" + index, "Checklist " + (index + 1),
+                    defaultPrices.get(index).toPlainString(), 0, 0);
+            if (index == 0) {
+                definition.setAreaPricingEnabled(true);
+                definition.setIncludedAreaHa(BigDecimal.TEN);
+            }
+            inspectionRows.add(row(inspection, definition, index));
+        }
+        PricingRule area = fixed(PricingCategory.AREA, "UP_TO_50", "Phụ phí theo mỗi 10 ha", "100000");
+        area.setCalculationType(PricingCalculationType.PER_BLOCK);
+        area.setMinValue(BigDecimal.TEN);
+        area.setMaxValue(new BigDecimal("50"));
+        area.setUnitSize(BigDecimal.TEN);
+        area.setRoundingMode(PricingRounding.CEILING);
+        activePolicy.replaceRules(List.of(area,
+                fixed(PricingCategory.OUTPUT, "VIDEO", "Video bàn giao", "300000")));
+
+        var defaultQuote = preview.defaultPrice("s1");
+        var customerQuote = preview.customerQuote(new Customer("s1", null, new BigDecimal("28.3"), null, null,
+                null, List.of(OrderResultFormat.VIDEO), OrderPermitStatus.NONE));
+
+        assertThat(defaultQuote.checklists()).extracting(row -> row.subtotal().intValue())
+                .containsExactly(600000, 600000, 400000, 500000, 400000);
+        assertThat(defaultQuote.checklistSubtotal()).isEqualByComparingTo("2500000");
+        assertThat(customerQuote.checklists()).hasSize(5);
+        assertThat(customerQuote.checklists().getFirst().lines()).filteredOn(line -> "AREA".equals(line.component()))
+                .singleElement().satisfies(line -> {
+                    assertThat(line.quantity()).isEqualByComparingTo("2");
+                    assertThat(line.unitPrice()).isEqualByComparingTo("100000");
+                    assertThat(line.amount()).isEqualByComparingTo("200000");
+                });
+        assertThat(customerQuote.checklistSubtotal()).isEqualByComparingTo("2700000");
+        assertThat(customerQuote.addOns()).singleElement().satisfies(addOn -> {
+            assertThat(addOn.key()).isEqualTo("OUTPUT_VIDEO");
+            assertThat(addOn.amount()).isEqualByComparingTo("300000");
+        });
+        assertThat(customerQuote.total()).isEqualByComparingTo("3000000");
+        BigDecimal displayedComponents = defaultQuote.checklistSubtotal()
+                .add(new BigDecimal("200000")).add(customerQuote.addOns().getFirst().amount());
+        assertThat(customerQuote.total()).isEqualByComparingTo(displayedComponents);
+    }
+
+    @Test void areaPricingRequiresAnAvailableAreaAndRecalculatesWhenItChangesOrIsCleared() {
+        roof.setBasePrice(new BigDecimal("3400000"));
+        roof.setAreaPricingEnabled(true);
+        roof.setIncludedAreaHa(BigDecimal.TEN);
+        PricingRule area = fixed(PricingCategory.AREA, "UP_TO_50", "Area surcharge", "100000");
+        area.setCalculationType(PricingCalculationType.PER_BLOCK);
+        area.setMinValue(BigDecimal.TEN);
+        area.setMaxValue(new BigDecimal("50"));
+        area.setUnitSize(BigDecimal.TEN);
+        area.setRoundingMode(PricingRounding.CEILING);
+        activePolicy.replaceRules(List.of(area));
+
+        var noArea = preview.customerQuote(new Customer("s1", null));
+        var thirtyHa = preview.customerQuote(new Customer("s1", null, new BigDecimal("30"), null, null));
+        var fiftyHa = preview.customerQuote(new Customer("s1", null, new BigDecimal("50"), null, null));
+        var cleared = preview.customerQuote(new Customer("s1", null));
+
+        assertThat(noArea.checklists().stream().flatMap(row -> row.lines().stream()))
+                .noneMatch(line -> line.category() == PricingCategory.AREA);
+        assertThat(noArea.total()).isEqualByComparingTo("3500000");
+        assertThat(thirtyHa.checklists().getFirst().lines()).filteredOn(line -> line.category() == PricingCategory.AREA)
+                .singleElement().satisfies(line -> assertThat(line.amount()).isEqualByComparingTo("200000"));
+        assertThat(thirtyHa.total()).isEqualByComparingTo("3700000");
+        assertThat(fiftyHa.checklists().getFirst().lines()).filteredOn(line -> line.category() == PricingCategory.AREA)
+                .singleElement().satisfies(line -> assertThat(line.amount()).isEqualByComparingTo("400000"));
+        assertThat(fiftyHa.total()).isEqualByComparingTo("3900000");
+        assertThat(cleared.total()).isEqualByComparingTo(noArea.total());
+        assertThat(cleared.checklists().stream().flatMap(row -> row.lines().stream()))
+                .noneMatch(line -> line.category() == PricingCategory.AREA);
+    }
+
     @Test void checklistEvidenceVideoAndOrderDeliverableVideoRemainSeparateCharges() {
         var result = preview.customerQuote(new Customer("s1",
                 List.of(new CustomerItem("c1", null, 10, 2), new CustomerItem("c2", null, 0, 0)),
