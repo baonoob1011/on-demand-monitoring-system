@@ -12,6 +12,13 @@ import com.ondemandmonitoring.checklist.repository.ChecklistDefinitionRepository
 import com.ondemandmonitoring.checklist.repository.ServiceChecklistRepository;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
+import com.ondemandmonitoring.order.domain.Order;
+import com.ondemandmonitoring.order.domain.OrderChecklistItem;
+import com.ondemandmonitoring.order.enums.ChecklistReviewStatus;
+import com.ondemandmonitoring.order.enums.OrderChecklistSourceType;
+import com.ondemandmonitoring.order.enums.OrderPermitStatus;
+import com.ondemandmonitoring.order.enums.OrderResultFormat;
+import com.ondemandmonitoring.pricing.repository.CustomWorkAssessmentRepository;
 import com.ondemandmonitoring.pricing.domain.PricingPolicy;
 import com.ondemandmonitoring.pricing.domain.PricingRule;
 import com.ondemandmonitoring.pricing.dto.ChecklistPricingPreviewRequests.*;
@@ -36,6 +43,7 @@ class ChecklistPricingPreviewServiceTest {
             new ServicePriceResolver(assignments, policies, new ChecklistPriceCalculator()));
     Service inspection, survey;
     ChecklistDefinition roof, wall;
+    PricingPolicy activePolicy;
     List<ServiceChecklist> inspectionRows = new ArrayList<>();
 
     @BeforeEach void setup() {
@@ -51,11 +59,12 @@ class ChecklistPricingPreviewServiceTest {
         when(assignments.findAllByServiceIdOrderByDisplayOrderAscIdAsc("s2")).thenReturn(List.of(row(survey, roof, 0)));
         when(definitions.findById("c1")).thenReturn(Optional.of(roof));
         when(definitions.findById("c2")).thenReturn(Optional.of(wall));
-        PricingPolicy p = new PricingPolicy(); p.setId("p1"); p.setPolicyVersion(5); p.setCurrency("VND"); p.setStatus(PricingPolicyStatus.ACTIVE);
-        p.replaceRules(List.of(included(MediaPricingComponent.INCLUDED_IMAGE, "50000"), included(MediaPricingComponent.INCLUDED_VIDEO, "120000"),
+        activePolicy = new PricingPolicy(); activePolicy.setId("p1"); activePolicy.setPolicyVersion(5); activePolicy.setCurrency("VND"); activePolicy.setStatus(PricingPolicyStatus.ACTIVE);
+        activePolicy.replaceRules(List.of(included(MediaPricingComponent.INCLUDED_IMAGE, "50000"), included(MediaPricingComponent.INCLUDED_VIDEO, "120000"),
                 tier(MediaPricingComponent.EXTRA_IMAGE, "0", "10", "50000"), tier(MediaPricingComponent.EXTRA_IMAGE, "10", null, "40000"),
-                tier(MediaPricingComponent.EXTRA_VIDEO, "0", null, "90000")));
-        when(policies.findEffectiveActive(any(Instant.class))).thenReturn(List.of(p));
+                tier(MediaPricingComponent.EXTRA_VIDEO, "0", null, "90000"),
+                fixed(PricingCategory.OUTPUT, "VIDEO", "Requested video", "300000")));
+        when(policies.findEffectiveActive(any(Instant.class))).thenReturn(List.of(activePolicy));
     }
 
     ChecklistDefinition checklist(String id, String content, String base, int images, int videos) {
@@ -78,6 +87,80 @@ class ChecklistPricingPreviewServiceTest {
         r.setRuleKey(component + from); r.setMinValue(new BigDecimal(from)); r.setMaxValue(to == null ? null : new BigDecimal(to));
         r.setUnitSize(component == MediaPricingComponent.EXTRA_VIDEO ? BigDecimal.ONE : BigDecimal.TEN); r.setRoundingMode(PricingRounding.CEILING);
         return r;
+    }
+    PricingRule fixed(PricingCategory category, String key, String description, String amount) {
+        var r = new PricingRule(); r.setCategory(category); r.setRuleKey(key); r.setDescription(description);
+        r.setCalculationType(PricingCalculationType.FIXED); r.setFixedAmount(new BigDecimal(amount)); r.setEnabled(true);
+        return r;
+    }
+
+    @Test void customerPreviewIncludesVideoDeliverableExactlyOnceAndRemovingItRemovesTheFee() {
+        var withVideo = preview.customerQuote(new Customer("s1", null, null, null, null, null,
+                List.of(OrderResultFormat.VIDEO), OrderPermitStatus.NONE));
+        var withoutVideo = preview.customerQuote(new Customer("s1", null));
+
+        assertThat(withVideo.addOns()).singleElement().satisfies(fee -> {
+            assertThat(fee.key()).isEqualTo("OUTPUT_VIDEO");
+            assertThat(fee.description()).isEqualTo("Video bàn giao");
+            assertThat(fee.amount()).isEqualByComparingTo("300000");
+        });
+        assertThat(withVideo.total().subtract(withoutVideo.total())).isEqualByComparingTo("300000");
+        assertThat(withoutVideo.addOns()).isEmpty();
+    }
+
+    @Test void checklistEvidenceVideoAndOrderDeliverableVideoRemainSeparateCharges() {
+        var result = preview.customerQuote(new Customer("s1",
+                List.of(new CustomerItem("c1", null, 10, 2), new CustomerItem("c2", null, 0, 0)),
+                null, null, null, null, List.of(OrderResultFormat.VIDEO), OrderPermitStatus.NONE));
+
+        assertThat(result.checklists().getFirst().lines()).anySatisfy(line -> {
+            assertThat(line.component()).isEqualTo("EXTRA_VIDEO");
+            assertThat(line.amount()).isEqualByComparingTo("90000");
+        });
+        assertThat(result.addOns()).singleElement().satisfies(fee -> {
+            assertThat(fee.key()).isEqualTo("OUTPUT_VIDEO");
+            assertThat(fee.amount()).isEqualByComparingTo("300000");
+        });
+    }
+
+    @Test void previewAndPersistedOrderEngineHaveParityAndOutputIsNotMultipliedByChecklistCount() {
+        var customer = preview.customerQuote(new Customer("s1", null, null, null, null, null,
+                List.of(OrderResultFormat.VIDEO), OrderPermitStatus.NONE));
+        var engine = new RuleBasedPricingEngine(policies, mock(CustomWorkAssessmentRepository.class),
+                new ChecklistPriceCalculator());
+        Order order = new Order(); order.setService(inspection); order.setResultFormats(List.of(OrderResultFormat.VIDEO));
+        OrderChecklistItem roofItem = snapshot("i1", roof);
+        OrderChecklistItem wallItem = snapshot("i2", wall);
+
+        var manager = engine.calculate(order, List.of(roofItem, wallItem));
+
+        assertThat(manager.systemCalculatedAmount()).isEqualByComparingTo(customer.total());
+        assertThat(manager.items()).filteredOn(line -> line.category() == PricingCategory.OUTPUT)
+                .singleElement().satisfies(line -> assertThat(line.amount()).isEqualByComparingTo("300000"));
+    }
+
+    @Test void newlyActivatedAdminOutputRateAffectsTheNextPreview() {
+        var before = preview.customerQuote(new Customer("s1", null, null, null, null, null,
+                List.of(OrderResultFormat.VIDEO), OrderPermitStatus.NONE));
+        activePolicy.replaceRules(List.of(included(MediaPricingComponent.INCLUDED_IMAGE, "50000"),
+                included(MediaPricingComponent.INCLUDED_VIDEO, "120000"),
+                tier(MediaPricingComponent.EXTRA_IMAGE, "0", "10", "50000"),
+                tier(MediaPricingComponent.EXTRA_IMAGE, "10", null, "40000"),
+                tier(MediaPricingComponent.EXTRA_VIDEO, "0", null, "90000"),
+                fixed(PricingCategory.OUTPUT, "VIDEO", "Requested video", "500000")));
+        var after = preview.customerQuote(new Customer("s1", null, null, null, null, null,
+                List.of(OrderResultFormat.VIDEO), OrderPermitStatus.NONE));
+        assertThat(after.total().subtract(before.total())).isEqualByComparingTo("200000");
+    }
+
+    private OrderChecklistItem snapshot(String id, ChecklistDefinition definition) {
+        OrderChecklistItem item = new OrderChecklistItem(); item.setId(id); item.setContent(definition.getContent());
+        item.setSourceChecklist(definition); item.setSourceType(OrderChecklistSourceType.SERVICE_TEMPLATE);
+        item.setReviewStatus(ChecklistReviewStatus.INCLUDED); item.setPricingSnapshotVersion(1);
+        item.setBasePriceSnapshot(definition.getBasePrice()); item.setIncludedImageCountSnapshot(definition.getIncludedImageCount());
+        item.setIncludedVideoCountSnapshot(definition.getIncludedVideoCount()); item.setRequestedImageCount(definition.getIncludedImageCount());
+        item.setRequestedVideoCount(definition.getIncludedVideoCount()); item.setPricingProfileSnapshot(definition.getPricingProfile());
+        return item;
     }
 
     @Test void defaultServicePriceIsOnlyTheSumOfDefaultChecklistContributions() {

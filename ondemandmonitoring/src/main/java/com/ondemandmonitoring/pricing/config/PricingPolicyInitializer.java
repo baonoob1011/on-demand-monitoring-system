@@ -49,7 +49,7 @@ public class PricingPolicyInitializer implements ApplicationRunner {
         rules.add(fixed(PricingCategory.CHECKLIST, "MEDIUM", "Hạng mục độ khó trung bình", "50000", i++));
         rules.add(fixed(PricingCategory.CHECKLIST, "HARD", "Hạng mục khó", "150000", i++));
         rules.add(fixed(PricingCategory.CHECKLIST, "VERY_HARD", "Hạng mục rất khó", "400000", i++));
-        rules.add(fixed(PricingCategory.OUTPUT, "VIDEO", "Video theo yêu cầu", "300000", i++));
+        rules.add(fixed(PricingCategory.OUTPUT, "VIDEO", "Video bàn giao", "300000", i++));
         rules.add(fixed(PricingCategory.OUTPUT, "PDF_REPORT", "Báo cáo PDF theo yêu cầu", "200000", i++));
         rules.add(fixed(PricingCategory.OUTPUT, "ORTHOMOSAIC", "Ảnh trực giao ghép theo yêu cầu", "500000", i++));
         rules.add(fixed(PricingCategory.OUTPUT, "MODEL_3D", "Mô hình 3D theo yêu cầu", "800000", i++));

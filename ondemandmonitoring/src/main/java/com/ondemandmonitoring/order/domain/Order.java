@@ -85,6 +85,17 @@ public class Order extends BaseEntity {
     @Column(name = "checklist_snapshot_at")
     private Instant checklistSnapshotAt;
 
+    /** Pricing policy frozen when the request is submitted. Legacy orders may leave these fields null. */
+    @Column(name = "pricing_policy_id", length = 36)
+    private String pricingPolicyId;
+
+    @Column(name = "pricing_policy_version")
+    private Integer pricingPolicyVersion;
+
+    /** Authoritative system calculation at the latest create/update recalculation; never trusted from the client. */
+    @Column(name = "system_calculated_amount", precision = 19, scale = 0)
+    private BigDecimal systemCalculatedAmount;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User customer;

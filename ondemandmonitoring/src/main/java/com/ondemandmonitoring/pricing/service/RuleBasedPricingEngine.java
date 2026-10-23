@@ -4,9 +4,7 @@ import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.order.domain.Order;
 import com.ondemandmonitoring.order.domain.OrderChecklistItem;
-import com.ondemandmonitoring.order.domain.OrderDeliverable;
 import com.ondemandmonitoring.order.enums.*;
-import com.ondemandmonitoring.pricing.config.PricingPolicyInitializer;
 import com.ondemandmonitoring.pricing.domain.*;
 import com.ondemandmonitoring.pricing.dto.*;
 import com.ondemandmonitoring.pricing.enums.*;
@@ -14,25 +12,38 @@ import com.ondemandmonitoring.pricing.repository.*;
 import java.math.*;
 import java.time.Instant;
 import java.util.*;
-import lombok.RequiredArgsConstructor;
 import org.locationtech.jts.geom.Coordinate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@RequiredArgsConstructor
 public class RuleBasedPricingEngine implements PricingEngine {
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(0);
     private final PricingPolicyRepository policies;
     /** Retained as a constructor dependency for binary/test compatibility; assessments no longer affect pricing. */
     private final CustomWorkAssessmentRepository assessments;
     private final ChecklistPriceCalculator checklistPrices;
+    private final OrderLevelPriceCalculator orderLevelPrices;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public RuleBasedPricingEngine(PricingPolicyRepository policies, CustomWorkAssessmentRepository assessments,
+            ChecklistPriceCalculator checklistPrices, OrderLevelPriceCalculator orderLevelPrices) {
+        this.policies = policies;
+        this.assessments = assessments;
+        this.checklistPrices = checklistPrices;
+        this.orderLevelPrices = orderLevelPrices;
+    }
+
+    /** Test/backward-compatible constructor; production injects the shared order-level calculator above. */
+    public RuleBasedPricingEngine(PricingPolicyRepository policies, CustomWorkAssessmentRepository assessments,
+            ChecklistPriceCalculator checklistPrices) {
+        this(policies, assessments, checklistPrices, new OrderLevelPriceCalculator());
+    }
 
     @Override
     @Transactional(readOnly = true)
     public PricingBreakdown calculate(Order order, List<OrderChecklistItem> checklistItems) {
-        PricingPolicy policy = policies.findEffectiveActive(Instant.now()).stream().findFirst()
-                .orElseThrow(() -> new ApiException(ErrorCode.PRICING_POLICY_NOT_FOUND));
+        PricingPolicy policy = resolvePolicy(order);
         List<PricingBreakdownItem> result = new ArrayList<>();
         // Checklists are the price. Only orders created before that (a stored package snapshot, or version-0 checklist
         // snapshots) keep a PACKAGE line; a new order has none.
@@ -97,22 +108,12 @@ public class RuleBasedPricingEngine implements PricingEngine {
                 add(result, line.category(), label + " · " + line.description(), line.quantity(), line.unitPrice(), line.amount(),
                         item.getId());
         }
-        if (order.getResultFormats() != null) for (OrderResultFormat format : order.getResultFormats()) {
-            BigDecimal requestedQuantity = requestedOutputQuantity(order, format);
-            keyed(policy, PricingCategory.OUTPUT, format.name()).ifPresent(rule -> applyRule(result, rule, requestedQuantity, base));
-        }
-        BigDecimal highResolutionImages = requestedQualityQuantity(order, "IMAGE", "4K");
-        if (highResolutionImages.signum() > 0)
-            keyed(policy, PricingCategory.OUTPUT, "HIGH_RESOLUTION_IMAGE").ifPresent(rule -> applyRule(result, rule, highResolutionImages, base));
-        BigDecimal highResolutionVideo = requestedQualityQuantity(order, "VIDEO", "4K");
-        if (highResolutionVideo.signum() > 0)
-            keyed(policy, PricingCategory.OUTPUT, "4K_VIDEO").ifPresent(rule -> applyRule(result, rule, highResolutionVideo, base));
         scaleVisitLines(result, visitStart, occurrences);
-        if (Boolean.TRUE.equals(order.getPermitRequired()) || order.getPermitStatus() == OrderPermitStatus.NEED_SUPPORT)
-            keyed(policy, PricingCategory.PERMIT, "REQUIRED").ifPresent(rule -> addFixed(result, rule, BigDecimal.ONE));
-        keyed(policy, PricingCategory.TERRAIN, TerrainType.FLAT.name())
-                .ifPresent(rule -> applyRule(result, rule, BigDecimal.ONE, subtotal(result)));
-        for (PricingRule discount : enabled(policy, PricingCategory.DISCOUNT)) applyRule(result, discount, BigDecimal.ONE, subtotal(result));
+        // OUTPUT, permit and other order-level charges are calculated once per order, never once per checklist/visit.
+        orderLevelPrices.calculate(policy, OrderLevelPriceCalculator.Context.order(order), subtotal(result), base).stream()
+                .map(OrderLevelPriceCalculator.Charge::line)
+                .filter(line -> line.amount().signum() != 0)
+                .forEach(result::add);
 
         BigDecimal total = subtotal(result);
         if (total.signum() < 0) throw new ApiException(ErrorCode.PRICING_CALCULATION_FAILED);
@@ -120,6 +121,19 @@ public class RuleBasedPricingEngine implements PricingEngine {
         return new PricingBreakdown(policy.getId(), policy.getPolicyVersion(), policy.getCurrency(), total,
                 customWork, assessmentComplete,
                 List.copyOf(result), List.copyOf(pendingQuotes));
+    }
+
+    private PricingPolicy resolvePolicy(Order order) {
+        if (order.getPricingPolicyId() != null && !order.getPricingPolicyId().isBlank()) {
+            PricingPolicy policy = policies.findWithRulesById(order.getPricingPolicyId())
+                    .orElseThrow(() -> new ApiException(ErrorCode.PRICING_POLICY_NOT_FOUND));
+            if (order.getPricingPolicyVersion() != null
+                    && policy.getPolicyVersion() != order.getPricingPolicyVersion())
+                throw new ApiException(ErrorCode.PRICING_CALCULATION_FAILED, "Order pricing policy version mismatch");
+            return policy;
+        }
+        return policies.findEffectiveActive(Instant.now()).stream().findFirst()
+                .orElseThrow(() -> new ApiException(ErrorCode.PRICING_POLICY_NOT_FOUND));
     }
 
     /** Bills the lines added since {@code from} once per visit: quantity and amount scale, the unit price does not. */
@@ -183,34 +197,6 @@ public class RuleBasedPricingEngine implements PricingEngine {
         double sx = 111_320d * Math.cos(Math.toRadians(lat0)), sy = 110_540d, twiceArea = 0;
         for (int i = 0; i < points.length - 1; i++) twiceArea += points[i].x * sx * points[i + 1].y * sy - points[i + 1].x * sx * points[i].y * sy;
         return BigDecimal.valueOf(Math.abs(twiceArea) / 2d / 10_000d).setScale(3, RoundingMode.HALF_UP);
-    }
-    private BigDecimal requestedOutputQuantity(Order order, OrderResultFormat format) {
-        String mediaType = format == OrderResultFormat.PHOTO ? "IMAGE" : format == OrderResultFormat.VIDEO ? "VIDEO" : null;
-        if (mediaType == null) return BigDecimal.ONE;
-        BigDecimal quantity = order.getDeliverables().stream().map(OrderDeliverable::getRequirement)
-                .filter(Objects::nonNull).map(map -> mediaQuantity(map, mediaType))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return quantity.signum() > 0 ? quantity : BigDecimal.ONE;
-    }
-    private BigDecimal requestedQualityQuantity(Order order, String mediaType, String resolution) {
-        return order.getDeliverables().stream().map(OrderDeliverable::getRequirement).filter(Objects::nonNull)
-                .filter(map -> resolution.equalsIgnoreCase(String.valueOf(map.get("resolution"))))
-                .map(map -> mediaQuantity(map, mediaType))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-    /**
-     * Quantity of one media type in a deliverable requirement. The per-type fields (derived from the checklists) win;
-     * older requirements only carry a single mediaType + quantity.
-     */
-    private BigDecimal mediaQuantity(Map<String, Object> requirement, String mediaType) {
-        String key = "IMAGE".equals(mediaType) ? "imageQuantity" : "videoQuantity";
-        if (requirement.containsKey("imageQuantity") || requirement.containsKey("videoQuantity")) return number(requirement.get(key));
-        return mediaType.equalsIgnoreCase(String.valueOf(requirement.get("mediaType"))) ? number(requirement.get("quantity")) : BigDecimal.ZERO;
-    }
-    private BigDecimal number(Object value) {
-        if (value instanceof Number number) return new BigDecimal(number.toString());
-        try { return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString()); }
-        catch (NumberFormatException ignored) { return BigDecimal.ZERO; }
     }
     private String shorten(String text) {
         if (text == null) return "";

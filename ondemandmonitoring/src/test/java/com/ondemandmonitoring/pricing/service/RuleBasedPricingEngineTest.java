@@ -49,6 +49,23 @@ class RuleBasedPricingEngineTest {
         assertThat(result.systemCalculatedAmount()).isEqualByComparingTo("5000000");
     }
 
+    @Test void managerRecalculationUsesThePolicyFrozenAtRequestSubmission() {
+        PricingPolicy requestPolicy = policy();
+        requestPolicy.replaceRules(List.of(fixed(PricingCategory.OUTPUT, "VIDEO", "Video v3", "300000", 1)));
+        PricingPolicy newlyActive = policy(); newlyActive.setId("p2"); newlyActive.setPolicyVersion(4);
+        newlyActive.replaceRules(List.of(fixed(PricingCategory.OUTPUT, "VIDEO", "Video v4", "500000", 1)));
+        when(policies.findWithRulesById("p1")).thenReturn(Optional.of(requestPolicy));
+        when(policies.findEffectiveActive(any())).thenReturn(List.of(newlyActive));
+        Order order = order("4000000"); order.setPricingPolicyId("p1"); order.setPricingPolicyVersion(3);
+        order.setResultFormats(List.of(OrderResultFormat.VIDEO));
+
+        var result = engine.calculate(order, List.of());
+
+        assertThat(result.policyId()).isEqualTo("p1");
+        assertThat(result.systemCalculatedAmount()).isEqualByComparingTo("4300000");
+        verify(policies, never()).findEffectiveActive(any());
+    }
+
     private PricingPolicy policy() { PricingPolicy p = new PricingPolicy(); p.setId("p1"); p.setPolicyVersion(3); p.setStatus(PricingPolicyStatus.ACTIVE); p.setCurrency("VND"); return p; }
     private Order order(String price) { var service = new com.ondemandmonitoring.service.domain.Service(); service.setName("Inspection"); service.setBasePrice(new BigDecimal(price)); Order o = new Order(); o.setId("o1"); o.setService(service); o.setServiceBasePriceSnapshot(new BigDecimal(price)); return o; }
     private PricingRule fixed(PricingCategory c, String key, String text, String amount, int priority) { PricingRule r = base(c, key, text, PricingCalculationType.FIXED, priority); r.setFixedAmount(new BigDecimal(amount)); return r; }

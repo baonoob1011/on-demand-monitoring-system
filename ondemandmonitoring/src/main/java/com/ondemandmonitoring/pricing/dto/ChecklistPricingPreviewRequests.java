@@ -1,5 +1,7 @@
 package com.ondemandmonitoring.pricing.dto;
 
+import com.ondemandmonitoring.order.enums.OrderPermitStatus;
+import com.ondemandmonitoring.order.enums.OrderResultFormat;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
@@ -30,12 +32,18 @@ public final class ChecklistPricingPreviewRequests {
     public record Customer(@NotBlank String serviceId, @Size(max = 100) List<@Valid CustomerItem> items,
             @DecimalMin("0") BigDecimal areaHa, @DecimalMin("0") BigDecimal lengthKm,
             @DecimalMin("0") BigDecimal altitudeM,
-            @Min(1) @Max(100) Integer occurrences) {
+            @Min(1) @Max(100) Integer occurrences,
+            @Size(max = 5) List<@NotNull OrderResultFormat> resultFormats,
+            OrderPermitStatus permitStatus) {
         public Customer(String serviceId, List<CustomerItem> items) {
-            this(serviceId, items, null, null, null, null);
+            this(serviceId, items, null, null, null, null, null, null);
         }
         public Customer(String serviceId, List<CustomerItem> items, BigDecimal areaHa, BigDecimal lengthKm, BigDecimal altitudeM) {
-            this(serviceId, items, areaHa, lengthKm, altitudeM, null);
+            this(serviceId, items, areaHa, lengthKm, altitudeM, null, null, null);
+        }
+        public Customer(String serviceId, List<CustomerItem> items, BigDecimal areaHa, BigDecimal lengthKm,
+                BigDecimal altitudeM, Integer occurrences) {
+            this(serviceId, items, areaHa, lengthKm, altitudeM, occurrences, null, null);
         }
     }
 

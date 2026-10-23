@@ -116,6 +116,10 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
         List<OrderChecklistItem> entities = new ArrayList<>();
         Set<String> contents = new HashSet<>();
         PricingPolicy policy = pricingPolicies.findEffectiveActive(Instant.now()).stream().findFirst().orElse(null);
+        if (policy != null) {
+            order.setPricingPolicyId(policy.getId());
+            order.setPricingPolicyVersion(policy.getPolicyVersion());
+        }
         BigDecimal pricedTotal = BigDecimal.ZERO;
         for (var item : items) {
             ChecklistDefinition source = locked.get(item.getSourceChecklistId());
@@ -225,16 +229,26 @@ public class OrderChecklistSnapshotService implements IOrderChecklistSnapshotSer
             throw new ApiException(ErrorCode.SERVICE_NOT_PRICED);
         order.setServiceBasePriceSnapshot(null);
         List<OrderChecklistItem> saved = snapshots.saveAllAndFlush(entities);
-        if (pricingEngine != null) {
-            var calculated = pricingEngine.calculate(order, saved);
-            Map<String, BigDecimal> calculatedByItem = new HashMap<>();
-            calculated.items().stream().filter(line -> line.orderChecklistItemId() != null)
-                    .forEach(line -> calculatedByItem.merge(line.orderChecklistItemId(), line.amount(), BigDecimal::add));
-            saved.forEach(item -> item.setSystemCalculatedPrice(
-                    calculatedByItem.getOrDefault(item.getId(), BigDecimal.ZERO)));
-        }
+        applySystemPrices(order, saved);
         order.setChecklistSnapshotAt(Instant.now());
         return saved.stream().map(mapper::toCustomerResponse).toList();
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recalculate(Order order) {
+        applySystemPrices(order, snapshots.findAllByOrderIdOrderByDisplayOrderAscIdAsc(order.getId()));
+    }
+
+    private void applySystemPrices(Order order, List<OrderChecklistItem> items) {
+        if (pricingEngine == null || items.isEmpty()) return;
+        var calculated = pricingEngine.calculate(order, items);
+        order.setSystemCalculatedAmount(calculated.systemCalculatedAmount());
+        Map<String, BigDecimal> calculatedByItem = new HashMap<>();
+        calculated.items().stream().filter(line -> line.orderChecklistItemId() != null)
+                .forEach(line -> calculatedByItem.merge(line.orderChecklistItemId(), line.amount(), BigDecimal::add));
+        items.forEach(item -> item.setSystemCalculatedPrice(
+                calculatedByItem.getOrDefault(item.getId(), BigDecimal.ZERO)));
     }
 
     @Override

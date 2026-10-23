@@ -173,11 +173,21 @@ class FlexibleChecklistPricingPostgresTest extends ChecklistPostgresTest {
                 .map(i -> List.of(i.getBasePriceSnapshot().toPlainString(), "" + i.getIncludedImageCountSnapshot(), "" + i.getRequestedImageCount(),
                         i.getPricingProfileSnapshot(), "" + i.getPricingSnapshotVersion(), "" + i.getMinimumImageCount())).toList());
         assertEquals(List.of(List.of("200000", "10", "30", "STANDARD", "1", "30")), frozen);
+        BigDecimal stillV1 = transaction.execute(status -> {
+            var order = orders.findById(created.getId()).orElseThrow();
+            return engine.calculate(order, snapshots.findAllByOrderIdOrderByDisplayOrderAscIdAsc(created.getId()))
+                    .systemCalculatedAmount();
+        });
+        assertEquals(0, new BigDecimal("340000").compareTo(stillV1),
+                "a submitted order remains on its request-time pricing policy");
     }
 
     @Test void legacySnapshotRowsKeepVersionZeroAndLegacyPricing() {
         String orderId = orderService.createOrder(orderRequest(service("Legacy"))).getId();
         resetPricing();
+        // This fixture models a pre-policy-snapshot order, so it deliberately uses the legacy ACTIVE-policy fallback.
+        new JdbcTemplate(dataSource).update(
+                "update orders set pricing_policy_id = null, pricing_policy_version = null where id = ?", orderId);
         new JdbcTemplate(dataSource).update("""
                 insert into order_checklist_items
                     (id,created_at,version,order_id,content,display_order,source_type,review_status,
