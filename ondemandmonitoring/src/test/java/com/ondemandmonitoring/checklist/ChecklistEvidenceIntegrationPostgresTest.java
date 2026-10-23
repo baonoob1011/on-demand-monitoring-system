@@ -38,11 +38,17 @@ class ChecklistEvidenceIntegrationPostgresTest extends OrderMissionPostgresTest 
     @Override @BeforeEach void prepare() {
         super.prepare(); reset(auth);
         when(auth.canViewMission(anyString())).thenReturn(true); when(auth.canExecuteMonitoringChecklist(anyString())).thenReturn(true);
+        when(auth.canReviewMissionMedia(anyString())).thenReturn(true);
         when(auth.canSubmitMissionResult(anyString())).thenReturn(true);
         when(auth.canAttachChecklistEvidence(anyString())).thenReturn(true); when(auth.canDetachChecklistEvidence(anyString())).thenReturn(true);
     }
     String mission(int count) {
-        var request=orderRequest(service("Evidence service")); request.setChecklistItems(java.util.stream.IntStream.range(0,count).mapToObj(i->selected(null,"Historical evidence item "+i)).toList());
+        var request=orderRequest(service("Evidence service")); request.setChecklistItems(java.util.stream.IntStream.range(0,count).mapToObj(i -> {
+            var item = selected(null,"Historical evidence item " + i);
+            item.setMinimumEvidenceCount(1);
+            item.setRequiredEvidenceType(com.ondemandmonitoring.order.enums.RequiredEvidenceType.IMAGE_OR_VIDEO);
+            return item;
+        }).toList());
         String order=orderService.createOrder(request).getId();
         var user = resolver.getCurrentUser();
         when(resolver.getCurrentUserId()).thenReturn(user.getId());
@@ -59,7 +65,7 @@ class ChecklistEvidenceIntegrationPostgresTest extends OrderMissionPostgresTest 
         jdbc.update("insert into mission_device_assignments(id,created_at,version,mission_id,device_id,device_role,checkup_status,is_current) values (?,now(),0,?,?,?,'PENDING',true)",UUID.randomUUID().toString(),mission,device,deviceRole);
         String contentType = mediaType.equals("VIDEO") ? "video/mp4" : "image/jpeg";
         String filename = mediaType.equals("VIDEO") ? "capture.mp4" : "capture.jpg";
-        jdbc.update("insert into drone_media(id,created_at,version,mission_id,device_id,media_type,storage_provider,original_file_name,content_type,file_size,s3_bucket,s3_key,s3_url,captured_at,media_status,source_type,validated_at,preview_selected) values (?,now(),0,?,?,?,'S3',?,?,20,'test',?,?,now(),?,'DRONE_CAMERA',now(),false)",id,mission,device,mediaType,filename,contentType,id,"s3://test/"+id,status.name());return id;
+        jdbc.update("insert into drone_media(id,created_at,version,mission_id,device_id,media_type,storage_provider,original_file_name,content_type,file_size,s3_bucket,s3_key,s3_url,captured_at,media_status,source_type,validated_at,preview_selected,storage_status) values (?,now(),0,?,?,?,'S3',?,?,20,'test',?,?,now(),?,'DRONE_CAMERA',now(),false,'AVAILABLE')",id,mission,device,mediaType,filename,contentType,id,"s3://test/"+id,status.name());return id;
     }
     ChecklistExecutionResponse row(String mission) {return executionService.getByMissionId(mission).executions().getFirst();}
     void complete(String mission) {

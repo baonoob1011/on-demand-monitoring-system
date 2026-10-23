@@ -92,7 +92,7 @@ public class MediaAsset extends BaseEntity {
     @Column(name = "storage_deletion_error", length = 500)
     String storageDeletionError;
 
-    /** DRONE_CAMERA / SATELLITE_SNAPSHOT / MANUAL_UPLOAD / MAPILLARY_REFERENCE. Null means unknown legacy provenance. */
+    /** DRONE_CAMERA / SATELLITE_SNAPSHOT / MANUAL_UPLOAD. Null means unknown legacy provenance. */
     @Column(name = "source_type", length = 40)
     String sourceType;
 

@@ -15,7 +15,6 @@ import com.ondemandmonitoring.service.domain.ServiceDeliverable;
 import com.ondemandmonitoring.service.repository.DeliverableTypeRepository;
 import com.ondemandmonitoring.service.repository.ServiceDeliverableRepository;
 import com.ondemandmonitoring.service.repository.ServiceRepository;
-import com.ondemandmonitoring.service.repository.ServiceRequirementSuggestionRepository;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -27,7 +26,6 @@ class ServiceCatalogSeedDataInitializerTest {
         ServiceRepository services = mock(ServiceRepository.class);
         DeliverableTypeRepository types = mock(DeliverableTypeRepository.class);
         ServiceDeliverableRepository links = mock(ServiceDeliverableRepository.class);
-        ServiceRequirementSuggestionRepository suggestions = mock(ServiceRequirementSuggestionRepository.class);
 
         when(services.findByCodeIgnoreCase(anyString())).thenReturn(Optional.empty());
         when(services.findByNameIgnoreCase(anyString())).thenReturn(Optional.empty());
@@ -35,15 +33,11 @@ class ServiceCatalogSeedDataInitializerTest {
         when(types.findByNameIgnoreCase(anyString())).thenReturn(Optional.of(activeType()));
         when(types.findAll()).thenReturn(List.of());
         when(links.findAll()).thenReturn(List.of());
-        when(suggestions.findAll()).thenReturn(List.of());
-        when(suggestions.findByServiceIdAndCategoryIgnoreCaseAndLabelIgnoreCase(anyString(), anyString(), anyString()))
-                .thenReturn(Optional.empty());
 
-        new ServiceCatalogSeedDataInitializer(services, types, links, suggestions).run(null);
+        new ServiceCatalogSeedDataInitializer(services, types, links).run(null);
 
         verify(services, times(4)).save(any(Service.class));
         verify(services, never()).delete(any(Service.class));
-        verify(suggestions, never()).delete(any());
     }
 
     @Test
@@ -51,7 +45,6 @@ class ServiceCatalogSeedDataInitializerTest {
         ServiceRepository services = mock(ServiceRepository.class);
         DeliverableTypeRepository types = mock(DeliverableTypeRepository.class);
         ServiceDeliverableRepository links = mock(ServiceDeliverableRepository.class);
-        ServiceRequirementSuggestionRepository suggestions = mock(ServiceRequirementSuggestionRepository.class);
 
         Service construction = new Service();
         construction.setId("service-1");
@@ -76,11 +69,8 @@ class ServiceCatalogSeedDataInitializerTest {
         when(types.findByNameIgnoreCase(anyString())).thenReturn(Optional.of(type));
         when(types.findAll()).thenReturn(List.of(type));
         when(links.findAll()).thenReturn(List.of());
-        when(suggestions.findAll()).thenReturn(List.of());
-        when(suggestions.findByServiceIdAndCategoryIgnoreCaseAndLabelIgnoreCase(anyString(), anyString(), anyString()))
-                .thenReturn(Optional.empty());
 
-        new ServiceCatalogSeedDataInitializer(services, types, links, suggestions).run(null);
+        new ServiceCatalogSeedDataInitializer(services, types, links).run(null);
 
         verify(services, atLeastOnce()).save(legacy);
         verify(links, atLeastOnce()).save(any(ServiceDeliverable.class));

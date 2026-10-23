@@ -26,10 +26,12 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "order_checklist_items", uniqueConstraints = {
-                @UniqueConstraint(name = "uk_order_checklist_source", columnNames = { "order_id",
-                                "source_checklist_id" }),
-                @UniqueConstraint(name = "uk_checklist_item_id_order", columnNames = { "id",
-                                "order_id" }) }, indexes = @Index(name = "ix_order_checklist_order", columnList = "order_id,display_order,id"))
+        @UniqueConstraint(name = "uk_order_checklist_source", columnNames = {"order_id", "source_checklist_id"}),
+        @UniqueConstraint(name = "uk_checklist_item_id_order", columnNames = {"id", "order_id"})},
+        indexes = {
+                @Index(name = "ix_order_checklist_order", columnList = "order_id,display_order,id"),
+                @Index(name = "ix_order_checklist_pricing_source", columnList = "pricing_status,source_type,created_at"),
+                @Index(name = "ix_order_checklist_created_source", columnList = "created_at,source_type")})
 @org.hibernate.annotations.Check(constraints = "display_order >= 0 and ((source_type in ('SERVICE_TEMPLATE','CUSTOMER_SELECTED') and source_checklist_id is not null) or (source_type = 'CUSTOMER_CUSTOM' and source_checklist_id is null))")
 @Getter
 @Setter

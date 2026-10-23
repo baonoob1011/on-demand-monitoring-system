@@ -59,6 +59,7 @@ public class PersistedPreDeviceCheckResponse {
     }
 
     public static PersistedPreDeviceCheckResponse from(PersistedPreDeviceCheck run) {
+        Instant now = Instant.now();
         DeviceConnection connection = run.getDeviceConnection();
         Device device = connection == null ? null : connection.getDevice();
         List<PersistedPreDeviceCheckItem> visibleItems = run.getItems().stream()
@@ -66,13 +67,13 @@ public class PersistedPreDeviceCheckResponse {
                 .toList();
         int total = visibleItems.size();
         int done = (int) visibleItems.stream()
-                .filter(i -> isResolved(i.getStatus()))
+                .filter(i -> isResolved(effectiveStatus(i, now)))
                 .count();
         int passed = (int) visibleItems.stream()
-                .filter(i -> i.getStatus() == PreDeviceItemStatus.PASSED)
+                .filter(i -> effectiveStatus(i, now) == PreDeviceItemStatus.PASSED)
                 .count();
         int failed = (int) visibleItems.stream()
-                .filter(i -> i.getStatus() == PreDeviceItemStatus.FAILED)
+                .filter(i -> effectiveStatus(i, now) == PreDeviceItemStatus.FAILED)
                 .count();
         PreDeviceCheckStatus status = resolveStatus(run, total, done, failed);
 
@@ -99,7 +100,7 @@ public class PersistedPreDeviceCheckResponse {
                                 .category(i.getCategory())
                                 .required(i.getRequired())
                                 .source(i.getSource())
-                                .status(i.getStatus())
+                                .status(effectiveStatus(i, now))
                                 .checkLevel(i.getCheckLevel())
                                 .message(i.getMessage())
                                 .measuredValue(i.getMeasuredValue())
@@ -119,7 +120,18 @@ public class PersistedPreDeviceCheckResponse {
         if (total > 0 && done == total) {
             return PreDeviceCheckStatus.PASSED;
         }
-        return run.getStatus() == PreDeviceCheckStatus.FAILED ? PreDeviceCheckStatus.CHECKING : run.getStatus();
+        return run.getStatus() == PreDeviceCheckStatus.CANCELLED
+                ? PreDeviceCheckStatus.CANCELLED
+                : PreDeviceCheckStatus.CHECKING;
+    }
+
+    private static PreDeviceItemStatus effectiveStatus(PersistedPreDeviceCheckItem item, Instant now) {
+        if (Boolean.TRUE.equals(item.getRequired())
+                && item.getStatus() == PreDeviceItemStatus.PASSED
+                && (item.getExpiresAt() == null || !item.getExpiresAt().isAfter(now))) {
+            return PreDeviceItemStatus.STALE;
+        }
+        return item.getStatus();
     }
 
     private static boolean isResolved(PreDeviceItemStatus status) {
@@ -127,7 +139,6 @@ public class PersistedPreDeviceCheckResponse {
                 || status == PreDeviceItemStatus.WARNING
                 || status == PreDeviceItemStatus.FAILED
                 || status == PreDeviceItemStatus.UNKNOWN
-                || status == PreDeviceItemStatus.STALE
                 || status == PreDeviceItemStatus.NOT_APPLICABLE;
     }
 }

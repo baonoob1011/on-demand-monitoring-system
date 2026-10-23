@@ -28,15 +28,15 @@ import static org.mockito.Mockito.*;
 /** Isolated seeded completion state, real actor policy/submission/JPA/aggregate; no real-auth E2E claim. */
 @SpringJUnitConfig(OrderAggregateCompletionPostgresTest.Beans.class)
 class MissionResultSubmitPostgresTest extends OrderAggregateCompletionPostgresTest {
-    @Test void operatorSubmissionPersistsIndependentResultsAndPreservesAggregateCompletion() {
+    @Test void inspectorSubmissionPersistsIndependentResultsAndPreservesAggregateCompletion() {
         ready(1);
-        String firstOperator = account(RoleCode.STAFF);
-        String secondOperator = account(RoleCode.STAFF);
-        String inspector = account(RoleCode.STAFF);
+        String firstInspector = account(RoleCode.STAFF);
+        String secondInspector = account(RoleCode.STAFF);
+        String operator = account(RoleCode.STAFF);
         String manager = account(RoleCode.MANAGER);
-        assignment(first, firstOperator, MissionStaffRole.OPERATOR);
-        assignment(second, secondOperator, MissionStaffRole.OPERATOR);
-        assignment(first, inspector, MissionStaffRole.INSPECTOR);
+        assignment(first, firstInspector, MissionStaffRole.INSPECTOR);
+        assignment(second, secondInspector, MissionStaffRole.INSPECTOR);
+        assignment(first, operator, MissionStaffRole.OPERATOR);
         var policy = new MissionAuthorizationServiceImpl(repository(entityManagerFactory, MissionStaffAssignmentRepository.class),
                 missions, resolver, resultRepository, scope);
         var mapper = Mappers.getMapper(MissionResultMapper.class);
@@ -44,10 +44,10 @@ class MissionResultSubmitPostgresTest extends OrderAggregateCompletionPostgresTe
         var submit = new MissionResultService(resultRepository, missions, repository(entityManagerFactory, MediaAssetRepository.class),
                 mock(IMediaAssetService.class), mapper, completion, runtime, resolver, policy);
 
-        actor(firstOperator);
+        actor(firstInspector);
         transaction.executeWithoutResult(tx -> {
             assertTrue(policy.canSubmitMissionResult(first));
-            assertFalse(policy.canUploadMissionMedia(first));
+            assertTrue(policy.canUploadMissionMedia(first));
             assertFalse(policy.canSubmitMissionResult(second));
         });
         String firstResult = transaction.execute(tx -> submit.upsert(first, new MissionResultRequest()).getId());
@@ -56,9 +56,9 @@ class MissionResultSubmitPostgresTest extends OrderAggregateCompletionPostgresTe
         assertEquals(ErrorCode.ACCESS_DENIED, forbiddenSibling.getErrorCode());
         assertEquals(1, rows("mission_results"));
 
-        actor(inspector);
+        actor(operator);
         transaction.executeWithoutResult(tx -> {
-            assertTrue(policy.canUploadMissionMedia(first));
+            assertFalse(policy.canUploadMissionMedia(first));
             assertFalse(policy.canSubmitMissionResult(first));
         });
         assertEquals(ErrorCode.ACCESS_DENIED, assertThrows(ApiException.class,
@@ -66,7 +66,7 @@ class MissionResultSubmitPostgresTest extends OrderAggregateCompletionPostgresTe
         actor(manager); resultService.approve(firstResult, null);
         assertEquals(OrderStatus.APPROVED, status());
 
-        actor(secondOperator);
+        actor(secondInspector);
         String secondResult = transaction.execute(tx -> submit.upsert(second, new MissionResultRequest()).getId());
         assertNotEquals(firstResult, secondResult);
         actor(manager); resultService.approve(secondResult, null);

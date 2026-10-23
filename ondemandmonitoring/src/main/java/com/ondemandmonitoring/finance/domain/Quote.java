@@ -17,7 +17,10 @@ import lombok.Setter;
 
 @Entity
 @Table(name = "quotes", uniqueConstraints = @UniqueConstraint(name = "uk_quote_order_version", columnNames = {"order_id", "quote_version"}),
-        indexes = @Index(name = "ix_quotes_order_status", columnList = "order_id,status"))
+        indexes = {
+                @Index(name = "ix_quotes_order_status", columnList = "order_id,status"),
+                @Index(name = "ix_quotes_status_updated", columnList = "status,updated_at"),
+                @Index(name = "ix_quotes_created", columnList = "created_at")})
 @Getter @Setter
 public class Quote extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

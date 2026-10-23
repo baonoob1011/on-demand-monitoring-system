@@ -10,8 +10,8 @@ import com.ondemandmonitoring.devicecheck.enums.PreDeviceItemStatus;
 import com.ondemandmonitoring.devicecheck.mapper.PreDeviceCheckCompletionMapper;
 import com.ondemandmonitoring.devicecheck.repository.PersistedPreDeviceCheckRepository;
 import com.ondemandmonitoring.devicecheck.service.IPreDeviceCheckCompletionService;
-import com.ondemandmonitoring.environment.domain.MissionWeatherCheck;
-import com.ondemandmonitoring.environment.repository.MissionWeatherCheckRepository;
+import com.ondemandmonitoring.weather.domain.MissionWeatherCheck;
+import com.ondemandmonitoring.weather.repository.MissionWeatherCheckRepository;
 import com.ondemandmonitoring.mission.domain.FlightToken;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
@@ -91,6 +91,7 @@ public class PreDeviceCheckCompletionServiceImpl implements IPreDeviceCheckCompl
         }
         Instant now = Instant.now();
         boolean hasNonPassingItem = run.getItems().stream()
+                .filter(item -> PersistedPreDeviceCheckService.isActiveCheckType(item.getCheckType()))
                 .anyMatch(item -> Boolean.TRUE.equals(item.getRequired())
                         && (item.getStatus() != PreDeviceItemStatus.PASSED
                         || item.getExpiresAt() == null

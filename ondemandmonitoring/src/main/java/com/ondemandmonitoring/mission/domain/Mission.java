@@ -16,7 +16,8 @@ import java.time.Instant;
 @Setter
 @Entity
 @Table(name = "missions", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_mission_id_order", columnNames = {"id", "order_id"})})
+        @UniqueConstraint(name = "uk_mission_id_order", columnNames = {"id", "order_id"})},
+        indexes = @Index(name = "ix_missions_status_schedule", columnList = "status,scheduled_start_at"))
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class Mission extends BaseEntity {
 

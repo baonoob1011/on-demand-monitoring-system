@@ -47,7 +47,7 @@ class ChecklistEvidencePostgresTest {
     }
 
     @Test void snapshotPolicyAcceptsLegacyPairsAndConfigurablePositiveV2() {
-        fixture.jdbc.update("update order_checklist_items set evidence_policy_version=0,minimum_evidence_count=0,required_evidence_type='IMAGE_OR_VIDEO'");
+        fixture.jdbc.update("update order_checklist_items set minimum_image_count=0,minimum_video_count=0,evidence_policy_version=0,minimum_evidence_count=0,required_evidence_type='IMAGE_OR_VIDEO'");
         fixture.jdbc.update("update order_checklist_items set evidence_policy_version=1,minimum_evidence_count=1,required_evidence_type='IMAGE_OR_VIDEO'");
         fixture.jdbc.update("update order_checklist_items set evidence_policy_version=2,minimum_evidence_count=3,required_evidence_type='VIDEO'");
         assertThrows(DataIntegrityViolationException.class,()->fixture.jdbc.update(
@@ -56,7 +56,7 @@ class ChecklistEvidencePostgresTest {
                 "update order_checklist_items set evidence_policy_version=2,minimum_evidence_count=51,required_evidence_type='IMAGE'"));
         assertThrows(DataIntegrityViolationException.class,()->fixture.jdbc.update(
                 "update order_checklist_items set evidence_policy_version=2,minimum_evidence_count=2,required_evidence_type='STREAMING'"));
-        fixture.jdbc.update("update order_checklist_items set evidence_policy_version=0,minimum_evidence_count=0,required_evidence_type='IMAGE_OR_VIDEO'");
+        fixture.jdbc.update("update order_checklist_items set minimum_image_count=0,minimum_video_count=0,evidence_policy_version=0,minimum_evidence_count=0,required_evidence_type='IMAGE_OR_VIDEO'");
     }
 
     @Test void compositeFksRejectCrossMissionExecutionAndMedia() {

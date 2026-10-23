@@ -102,8 +102,15 @@ class ChecklistAdminBootstrapPostgresTest extends ChecklistPostgresTest {
     @Configuration
     @Import(ChecklistPostgresTest.Config.class)
     static class SeedConfig {
-        @Bean ChecklistDefaultSeedInitializer checklistSeed(ServiceRepository services, ChecklistDefinitionRepository definitions, ServiceChecklistRepository assignments) {
-            return new ChecklistDefaultSeedInitializer(services, definitions, assignments);
+        @Bean org.springframework.boot.ApplicationRunner checklistSeed(ServiceRepository services, ChecklistDefinitionRepository definitions,
+                ServiceChecklistRepository assignments, com.ondemandmonitoring.pricing.service.ServiceDefaultPriceService prices,
+                org.springframework.transaction.PlatformTransactionManager manager) {
+            var templates = new ChecklistDefaultSeedInitializer(services, definitions, assignments);
+            var pricing = new com.ondemandmonitoring.checklist.config.ChecklistPricingSeedInitializer(definitions, prices);
+            return args -> new org.springframework.transaction.support.TransactionTemplate(manager).executeWithoutResult(tx -> {
+                templates.run(args);
+                pricing.run(args);
+            });
         }
     }
 }

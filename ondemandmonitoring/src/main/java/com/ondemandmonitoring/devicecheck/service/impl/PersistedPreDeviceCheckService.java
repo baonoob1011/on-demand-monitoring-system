@@ -21,8 +21,8 @@ import com.ondemandmonitoring.mission.enums.FlightPermitStatus;
 import com.ondemandmonitoring.mission.repository.DeviceConnectionRepository;
 import com.ondemandmonitoring.order.enums.OrderStatus;
 import com.ondemandmonitoring.user.service.AuthenticatedUserResolver;
-import com.ondemandmonitoring.environment.domain.MissionWeatherCheck;
-import com.ondemandmonitoring.environment.repository.MissionWeatherCheckRepository;
+import com.ondemandmonitoring.weather.domain.MissionWeatherCheck;
+import com.ondemandmonitoring.weather.repository.MissionWeatherCheckRepository;
 import com.ondemandmonitoring.devicecheck.repository.PersistedPreDeviceCheckRepository;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.enums.MissionStatus;
@@ -82,6 +82,10 @@ public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckS
     private static final Set<String> CONNECTION_MANUAL_FALLBACK_TYPES = Set.of(
             "aircraft_connection", "command_link", "flight_controller",
             "aircraft_readiness", "monitoring_connection");
+
+    static boolean isActiveCheckType(String checkType) {
+        return !IGNORED_CHECK_TYPES.contains(checkType);
+    }
 
     private final PersistedPreDeviceCheckRepository runRepository;
     private final MissionRepository missionRepository;
@@ -346,7 +350,7 @@ public class PersistedPreDeviceCheckService implements IPersistedPreDeviceCheckS
 
     private void refreshRunStatus(PersistedPreDeviceCheck run) {
         List<PersistedPreDeviceCheckItem> activeItems = run.getItems().stream()
-                .filter(i -> !IGNORED_CHECK_TYPES.contains(i.getCheckType())).toList();
+                .filter(i -> isActiveCheckType(i.getCheckType())).toList();
         int passed = (int) activeItems.stream().filter(i -> i.getStatus() == PreDeviceItemStatus.PASSED
                 || i.getStatus() == PreDeviceItemStatus.NOT_APPLICABLE).count();
         int failed = (int) activeItems.stream().filter(i -> i.getStatus() == PreDeviceItemStatus.FAILED).count();

@@ -43,6 +43,7 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
         reset(auth);
         when(auth.canViewMission(anyString())).thenReturn(true);
         when(auth.canExecuteMonitoringChecklist(anyString())).thenReturn(true);
+        when(auth.canReviewMissionMedia(anyString())).thenReturn(true);
         when(auth.canSubmitMissionResult(anyString())).thenReturn(true);
         when(resolver.getCurrentUserId()).thenReturn("authenticated-operator");
     }
@@ -54,7 +55,7 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
         String id = orderService.createOrder(cachedRequest).getId();
         // These Phase 5 regressions explicitly exercise historical policy-0 packages.
         // Phase 6 service integration tests exercise configurable V2 snapshots.
-        new JdbcTemplate(dataSource).update("update order_checklist_items set evidence_policy_version=0, minimum_evidence_count=0, required_evidence_type='IMAGE_OR_VIDEO' where order_id=?", id);
+        new JdbcTemplate(dataSource).update("update order_checklist_items set minimum_image_count=0,minimum_video_count=0,evidence_policy_version=0, minimum_evidence_count=0, required_evidence_type='IMAGE_OR_VIDEO' where order_id=?", id);
         transaction.executeWithoutResult(tx -> orders.findById(id).orElseThrow().setOrderStatus(OrderStatus.APPROVED));
         return id;
     }
@@ -134,17 +135,18 @@ class MissionChecklistPostgresTest extends OrderMissionPostgresTest {
         assignments.assign(service, assignment(catalogId, 3));
         var request = orderRequest(service);
         String order = orderService.createOrder(request).getId();
-        new JdbcTemplate(dataSource).update("update order_checklist_items set evidence_policy_version=0, minimum_evidence_count=0, required_evidence_type='IMAGE_OR_VIDEO' where order_id=?", order);
+        new JdbcTemplate(dataSource).update("update order_checklist_items set minimum_image_count=0,minimum_video_count=0,evidence_policy_version=0, minimum_evidence_count=0, required_evidence_type='IMAGE_OR_VIDEO' where order_id=?", order);
         transaction.executeWithoutResult(tx -> orders.findById(order).orElseThrow().setOrderStatus(OrderStatus.APPROVED));
         String mission = legacyMission(order, request(order)).getId(); setStatus(mission, MissionStatus.IN_FLIGHT);
         var row = executionService.getByMissionId(mission).executions().getFirst();
+        long snapshotVersion = snapshots.findById(row.getOrderChecklistItemId()).orElseThrow().getVersion();
         var edit = new com.ondemandmonitoring.checklist.dto.request.ChecklistRequest(); edit.setContent("New template");
         catalog.update(catalogId, edit); catalog.updateStatus(catalogId, false); assignments.unassign(service, catalogId);
         var changed = change(mission, row, ChecklistExecutionStatus.COMPLETED);
         assertEquals(row.getContent(), changed.getContent()); assertEquals(row.getDisplayOrder(), changed.getDisplayOrder());
         assertEquals(row.getOrderChecklistItemId(), changed.getOrderChecklistItemId());
         var historical = snapshots.findById(row.getOrderChecklistItemId()).orElseThrow();
-        assertEquals("Original catalog requirement", historical.getContent()); assertEquals(0L, historical.getVersion());
+        assertEquals("Original catalog requirement", historical.getContent()); assertEquals(snapshotVersion, historical.getVersion());
         assertEquals(1L, changed.getVersion());
     }
 

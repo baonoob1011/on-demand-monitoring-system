@@ -10,6 +10,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 
 public interface QuoteRepository extends JpaRepository<Quote, String> {
     @Query("select distinct q from Quote q left join fetch q.items where q.order.id=:orderId order by q.quoteVersion desc")
@@ -22,4 +24,9 @@ public interface QuoteRepository extends JpaRepository<Quote, String> {
     Optional<Quote> findByIdForUpdate(@Param("id") String id);
 
     int countByOrderId(String orderId);
+
+    long countByStatus(QuoteStatus status);
+
+    @EntityGraph(attributePaths = "order")
+    List<Quote> findByStatusInOrderByUpdatedAtDesc(Collection<QuoteStatus> statuses, Pageable pageable);
 }

@@ -64,4 +64,7 @@ public interface MissionDeviceAssignmentRepository extends JpaRepository<Mission
     List<MissionDeviceAssignment> findCurrentByDeviceIdAndMissionStatusIn(
             String deviceId,
             List<MissionStatus> statuses);
+
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = "device")
+    List<MissionDeviceAssignment> findAllByMissionIdInAndIsCurrentTrue(List<String> missionIds);
 }

@@ -15,7 +15,9 @@ final class CurrentSchemaPostgres {
             throw new IllegalArgumentException("Unsafe verification schema");
         if (!filename.equals("bootstrap_after_hibernate.sql") && !filename.equals("verify_current_schema.sql")
                 && !filename.equals("add_checklist_evidence_requirements_v2.sql")
-                && !filename.equals("add_flexible_checklist_pricing.sql"))
+                && !filename.equals("add_flexible_checklist_pricing.sql")
+                && !filename.equals("add_media_upload_failure_events.sql")
+                && !filename.equals("normalize_media_upload_failure_string_ids.sql"))
             throw new IllegalArgumentException("Only current schema resources are allowed");
         try {
             return new ClassPathResource("seeddata/migrations/" + filename)
@@ -41,5 +43,13 @@ final class CurrentSchemaPostgres {
 
     static void verify(DataSource dataSource, String schema) {
         new JdbcTemplate(dataSource).execute(sql("verify_current_schema.sql", schema));
+    }
+
+    static void migrationInCurrentTransaction(DataSource dataSource, String schema, String filename) {
+        if (!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("Historical schema rehearsal requires a rollback-only test transaction");
+        }
+        // The test owns the transaction, so the script must not commit the temporary historical schema.
+        new JdbcTemplate(dataSource).execute(sql(filename, schema).replace("BEGIN;", "").replace("COMMIT;", ""));
     }
 }

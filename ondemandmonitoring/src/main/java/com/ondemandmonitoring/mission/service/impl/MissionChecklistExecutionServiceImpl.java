@@ -67,7 +67,9 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
         // All execution mutations and result submissions/reviews lock the same Mission first.
         // This prevents a submit from racing an execution update across different rows.
         Mission mission = requireMission(missionId, true);
-        if (!authorization.canExecuteMonitoringChecklist(missionId)) throw new ApiException(ErrorCode.ACCESS_DENIED);
+        boolean canExecute = authorization.canExecuteMonitoringChecklist(missionId);
+        boolean canAssess = authorization.canReviewMissionMedia(missionId);
+        if (!canExecute && !canAssess) throw new ApiException(ErrorCode.ACCESS_DENIED);
         var result = results.findByMissionId(missionId);
         boolean rejected = result.map(r -> r.getApprovalStatus() == MissionResultApprovalStatus.REJECTED).orElse(false);
         if (result.map(r -> r.getApprovalStatus() == MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL
@@ -89,19 +91,23 @@ public class MissionChecklistExecutionServiceImpl implements IMissionChecklistEx
         if (request == null || request.getExpectedVersion() == null || request.getExpectedVersion() < 0
                 || request.getExecutionStatus() == null || request.getAssessmentStatus() == null)
             throw new ApiException(ErrorCode.INVALID_REQUEST);
-        if (request.getAssessmentStatus() != execution.getAssessmentStatus()
-                && !authorization.canReviewMissionMedia(missionId))
-            throw new ApiException(ErrorCode.ACCESS_DENIED);
         if (!request.getExpectedVersion().equals(execution.getVersion()))
             throw new ApiException(ErrorCode.CONCURRENT_UPDATE);
         ChecklistExecutionStatus next = request.getExecutionStatus();
         ChecklistExecutionStatus previous = execution.getExecutionStatus();
+        String reason = trimmed(request.getUnableToVerifyReason(), 1000);
+        String observation = trimmed(request.getObservation(), 2000);
+        boolean executionChanged = next != previous
+                || !Objects.equals(observation, execution.getObservation())
+                || !Objects.equals(next == ChecklistExecutionStatus.UNABLE_TO_VERIFY ? reason : null,
+                        execution.getUnableToVerifyReason());
+        boolean assessmentChanged = request.getAssessmentStatus() != execution.getAssessmentStatus();
+        if (executionChanged && !canExecute) throw new ApiException(ErrorCode.ACCESS_DENIED);
+        if (assessmentChanged && !canAssess) throw new ApiException(ErrorCode.ACCESS_DENIED);
         if (!validTransition(previous, next, rejected))
             throw new ApiException(ErrorCode.CHECKLIST_EXECUTION_TRANSITION_INVALID);
-        String reason = trimmed(request.getUnableToVerifyReason(), 1000);
         if (next == ChecklistExecutionStatus.UNABLE_TO_VERIFY && reason == null)
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Unable to verify requires a non-blank reason");
-        String observation = trimmed(request.getObservation(), 2000);
         Instant now = Instant.now();
         Instant startedAt = next == ChecklistExecutionStatus.PENDING
                 ? null : execution.getStartedAt() == null ? now : execution.getStartedAt();

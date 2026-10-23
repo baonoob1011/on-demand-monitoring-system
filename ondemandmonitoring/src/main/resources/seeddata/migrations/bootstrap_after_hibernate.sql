@@ -211,11 +211,11 @@ CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA public;
 -- Separate from media_storage_event_inbox on purpose: a client-reported failed transfer has
 -- no object key, and asserting one would claim an object exists that never did.
 CREATE TABLE IF NOT EXISTS public.media_upload_failure_events (
-    id uuid PRIMARY KEY,
+    id varchar(255) PRIMARY KEY,
     event_key varchar(64) NOT NULL,
-    mission_id uuid NOT NULL,
-    media_id uuid NOT NULL,
-    attempt_id uuid NOT NULL,
+    mission_id varchar(255) NOT NULL,
+    media_id varchar(255) NOT NULL,
+    attempt_id varchar(255) NOT NULL,
     attempt_number integer NOT NULL,
     category varchar(40) NOT NULL,
     occurred_at timestamptz NOT NULL,

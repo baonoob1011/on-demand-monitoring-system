@@ -100,6 +100,9 @@ class MissionCreationHttpTest {
         mvc.perform(post("/api/missions/o").contentType("application/json").content("{}" )).andExpect(status().isUnauthorized());
     }
     @Configuration @EnableWebMvc static class Beans {
+        @Bean com.ondemandmonitoring.devicecheck.repository.PersistedPreDeviceCheckRepository preflightRepository() {
+            return mock(com.ondemandmonitoring.devicecheck.repository.PersistedPreDeviceCheckRepository.class);
+        }
         @Bean com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService deliveryWorkflow() {
             return org.mockito.Mockito.mock(com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService.class);
         }

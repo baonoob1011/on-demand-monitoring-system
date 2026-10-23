@@ -54,11 +54,18 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 
 @SpringBootTest
 @Transactional
 @ActiveProfiles("e2e")
 @Import(OperatorAcceptAutoPlanningE2ETest.TestSchemaBootstrap.class)
+@EnabledIfEnvironmentVariable(named = "ODMS_MISSION_TEST_JDBC_URL",
+        matches = "jdbc:postgresql://127[.]0[.]0[.]1:[0-9]+/mission_accept_verification")
 class OperatorAcceptAutoPlanningE2ETest {
 
     private static final GeometryFactory GEOMETRY_FACTORY =
@@ -77,6 +84,29 @@ class OperatorAcceptAutoPlanningE2ETest {
     @Autowired private MissionPlanRepository missionPlanRepository;
     @Autowired private EntityManager entityManager;
     @Autowired private JdbcTemplate jdbcTemplate;
+    @Autowired private com.ondemandmonitoring.service.repository.ServiceRepository services;
+    @Autowired private com.ondemandmonitoring.warehouse.repository.PreferredTimeRepository preferredTimes;
+    @MockitoBean(name = "cognitoAccessTokenDecoder") private JwtDecoder accessDecoder;
+    @MockitoBean(name = "cognitoIdTokenDecoder") private JwtDecoder idDecoder;
+    @MockitoBean private com.ondemandmonitoring.auth.port.out.IdentityProviderPort identityProvider;
+    @MockitoBean private software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClient cognito;
+    @MockitoBean private software.amazon.awssdk.services.s3.S3Client s3;
+    @MockitoBean private software.amazon.awssdk.services.s3.presigner.S3Presigner presigner;
+
+    @DynamicPropertySource
+    static void database(DynamicPropertyRegistry properties) {
+        properties.add("spring.datasource.url", () -> System.getenv("ODMS_MISSION_TEST_JDBC_URL"));
+        properties.add("spring.datasource.username", () -> "checklist_test");
+        properties.add("spring.datasource.password", () -> "checklist_test_only");
+        properties.add("spring.jpa.hibernate.ddl-auto", () -> "create");
+        properties.add("spring.jpa.open-in-view", () -> "false");
+        properties.add("spring.jpa.show-sql", () -> "false");
+        properties.add("app.seed.demo-drones", () -> "false");
+        properties.add("app.media.sqs.enabled", () -> "false");
+        properties.add("app.media.reconciliation.enabled", () -> "false");
+        properties.add("mission.replanning.enabled", () -> "false");
+        properties.add("auth.outbox.fixed-delay-ms", () -> "3600000");
+    }
 
     @AfterEach
     void clearAuthentication() {
@@ -103,10 +133,27 @@ class OperatorAcceptAutoPlanningE2ETest {
 
     @Test
     void operatorAcceptDefersPlanningUntilFreshTelemetryPreflight() {
-        Order source = orderRepository.findAll().stream().findFirst().orElseThrow();
-        Order order = orderRepository.saveAndFlush(copyOrder(source, point(106.70, 10.77)));
+        Order order = new Order();
+        order.setCustomer(createActor(RoleCode.CUSTOMER));
+        order.setService(services.findAll().getFirst());
+        order.setPreferredTime(preferredTimes.findAll().getFirst());
+        order.setTitle("Operator acceptance integration fixture");
+        order.setPoint(point(106.70, 10.77));
+        order.setPreferredDateFrom(java.time.LocalDate.now(java.time.ZoneOffset.UTC).plusDays(2));
+        order.setPreferredDateTo(order.getPreferredDateFrom());
+        order.setOrderStatus(com.ondemandmonitoring.order.enums.OrderStatus.APPROVED);
+        order.setChecklistSnapshotAt(Instant.now());
+        order.setDataRetentionDays(90);
+        order = orderRepository.saveAndFlush(order);
         createAcceptedInvoice(order);
-        Device device = deviceRepository.findAll().stream().findFirst().orElseThrow();
+        var model = new com.ondemandmonitoring.device.domain.DeviceModel();
+        model.setCode("acceptance-model");
+        model.setModelName("Acceptance model");
+        entityManager.persist(model);
+        Device device = new Device();
+        device.setDeviceModel(model);
+        device.setName("Acceptance device");
+        device.setSerialNumber(java.util.UUID.randomUUID().toString());
         device.setStatus(DeviceStatus.AVAILABLE);
         deviceRepository.saveAndFlush(device);
 
@@ -161,11 +208,14 @@ class OperatorAcceptAutoPlanningE2ETest {
         entityManager.flush();
         entityManager.clear();
 
-        assertThat(accepted.getStatus()).isEqualTo(MissionStatus.WAITING_OPERATOR_ACCEPTANCE);
-        assertThat(accepted.getPlan()).isNotNull();
-        assertThat(missionPlanRepository.findByMissionId(accepted.getId())).isPresent();
-        assertThat(countPlans(accepted.getId())).isEqualTo(1L);
-        assertThat(countWaypoints(accepted.getId())).isGreaterThan(0L);
+        // Acceptance records crew consent only; planning belongs to the later preflight flow.
+        assertThat(accepted.getStatus()).isEqualTo(MissionStatus.WAITING_CREW_CONFIRMATION);
+        assertThat(accepted.getPlan()).isNull();
+        assertThat(missionPlanRepository.findByMissionId(accepted.getId())).isEmpty();
+        assertThat(countPlans(accepted.getId())).isZero();
+        assertThat(countWaypoints(accepted.getId())).isZero();
+        assertThat(jdbcTemplate.queryForObject("select count(*) from mission_staff_assignments where mission_id=? and response_status='ACCEPTED'",
+                Long.class, accepted.getId())).isEqualTo((long) com.ondemandmonitoring.mission.enums.MissionStaffRole.values().length);
     }
 
     private User createActor(RoleCode roleCode) {
@@ -213,21 +263,6 @@ class OperatorAcceptAutoPlanningE2ETest {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(user.getId(), null,
                         java.util.List.of(new SimpleGrantedAuthority("ROLE_" + role))));
-    }
-
-    private Order copyOrder(Order source, Point target) {
-        Order order = new Order();
-        order.setCustomer(source.getCustomer());
-        order.setTitle("E2E_OPERATOR_ACCEPT_AUTO_PLAN");
-        order.setService(source.getService());
-        order.setDescription("Temporary transactional operator accept auto-planning E2E record");
-        order.setAddress("LOCAL_SIMULATION_METERS_GAZEBO_XY");
-        order.setPoint(target);
-        order.setPreferredDateFrom(source.getPreferredDateFrom());
-        order.setPreferredDateTo(source.getPreferredDateTo());
-        order.setPreferredTime(source.getPreferredTime());
-        order.setOrderStatus(source.getOrderStatus());
-        return order;
     }
 
     private Point point(double x, double y) {

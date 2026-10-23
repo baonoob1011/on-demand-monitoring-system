@@ -23,6 +23,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 
 @Component
+@org.springframework.context.annotation.Profile("e2e")
 @org.springframework.core.annotation.Order(100)
 @RequiredArgsConstructor
 @Slf4j
@@ -68,6 +69,7 @@ public class E2ETestOrderInitializer implements ApplicationRunner {
                 order.setPreferredDateFrom(LocalDate.now());
                 order.setPreferredDateTo(LocalDate.now().plusDays(7));
                 order.setOrderStatus(OrderStatus.APPROVED);
+                order.setDataRetentionDays(90);
                 orderRepository.save(order);
                 log.info("E2ETestOrderInitializer: seeded test order for E2E tests");
             }

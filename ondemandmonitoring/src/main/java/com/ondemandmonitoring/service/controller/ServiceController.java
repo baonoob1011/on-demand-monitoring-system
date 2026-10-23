@@ -6,20 +6,15 @@ import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.pricing.service.ServicePriceResolver;
 import com.ondemandmonitoring.service.dto.request.ServiceRequest;
 import com.ondemandmonitoring.service.dto.response.ServicePricingEstimateResponse;
-import com.ondemandmonitoring.service.dto.response.ServiceRequirementSuggestionResponse;
 import com.ondemandmonitoring.service.dto.response.ServiceResponse;
 import com.ondemandmonitoring.service.domain.Service;
-import com.ondemandmonitoring.service.domain.ServiceRequirementSuggestion;
-import com.ondemandmonitoring.service.repository.ServiceRequirementSuggestionRepository;
 import com.ondemandmonitoring.service.service.IServiceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.math.BigDecimal;
-import java.util.List;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.List;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -46,7 +41,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class ServiceController {
 
     IServiceService serviceService;
-    ServiceRequirementSuggestionRepository suggestionRepository;
     ServicePriceResolver priceResolver;
 
     @Operation(summary = "Create service", description = "Creates a new monitoring service")
@@ -76,25 +70,6 @@ public class ServiceController {
                 : serviceService.getAll();
         response.forEach(this::withDefaultPrice);
         return ResponseEntity.ok(ApiResponse.ok(response));
-    }
-
-    @Operation(summary = "Get requirement suggestions", description = "Retrieves DB-driven quick requirement suggestions for a service.")
-    @GetMapping("/requirement-suggestions")
-    public ResponseEntity<ApiResponse<List<ServiceRequirementSuggestionResponse>>> getRequirementSuggestions(
-            @RequestParam(required = false) String serviceId) {
-        List<ServiceRequirementSuggestion> rows = new ArrayList<>();
-        if (serviceId != null && !serviceId.isBlank()) {
-            rows.addAll(suggestionRepository.findByActiveTrueAndServiceIdInOrderBySortOrderAscCreatedAtAsc(List.of(serviceId)));
-        }
-        rows.addAll(suggestionRepository.findByActiveTrueAndServiceIsNullOrderBySortOrderAscCreatedAtAsc());
-
-        Map<String, ServiceRequirementSuggestionResponse> unique = new LinkedHashMap<>();
-        for (ServiceRequirementSuggestion row : rows) {
-            String key = row.getCategory().toLowerCase() + "|" + row.getLabel().toLowerCase();
-            unique.putIfAbsent(key, toSuggestionResponse(row));
-        }
-
-        return ResponseEntity.ok(ApiResponse.ok(new ArrayList<>(unique.values())));
     }
 
     @Operation(summary = "Estimate service pricing", description = "Returns backend-owned pricing for the selected service and optional add-ons.")
@@ -152,15 +127,4 @@ public class ServiceController {
         return ResponseEntity.ok(ApiResponse.ok("Service deleted successfully", null));
     }
 
-    private ServiceRequirementSuggestionResponse toSuggestionResponse(ServiceRequirementSuggestion row) {
-        return ServiceRequirementSuggestionResponse.builder()
-                .id(row.getId())
-                .serviceId(row.getService() != null ? row.getService().getId() : null)
-                .category(row.getCategory())
-                .label(row.getLabel())
-                .message(row.getMessage())
-                .sortOrder(row.getSortOrder())
-                .source(row.getSource())
-                .build();
-    }
 }
