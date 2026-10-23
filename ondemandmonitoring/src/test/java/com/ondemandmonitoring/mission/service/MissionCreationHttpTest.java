@@ -37,7 +37,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /** Real command + MVC validation + project security, with repository storage mocked (PG tests prove atomicity). */
-@SpringJUnitConfig(classes={SecurityConfig.class,ActiveAccountFilter.class,OrderMissionController.class,
+@SpringJUnitConfig(classes={SecurityConfig.class,ActiveAccountFilter.class,
         MissionController.class,MissionAuthorizationServiceImpl.class,GlobalExceptionHandler.class,MissionCreationHttpTest.Beans.class})
 @WebAppConfiguration
 class MissionCreationHttpTest {
@@ -61,48 +61,43 @@ class MissionCreationHttpTest {
         order.setPoint(new GeometryFactory(new PrecisionModel(),4326).createPoint(new Coordinate(106,10)));
         when(fixture.orderRepository.findByIdForUpdate("o")).thenReturn(Optional.of(order));
         stored=new HashMap<>();
-        when(fixture.missionRepository.findByOrderIdAndCreationIdempotencyKey(anyString(),anyString()))
-                .thenAnswer(inv->Optional.ofNullable(stored.get(inv.getArgument(0)+":"+inv.getArgument(1))));
         when(fixture.missionRepository.findAllByOrderIdOrderByScheduledStartAtAscIdAsc(anyString()))
                 .thenAnswer(inv->stored.values().stream().filter(m->m.getOrder().getId().equals(inv.getArgument(0))).toList());
-        when(fixture.missionRepository.saveAndFlush(any())).thenAnswer(inv->{Mission m=inv.getArgument(0);m.setId(UUID.randomUUID().toString());stored.put(m.getOrder().getId()+":"+m.getCreationIdempotencyKey(),m);return m;});
+        when(fixture.missionRepository.saveAndFlush(any())).thenAnswer(inv->{Mission m=inv.getArgument(0);m.setId(UUID.randomUUID().toString());stored.put(m.getId(),m);return m;});
     }
-    ResultActions create(String path,String key,long revision,String label,String role) throws Exception {
-        var r=MissionCreationServiceTest.request("o",key,revision);r.setScopeLabel(label);
-        return mvc.perform(post(path).with(jwt().authorities(()->"ROLE_"+role)).contentType("application/json")
+    ResultActions create(String orderId,String key,long revision,String label,String role) throws Exception {
+        var r=MissionCreationServiceTest.request(orderId,key,revision);r.setScopeLabel(label);
+        return mvc.perform(post("/api/missions/{orderId}", orderId).with(jwt().authorities(()->"ROLE_"+role)).contentType("application/json")
                 .content(new ObjectMapper().findAndRegisterModules().writeValueAsString(r)));
     }
-    @Test void canonical201Replay200LegacySameCommandAndConflict409() throws Exception {
-        String key=UUID.randomUUID().toString();
-        var first=create("/api/orders/o/missions",key,0,"Scope","MANAGER").andExpect(status().isCreated()).andReturn();
-        var json=new ObjectMapper().readTree(first.getResponse().getContentAsString());String id=json.path("data").path("id").asText();
-        create("/api/missions",key,999," Scope ","MANAGER").andExpect(status().isOk()).andExpect(jsonPath("$.data.id").value(id));
-        create("/api/orders/o/missions",key,1,"Different","MANAGER").andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
-        assertEquals(1,stored.size());assertEquals(1,order.getExecutionPlanRevision());
+    @Test void repeatedRequestsCreateDistinctMissions() throws Exception {
+        create("o","unused",0,"Scope","MANAGER").andExpect(status().isCreated());
+        create("o","unused",1,"Scope","MANAGER").andExpect(status().isCreated());
+        assertEquals(2,stored.size());assertEquals(2,order.getExecutionPlanRevision());
     }
     @Test void differentKeyAndDifferentOrderAreIndependent() throws Exception {
-        String key=UUID.randomUUID().toString();create("/api/orders/o/missions",key,0,"Scope","ADMIN").andExpect(status().isCreated());
-        create("/api/orders/o/missions",UUID.randomUUID().toString(),1,"Scope","ADMIN").andExpect(status().isCreated());
+        String key=UUID.randomUUID().toString();create("o",key,0,"Scope","ADMIN").andExpect(status().isCreated());
+        create("o",UUID.randomUUID().toString(),1,"Scope","ADMIN").andExpect(status().isCreated());
         var other=Order.builder().orderStatus(OrderStatus.APPROVED).preferredDateFrom(order.getPreferredDateFrom()).preferredDateTo(order.getPreferredDateTo()).point(order.getPoint()).build();other.setId("other");
         when(fixture.orderRepository.findByIdForUpdate("other")).thenReturn(Optional.of(other));
-        create("/api/orders/other/missions",key,0,"Scope","ADMIN").andExpect(status().isCreated());assertEquals(3,stored.size());
+        create("other",key,0,"Scope","ADMIN").andExpect(status().isCreated());assertEquals(3,stored.size());
     }
-    @Test void staleAndFinalizedErrorsAreExplicitAndReplayIndependent() throws Exception {
+    @Test void staleAndFinalizedErrorsAreExplicit() throws Exception {
         String key=UUID.randomUUID().toString();
-        create("/api/orders/o/missions",key,3,"Scope","MANAGER").andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("EXECUTION_PLAN_REVISION_CONFLICT"));
-        create("/api/orders/o/missions",key,0,"Scope","MANAGER").andExpect(status().isCreated());
+        create("o",key,3,"Scope","MANAGER").andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("EXECUTION_PLAN_REVISION_CONFLICT"));
+        create("o",key,0,"Scope","MANAGER").andExpect(status().isCreated());
         order.setExecutionPlanStatus(ExecutionPlanStatus.FINALIZED);order.setOrderStatus(OrderStatus.COMPLETED);
-        create("/api/orders/o/missions",UUID.randomUUID().toString(),1,"Scope","MANAGER").andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("EXECUTION_PLAN_NOT_DRAFT"));
-        create("/api/orders/o/missions",key,0,"Scope","MANAGER").andExpect(status().isOk());
+        create("o",UUID.randomUUID().toString(),1,"Scope","MANAGER").andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("EXECUTION_PLAN_NOT_DRAFT"));
+        create("o",key,0,"Scope","MANAGER").andExpect(status().isConflict());
     }
     @ParameterizedTest @EnumSource(value=OrderStatus.class,names={"COMPLETED","CANCELLED","REJECTED"})
-    void terminalOrderRejected(OrderStatus status) throws Exception {order.setOrderStatus(status);create("/api/orders/o/missions",UUID.randomUUID().toString(),0,"Scope","MANAGER").andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_REQUEST"));}
-    @Test void requiredKeyAndRevisionValidatedAndCustomerDenied() throws Exception {
-        mvc.perform(post("/api/orders/o/missions").with(jwt().authorities(()->"ROLE_MANAGER")).contentType("application/json").content("{}"))
+    void terminalOrderRejected(OrderStatus status) throws Exception {order.setOrderStatus(status);create("o",UUID.randomUUID().toString(),0,"Scope","MANAGER").andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_REQUEST"));}
+    @Test void requiredFieldsAndRevisionValidatedAndCustomerDenied() throws Exception {
+        mvc.perform(post("/api/missions/o").with(jwt().authorities(()->"ROLE_MANAGER")).contentType("application/json").content("{}"))
                 .andExpect(status().isBadRequest());
         caller.setRole(Role.builder().code(RoleCode.CUSTOMER).active(true).build());
-        create("/api/orders/o/missions",UUID.randomUUID().toString(),0,"Scope","CUSTOMER").andExpect(status().isForbidden());verifyNoInteractions(fixture.orderRepository);
-        mvc.perform(post("/api/orders/o/missions").contentType("application/json").content("{}" )).andExpect(status().isUnauthorized());
+        create("o",UUID.randomUUID().toString(),0,"Scope","CUSTOMER").andExpect(status().isForbidden());verifyNoInteractions(fixture.orderRepository);
+        mvc.perform(post("/api/missions/o").contentType("application/json").content("{}" )).andExpect(status().isUnauthorized());
     }
     @Configuration @EnableWebMvc static class Beans {
         @Bean com.ondemandmonitoring.devicecheck.repository.PersistedPreDeviceCheckRepository preflightRepository() {

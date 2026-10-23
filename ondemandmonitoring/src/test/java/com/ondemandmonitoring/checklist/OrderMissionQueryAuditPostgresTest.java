@@ -54,6 +54,7 @@ class OrderMissionQueryAuditPostgresTest {
                 repository(fixture.entityManagerFactory, MissionDeviceAssignmentRepository.class),
                 repository(fixture.entityManagerFactory, MissionStaffAssignmentRepository.class),
                 plans, Mappers.getMapper(MissionStaffAssignmentMapper.class),
+                Mappers.getMapper(MissionDeviceAssignmentMapper.class),
                 repository(fixture.entityManagerFactory, UserRepository.class));
         mapper = Mappers.getMapper(MissionMapper.class);
         ReflectionTestUtils.setField(mapper, "missionMapperHelper", helper);

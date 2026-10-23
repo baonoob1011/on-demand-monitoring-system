@@ -45,7 +45,6 @@ public enum ErrorCode {
      *
      */
     MISSION_NOT_FOUND("Mission not found", HttpStatus.NOT_FOUND),
-    IDEMPOTENCY_KEY_REUSED("Idempotency key was used for a different Mission creation intent", HttpStatus.CONFLICT),
     EXECUTION_PLAN_REVISION_CONFLICT("Execution plan changed; refresh and retry", HttpStatus.CONFLICT),
     EXECUTION_PLAN_NOT_DRAFT("Execution plan must be DRAFT", HttpStatus.CONFLICT),
     EXECUTION_PLAN_NOT_FINALIZED("Execution plan must be FINALIZED", HttpStatus.CONFLICT),
@@ -64,6 +63,7 @@ public enum ErrorCode {
     MISSION_PLANNING_ONLY("Planning Mission cannot enter runtime before finalize/materialization cutover", HttpStatus.CONFLICT),
     CHECKLIST_ASSIGNMENT_CROSS_ORDER("Checklist assignment must belong to the same Mission and Order", HttpStatus.CONFLICT),
     CHECKLIST_ASSIGNMENT_DUPLICATE("Checklist selection contains duplicate items", HttpStatus.CONFLICT),
+    CHECKLIST_ALREADY_ASSIGNED("Checklist item is already assigned to another Mission; remove it there first", HttpStatus.CONFLICT),
     CHECKLIST_COVERAGE_INCOMPLETE("Every Order checklist item must be assigned to an effective Mission", HttpStatus.CONFLICT),
     CHECKLIST_ASSIGNMENT_NOT_FINALIZED("Mission checklist plan is not finalized", HttpStatus.CONFLICT),
     MISSION_STATUS_INVALID("Mission status is invalid for this operation", HttpStatus.CONFLICT),

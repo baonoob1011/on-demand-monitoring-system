@@ -28,8 +28,8 @@ class MissionChecklistAssignmentServiceTest {
     Order order; Mission mission; OrderChecklistItem item;
     @BeforeEach void setup() {
         order=new Order(); order.setId("o"); order.setExecutionPlanRevision(2);
-        mission=new Mission(); mission.setId("m"); mission.setOrder(order); mission.setCreationIdempotencyKey("key");
-        mission.setStatus(com.ondemandmonitoring.mission.enums.MissionStatus.RESOURCE_ASSIGNING);
+        mission=new Mission(); mission.setId("m"); mission.setOrder(order);
+        mission.setStatus(com.ondemandmonitoring.mission.enums.MissionStatus.PLANNING);
         item=new OrderChecklistItem(); item.setId("i"); item.setOrder(order); item.setContent("Snapshot");
         when(missions.findById("m")).thenReturn(Optional.of(mission)); when(missions.findByIdForUpdate("m")).thenReturn(Optional.of(mission));
         when(orders.findByIdForUpdate("o")).thenReturn(Optional.of(order)); when(items.findById("i")).thenReturn(Optional.of(item));
@@ -53,7 +53,7 @@ class MissionChecklistAssignmentServiceTest {
     }
     @Test void finalizedAndLegacyStructuresNeverRewritten() {
         order.setExecutionPlanStatus(ExecutionPlanStatus.FINALIZED); error(ErrorCode.EXECUTION_PLAN_NOT_DRAFT,()->service.replace("m",request("i")));
-        order.setExecutionPlanStatus(ExecutionPlanStatus.DRAFT); mission.setCreationIdempotencyKey(null);
+        order.setExecutionPlanStatus(ExecutionPlanStatus.DRAFT);
         error(ErrorCode.EXECUTION_PLAN_NOT_DRAFT,()->service.replace("m",request("i")));
     }
     @Test void removingSelectionIsAuditedNotDeleted() {

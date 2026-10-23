@@ -88,7 +88,7 @@ class MissionTelemetryReadinessTest {
         assertFalse(service.getTelemetryReadiness("M1").ready()); verifyNoInteractions(telemetry);
     }
     @Test void nonFinalizedMissionIsNotReady() {
-        mission.setCreationIdempotencyKey("new-plan"); assertFalse(service.getTelemetryReadiness("M1").ready());
+        assertFalse(service.getTelemetryReadiness("M1").ready());
     }
     @Test void releasedOrMissingMainDeviceUsesExistingNotFoundConvention() {
         assignment.setReleasedAt(Instant.now()); assertThrows(ApiException.class,() -> service.getTelemetryReadiness("M1"));

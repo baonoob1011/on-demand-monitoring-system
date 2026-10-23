@@ -53,7 +53,6 @@ public interface MissionRepository extends JpaRepository<Mission, String>, JpaSp
             """, nativeQuery = true)
     boolean hasUnsafeCancellationResources(@Param("missionId") String missionId);
 
-    Optional<Mission> findByOrderIdAndCreationIdempotencyKey(String orderId, String creationIdempotencyKey);
 
     boolean existsByMissionCode(String missionCode);
 

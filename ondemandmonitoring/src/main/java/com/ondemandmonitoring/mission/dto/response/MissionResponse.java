@@ -98,6 +98,8 @@ public class MissionResponse {
 
     List<MissionStaffAssignmentResponse> staffAssignments;
 
+    List<MissionDeviceAssignmentResponse> deviceAssignments;
+
     MissionPlanResponse plan;
 
     @Schema(description = "Scheduled start timestamp")

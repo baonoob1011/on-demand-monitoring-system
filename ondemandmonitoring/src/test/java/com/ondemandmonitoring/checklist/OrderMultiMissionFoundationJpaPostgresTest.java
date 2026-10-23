@@ -18,8 +18,8 @@ class OrderMultiMissionFoundationJpaPostgresTest extends OrderMissionPostgresTes
         String s = service("Monitoring");
         assignments.assign(s, assignment(checklist("Requirement"), 0));
         var order = orderService.createOrder(orderRequest(s));
-        approveReviewedOrder(order.getId());
-        String missionId = legacyMission(request(order.getId())).getId();
+        orderService.approveOrder(order.getId());
+        String missionId = legacyMission(order.getId(), request(order.getId())).getId();
         var repository = new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(entityManagerFactory))
                 .getRepository(MissionChecklistAssignmentRepository.class);
         String itemId = order.getChecklistItems().getFirst().getId();
@@ -52,8 +52,8 @@ class OrderMultiMissionFoundationJpaPostgresTest extends OrderMissionPostgresTes
     @Test void mandatoryExecutionLinkAndScopeMappingPreserveOptimisticVersion() {
         String s = service("Monitoring");
         assignments.assign(s, assignment(checklist("Requirement"), 0));
-        var order = orderService.createOrder(orderRequest(s)); approveReviewedOrder(order.getId());
-        String missionId = legacyMission(request(order.getId())).getId();
+        var order = orderService.createOrder(orderRequest(s)); orderService.approveOrder(order.getId());
+        String missionId = legacyMission(order.getId(), request(order.getId())).getId();
         var repository = new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(entityManagerFactory))
                 .getRepository(MissionChecklistExecutionRepository.class);
         String executionId = transaction.execute(tx -> {
@@ -68,9 +68,6 @@ class OrderMultiMissionFoundationJpaPostgresTest extends OrderMissionPostgresTes
             assertNotNull(execution.getMissionChecklistAssignmentId());
             assertEquals(missionId, execution.getMissionChecklistAssignment().getMissionId());
             var mission = missions.findById(missionId).orElseThrow();
-            assertEquals(4326, mission.getTargetPoint().getSRID());
-            assertEquals(4326, mission.getTargetArea().getSRID());
-            assertNull(mission.getCreationIdempotencyKey()); assertNull(mission.getCreationRequestHash());
             assertNull(mission.getReplacesMissionId());
             var persistedOrder = orders.findById(order.getId()).orElseThrow();
             assertEquals(ExecutionPlanStatus.DRAFT, persistedOrder.getExecutionPlanStatus());

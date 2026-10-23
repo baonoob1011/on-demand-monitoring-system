@@ -47,7 +47,7 @@ class ResourceSafetyPostgresTest extends ExecutionPlanAmendmentPostgresTest {
         withMission(first, mission -> mission.setStatus(terminal));
         var before = history(first);
         long beforeRevision = revision();
-        var schedule = new MissionUpdateRequest(); schedule.setExpectedPlanRevision(beforeRevision);
+        var schedule = new MissionUpdateRequest();
         var crew = new AssignStaffRequest(); crew.setStaffId(staff()); crew.setAssignedRole("PILOT");
         var device = new AssignDeviceRequest(); device.setDeviceId(device()); device.setDeviceRole(DeviceRole.MAIN);
 
@@ -77,13 +77,15 @@ class ResourceSafetyPostgresTest extends ExecutionPlanAmendmentPostgresTest {
         sessions = new DeviceConnectionService(missions, repository(entityManagerFactory, DeviceConnectionRepository.class),
                 repository(entityManagerFactory, MissionDeviceAssignmentRepository.class), repository(entityManagerFactory, MissionStaffAssignmentRepository.class),
                 repository(entityManagerFactory, DeviceRepository.class), mapper, scope, reservations);
-        operational = new MissionService(repository(entityManagerFactory, MissionRescheduleHistoryRepository.class), missions,
-                repository(entityManagerFactory, DeviceRepository.class), repository(entityManagerFactory, FlightTokenRepository.class), mapper,
+        operational = new MissionService(missions, repository(entityManagerFactory, DeviceRepository.class),
+                repository(entityManagerFactory, FlightTokenRepository.class), mapper,
                 null,null,repository(entityManagerFactory, DeviceConnectionRepository.class),null,
                 repository(entityManagerFactory, PersistedPostDeviceCheckRepository.class),null,orders,null,null,sessions,null,resultService,
                 null,null,directory,resolver,repository(entityManagerFactory, UserScheduleRepository.class),
                 repository(entityManagerFactory, MissionDeviceAssignmentRepository.class),repository(entityManagerFactory, MissionStaffAssignmentRepository.class),
-                repository(entityManagerFactory, ResourceTimeLockRepository.class),runtime,reservations,
+                repository(entityManagerFactory, ResourceTimeLockRepository.class),runtime,
+                mock(com.ondemandmonitoring.mission.service.IMissionChecklistAssignmentService.class),
+                reservations,
                 repository(entityManagerFactory, com.ondemandmonitoring.device.repository.DeviceTelemetryRepository.class));
     }
     void withMission(String id, Consumer<Mission> action) {
@@ -93,9 +95,9 @@ class ResourceSafetyPostgresTest extends ExecutionPlanAmendmentPostgresTest {
         });
     }
     String independentMission() {
-        String other = foreignOrder(); var request = replacementRequest(null); request.setOrderId(other); request.setExpectedPlanRevision(0L);
-        String id = missionService.createMission(request).getId();
-        plan.finalizePlan(other,new ExecutionPlanFinalizeRequest(1L,true)); return id;
+        String other = foreignOrder(); var request = replacementRequest(null);
+        String id = missionService.createMission(other, request).getId();
+        plan.finalizePlan(other,new ExecutionPlanFinalizeRequest(0L,true)); return id;
     }
     void assertSingleConflict(List<Object> outcomes) { assertEquals(1,outcomes.stream().filter(x -> x == ErrorCode.RESOURCE_TIME_CONFLICT).count()); }
     String device() {
@@ -112,7 +114,7 @@ class ResourceSafetyPostgresTest extends ExecutionPlanAmendmentPostgresTest {
         when(resolver.getCurrentUser()).thenReturn(transaction.execute(tx -> repository(entityManagerFactory,UserRepository.class).findById(id).orElseThrow()));
         when(resolver.getCurrentUserId()).thenReturn(id);
     }
-    void planning(String id) { jdbc.update("update missions set status='RESOURCE_ASSIGNING',completed_at=null where id=?",id); }
+    void planning(String id) { jdbc.update("update missions set status='PLANNING',completed_at=null where id=?",id); }
 
     List<String> availableDevices(String missionId) {
         return transaction.execute(tx -> {

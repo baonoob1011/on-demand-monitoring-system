@@ -166,14 +166,11 @@ class OperatorAcceptAutoPlanningE2ETest {
         java.time.Instant endAt = targetDate.atTime(11, 0).toInstant(java.time.ZoneOffset.UTC);
 
         MissionCreateRequest createRequest = new MissionCreateRequest();
-        createRequest.setOrderId(order.getId());
-        createRequest.setIdempotencyKey(java.util.UUID.randomUUID().toString());
-        createRequest.setExpectedPlanRevision(order.getExecutionPlanRevision());
         createRequest.setScopeLabel("E2E acceptance verification");
         createRequest.setScheduledStartAt(startAt);
         createRequest.setScheduledEndAt(endAt);
         authenticate(manager);
-        MissionResponse created = missionService.createMission(createRequest);
+        MissionResponse created = missionService.createMission(order.getId(), createRequest);
 
         OrderChecklistItem checklistItem = new OrderChecklistItem();
         checklistItem.setOrder(order);

@@ -206,7 +206,7 @@ class OrderAggregateCompletionPostgresTest extends MissionChecklistCutoverPostgr
         ready(1); jdbc.update("delete from mission_checklist_executions where mission_id=?", second);
         jdbc.update("delete from mission_checklist_assignments where mission_id=?", second);
         jdbc.update("delete from missions where id=?", second);
-        jdbc.update("update missions set creation_idempotency_key=null,creation_request_hash=null,finalized_plan_revision=null where id=?", first);
+        jdbc.update("update missions set finalized_plan_revision=null where id=?", first);
         resultService.approve(result(first, MissionResultApprovalStatus.PENDING_MANAGER_APPROVAL), null);
         assertEquals(OrderStatus.COMPLETED, status());
     }
@@ -216,7 +216,7 @@ class OrderAggregateCompletionPostgresTest extends MissionChecklistCutoverPostgr
         assertEquals(OrderStatus.IN_PROGRESS, status());
     }
     void legacyDraftPlan() {
-        jdbc.update("update missions set creation_idempotency_key=null,creation_request_hash=null,finalized_plan_revision=null where order_id=?", orderId);
+        jdbc.update("update missions set finalized_plan_revision=null where order_id=?", orderId);
         jdbc.update("update orders set execution_plan_status='DRAFT',execution_plan_finalized_at=null,execution_plan_finalized_by=null where id=?", orderId);
     }
     @Test void draftLegacyAggregateCannotCompleteDespiteApprovedResultsAndRealFinalReadiness() {

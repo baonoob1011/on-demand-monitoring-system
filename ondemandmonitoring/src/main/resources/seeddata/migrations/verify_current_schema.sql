@@ -73,7 +73,6 @@ DO $$ DECLARE e record; actual text; keys text[]; predicate text; meta record; B
         ('ix_assignment_mission_order','mission_checklist_assignments','mission_id,display_order,id',false,''),
         ('ix_assignment_coverage','mission_checklist_assignments','order_id,order_checklist_item_id',false,''),
         ('ix_mission_order_schedule','missions','order_id,scheduled_start_at,id',false,''),
-        ('uk_mission_creation_command','missions','order_id,creation_idempotency_key',true,'creation_idempotency_keyisnotnull'),
         ('ix_execution_mission','mission_checklist_executions','mission_id',false,''),
         ('uk_evidence_active_pair','mission_checklist_evidence','mission_checklist_execution_id,media_asset_id',true,'detached_atisnull'),
         ('ix_evidence_mission_execution','mission_checklist_evidence','mission_id,mission_checklist_execution_id',false,''),

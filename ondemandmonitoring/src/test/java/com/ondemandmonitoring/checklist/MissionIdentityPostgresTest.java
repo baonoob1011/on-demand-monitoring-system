@@ -11,7 +11,7 @@ class MissionIdentityPostgresTest extends OrderMissionPostgresTest {
     @Test void aggregateQuerySupportsZeroOneAndMultipleChildrenWithStableOrdering() {
         String orderId = order(OrderStatus.APPROVED);
         assertTrue(missions.findAllByOrderIdOrderByScheduledStartAtAscIdAsc(orderId).isEmpty());
-        var first = missionService.createMission(request(orderId));
+        var first = missionService.createMission(orderId, request(orderId));
         assertEquals(java.util.List.of(first.getId()), missions.findAllByOrderIdOrderByScheduledStartAtAscIdAsc(orderId)
                 .stream().map(m -> m.getId()).toList());
         transaction.executeWithoutResult(tx -> {
@@ -21,8 +21,8 @@ class MissionIdentityPostgresTest extends OrderMissionPostgresTest {
                     java.sql.Timestamp.from(Instant.parse("2026-10-08T10:00:00Z")), first.getId());
             for (String id : java.util.List.of("sibling-b", "sibling-a")) {
                 jdbc.update("""
-                        INSERT INTO missions(id,mission_code,order_id,status,scheduled_start_at,scheduled_end_at,created_at,version,flight_permit_status)
-                        VALUES (?, ?, ?, 'RESOURCE_ASSIGNING', '2026-10-08T09:00:00Z', '2026-10-08T11:00:00Z', now(), 0, 'NOT_REQUESTED')
+                        INSERT INTO missions(id,mission_code,order_id,status,scheduled_start_at,scheduled_end_at,created_at,version)
+                        VALUES (?, ?, ?, 'PLANNING', '2026-10-08T09:00:00Z', '2026-10-08T11:00:00Z', now(), 0)
                         """, id, id, orderId);
             }
             assertEquals(java.util.List.of("sibling-a", "sibling-b", first.getId()),

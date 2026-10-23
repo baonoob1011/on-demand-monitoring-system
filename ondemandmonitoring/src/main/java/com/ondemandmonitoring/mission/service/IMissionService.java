@@ -8,7 +8,6 @@ import com.ondemandmonitoring.mission.dto.request.FlightPermitUpdateRequest;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
-import com.ondemandmonitoring.mission.dto.response.MissionCreationResult;
 import com.ondemandmonitoring.mission.dto.response.MissionTelemetryReadinessResponse;
 import com.ondemandmonitoring.common.api.PageResponse;
 import com.ondemandmonitoring.device.enums.DeviceStatus;
@@ -27,9 +26,11 @@ import java.util.List;
  */
 public interface IMissionService {
 
-    MissionResponse createMission(MissionCreateRequest request);
+    MissionResponse createMission(String orderId, MissionCreateRequest request);
 
-    MissionCreationResult createMissionWithOutcome(MissionCreateRequest request);
+
+    MissionResponse replaceMission(String missionId, MissionCreateRequest request);
+    MissionResponse finalizeReplacementMission(String missionId);
 
     MissionResponse updateMission(String missionId, MissionUpdateRequest request);
 
@@ -37,7 +38,11 @@ public interface IMissionService {
 
     MissionResponse assignDevice(String missionId, AssignDeviceRequest request);
 
+    MissionResponse removeDevice(String missionId, com.ondemandmonitoring.mission.dto.request.RemoveDeviceRequest request);
+
     MissionResponse assignStaff(String missionId, AssignStaffRequest request);
+
+    MissionResponse removeStaff(String missionId, com.ondemandmonitoring.mission.dto.request.RemoveStaffRequest request);
 
     List<MissionResponse> getAllMissions();
     /**
@@ -115,7 +120,7 @@ public interface IMissionService {
 
     /**
      * Rejects a mission assignment by the Staff (resets mission to
-     * RESOURCE_ASSIGNING for re-assignment).
+     * PLANNING for re-assignment).
      *
      * @param missionId  Mission ID
      * @param staffId Staff ID
@@ -169,14 +174,6 @@ public interface IMissionService {
 
     MissionTelemetryReadinessResponse getTelemetryReadiness(String missionId);
 
-//    /**
-//     * Replaces faulty device with a new device for the mission.
-//     *
-//     * @param missionId    Mission ID
-//     * @param newDeviceCode Replacement device code
-//     * @return {@link MissionResponse} Updated mission DTO
-//     */
-//    MissionResponse replacedevice(String missionId, String newDeviceCode);
 
     /**
      * Hands over mission control to a new Staff (Control Handover).

@@ -1,4 +1,4 @@
-package com.ondemandmonitoring.media.domain;
+package com.ondemandmonitoring.media.enums;
 
 public enum MediaStorageStatus {
     AVAILABLE,

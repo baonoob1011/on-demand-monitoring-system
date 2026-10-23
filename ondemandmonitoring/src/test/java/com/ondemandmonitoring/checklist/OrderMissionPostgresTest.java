@@ -61,9 +61,6 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
 
     MissionCreateRequest request(String orderId) {
         var request = new MissionCreateRequest();
-        request.setOrderId(orderId);
-        request.setIdempotencyKey(UUID.nameUUIDFromBytes(orderId.getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString());
-        request.setExpectedPlanRevision(0L);
         request.setScopeLabel("Whole Order scope");
         var start = java.time.LocalDate.now().plusDays(7).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
         request.setScheduledStartAt(start);
@@ -72,14 +69,12 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
     }
 
     /** Explicit historical fixture, not the new planning creation command. */
-    MissionResponse legacyMission(MissionCreateRequest request) {
+    MissionResponse legacyMission(String orderId, MissionCreateRequest request) {
         return transaction.execute(tx -> {
             var mission = new com.ondemandmonitoring.mission.domain.Mission();
-            mission.setOrder(orders.findById(request.getOrderId()).orElseThrow());
+            mission.setOrder(orders.findById(orderId).orElseThrow());
             mission.setMissionCode("legacy-" + UUID.randomUUID());
-            mission.setStatus(com.ondemandmonitoring.mission.enums.MissionStatus.RESOURCE_ASSIGNING);
-            mission.setTargetPoint(mission.getOrder().getPoint());
-            mission.setTargetArea(mission.getOrder().getTargetArea());
+            mission.setStatus(com.ondemandmonitoring.mission.enums.MissionStatus.PLANNING);
             mission.setScheduledStartAt(request.getScheduledStartAt());
             mission.setScheduledEndAt(request.getScheduledEndAt());
             mission = missions.saveAndFlush(mission);
@@ -106,54 +101,39 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
                 "SELECT count(*) FROM missions WHERE order_id = ?", Long.class, orderId);
     }
 
-    @Test void firstAndSequentialCreationReturnSameMission() {
+    @Test void sequentialCreationCreatesSiblingMissions() {
         String id = order(OrderStatus.APPROVED);
-        var first = missionService.createMission(request(id));
+        var first = missionService.createMission(id, request(id));
         var created = missions.findById(first.getId()).orElseThrow();
         assertNotNull(created.getOrder());
         assertEquals(id, created.getOrder().getId());
-        assertEquals(first.getId(), missionService.createMission(request(id)).getId());
-        assertEquals(1, count(id));
-        // Retry still returns the existing execution after Order lifecycle advances.
-        transaction.executeWithoutResult(tx -> orders.findById(id).orElseThrow().setOrderStatus(OrderStatus.IN_PROGRESS));
-        assertEquals(first.getId(), missionService.createMission(request(id)).getId());
+        assertNotEquals(first.getId(), missionService.createMission(id, request(id)).getId());
+        assertEquals(2, count(id));
     }
 
-    @Test void bothCreationControllersUseSamePersistedMission() {
+    @Test void creationControllerCreatesDistinctMissions() {
         String id = order(OrderStatus.APPROVED);
         var general = new MissionController(missionService, null, null);
-        var nested = new OrderMissionController(missionService, null);
-        var first = general.createMission(request(id)).getBody().getData();
-        var retry = request(id); retry.setOrderId("ignored-body-id");
-        var second = nested.createMissionForOrder(id, retry).getBody().getData();
-        assertEquals(first.getId(), second.getId());
-        assertEquals(1, count(id));
+        var first = general.createMission(id, request(id)).getBody().getData();
+        var next = request(id);
+        var second = general.createMission(id, next).getBody().getData();
+        assertNotEquals(first.getId(), second.getId());
+        assertEquals(2, count(id));
     }
 
     @Test void pendingOrderCannotCreateMission() {
         String id = order(OrderStatus.PENDING);
         assertEquals(ErrorCode.INVALID_REQUEST,
-                assertThrows(ApiException.class, () -> missionService.createMission(request(id))).getErrorCode());
+                assertThrows(ApiException.class, () -> missionService.createMission(id, request(id))).getErrorCode());
         assertEquals(0, count(id));
     }
 
-    @Test void databaseRejectsDuplicateCreationKeyButAllowsSiblingMissions() {
+    @Test void databaseAllowsSiblingMissions() {
         String id = order(OrderStatus.APPROVED);
-        missionService.createMission(request(id));
-        var jdbc = new JdbcTemplate(dataSource);
-        var exception = assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
-                INSERT INTO missions(id,mission_code,order_id,status,scheduled_start_at,scheduled_end_at,
-                    created_at,version,creation_idempotency_key,creation_request_hash,flight_permit_status)
-                SELECT ?,?,order_id,status,scheduled_start_at,scheduled_end_at,now(),0,
-                    creation_idempotency_key,creation_request_hash,flight_permit_status FROM missions WHERE order_id=?
-                """, UUID.randomUUID().toString(), "duplicate-code", id));
-        assertEquals("23505", ((java.sql.SQLException) exception.getMostSpecificCause()).getSQLState());
-        assertTrue(exception.getMostSpecificCause().getMessage().contains("uk_mission_creation_command"));
+        missionService.createMission(id, request(id));
         var sibling = request(id);
-        sibling.setIdempotencyKey(UUID.randomUUID().toString());
-        sibling.setExpectedPlanRevision(1L);
         assertNotEquals(missions.findAllByOrderIdOrderByScheduledStartAtAscIdAsc(id).getFirst().getId(),
-                missionService.createMission(sibling).getId());
+                missionService.createMission(id, sibling).getId());
         assertEquals(2, count(id));
     }
 
@@ -175,7 +155,7 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
                 attribute.getPersistentAttributeType());
         assertFalse(attribute.isOptional());
         String id = order(OrderStatus.APPROVED);
-        String missionId = missionService.createMission(request(id)).getId();
+        String missionId = missionService.createMission(id, request(id)).getId();
         transaction.executeWithoutResult(tx -> {
             var mission = missions.findById(missionId).orElseThrow();
             assertFalse(org.hibernate.Hibernate.isInitialized(mission.getOrder()));
@@ -188,19 +168,19 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
         var jdbc = new JdbcTemplate(dataSource);
         // JDBC bypasses both Hibernate nullability checks and Bean Validation.
         var exception = assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
-                INSERT INTO missions(id, mission_code, order_id, status, scheduled_start_at, scheduled_end_at, created_at, version, flight_permit_status)
-                VALUES (?, 'missing-order', NULL, 'RESOURCE_ASSIGNING', now(), now() + interval '1 hour', now(), 0, 'NOT_REQUESTED')
+                INSERT INTO missions(id, mission_code, order_id, status, scheduled_start_at, scheduled_end_at, created_at, version)
+                VALUES (?, 'missing-order', NULL, 'PLANNING', now(), now() + interval '1 hour', now(), 0)
                 """, UUID.randomUUID().toString()));
         assertEquals("23502", ((java.sql.SQLException) exception.getMostSpecificCause()).getSQLState());
         assertTrue(exception.getMostSpecificCause().getMessage().contains("order_id"));
         var missingOrder = assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
-                INSERT INTO missions(id, mission_code, order_id, status, scheduled_start_at, scheduled_end_at, created_at, version, flight_permit_status)
-                VALUES (?, 'invalid-order', 'nonexistent-order', 'RESOURCE_ASSIGNING', now(), now() + interval '1 hour', now(), 0, 'NOT_REQUESTED')
+                INSERT INTO missions(id, mission_code, order_id, status, scheduled_start_at, scheduled_end_at, created_at, version)
+                VALUES (?, 'invalid-order', 'nonexistent-order', 'PLANNING', now(), now() + interval '1 hour', now(), 0)
                 """, UUID.randomUUID().toString()));
         assertEquals("23503", ((java.sql.SQLException) missingOrder.getMostSpecificCause()).getSQLState());
         assertTrue(missingOrder.getMostSpecificCause().getMessage().contains("order_id"));
         String id = order(OrderStatus.APPROVED);
-        missionService.createMission(request(id));
+        missionService.createMission(id, request(id));
         var fkViolation = assertThrows(DataIntegrityViolationException.class,
                 () -> jdbc.update("DELETE FROM orders WHERE id = ?", id));
         assertEquals("23503", ((java.sql.SQLException) fkViolation.getMostSpecificCause()).getSQLState());
@@ -219,8 +199,8 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
                 catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IllegalStateException(e); }
             }));
             assertTrue(locked.await(5, TimeUnit.SECONDS));
-            Future<MissionResponse> first = pool.submit(() -> missionService.createMission(request(id)));
-            Future<MissionResponse> second = pool.submit(() -> missionService.createMission(request(id)));
+            Future<MissionResponse> first = pool.submit(() -> missionService.createMission(id, request(id)));
+            Future<MissionResponse> second = pool.submit(() -> missionService.createMission(id, request(id)));
             // Observe two actual PostgreSQL sessions waiting on a database lock, not a sequential fake race.
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
             int waiting = 0;
@@ -236,8 +216,8 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
             }
             assertEquals(2, waiting);
             release.countDown(); holder.get(10, TimeUnit.SECONDS);
-            assertEquals(first.get(10, TimeUnit.SECONDS).getId(), second.get(10, TimeUnit.SECONDS).getId());
-            assertEquals(1, count(id));
+            assertNotEquals(first.get(10, TimeUnit.SECONDS).getId(), second.get(10, TimeUnit.SECONDS).getId());
+            assertEquals(2, count(id));
         } finally { release.countDown(); }
     }
 
@@ -263,9 +243,10 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
             when(invoiceRepository.findByOrderId(anyString())).thenReturn(java.util.Optional.of(invoice));
             var eligibility = mock(com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService.class);
             when(eligibility.isDepositSatisfied(invoice)).thenReturn(true);
-            // Unused lifecycle collaborators are not loaded: only the real transactional creation path is exercised.
-            return new MissionService(null, missions, null, null, mapper, null, null, null, null,
-                    null, null, orders, invoiceRepository, eligibility, null, null, null, null, null, null, null, null, null, null, null, executions,
+            return new MissionService(missions, null, null, mapper, null,
+                    null, null, null, null, null,
+                    orders, invoiceRepository, eligibility, null, null, null, null, null, null, null, null, null, null, null, executions,
+                    org.mockito.Mockito.mock(com.ondemandmonitoring.mission.service.IMissionChecklistAssignmentService.class),
                     org.mockito.Mockito.mock(com.ondemandmonitoring.mission.service.IResourceReservationService.class), null);
         }
         @Bean com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository executions(EntityManagerFactory factory) {

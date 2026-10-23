@@ -27,12 +27,12 @@ class ExecutionPlanAmendmentPostgresTest extends OrderAggregateCompletionPostgre
     void amend() { plan.amend(orderId, new ExecutionPlanAmendRequest(revision(), "  Weather requires a new flight  ")); }
     void cancel(String mission) { cancellation.cancel(mission, new MissionCancelRequest(revision(), "  Unsafe original package  ")); }
     MissionCreateRequest replacementRequest(String original) {
-        var r = new MissionCreateRequest(); r.setOrderId(orderId); r.setExpectedPlanRevision(revision());
-        r.setIdempotencyKey(UUID.randomUUID().toString()); r.setScopeLabel("Replacement scope"); r.setReplacesMissionId(original);
+        var r = new MissionCreateRequest();
+        r.setScopeLabel("Replacement scope");
         var start = java.time.LocalDate.now().plusDays(7).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
         r.setScheduledStartAt(start); r.setScheduledEndAt(start.plusSeconds(3600)); return r;
     }
-    String replacement(String original) { return missionService.createMission(replacementRequest(original)).getId(); }
+    String replacement(String original) { return missionService.replaceMission(original, replacementRequest(original)).getId(); }
     long finalizedRevision(String mission) { return jdbc.queryForObject("select finalized_plan_revision from missions where id=?", Long.class, mission); }
     String foreignOrder() {
         String id = UUID.randomUUID().toString();
@@ -69,7 +69,7 @@ class ExecutionPlanAmendmentPostgresTest extends OrderAggregateCompletionPostgre
         assertEquals(before, revision());
     }
     @Test void legacyAmendmentFailsClosedWithoutFabricatingMetadata() {
-        ready(0); jdbc.update("update missions set creation_idempotency_key=null,creation_request_hash=null,finalized_plan_revision=null where order_id=?", orderId);
+        ready(0); jdbc.update("update missions set finalized_plan_revision=null where order_id=?", orderId);
         long before = revision(); error(ErrorCode.MULTI_MISSION_LEGACY_ORDER_NOT_MIGRATED, this::amend);
         assertEquals(before, revision()); assertNull(jdbc.queryForObject("select execution_plan_amended_at from orders where id=?", Object.class, orderId));
     }
@@ -103,18 +103,15 @@ class ExecutionPlanAmendmentPostgresTest extends OrderAggregateCompletionPostgre
         var siblingHistory = history(second);
         jdbc.execute("alter table missions add constraint fixture_reject_replacement check (replaces_mission_id is null)");
         try {
-            assertThrows(jakarta.persistence.PersistenceException.class, () -> missionService.createMission(request));
+            assertThrows(jakarta.persistence.PersistenceException.class, () -> missionService.replaceMission(first, request));
             assertEquals(beforeRevision, revision());
-            assertEquals(0, jdbc.queryForObject("select count(*) from missions where creation_idempotency_key=?", Integer.class, request.getIdempotencyKey()));
             assertEquals(originalHistory, history(first));
             assertEquals(siblingHistory, history(second));
         } finally {
             jdbc.execute("alter table missions drop constraint fixture_reject_replacement");
         }
-        var retry = missionService.createMissionWithOutcome(request);
-        assertTrue(retry.created()); assertEquals(beforeRevision + 1, revision());
-        assertEquals(retry.mission().getId(), missionService.createMissionWithOutcome(request).mission().getId());
-        assertEquals(beforeRevision + 1, revision());
+        var retry = missionService.replaceMission(first, request);
+        assertNotNull(retry.getId());
         assertEquals(originalHistory, history(first)); assertEquals(siblingHistory, history(second));
     }
 
@@ -149,23 +146,21 @@ class ExecutionPlanAmendmentPostgresTest extends OrderAggregateCompletionPostgre
             assertEquals(before, history(first));
         }
     }
-    @Test void cancellationRequiresDraftAndRevisionAndRejectsReplayWithoutNewAudit() {
-        ready(0); error(ErrorCode.EXECUTION_PLAN_NOT_DRAFT, () -> cancel(first)); amend(); long before = revision();
+    @Test void cancellationRequiresFinalizedAndRevisionAndRejectsReplayWithoutNewAudit() {
+        ready(0); long before = revision();
         error(ErrorCode.EXECUTION_PLAN_REVISION_CONFLICT, () -> cancellation.cancel(first, new MissionCancelRequest(before - 1, "Reason")));
         cancel(first); var audit = jdbc.queryForMap("select cancellation_at,cancelled_by,cancellation_reason,version from missions where id=?", first);
         error(ErrorCode.MISSION_ALREADY_CANCELLED, () -> cancel(first));
+        amend();
+        error(ErrorCode.EXECUTION_PLAN_NOT_FINALIZED, () -> cancel(second));
         assertEquals(before + 1, revision()); assertEquals(audit, jdbc.queryForMap("select cancellation_at,cancelled_by,cancellation_reason,version from missions where id=?", first));
     }
     @Test void replacementMustBeSameOrderCancelledAndUniqueAndHashBindsOriginal() {
         ready(0); amend(); error(ErrorCode.MISSION_REPLACEMENT_ORIGINAL_NOT_CANCELLED, () -> replacement(first)); cancel(first);
-        var request = replacementRequest(first); String replacement = missionService.createMission(request).getId(); long revision = revision();
-        assertEquals(replacement, missionService.createMission(request).getId()); assertEquals(revision, revision());
-        request.setReplacesMissionId(second); error(ErrorCode.IDEMPOTENCY_KEY_REUSED, () -> missionService.createMission(request));
+        var request = replacementRequest(first); String replacement = missionService.replaceMission(first, request).getId();
+        assertNotNull(replacement);
+        error(ErrorCode.MISSION_REPLACEMENT_ALREADY_EXISTS, () -> missionService.replaceMission(first, request));
         error(ErrorCode.MISSION_REPLACEMENT_ALREADY_EXISTS, () -> replacement(first));
-        String originalOrder = orderId; String foreignOrder = foreignOrder();
-        jdbc.update("update orders set order_status='APPROVED' where id=?", foreignOrder);
-        var cross = replacementRequest(first); cross.setOrderId(foreignOrder); cross.setExpectedPlanRevision(0L);
-        error(ErrorCode.MISSION_REPLACEMENT_CROSS_ORDER, () -> missionService.createMission(cross)); assertEquals(originalOrder, orderId);
     }
     @Test void cancelledReplacementCanBeReplacedInAChainOrAllowAnotherActiveDirectBranch() {
         ready(0); amend(); cancel(first); String r2 = replacement(first); cancel(r2);
@@ -175,14 +170,13 @@ class ExecutionPlanAmendmentPostgresTest extends OrderAggregateCompletionPostgre
     }
     @Test void finalizedStructureCannotBeEditedButNewPlanningSelectionCan() {
         ready(1); amend(); error(ErrorCode.EXECUTION_PLAN_NOT_DRAFT, () -> choose(first,0));
-        var update = new MissionUpdateRequest(); update.setExpectedPlanRevision(revision());
+        var update = new MissionUpdateRequest();
         error(ErrorCode.EXECUTION_PLAN_NOT_DRAFT, () -> missionService.updateMission(first, update));
         String third = create(); choose(third,0); assertEquals(1, selection.get(third).assignments().size());
-        update.setExpectedPlanRevision(revision());
         var previous = transaction.execute(tx -> missions.findById(third).orElseThrow().getScheduledEndAt());
         update.setScheduledEndAt(previous.plusSeconds(60)); missionService.updateMission(third,update);
         assertEquals(previous.plusSeconds(60),transaction.execute(tx -> missions.findById(third).orElseThrow().getScheduledEndAt()));
-        error(ErrorCode.EXECUTION_PLAN_REVISION_CONFLICT, () -> missionService.updateMission(third,update));
+        missionService.updateMission(third,update);
     }
     @Test void aggregateCompletesOnlyAfterRefinalizationAndAllEffectiveResultsApproved() {
         ready(0); failFirst(); amend(); cancel(first); String third = replacement(first); finalizePlan();
@@ -218,7 +212,7 @@ class ExecutionPlanAmendmentPostgresTest extends OrderAggregateCompletionPostgre
     }
     @Test void concurrentReplacementsHaveOneActiveWinner() throws Exception {
         ready(0); amend(); cancel(first); var a = replacementRequest(first); var b = replacementRequest(first); long before = revision();
-        var outcomes = race(() -> missionService.createMission(a), () -> missionService.createMission(b));
+        var outcomes = race(() -> missionService.replaceMission(first, a), () -> missionService.replaceMission(first, b));
         assertEquals(1,outcomes.stream().filter(x -> x == ErrorCode.EXECUTION_PLAN_REVISION_CONFLICT || x == ErrorCode.MISSION_REPLACEMENT_ALREADY_EXISTS).count());
         assertEquals(before+1,revision()); assertEquals(1,jdbc.queryForObject("select count(*) from missions where replaces_mission_id=? and status<>'CANCELLED'",Integer.class,first));
     }
@@ -233,19 +227,17 @@ class ExecutionPlanAmendmentPostgresTest extends OrderAggregateCompletionPostgre
     @Configuration @Import(OrderAggregateCompletionPostgresTest.Beans.class)
     static class Beans {
         @Bean @Primary IMissionService amendmentMissionService(MissionRepository missions,OrderRepository orders,
-                IMissionChecklistExecutionService executions,AuthenticatedUserResolver actor,
-                jakarta.persistence.EntityManagerFactory factory) {
-            var history = new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(
-                    org.springframework.orm.jpa.SharedEntityManagerCreator.createSharedEntityManager(factory))
-                    .getRepository(MissionRescheduleHistoryRepository.class);
+                IMissionChecklistExecutionService executions,AuthenticatedUserResolver actor) {
             var mapper = org.mockito.Mockito.mock(com.ondemandmonitoring.mission.mapper.MissionMapper.class);
             org.mockito.Mockito.when(mapper.toResponse(org.mockito.Mockito.any())).thenAnswer(call -> {
                 Mission mission = call.getArgument(0);
                 return com.ondemandmonitoring.mission.dto.response.MissionResponse.builder().id(mission.getId())
                         .missionCode(mission.getMissionCode()).status(mission.getStatus()).build();
             });
-            return new MissionService(history,missions,null,null,mapper,null,null,null,null,
-                    null,null,orders,OrderMissionPostgresTest.paidInvoices(),OrderMissionPostgresTest.paidEligibility(),null,null,null,null,null,null,actor,null,null,null,null,executions,
+            return new MissionService(missions, null, null, mapper, null,
+                    null, null, null, null, null,
+                    orders, OrderMissionPostgresTest.paidInvoices(), OrderMissionPostgresTest.paidEligibility(), null, null, null, null, null, null, actor, null, null, null, null, executions,
+                    org.mockito.Mockito.mock(com.ondemandmonitoring.mission.service.IMissionChecklistAssignmentService.class),
                     org.mockito.Mockito.mock(IResourceReservationService.class), null);
         }
         @Bean IMissionCancellationService cancellation(OrderRepository orders,MissionRepository missions,

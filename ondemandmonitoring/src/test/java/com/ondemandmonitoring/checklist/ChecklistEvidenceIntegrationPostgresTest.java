@@ -53,7 +53,7 @@ class ChecklistEvidenceIntegrationPostgresTest extends OrderMissionPostgresTest 
         var user = resolver.getCurrentUser();
         when(resolver.getCurrentUserId()).thenReturn(user.getId());
         transaction.executeWithoutResult(tx->orders.findById(order).orElseThrow().setOrderStatus(OrderStatus.APPROVED));
-        String mission=legacyMission(request(order)).getId(); setStatus(mission,MissionStatus.PENDING_REVIEW);return mission;
+        String mission=legacyMission(order, request(order)).getId(); setStatus(mission,MissionStatus.PENDING_REVIEW);return mission;
     }
     void setStatus(String mission,MissionStatus status) { transaction.executeWithoutResult(tx->{Mission entity=missions.findByIdForUpdate(mission).orElseThrow();entity.setStatus(status);if(status==MissionStatus.COMPLETED)entity.setCompletedAt(java.time.Instant.now());}); }
     String asset(String mission,MediaStatus status) { return asset(mission,status,"IMAGE"); }
@@ -99,8 +99,8 @@ class ChecklistEvidenceIntegrationPostgresTest extends OrderMissionPostgresTest 
         assertEquals(2, item.getMinimumEvidenceCount());
         assertEquals(com.ondemandmonitoring.order.enums.RequiredEvidenceType.IMAGE, item.getRequiredEvidenceType());
         transaction.executeWithoutResult(tx -> orders.findById(order).orElseThrow().setOrderStatus(OrderStatus.APPROVED));
-        String first = legacyMission(request(order)).getId();
-        String second = legacyMission(request(order)).getId();
+        String first = legacyMission(order, request(order)).getId();
+        String second = legacyMission(order, request(order)).getId();
         setStatus(first, MissionStatus.PENDING_REVIEW); setStatus(second, MissionStatus.PENDING_REVIEW);
         assertEquals(2, row(first).getMinimumEvidenceCount());
         assertEquals(2, row(second).getMinimumEvidenceCount());

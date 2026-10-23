@@ -51,7 +51,7 @@ class MissionSafeStopReadModelTest {
         order = new Order(); order.setId("order"); order.setOrderStatus(OrderStatus.APPROVED);
         order.setExecutionPlanStatus(ExecutionPlanStatus.DRAFT); order.setExecutionPlanRevision(3);
         mission = new Mission(); mission.setId("m1"); mission.setOrder(order);
-        mission.setStatus(MissionStatus.RESOURCE_ASSIGNING); mission.setCreationIdempotencyKey(UUID.randomUUID().toString());
+        mission.setStatus(MissionStatus.PLANNING);
         when(missions.findById("m1")).thenReturn(Optional.of(mission));
     }
     @AfterEach void clear() { SecurityContextHolder.clearContext(); }
@@ -133,7 +133,7 @@ class MissionSafeStopReadModelTest {
     @Test void cancelledAndInconsistentPrerequisitesFailClosed() {
         authenticate(RoleCode.MANAGER,"manager"); requested(false); mission.setSafeStopCleanedAt(Instant.now());
         mission.setStatus(MissionStatus.CANCELLED); assertNone(service.get("m1"));
-        mission.setStatus(MissionStatus.RESOURCE_ASSIGNING); mission.setSafeStopStatus(null); assertNone(service.get("m1"));
+        mission.setStatus(MissionStatus.PLANNING); mission.setSafeStopStatus(null); assertNone(service.get("m1"));
         mission.setOrder(null); assertNone(service.get("m1"));
     }
     @Test void safeStopFailureRetainsBlockedCleanupAndCancellation() {

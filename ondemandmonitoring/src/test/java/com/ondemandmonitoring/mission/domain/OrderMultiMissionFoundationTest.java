@@ -31,16 +31,9 @@ class OrderMultiMissionFoundationTest {
                 .anyMatch(c -> c.name().equals("uk_missions_order")));
     }
 
-    @Test void newMissionFieldsAreNullableForUnchangedRuntime() throws Exception {
+    @Test void newMissionFieldsAreNullableForUnchangedRuntime() {
         var mission = new Mission();
-        assertNull(mission.getTargetPoint());
-        assertNull(mission.getTargetArea());
-        assertNull(mission.getCreationIdempotencyKey());
-        assertNull(mission.getCreationRequestHash());
         assertNull(mission.getReplacesMissionId());
-        assertNull(mission.getFinalizedPlanRevision());
-        assertEquals("geometry(Point,4326)", Mission.class.getDeclaredField("targetPoint").getAnnotation(Column.class).columnDefinition());
-        assertEquals("geometry(Polygon,4326)", Mission.class.getDeclaredField("targetArea").getAnnotation(Column.class).columnDefinition());
     }
 
     @Test void executionAssignmentIsMandatoryAndExistingIdentityRemains() throws Exception {

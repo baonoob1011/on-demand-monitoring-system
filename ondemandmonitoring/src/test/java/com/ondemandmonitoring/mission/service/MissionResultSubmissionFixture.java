@@ -103,8 +103,7 @@ public final class MissionResultSubmissionFixture {
 
     private Mission mission(String id, Order order) {
         var value = new Mission(); value.setId(id); value.setMissionCode(id); value.setOrder(order);
-        value.setStatus(MissionStatus.COMPLETED); value.setCreationIdempotencyKey("intent-" + id);
-        value.setFinalizedPlanRevision(2L);
+        value.setStatus(MissionStatus.COMPLETED);
         when(missions.findById(id)).thenReturn(Optional.of(value));
         when(missions.findByIdForUpdate(id)).thenReturn(Optional.of(value));
         return value;

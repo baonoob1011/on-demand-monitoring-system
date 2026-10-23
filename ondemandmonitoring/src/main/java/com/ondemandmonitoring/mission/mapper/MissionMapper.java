@@ -40,6 +40,7 @@ public interface MissionMapper {
     @Mapping(target = "staffId", ignore = true)
     @Mapping(target = "operatorId", ignore = true)
     @Mapping(source = ".", target = "staffAssignments", qualifiedByName = "missionStaffAssignments")
+    @Mapping(source = ".", target = "deviceAssignments", qualifiedByName = "missionDeviceAssignments")
     @Mapping(source = ".", target = "plan", qualifiedByName = "missionPlan")
     MissionResponse toResponse(Mission mission);
 

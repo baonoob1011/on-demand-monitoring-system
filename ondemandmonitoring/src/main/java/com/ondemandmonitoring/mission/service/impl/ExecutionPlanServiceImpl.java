@@ -59,8 +59,6 @@ public class ExecutionPlanServiceImpl implements IExecutionPlanService {
         var effective = locked.stream().filter(ExecutionPlanCoverageService::effective).toList();
         if (effective.isEmpty()) throw new ApiException(ErrorCode.CHECKLIST_EXECUTION_INTEGRITY_INVALID);
         for (var mission : effective) {
-            if (mission.getCreationIdempotencyKey() == null || mission.getFinalizedPlanRevision() == null)
-                throw new ApiException(ErrorCode.MULTI_MISSION_LEGACY_ORDER_NOT_MIGRATED);
             scope.requireMaterialized(mission);
         }
         order.setExecutionPlanStatus(ExecutionPlanStatus.DRAFT);
@@ -110,15 +108,17 @@ public class ExecutionPlanServiceImpl implements IExecutionPlanService {
         var plan = response(order, children);
         if (!plan.coverage().coverageReady()) throw new ApiException(ErrorCode.CHECKLIST_COVERAGE_INCOMPLETE);
         // All validation precedes materialization. Any failure still rolls back the entire transaction.
-        var fresh = effective.stream().filter(m -> m.getFinalizedPlanRevision() == null).toList();
+        var fresh = effective.stream().filter(m -> !scope.isMaterialized(m)).toList();
         fresh.forEach(materialization::materialize);
+        effective.stream()
+                .filter(mission -> mission.getStatus() == com.ondemandmonitoring.mission.enums.MissionStatus.PLANNING)
+                .forEach(mission -> mission.setStatus(com.ondemandmonitoring.mission.enums.MissionStatus.READY));
         long finalizedRevision = revision + 1;
-        fresh.forEach(m -> m.setFinalizedPlanRevision(finalizedRevision));
         order.setExecutionPlanStatus(ExecutionPlanStatus.FINALIZED);
         order.setExecutionPlanRevision(finalizedRevision);
         order.setExecutionPlanFinalizedAt(Instant.now());
         order.setExecutionPlanFinalizedBy(currentUser.getCurrentUserId());
-        missions.saveAllAndFlush(fresh);
+        missions.saveAllAndFlush(effective);
         orders.saveAndFlush(order);
         effective.forEach(scope::requireMaterialized);
         // Reopening DRAFT may have deferred acceptance of already-complete unchanged packages.
@@ -128,18 +128,16 @@ public class ExecutionPlanServiceImpl implements IExecutionPlanService {
     }
 
     private void validateStructure(Mission mission) {
-        if (mission.getCreationIdempotencyKey() == null) throw new ApiException(ErrorCode.MULTI_MISSION_LEGACY_ORDER_NOT_MIGRATED);
         if (mission.getReplacesMissionId() != null) {
             var original = missions.findById(mission.getReplacesMissionId()).orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
             if (!mission.getOrder().getId().equals(original.getOrder().getId())) throw new ApiException(ErrorCode.MISSION_REPLACEMENT_CROSS_ORDER);
             if (original.getStatus() != com.ondemandmonitoring.mission.enums.MissionStatus.CANCELLED)
                 throw new ApiException(ErrorCode.MISSION_REPLACEMENT_ORIGINAL_NOT_CANCELLED);
         }
-        if (mission.getFinalizedPlanRevision() != null) {
-            if (!scope.isMaterialized(mission)) throw new ApiException(ErrorCode.CHECKLIST_EXECUTION_INTEGRITY_INVALID);
+        if (scope.isMaterialized(mission)) {
             return; // Do not revalidate/change historical dates, states or materialize accepted packages.
         }
-        if (mission.getStatus() != com.ondemandmonitoring.mission.enums.MissionStatus.RESOURCE_ASSIGNING
+        if (mission.getStatus() != com.ondemandmonitoring.mission.enums.MissionStatus.PLANNING
                 || mission.getActualStartAt() != null || mission.getCompletedAt() != null)
             throw new ApiException(ErrorCode.EXECUTION_PLAN_NOT_DRAFT);
         var order = mission.getOrder();
@@ -150,7 +148,7 @@ public class ExecutionPlanServiceImpl implements IExecutionPlanService {
                 || start.isBefore(order.getPreferredDateFrom().atStartOfDay(zone).toInstant())
                 || end.isAfter(order.getPreferredDateTo().plusDays(1).atStartOfDay(zone).toInstant()))
             throw new ApiException(ErrorCode.INVALID_REQUEST, "Invalid Mission scope or schedule");
-        var point = mission.getTargetPoint(); var area = mission.getTargetArea();
+        var point = order.getPoint(); var area = order.getTargetArea();
         if (point == null || point.getSRID() != 4326 || point.isEmpty() || !point.isValid()
                 || !Double.isFinite(point.getX()) || !Double.isFinite(point.getY())
                 || Math.abs(point.getX()) > 180 || Math.abs(point.getY()) > 90
@@ -174,8 +172,11 @@ public class ExecutionPlanServiceImpl implements IExecutionPlanService {
             }
         }
         return new ExecutionPlanResponse(order.getId(), order.getExecutionPlanStatus(), order.getExecutionPlanRevision(),
-                children.stream().map(m -> new ExecutionPlanResponse.MissionScope(m.getId(), m.getScopeLabel(),
-                        (int) active.stream().filter(a -> m.getId().equals(a.getMissionId())).count(), m.getFinalizedPlanRevision())).toList(),
+                children.stream().map(m -> {
+                    var mAssignments = active.stream().filter(a -> m.getId().equals(a.getMissionId())).toList();
+                    var itemIds = mAssignments.stream().map(com.ondemandmonitoring.mission.domain.MissionChecklistAssignment::getOrderChecklistItemId).toList();
+                    return new ExecutionPlanResponse.MissionScope(m.getId(), m.getScopeLabel(), mAssignments.size(), itemIds);
+                }).toList(),
                 calculated, List.copyOf(blockers));
     }
 }
