@@ -104,6 +104,18 @@ class RecurringOrderPricingTest {
         assertThat(result.systemCalculatedAmount()).isEqualByComparingTo("850000");
     }
 
+    @Test void videoDeliverableIsChargedOnceEvenWithManyChecklistsAndVisits() {
+        policy(includedImage("50000"), fixed(PricingCategory.OUTPUT, "VIDEO", "300000"));
+        Order repeating = order(OrderRecurrenceType.MONTHLY, 3);
+        repeating.setResultFormats(List.of(com.ondemandmonitoring.order.enums.OrderResultFormat.VIDEO));
+        OrderChecklistItem second = item(); second.setId("i2"); second.setContent("Check wall");
+        var result = engine.calculate(repeating, List.of(item(), second));
+        assertThat(result.items()).filteredOn(line -> line.category() == PricingCategory.OUTPUT)
+                .singleElement().satisfies(line -> assertThat(line.amount()).isEqualByComparingTo("300000"));
+        // two 250k checklist prices x three visits, plus one order-level deliverable
+        assertThat(result.systemCalculatedAmount()).isEqualByComparingTo("1800000");
+    }
+
     @Test void aMissingOrAbsurdCountIsKeptInsideSafeLimits() {
         assertThat(PricingOccurrences.of(order(OrderRecurrenceType.MONTHLY, null))).isEqualTo(1);
         assertThat(PricingOccurrences.of(order(OrderRecurrenceType.MONTHLY, 0))).isEqualTo(1);
