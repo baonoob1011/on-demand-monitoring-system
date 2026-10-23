@@ -18,7 +18,7 @@ class OrderMultiMissionFoundationJpaPostgresTest extends OrderMissionPostgresTes
         String s = service("Monitoring");
         assignments.assign(s, assignment(checklist("Requirement"), 0));
         var order = orderService.createOrder(orderRequest(s));
-        orderService.approveOrder(order.getId());
+        approveReviewedOrder(order.getId());
         String missionId = legacyMission(request(order.getId())).getId();
         var repository = new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(entityManagerFactory))
                 .getRepository(MissionChecklistAssignmentRepository.class);
@@ -52,7 +52,7 @@ class OrderMultiMissionFoundationJpaPostgresTest extends OrderMissionPostgresTes
     @Test void mandatoryExecutionLinkAndScopeMappingPreserveOptimisticVersion() {
         String s = service("Monitoring");
         assignments.assign(s, assignment(checklist("Requirement"), 0));
-        var order = orderService.createOrder(orderRequest(s)); orderService.approveOrder(order.getId());
+        var order = orderService.createOrder(orderRequest(s)); approveReviewedOrder(order.getId());
         String missionId = legacyMission(request(order.getId())).getId();
         var repository = new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(entityManagerFactory))
                 .getRepository(MissionChecklistExecutionRepository.class);

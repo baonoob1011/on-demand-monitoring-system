@@ -75,6 +75,8 @@ class PersistedPreDeviceCheckServiceTest {
         media.setCheckType("MEDIA");
         media.setCheckName("Media Upload");
         media.setStatus(PreDeviceItemStatus.PASSED);
+        media.setCheckedAt(Instant.now());
+        media.setExpiresAt(Instant.now().plusSeconds(300));
         run.getItems().add(media);
         run.setPassedChecks(1);
         run.setTotalChecks(1);

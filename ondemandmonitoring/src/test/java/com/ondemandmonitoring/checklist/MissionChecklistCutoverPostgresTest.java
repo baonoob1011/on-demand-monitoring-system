@@ -69,7 +69,7 @@ class MissionChecklistCutoverPostgresTest extends ChecklistPostgresTest {
         jdbc.update("insert into devices(id,created_at,version,serial_number,name,model_id,status) values (?,now(),0,?,'Test camera',?,'AVAILABLE')",device,device,model);
         String deviceRole = jdbc.queryForObject("select count(*) from mission_device_assignments where mission_id=? and is_current and device_role='MAIN'", Integer.class, mission) == 0 ? "MAIN" : "SUPPORT";
         jdbc.update("insert into mission_device_assignments(id,created_at,version,mission_id,device_id,device_role,checkup_status,is_current) values (?,now(),0,?,?,?,'PENDING',true)",UUID.randomUUID().toString(),mission,device,deviceRole);
-        jdbc.update("insert into drone_media(id,created_at,version,mission_id,device_id,media_type,storage_provider,original_file_name,content_type,file_size,s3_bucket,s3_key,s3_url,captured_at,media_status,source_type,validated_at,preview_selected) values (?,now(),0,?,?,'IMAGE','S3','capture.jpg','image/jpeg',20,'test',?,?,now(),'PENDING_MANAGER_APPROVAL','DRONE_CAMERA',now(),false)",id,mission,device,id,"s3://test/"+id);
+        jdbc.update("insert into drone_media(id,created_at,version,mission_id,device_id,media_type,storage_provider,original_file_name,content_type,file_size,s3_bucket,s3_key,s3_url,captured_at,media_status,source_type,validated_at,preview_selected,storage_status) values (?,now(),0,?,?,'IMAGE','S3','capture.jpg','image/jpeg',20,'test',?,?,now(),'PENDING_MANAGER_APPROVAL','DRONE_CAMERA',now(),false,'AVAILABLE')",id,mission,device,id,"s3://test/"+id);
         return id;
     }
     void error(ErrorCode code, Runnable action) { assertEquals(code, assertThrows(ApiException.class, action::run).getErrorCode()); }
@@ -206,8 +206,7 @@ class MissionChecklistCutoverPostgresTest extends ChecklistPostgresTest {
                 com.ondemandmonitoring.user.service.AuthenticatedUserResolver user,MissionResultRepository results,IMissionChecklistExecutionService checklist) {
             return new ExecutionPlanServiceImpl(orders,missions,items,a,materializer,scope,user,new ExecutionPlanCoverageService(),
                     new com.ondemandmonitoring.order.service.impl.OrderExecutionCompletionPolicy(orders,missions,results,checklist,items,a,new ExecutionPlanCoverageService()),
-                    org.mockito.Mockito.mock(com.ondemandmonitoring.finance.repository.InvoiceRepository.class),
-                    org.mockito.Mockito.mock(com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService.class));
+                    OrderMissionPostgresTest.paidInvoices(), OrderMissionPostgresTest.paidEligibility());
         }
     }
 }

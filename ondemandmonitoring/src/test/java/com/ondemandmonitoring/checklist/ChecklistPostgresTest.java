@@ -95,6 +95,10 @@ class ChecklistPostgresTest {
             links.deleteAllInBatch(); definitions.deleteAllInBatch(); services.deleteAllInBatch();
         });
         new JdbcTemplate(dataSource).execute("TRUNCATE users, roles, preferred_times, deliverable_types CASCADE");
+        transaction.executeWithoutResult(status ->
+                new com.ondemandmonitoring.pricing.config.PricingPolicyInitializer(
+                        new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(entityManagerFactory))
+                                .getRepository(com.ondemandmonitoring.pricing.repository.PricingPolicyRepository.class)).run(null));
     }
 
     void bootstrapCurrentSchema() {
@@ -117,6 +121,7 @@ class ChecklistPostgresTest {
 
     String checklist(String content) {
         var request = new ChecklistRequest(); request.setContent(content);
+        request.setBasePrice(new java.math.BigDecimal("100000"));
         return catalog.create(request).getId();
     }
 
@@ -239,6 +244,11 @@ class ChecklistPostgresTest {
 
 
     OrderCreateRequest orderRequest(String serviceId) {
+        boolean explicitEmpty = assignments.getByService(serviceId, true).isEmpty();
+        if (explicitEmpty) {
+            // An empty execution scope is valid, but its catalog service must still be priced.
+            assignments.assign(serviceId, assignment(checklist("Priced catalog fixture " + serviceId), 0));
+        }
         transaction.executeWithoutResult(status -> {
             var em = SharedEntityManagerCreator.createSharedEntityManager(entityManagerFactory);
             var role = Role.builder().code(RoleCode.CUSTOMER).name("Customer").active(true).systemRole(true).build();
@@ -257,7 +267,8 @@ class ChecklistPostgresTest {
         });
         var timeId = new JdbcTemplate(dataSource).queryForObject("select id from preferred_times", String.class);
         var typeId = new JdbcTemplate(dataSource).queryForObject("select id from deliverable_types", String.class);
-        return OrderCreateRequest.builder().title("Snapshot order").termsAccepted(true).serviceId(serviceId).preferredTimeId(timeId)
+        return OrderCreateRequest.builder().title("Snapshot order").termsAccepted(true).dataRetentionDays(90).serviceId(serviceId).preferredTimeId(timeId)
+                .checklistItems(explicitEmpty ? List.of() : null)
                 .monitoringAuthorizationConfirmed(true)
                 .monitoringRelationship(com.ondemandmonitoring.order.enums.MonitoringRelationship.OWNER)
                 .preferredDateFrom(java.time.LocalDate.now().plusDays(7)).preferredDateTo(java.time.LocalDate.now().plusDays(9))
@@ -274,6 +285,12 @@ class ChecklistPostgresTest {
         item.setSourceChecklistId(id); item.setContentOverride(override);
         if (id != null) item.setExpectedChecklistVersion(catalog.getById(id).getVersion());
         return item;
+    }
+
+    void approveReviewedOrder(String orderId) {
+        orderService.reviewFlightArea(orderId, new com.ondemandmonitoring.order.dto.request.FlightAreaReviewRequest(
+                com.ondemandmonitoring.order.enums.LegalReviewStatus.NOT_REQUIRED, true, null, "Reviewed test area"));
+        orderService.approveOrder(orderId);
     }
 
     @Test void orderCapturesDefaultsAndCatalogChangesNeverAlterHistory() {
@@ -295,7 +312,7 @@ class ChecklistPostgresTest {
         assertEquals("Original", historical.getContent()); assertEquals(stableId, historical.getId());
         assertEquals(1, orderService.getPendingOrders().getFirst().getChecklistItems().size());
         assertEquals(1, orderService.getMyOrders(null).getFirst().getChecklistItems().size());
-        orderService.approveOrder(result.getId());
+        approveReviewedOrder(result.getId());
         assertEquals(stableId, orderService.getApprovedOrders().getFirst().getChecklistItems().getFirst().getId());
     }
 
@@ -366,12 +383,14 @@ class ChecklistPostgresTest {
         }
     }
 
-    @Test void sourceValidationRejectsForeignInactiveDuplicateAndStaleTemplates() {
+    @Test void sourceValidationAllowsCatalogAdditionsButRejectsInactiveDuplicateAndStaleTemplates() {
         String s = service("A"), foreign = checklist("Foreign"), c = checklist("Valid");
         assignments.assign(s, assignment(c, 0));
         var request = orderRequest(s);
         request.setChecklistItems(List.of(selected(foreign, null)));
-        assertThrows(ApiException.class, () -> orderService.createOrder(request));
+        var added = orderService.createOrder(request);
+        assertEquals(foreign, added.getChecklistItems().getFirst().getSourceChecklistId());
+        transaction.executeWithoutResult(status -> { snapshots.deleteAllInBatch(); orders.deleteAll(); orders.flush(); });
         request.setChecklistItems(List.of(selected(c, null), selected(c, null)));
         assertThrows(ApiException.class, () -> orderService.createOrder(request));
         request.setChecklistItems(List.of(selected(c, null)));
@@ -479,6 +498,9 @@ class ChecklistPostgresTest {
     @EnableJpaAuditing
     @EnableJpaRepositories(basePackageClasses = {ChecklistDefinitionRepository.class, OrderRepository.class})
     static class Config {
+        @Bean com.ondemandmonitoring.devicecheck.repository.PersistedPreDeviceCheckRepository preflightRepository() {
+            return mock(com.ondemandmonitoring.devicecheck.repository.PersistedPreDeviceCheckRepository.class);
+        }
         @Bean com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService deliveryWorkflow() {
             return mock(com.ondemandmonitoring.delivery.service.IDeliveryWorkflowService.class);
         }
@@ -528,6 +550,12 @@ class ChecklistPostgresTest {
             return assignments;
         }
         @Bean AuthenticatedUserResolver resolver() { return mock(AuthenticatedUserResolver.class); }
+        @Bean com.ondemandmonitoring.pricing.service.PricingEngine pricingEngine(
+                com.ondemandmonitoring.pricing.repository.PricingPolicyRepository policies) {
+            return new com.ondemandmonitoring.pricing.service.RuleBasedPricingEngine(policies,
+                    mock(com.ondemandmonitoring.pricing.repository.CustomWorkAssessmentRepository.class),
+                    new com.ondemandmonitoring.pricing.service.ChecklistPriceCalculator());
+        }
         @Bean PreferredTimeRepository times() { return mock(PreferredTimeRepository.class); }
         @Bean DeliverableTypeRepository deliverables() { return mock(DeliverableTypeRepository.class); }
         @Bean ServiceDeliverableRepository serviceDeliverables() { return mock(ServiceDeliverableRepository.class); }

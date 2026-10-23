@@ -3,7 +3,6 @@ package com.ondemandmonitoring.media.domain;
 import com.ondemandmonitoring.common.entity.BaseEntity;
 import com.ondemandmonitoring.media.enums.UploadFailureCategory;
 import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -56,7 +55,6 @@ public class UploadFailureEvent extends BaseEntity {
     String missionId;
 
     @Column(name = "media_id", nullable = false)
-    @Convert(converter = StringUuidConverter.class)
     String mediaId;
 
     @Column(name = "attempt_id", nullable = false)

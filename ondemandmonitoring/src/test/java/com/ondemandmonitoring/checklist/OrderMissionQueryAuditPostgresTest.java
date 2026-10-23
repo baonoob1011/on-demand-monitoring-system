@@ -129,15 +129,20 @@ class OrderMissionQueryAuditPostgresTest {
             case "manager-workspace" -> 6L * missionCount + 18;
             case "checklist-response", "final-readiness" -> 7;
             case "result-approve-replay" -> 6L * missionCount + 9;
-            // Incoming separate media-review prerequisite adds one bulk media read,
+            // Separate media review and the Order deliverable-quantity guard each add a bulk read,
             // independent of sibling/item count; preserve the existing linear bound.
-            case "result-approve" -> 6L * missionCount + 18;
+            case "result-approve" -> 6L * missionCount + 19;
             case "crew-gate" -> 1;
             case "staff-availability" -> 4;
             case "device-availability" -> 2;
             default -> throw new AssertionError(name);
         };
-        assertTrue(stats.getPrepareStatementCount() <= maximum, name + " exceeded measured statement budget");
+        if (name.equals("result-approve")) {
+            assertEquals(1, SQL.stream().filter(sql -> sql.contains(".order_deliverables ")).count(),
+                    "Order quantity validation must load deliverables once, not per Mission/item");
+        }
+        assertTrue(stats.getPrepareStatementCount() <= maximum,
+                name + " exceeded measured statement budget: " + stats.getPrepareStatementCount() + " > " + maximum);
     }
 
     @ParameterizedTest @CsvSource({"5,5", "10,20"})

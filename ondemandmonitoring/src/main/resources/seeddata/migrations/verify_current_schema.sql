@@ -172,10 +172,13 @@ DO $$ DECLARE e record; actual text; keys text[]; predicate text; meta record; B
         AND format_type(atttypid,atttypmod)='character varying(40)') THEN
         RAISE EXCEPTION 'Upload failure event category must be NOT NULL varchar(40)';
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid='public.media_upload_failure_events'::regclass
-        AND attname='media_id' AND attnotnull AND format_type(atttypid,atttypmod)='uuid') THEN
-        RAISE EXCEPTION 'Upload failure event media_id must be NOT NULL uuid';
-    END IF;
+    FOREACH actual IN ARRAY ARRAY['id','mission_id','media_id','attempt_id'] LOOP
+        IF NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid='public.media_upload_failure_events'::regclass
+            AND attname=actual AND NOT attisdropped AND attnotnull
+            AND format_type(atttypid,atttypmod)='character varying(255)') THEN
+            RAISE EXCEPTION 'Upload failure event % must be NOT NULL varchar(255)', actual;
+        END IF;
+    END LOOP;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.media_upload_failure_events'::regclass
         AND conname='ck_upload_failure_category' AND contype='c' AND convalidated
         AND pg_get_constraintdef(oid) LIKE '%TRANSFER_FAILED%'

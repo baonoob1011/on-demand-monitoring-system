@@ -81,6 +81,9 @@ class MissionSafeStopReadModelTest {
         authenticate(role,"manager"); requested(true); mission.setStatus(MissionStatus.IN_FLIGHT);
         order.setExecutionPlanStatus(ExecutionPlanStatus.FINALIZED);
         var response = service.get("m1");
+        assertFalse(response.canRequestSafeStop(), "Plan must be amended to DRAFT before requesting safe-stop");
+        order.setExecutionPlanStatus(ExecutionPlanStatus.DRAFT);
+        response = service.get("m1");
         assertTrue(response.canRequestSafeStop()); assertFalse(response.canConfirmSafeStop());
         assertFalse(response.canCleanupSafeStop()); assertFalse(response.canCancelMission());
         assertEquals("manager", response.requestedBy()); assertEquals("Weather", response.reason());

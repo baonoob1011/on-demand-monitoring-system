@@ -143,9 +143,9 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
         var jdbc = new JdbcTemplate(dataSource);
         var exception = assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
                 INSERT INTO missions(id,mission_code,order_id,status,scheduled_start_at,scheduled_end_at,
-                    created_at,version,creation_idempotency_key,creation_request_hash)
+                    created_at,version,creation_idempotency_key,creation_request_hash,flight_permit_status)
                 SELECT ?,?,order_id,status,scheduled_start_at,scheduled_end_at,now(),0,
-                    creation_idempotency_key,creation_request_hash FROM missions WHERE order_id=?
+                    creation_idempotency_key,creation_request_hash,flight_permit_status FROM missions WHERE order_id=?
                 """, UUID.randomUUID().toString(), "duplicate-code", id));
         assertEquals("23505", ((java.sql.SQLException) exception.getMostSpecificCause()).getSQLState());
         assertTrue(exception.getMostSpecificCause().getMessage().contains("uk_mission_creation_command"));
@@ -188,14 +188,14 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
         var jdbc = new JdbcTemplate(dataSource);
         // JDBC bypasses both Hibernate nullability checks and Bean Validation.
         var exception = assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
-                INSERT INTO missions(id, mission_code, order_id, status, scheduled_start_at, scheduled_end_at, created_at, version)
-                VALUES (?, 'missing-order', NULL, 'RESOURCE_ASSIGNING', now(), now() + interval '1 hour', now(), 0)
+                INSERT INTO missions(id, mission_code, order_id, status, scheduled_start_at, scheduled_end_at, created_at, version, flight_permit_status)
+                VALUES (?, 'missing-order', NULL, 'RESOURCE_ASSIGNING', now(), now() + interval '1 hour', now(), 0, 'NOT_REQUESTED')
                 """, UUID.randomUUID().toString()));
         assertEquals("23502", ((java.sql.SQLException) exception.getMostSpecificCause()).getSQLState());
         assertTrue(exception.getMostSpecificCause().getMessage().contains("order_id"));
         var missingOrder = assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
-                INSERT INTO missions(id, mission_code, order_id, status, scheduled_start_at, scheduled_end_at, created_at, version)
-                VALUES (?, 'invalid-order', 'nonexistent-order', 'RESOURCE_ASSIGNING', now(), now() + interval '1 hour', now(), 0)
+                INSERT INTO missions(id, mission_code, order_id, status, scheduled_start_at, scheduled_end_at, created_at, version, flight_permit_status)
+                VALUES (?, 'invalid-order', 'nonexistent-order', 'RESOURCE_ASSIGNING', now(), now() + interval '1 hour', now(), 0, 'NOT_REQUESTED')
                 """, UUID.randomUUID().toString()));
         assertEquals("23503", ((java.sql.SQLException) missingOrder.getMostSpecificCause()).getSQLState());
         assertTrue(missingOrder.getMostSpecificCause().getMessage().contains("order_id"));

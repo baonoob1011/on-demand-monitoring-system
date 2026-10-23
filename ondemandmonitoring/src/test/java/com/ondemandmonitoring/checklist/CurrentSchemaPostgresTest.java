@@ -11,17 +11,18 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Current fresh-schema gate, not an incremental/historical rollout fixture. */
 class CurrentSchemaPostgresTest extends ChecklistPostgresTest {
-    @Test void hibernateCreatesUuidMediaIdAndUploadFailureEventRoundTrips() {
+    @Test void hibernateCreatesStringIdentifiersAndUploadFailureEventRoundTrips() {
         var jdbc = new JdbcTemplate(dataSource);
-        String mediaIdType = jdbc.queryForObject("""
+        for (String column : java.util.List.of("id", "mission_id", "media_id", "attempt_id")) {
+            String identifierType = jdbc.queryForObject("""
                 select format_type(a.atttypid, a.atttypmod)
                 from pg_attribute a
-                where a.attrelid = ?::regclass and a.attname = 'media_id' and not a.attisdropped
-                """, String.class, SCHEMA + ".media_upload_failure_events");
-        assertEquals("uuid", mediaIdType,
-                "Hibernate-created schema must match the UUID media id contract before bootstrap");
+                where a.attrelid = ?::regclass and a.attname = ? and not a.attisdropped
+                """, String.class, SCHEMA + ".media_upload_failure_events", column);
+            assertEquals("character varying(255)", identifierType, column);
+        }
 
-        String mediaId = UUID.randomUUID().toString();
+        String mediaId = "media-string-id";
         UploadFailureEvent event = new UploadFailureEvent();
         event.setEventKey("upload-failure:" + UUID.randomUUID());
         event.setMissionId(UUID.randomUUID().toString());
@@ -42,10 +43,12 @@ class CurrentSchemaPostgresTest extends ChecklistPostgresTest {
             assertEquals(mediaId, jdbc.queryForObject("""
                     select media_id::text from media_upload_failure_events where id = ?
                     """, String.class, eventId));
+            entityManager.clear();
             assertEquals(mediaId, entityManager.find(UploadFailureEvent.class, eventId).getMediaId());
         } finally {
             if (entityManager.getTransaction().isActive()) entityManager.getTransaction().rollback();
             entityManager.close();
+            jdbc.update("delete from media_upload_failure_events where event_key=?", event.getEventKey());
         }
     }
 
@@ -73,24 +76,26 @@ class CurrentSchemaPostgresTest extends ChecklistPostgresTest {
                 values ('v0',now(),0,?,'V0',0,'CUSTOMER_CUSTOM','PENDING',0,0,'IMAGE_OR_VIDEO'),
                        ('v1',now(),0,?,'V1',1,'CUSTOMER_CUSTOM','PENDING',1,1,'IMAGE_OR_VIDEO')
                 """, orderId, orderId);
-        jdbc.execute("alter table " + SCHEMA + ".order_checklist_items alter column required_evidence_type drop not null");
-        jdbc.execute("alter table " + SCHEMA + ".order_checklist_items drop constraint ck_snapshot_evidence_policy");
-        jdbc.update("update " + SCHEMA + ".order_checklist_items set required_evidence_type=null where id in ('v0','v1')");
-        CurrentSchemaPostgres.migrateEvidenceRequirementsV2(dataSource, SCHEMA);
-        // Deployments upgrade V2 -> flexible pricing/evidence V3 in order; later tests need the current constraint again.
-        CurrentSchemaPostgres.migrateFlexibleChecklistPricing(dataSource, SCHEMA);
-        assertEquals("IMAGE_OR_VIDEO", jdbc.queryForObject("select required_evidence_type from " + SCHEMA + ".order_checklist_items where id='v0'", String.class));
-        assertEquals(0, jdbc.queryForObject("select minimum_evidence_count from " + SCHEMA + ".order_checklist_items where id='v0'", Integer.class));
-        assertEquals(1, jdbc.queryForObject("select evidence_policy_version from " + SCHEMA + ".order_checklist_items where id='v1'", Integer.class));
-        jdbc.update("""
-                insert into order_checklist_items
-                    (id,created_at,version,order_id,content,display_order,source_type,review_status,
-                     evidence_policy_version,minimum_evidence_count,required_evidence_type)
-                values ('v2',now(),0,?,'V2',2,'CUSTOMER_CUSTOM','PENDING',2,3,'VIDEO')
-                """, orderId);
+        transaction.executeWithoutResult(tx -> {
+            tx.setRollbackOnly();
+            jdbc.execute("alter table " + SCHEMA + ".order_checklist_items alter column required_evidence_type drop not null");
+            jdbc.execute("alter table " + SCHEMA + ".order_checklist_items drop constraint ck_snapshot_evidence_policy");
+            jdbc.update("update " + SCHEMA + ".order_checklist_items set required_evidence_type=null where id in ('v0','v1')");
+            CurrentSchemaPostgres.migrationInCurrentTransaction(dataSource, SCHEMA, "add_checklist_evidence_requirements_v2.sql");
+            assertEquals("IMAGE_OR_VIDEO", jdbc.queryForObject("select required_evidence_type from " + SCHEMA + ".order_checklist_items where id='v0'", String.class));
+            assertEquals(0, jdbc.queryForObject("select minimum_evidence_count from " + SCHEMA + ".order_checklist_items where id='v0'", Integer.class));
+            assertEquals(1, jdbc.queryForObject("select evidence_policy_version from " + SCHEMA + ".order_checklist_items where id='v1'", Integer.class));
+            jdbc.update("""
+                    insert into order_checklist_items
+                        (id,created_at,version,order_id,content,display_order,source_type,review_status,
+                         evidence_policy_version,minimum_evidence_count,required_evidence_type)
+                    values ('v2',now(),0,?,'V2',2,'CUSTOMER_CUSTOM','PENDING',2,3,'VIDEO')
+                    """, orderId);
+            var invalid = assertThrows(org.springframework.dao.DataIntegrityViolationException.class, () -> jdbc.update(
+                    "insert into " + SCHEMA + ".order_checklist_items(id,created_at,version,order_id,content,display_order,source_type,review_status,evidence_policy_version,minimum_evidence_count,required_evidence_type) values ('bad-v2',now(),0,?,'Bad',3,'CUSTOMER_CUSTOM','PENDING',2,0,'IMAGE')", orderId));
+            assertTrue(invalid.getMostSpecificCause().getMessage().contains("ck_snapshot_evidence_policy"));
+        });
         verifyCurrentSchema();
-        assertThrows(org.springframework.dao.DataIntegrityViolationException.class, () -> jdbc.update(
-                "insert into " + SCHEMA + ".order_checklist_items(id,created_at,version,order_id,content,display_order,source_type,review_status,evidence_policy_version,minimum_evidence_count,required_evidence_type) values ('bad-v2',now(),0,'legacy-order','Bad',3,'CUSTOMER_CUSTOM','PENDING',2,0,'IMAGE')"));
     }
 
     @Test void bootstrapRefusesLegacyOneToOneWithoutRepairingIt() throws Exception {
@@ -110,6 +115,14 @@ class CurrentSchemaPostgresTest extends ChecklistPostgresTest {
         rejectedSchemaChange("drop index " + SCHEMA + ".uk_mission_device_assignment_current_main",
                 "verify_current_schema.sql", "Index missing/invalid");
         verifyCurrentSchema();
+    }
+
+    @Test void verifierRejectsLegacyUuidIdentifiers() throws Exception {
+        for (String column : java.util.List.of("id", "mission_id", "media_id", "attempt_id")) {
+            rejectedSchemaChange("alter table media_upload_failure_events alter column " + column
+                    + " type uuid using " + column + "::uuid",
+                    "verify_current_schema.sql", "must be NOT NULL varchar(255)");
+        }
     }
 
     @Test void freshBootstrapRefusesRuntimeRowsWithoutChangingThem() {

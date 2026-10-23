@@ -166,6 +166,8 @@ class MissionServiceTest {
                         mock(org.springframework.jdbc.core.JdbcTemplate.class), resourceTimeLockRepository, userScheduleRepository, authenticatedUserResolver),
                 mock(com.ondemandmonitoring.device.repository.DeviceTelemetryRepository.class));
 
+        org.springframework.test.util.ReflectionTestUtils.setField(missionService, "preDeviceCheckRepository",
+                mock(com.ondemandmonitoring.devicecheck.repository.PersistedPreDeviceCheckRepository.class));
         when(missionRepository.findByIdForUpdate(anyString())).thenAnswer(call -> missionRepository.findById(call.getArgument(0)));
         when(missionRepository.findOrderIdByMissionId(anyString())).thenAnswer(call -> missionRepository.findById(call.getArgument(0))
                 .map(m -> m.getOrder() == null ? "unit-order" : m.getOrder().getId()));
@@ -577,6 +579,11 @@ class MissionServiceTest {
         @Test
         @DisplayName("5. handoverControl success when READY_TO_FLY")
         void handoverControl_success() {
+            var preflight = new com.ondemandmonitoring.devicecheck.domain.PersistedPreDeviceCheck();
+            preflight.setStatus(com.ondemandmonitoring.devicecheck.enums.PreDeviceCheckStatus.PASSED);
+            var preflightRepository = (com.ondemandmonitoring.devicecheck.repository.PersistedPreDeviceCheckRepository)
+                    org.springframework.test.util.ReflectionTestUtils.getField(missionService, "preDeviceCheckRepository");
+            when(preflightRepository.findFirstByMissionIdOrderByCreatedAtDesc("m-5")).thenReturn(Optional.of(preflight));
             Mission mission = buildMission("m-5", MissionStatus.READY_TO_FLY);
             User staff = new User();
             staff.setId("op-new");
@@ -1113,18 +1120,22 @@ class MissionServiceTest {
         missionService.updatePostFlightStatus(mission.getId(), DeviceStatus.AVAILABLE, "Inspection passed");
         assertThat(mission.getStatus()).isEqualTo(MissionStatus.PENDING_REVIEW);
         assertThat(deviceAssignment.getReleasedAt()).isNull(); verify(resultRepo, never()).save(any());
-        // The inspector owns the final acceptance package, including the checklist assessment.
+        // The operator updates checklist execution; the inspector accepts the final package.
         var operator = crew.stream().filter(entry -> entry.getAssignedRole() == MissionStaffRole.OPERATOR).findFirst().orElseThrow();
-        var checklistActor = crew.stream().filter(entry -> entry.getAssignedRole() == MissionStaffRole.INSPECTOR).findFirst().orElseThrow();
+        var checklistActor = operator;
         when(authenticatedUserResolver.getCurrentUser()).thenReturn(checklistActor.getStaff());
         when(authenticatedUserResolver.getCurrentUserId()).thenReturn(checklistActor.getStaff().getId());
         var update = new com.ondemandmonitoring.mission.dto.request.ChecklistExecutionUpdateRequest(); update.setExpectedVersion(0L);
         update.setExecutionStatus(com.ondemandmonitoring.mission.enums.ChecklistExecutionStatus.COMPLETED);
-        update.setAssessmentStatus(com.ondemandmonitoring.mission.enums.ChecklistAssessmentStatus.NON_COMPLIANT);
+        update.setAssessmentStatus(execution.getAssessmentStatus());
         checklist.update(mission.getId(), execution.getId(), update);
         assertThat(mission.getStatus()).isEqualTo(MissionStatus.PENDING_REVIEW);
         var inspector = crew.stream().filter(entry -> entry.getAssignedRole() == MissionStaffRole.INSPECTOR).findFirst().orElseThrow();
         when(authenticatedUserResolver.getCurrentUser()).thenReturn(inspector.getStaff());
+        when(authenticatedUserResolver.getCurrentUserId()).thenReturn(inspector.getStaff().getId());
+        update.setExpectedVersion(execution.getVersion());
+        update.setAssessmentStatus(com.ondemandmonitoring.mission.enums.ChecklistAssessmentStatus.NON_COMPLIANT);
+        checklist.update(mission.getId(), execution.getId(), update);
         assertThat(policy.canCompleteMission(mission.getId())).isTrue(); missionService.completeMission(mission.getId());
         var result = resultRepo.findByMissionId(mission.getId()).orElseThrow();
         assertThat(result.getApprovalStatus()).isEqualTo(com.ondemandmonitoring.mission.enums.MissionResultApprovalStatus.DRAFT);

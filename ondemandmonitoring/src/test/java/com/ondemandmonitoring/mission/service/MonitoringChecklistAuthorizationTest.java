@@ -29,11 +29,11 @@ class MonitoringChecklistAuthorizationTest {
     void evidenceCapabilityUsesAssignmentsNotUploadOrGlobalRoleStrings(MissionStaffRole role) {
         mission.setStatus(MissionStatus.PENDING_REVIEW);
         when(assignments.findByMissionId("m")).thenReturn(List.of(crew(actor, role)));
-        assertEquals(role == MissionStaffRole.INSPECTOR,
+        assertEquals(role == MissionStaffRole.INSPECTOR || role == MissionStaffRole.PILOT,
                 policy.canAttachChecklistEvidence("m"));
         assertEquals(policy.canAttachChecklistEvidence("m"), policy.canDetachChecklistEvidence("m"));
         mission.setStatus(MissionStatus.IN_FLIGHT);
-        assertEquals(role == MissionStaffRole.INSPECTOR, policy.canAttachChecklistEvidence("m"));
+        assertEquals(role == MissionStaffRole.INSPECTOR || role == MissionStaffRole.PILOT, policy.canAttachChecklistEvidence("m"));
     }
 
     @Test void evidenceResultLocksAndFinalReportingCrewArePreserved() {
@@ -65,10 +65,9 @@ class MonitoringChecklistAuthorizationTest {
     }
 
     @ParameterizedTest @EnumSource(MissionStaffRole.class)
-    void operatorPilotAndInspectorCanUpdateChecklist(MissionStaffRole role) {
+    void operatorAndPilotCanUpdateChecklistWhileOtherCrewCannot(MissionStaffRole role) {
         when(assignments.findByMissionId("m")).thenReturn(List.of(crew(actor, role)));
-        assertEquals(role == MissionStaffRole.OPERATOR || role == MissionStaffRole.PILOT
-                        || role == MissionStaffRole.INSPECTOR,
+        assertEquals(role == MissionStaffRole.OPERATOR || role == MissionStaffRole.PILOT,
                 policy.canExecuteMonitoringChecklist("m"));
         assertFalse(policy.canExecuteMonitoringChecklist("other"));
     }

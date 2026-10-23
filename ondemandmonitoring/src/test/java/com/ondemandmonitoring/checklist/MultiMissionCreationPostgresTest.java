@@ -71,7 +71,7 @@ class MultiMissionCreationPostgresTest extends ChecklistPostgresTest {
     }
     @Test void databaseEnforcesPairUniquenessAndKeyHashConsistency() {
         String o=order(),key=UUID.randomUUID().toString(); missionService.createMission(request(o,key,0));
-        assertThrows(org.springframework.dao.DataIntegrityViolationException.class,()->jdbc.update("insert into missions(id,mission_code,order_id,status,scheduled_start_at,scheduled_end_at,created_at,version,creation_idempotency_key,creation_request_hash) select 'duplicate','duplicate',order_id,status,scheduled_start_at,scheduled_end_at,created_at,version,creation_idempotency_key,creation_request_hash from missions where order_id=?",o));
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class,()->jdbc.update("insert into missions(id,mission_code,order_id,status,scheduled_start_at,scheduled_end_at,created_at,version,creation_idempotency_key,creation_request_hash,flight_permit_status) select 'duplicate','duplicate',order_id,status,scheduled_start_at,scheduled_end_at,created_at,version,creation_idempotency_key,creation_request_hash,flight_permit_status from missions where order_id=?",o));
         assertThrows(org.springframework.dao.DataIntegrityViolationException.class,()->jdbc.update("update missions set creation_request_hash=null where order_id=?",o));
     }
     @Test void failedInsertRollsBackPlanRevisionAtomically() {
