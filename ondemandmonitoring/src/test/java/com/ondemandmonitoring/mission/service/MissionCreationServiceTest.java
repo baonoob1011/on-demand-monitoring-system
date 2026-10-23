@@ -22,8 +22,8 @@ class MissionCreationServiceTest {
     Order order;
     static MissionCreateRequest request(String orderId, String key, long revision) {
         var r = new MissionCreateRequest(); r.setScopeLabel("Whole Order scope");
-        r.setScheduledStartAt(Instant.parse("2026-10-08T01:00:00Z"));
-        r.setScheduledEndAt(Instant.parse("2026-10-08T03:00:00Z")); return r;
+        r.setScheduledStartAt(Instant.parse("2026-10-08T02:00:00Z"));
+        r.setScheduledEndAt(Instant.parse("2026-10-08T04:00:00Z")); return r;
     }
     @BeforeEach void setup() {
         fixture = new MissionServiceTest(); fixture.setUp();
@@ -47,8 +47,8 @@ class MissionCreationServiceTest {
     void error(ErrorCode code, Runnable action) { assertEquals(code,assertThrows(ApiException.class,action::run).getErrorCode()); }
     @Test void newCreationCopiesScopeAndIncrementsOnlyPublicPlanRevision() {
         var r=request(); order.setVersion(7L);
-        var created=fixture.missionService.createMissionWithOutcome("o", r);
-        assertTrue(created.created()); assertEquals(1,order.getExecutionPlanRevision()); assertEquals(7L,order.getVersion());
+        var created = fixture.missionService.createMission("o", r);
+        assertNotNull(created); assertEquals(1, order.getExecutionPlanRevision()); assertEquals(7L, order.getVersion());
         var captor=org.mockito.ArgumentCaptor.forClass(Mission.class);
         verify(fixture.missionRepository).saveAndFlush(captor.capture());
         var m=captor.getValue(); assertEquals(MissionStatus.PLANNING, m.getStatus());
@@ -66,10 +66,26 @@ class MissionCreationServiceTest {
     @Test void finalizedPlanRejectsNewKey() {order.setExecutionPlanStatus(ExecutionPlanStatus.FINALIZED); error(ErrorCode.EXECUTION_PLAN_NOT_DRAFT,()->fixture.missionService.createMission("o", request()));}
     @ParameterizedTest @EnumSource(value=OrderStatus.class,names={"COMPLETED","CANCELLED","REJECTED","IN_PROGRESS","PENDING"})
     void nonApprovedOrderRejectsNewKey(OrderStatus state) {order.setOrderStatus(state); error(ErrorCode.INVALID_REQUEST,()->fixture.missionService.createMission("o", request()));}
-    @Test void validatesBothBusinessDateBoundsAndPositiveDuration() {
-        var r=request(); r.setScheduledStartAt(Instant.parse("2026-10-08T00:59:59Z")); var early=r; error(ErrorCode.INVALID_REQUEST,()->fixture.missionService.createMission("o", early));
-        r=request(); r.setScheduledEndAt(Instant.parse("2026-10-08T04:00:01Z")); var late=r; error(ErrorCode.INVALID_REQUEST,()->fixture.missionService.createMission("o", late));
-        r=request(); r.setScheduledEndAt(r.getScheduledStartAt()); var empty=r; error(ErrorCode.INVALID_REQUEST,()->fixture.missionService.createMission("o", empty));
+    @Test void validatesScheduleBoundsAndSingleDay() {
+        // start >= end
+        var r = request(); r.setScheduledEndAt(r.getScheduledStartAt()); var empty = r;
+        error(ErrorCode.INVALID_REQUEST, () -> fixture.missionService.createMission("o", empty));
+
+        // Different days
+        r = request(); r.setScheduledEndAt(Instant.parse("2026-10-09T03:00:00Z")); var diffDays = r;
+        error(ErrorCode.INVALID_REQUEST, () -> fixture.missionService.createMission("o", diffDays));
+
+        // Before preferred date
+        r = request(); r.setScheduledStartAt(Instant.parse("2026-10-07T02:00:00Z"));
+        r.setScheduledEndAt(Instant.parse("2026-10-07T04:00:00Z")); var earlyDate = r;
+        error(ErrorCode.INVALID_REQUEST, () -> fixture.missionService.createMission("o", earlyDate));
+
+        // Outside preferred time slot (09:00 - 11:00 UTC+7 => 02:00Z - 04:00Z)
+        r = request(); r.setScheduledStartAt(Instant.parse("2026-10-08T01:59:59Z")); var earlySlot = r;
+        error(ErrorCode.INVALID_REQUEST, () -> fixture.missionService.createMission("o", earlySlot));
+
+        r = request(); r.setScheduledEndAt(Instant.parse("2026-10-08T04:00:01Z")); var lateSlot = r;
+        error(ErrorCode.INVALID_REQUEST, () -> fixture.missionService.createMission("o", lateSlot));
     }
     @Test void planningMissionCannotEnterLifecycleOrTelemetryEvenWithForcedRuntimeState() {
         var mission=new Mission(); mission.setId("m");

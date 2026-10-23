@@ -172,8 +172,11 @@ public class ExecutionPlanServiceImpl implements IExecutionPlanService {
             }
         }
         return new ExecutionPlanResponse(order.getId(), order.getExecutionPlanStatus(), order.getExecutionPlanRevision(),
-                children.stream().map(m -> new ExecutionPlanResponse.MissionScope(m.getId(), m.getScopeLabel(),
-                        (int) active.stream().filter(a -> m.getId().equals(a.getMissionId())).count())).toList(),
+                children.stream().map(m -> {
+                    var mAssignments = active.stream().filter(a -> m.getId().equals(a.getMissionId())).toList();
+                    var itemIds = mAssignments.stream().map(com.ondemandmonitoring.mission.domain.MissionChecklistAssignment::getOrderChecklistItemId).toList();
+                    return new ExecutionPlanResponse.MissionScope(m.getId(), m.getScopeLabel(), mAssignments.size(), itemIds);
+                }).toList(),
                 calculated, List.copyOf(blockers));
     }
 }

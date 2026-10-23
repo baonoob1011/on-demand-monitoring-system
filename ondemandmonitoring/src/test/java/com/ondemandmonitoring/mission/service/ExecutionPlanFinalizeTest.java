@@ -47,7 +47,7 @@ class ExecutionPlanFinalizeTest {
     Mission mission(String id) {
         var m=new Mission(); m.setId(id); m.setOrder(order); m.setStatus(com.ondemandmonitoring.mission.enums.MissionStatus.PLANNING);
         m.setScopeLabel("Scope"); m.setScheduledStartAt(Instant.parse("2026-10-02T00:00:00Z"));
-        m.setScheduledEndAt(m.getScheduledStartAt().plusSeconds(3600)); m.setTargetPoint(new GeometryFactory(new PrecisionModel(),4326).createPoint(new Coordinate(106,10))); return m;
+        m.setScheduledEndAt(m.getScheduledStartAt().plusSeconds(3600)); return m;
     }
     void finalizePlan() { service.finalizePlan("o",new ExecutionPlanFinalizeRequest(3L,true)); }
     void error(ErrorCode code,Runnable action) { assertEquals(code,assertThrows(ApiException.class,action::run).getErrorCode()); }
@@ -56,7 +56,7 @@ class ExecutionPlanFinalizeTest {
         sequence.verify(orders).findByIdForUpdate("o"); sequence.verify(missions).findIdsByOrderIdOrderById("o");
         sequence.verify(missions).findByIdForUpdate("a"); sequence.verify(missions).findByIdForUpdate("b");
         sequence.verify(materializer).materialize(first); sequence.verify(materializer).materialize(second);
-        assertEquals(4,order.getExecutionPlanRevision()); assertEquals(4L,first.getFinalizedPlanRevision()); assertEquals(4L,second.getFinalizedPlanRevision());
+        assertEquals(4,order.getExecutionPlanRevision());
         assertEquals("manager",order.getExecutionPlanFinalizedBy()); assertNotNull(order.getExecutionPlanFinalizedAt());
         assertEquals(com.ondemandmonitoring.mission.enums.MissionStatus.READY,first.getStatus());
     }
@@ -66,7 +66,7 @@ class ExecutionPlanFinalizeTest {
         when(assignments.findActiveByOrderId("o")).thenReturn(List.of(foreign));
         error(ErrorCode.CHECKLIST_ASSIGNMENT_CROSS_ORDER,this::finalizePlan);
         verifyNoInteractions(materializer); assertEquals(ExecutionPlanStatus.DRAFT,order.getExecutionPlanStatus());
-        assertNull(first.getFinalizedPlanRevision()); assertNull(second.getFinalizedPlanRevision()); assertNull(order.getExecutionPlanFinalizedAt());
+        assertNull(order.getExecutionPlanFinalizedAt());
     }
     @Test void noConfirmationOrStaleRevisionNeverMaterializes() {
         error(ErrorCode.INVALID_REQUEST,()->service.finalizePlan("o",new ExecutionPlanFinalizeRequest(3L,false)));

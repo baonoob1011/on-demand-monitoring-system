@@ -10,7 +10,6 @@ import com.ondemandmonitoring.media.dto.response.MediaAssetResponse;
 import com.ondemandmonitoring.media.mapper.MediaAssetMapper;
 import com.ondemandmonitoring.mission.dto.request.AssignDeviceRequest;
 import com.ondemandmonitoring.mission.dto.request.AssignStaffRequest;
-import com.ondemandmonitoring.mission.dto.request.DeviceReplacementRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionFailRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionRejectRequest;
 import com.ondemandmonitoring.mission.dto.request.MissionUpdateRequest;
@@ -184,6 +183,15 @@ public class MissionController {
         return ResponseEntity.ok(ApiResponse.ok("Gán thiết bị cho mission thành công", response));
     }
 
+    @PostMapping("/{id}/remove-device")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<MissionResponse>> removeDevice(
+            @PathVariable String id,
+            @Valid @RequestBody com.ondemandmonitoring.mission.dto.request.RemoveDeviceRequest request) {
+        MissionResponse response = missionService.removeDevice(id, request);
+        return ResponseEntity.ok(ApiResponse.ok("Gỡ thiết bị khỏi mission thành công", response));
+    }
+
     @PostMapping("/{id}/assign-staff")
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<MissionResponse>> assignStaff(
@@ -191,6 +199,15 @@ public class MissionController {
             @Valid @RequestBody AssignStaffRequest request) {
         MissionResponse response = missionService.assignStaff(id, request);
         return ResponseEntity.ok(ApiResponse.ok("Gán staff cho mission thành công", response));
+    }
+
+    @PostMapping("/{id}/remove-staff")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<MissionResponse>> removeStaff(
+            @PathVariable String id,
+            @Valid @RequestBody com.ondemandmonitoring.mission.dto.request.RemoveStaffRequest request) {
+        MissionResponse response = missionService.removeStaff(id, request);
+        return ResponseEntity.ok(ApiResponse.ok("Gỡ staff khỏi mission thành công", response));
     }
 
     @PatchMapping("/{id}/flight-permit")
@@ -345,18 +362,6 @@ public class MissionController {
                         response));
     }
 
-    /**
-     * PATCH /api/missions/{id}/replace-device
-     * Staff selects a replacement device when pre-flight fails.
-     */
-//    @PatchMapping("/{id}/replace-device")
-//    @PreAuthorize("@missionAuthorizationService.canControlFlight(#id)")
-//    public ResponseEntity<ApiResponse<MissionResponse>> replacedevice(
-//            @PathVariable String id,
-//            @Valid @RequestBody DeviceReplacementRequest request) {
-//        MissionResponse response = missionService.replacedevice(id, request.getnewDeviceCode());
-//        return ResponseEntity.ok(ApiResponse.ok("device successfully replaced", response));
-//    }
 
     // ------------------------------------------------------------------
     // F3.2b – Bàn giao quyền điều khiển (Handover of control)

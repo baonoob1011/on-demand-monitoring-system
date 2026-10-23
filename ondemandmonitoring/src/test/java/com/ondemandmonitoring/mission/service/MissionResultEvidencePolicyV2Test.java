@@ -113,7 +113,6 @@ class MissionResultEvidencePolicyV2Test {
         mission.setId("mission-1");
         mission.setOrder(order);
         mission.setStatus(MissionStatus.COMPLETED);
-        mission.setFinalizedPlanRevision(1L);
 
         item = new OrderChecklistItem();
         item.setId("item-1");

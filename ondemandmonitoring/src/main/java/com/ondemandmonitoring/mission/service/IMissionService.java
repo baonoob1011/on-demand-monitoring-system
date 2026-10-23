@@ -37,7 +37,11 @@ public interface IMissionService {
 
     MissionResponse assignDevice(String missionId, AssignDeviceRequest request);
 
+    MissionResponse removeDevice(String missionId, com.ondemandmonitoring.mission.dto.request.RemoveDeviceRequest request);
+
     MissionResponse assignStaff(String missionId, AssignStaffRequest request);
+
+    MissionResponse removeStaff(String missionId, com.ondemandmonitoring.mission.dto.request.RemoveStaffRequest request);
 
     List<MissionResponse> getAllMissions();
     /**
@@ -169,14 +173,6 @@ public interface IMissionService {
 
     MissionTelemetryReadinessResponse getTelemetryReadiness(String missionId);
 
-//    /**
-//     * Replaces faulty device with a new device for the mission.
-//     *
-//     * @param missionId    Mission ID
-//     * @param newDeviceCode Replacement device code
-//     * @return {@link MissionResponse} Updated mission DTO
-//     */
-//    MissionResponse replacedevice(String missionId, String newDeviceCode);
 
     /**
      * Hands over mission control to a new Staff (Control Handover).

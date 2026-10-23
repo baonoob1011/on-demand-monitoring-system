@@ -243,9 +243,9 @@ class OrderMissionPostgresTest extends ChecklistPostgresTest {
             when(invoiceRepository.findByOrderId(anyString())).thenReturn(java.util.Optional.of(invoice));
             var eligibility = mock(com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService.class);
             when(eligibility.isDepositSatisfied(invoice)).thenReturn(true);
-            // Unused lifecycle collaborators are not loaded: only the real transactional creation path is exercised.
             return new MissionService(missions, null, null, mapper, null, null, null, null, null,
                     null, null, orders, invoiceRepository, eligibility, null, null, null, null, null, null, null, null, null, null, null, executions,
+                    org.mockito.Mockito.mock(com.ondemandmonitoring.mission.service.IMissionChecklistAssignmentService.class),
                     org.mockito.Mockito.mock(com.ondemandmonitoring.mission.service.IResourceReservationService.class), null);
         }
         @Bean com.ondemandmonitoring.mission.repository.MissionChecklistExecutionRepository executions(EntityManagerFactory factory) {

@@ -68,8 +68,6 @@ class OrderMultiMissionFoundationJpaPostgresTest extends OrderMissionPostgresTes
             assertNotNull(execution.getMissionChecklistAssignmentId());
             assertEquals(missionId, execution.getMissionChecklistAssignment().getMissionId());
             var mission = missions.findById(missionId).orElseThrow();
-            assertEquals(4326, mission.getTargetPoint().getSRID());
-            assertEquals(4326, mission.getTargetArea().getSRID());
             assertNull(mission.getReplacesMissionId());
             var persistedOrder = orders.findById(order.getId()).orElseThrow();
             assertEquals(ExecutionPlanStatus.DRAFT, persistedOrder.getExecutionPlanStatus());

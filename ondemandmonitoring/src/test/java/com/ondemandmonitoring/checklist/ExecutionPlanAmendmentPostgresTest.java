@@ -146,11 +146,13 @@ class ExecutionPlanAmendmentPostgresTest extends OrderAggregateCompletionPostgre
             assertEquals(before, history(first));
         }
     }
-    @Test void cancellationRequiresDraftAndRevisionAndRejectsReplayWithoutNewAudit() {
-        ready(0); error(ErrorCode.EXECUTION_PLAN_NOT_DRAFT, () -> cancel(first)); amend(); long before = revision();
+    @Test void cancellationRequiresFinalizedAndRevisionAndRejectsReplayWithoutNewAudit() {
+        ready(0); long before = revision();
         error(ErrorCode.EXECUTION_PLAN_REVISION_CONFLICT, () -> cancellation.cancel(first, new MissionCancelRequest(before - 1, "Reason")));
         cancel(first); var audit = jdbc.queryForMap("select cancellation_at,cancelled_by,cancellation_reason,version from missions where id=?", first);
         error(ErrorCode.MISSION_ALREADY_CANCELLED, () -> cancel(first));
+        amend();
+        error(ErrorCode.EXECUTION_PLAN_NOT_FINALIZED, () -> cancel(second));
         assertEquals(before + 1, revision()); assertEquals(audit, jdbc.queryForMap("select cancellation_at,cancelled_by,cancellation_reason,version from missions where id=?", first));
     }
     @Test void replacementMustBeSameOrderCancelledAndUniqueAndHashBindsOriginal() {
@@ -234,6 +236,7 @@ class ExecutionPlanAmendmentPostgresTest extends OrderAggregateCompletionPostgre
             });
             return new MissionService(missions,null,null,mapper,null,null,null,null,null,
                     null,null,orders,OrderMissionPostgresTest.paidInvoices(),OrderMissionPostgresTest.paidEligibility(),null,null,null,null,null,null,actor,null,null,null,null,executions,
+                    org.mockito.Mockito.mock(com.ondemandmonitoring.mission.service.IMissionChecklistAssignmentService.class),
                     org.mockito.Mockito.mock(IResourceReservationService.class), null);
         }
         @Bean IMissionCancellationService cancellation(OrderRepository orders,MissionRepository missions,

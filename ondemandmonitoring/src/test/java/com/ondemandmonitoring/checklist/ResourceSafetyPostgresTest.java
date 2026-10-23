@@ -83,7 +83,9 @@ class ResourceSafetyPostgresTest extends ExecutionPlanAmendmentPostgresTest {
                 repository(entityManagerFactory, PersistedPostDeviceCheckRepository.class),null,orders,null,null,sessions,null,resultService,
                 null,null,directory,resolver,repository(entityManagerFactory, UserScheduleRepository.class),
                 repository(entityManagerFactory, MissionDeviceAssignmentRepository.class),repository(entityManagerFactory, MissionStaffAssignmentRepository.class),
-                repository(entityManagerFactory, ResourceTimeLockRepository.class),runtime,reservations,
+                repository(entityManagerFactory, ResourceTimeLockRepository.class),runtime,
+                mock(com.ondemandmonitoring.mission.service.IMissionChecklistAssignmentService.class),
+                reservations,
                 repository(entityManagerFactory, com.ondemandmonitoring.device.repository.DeviceTelemetryRepository.class));
     }
     void withMission(String id, Consumer<Mission> action) {

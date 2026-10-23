@@ -20,7 +20,7 @@ class MissionChecklistMaterializationTest {
     Mission mission; MissionChecklistExecution execution; MissionChecklistAssignment assignment;
     @BeforeEach void setup() {
         var order=new Order(); order.setId("o"); order.setExecutionPlanStatus(ExecutionPlanStatus.FINALIZED); order.setExecutionPlanRevision(4);
-        mission=new Mission(); mission.setId("m"); mission.setOrder(order); mission.setFinalizedPlanRevision(4L);
+        mission=new Mission(); mission.setId("m"); mission.setOrder(order);
         var item=new OrderChecklistItem(); item.setId("i"); item.setOrder(order); item.setContent("Snapshot");
         execution=new MissionChecklistExecution(); execution.setId("e"); execution.setMission(mission); execution.setMissionId("m"); execution.setOrderId("o");
         execution.setOrderChecklistItem(item); execution.setOrderChecklistItemId("i"); execution.setVersion(7L);
@@ -40,9 +40,8 @@ class MissionChecklistMaterializationTest {
                 && e.getAssessmentStatus()==com.ondemandmonitoring.mission.enums.ChecklistAssessmentStatus.NOT_ASSESSED;}));
     }
     @Test void historicalFinalizedRevisionRemainsEligibleDuringAmendmentButFutureRevisionDoesNot() {
-        assertTrue(scope.isMaterialized(mission)); mission.setFinalizedPlanRevision(3L); assertTrue(scope.isMaterialized(mission));
-        mission.getOrder().setExecutionPlanStatus(ExecutionPlanStatus.DRAFT); assertTrue(scope.isMaterialized(mission));
-        mission.setFinalizedPlanRevision(5L); assertFalse(scope.isMaterialized(mission));
+        assertTrue(scope.isMaterialized(mission));
+        mission.getOrder().setExecutionPlanStatus(ExecutionPlanStatus.DRAFT); assertFalse(scope.isMaterialized(mission));
     }
     @Test void missingExecutionNotReady() { when(executions.findOrderedByMissionId("m")).thenReturn(List.of()); assertFalse(scope.isMaterialized(mission)); }
     @Test void extraExecutionNotReady() { when(assignments.findByMissionIdAndRemovedAtIsNullOrderByDisplayOrderAscIdAsc("m")).thenReturn(List.of()); assertFalse(scope.isMaterialized(mission)); }
@@ -54,11 +53,11 @@ class MissionChecklistMaterializationTest {
     @Test void emptyFinalizedScopeIsValidButDraftIsNot() {
         when(executions.findOrderedByMissionId("m")).thenReturn(List.of());
         when(assignments.findByMissionIdAndRemovedAtIsNullOrderByDisplayOrderAscIdAsc("m")).thenReturn(List.of());
-        assertTrue(scope.isMaterialized(mission)); mission.setFinalizedPlanRevision(null); assertFalse(scope.isMaterialized(mission));
+        assertTrue(scope.isMaterialized(mission)); mission.getOrder().setExecutionPlanStatus(ExecutionPlanStatus.DRAFT); assertFalse(scope.isMaterialized(mission));
     }
     @Test void legacyRequiresNoRetroactiveCreationKeyButStillRequiresIntegrity() {
-        mission.setFinalizedPlanRevision(null); mission.getOrder().setExecutionPlanStatus(ExecutionPlanStatus.DRAFT);
-        assertTrue(scope.isMaterialized(mission)); execution.setOrderId("other"); assertFalse(scope.isMaterialized(mission));
+        mission.getOrder().setExecutionPlanStatus(ExecutionPlanStatus.DRAFT);
+        assertFalse(scope.isMaterialized(mission)); execution.setOrderId("other"); assertFalse(scope.isMaterialized(mission));
     }
     void invalidMaterialize() {
         assertEquals(ErrorCode.CHECKLIST_EXECUTION_INTEGRITY_INVALID,assertThrows(ApiException.class,()->materializer.materialize(mission)).getErrorCode());

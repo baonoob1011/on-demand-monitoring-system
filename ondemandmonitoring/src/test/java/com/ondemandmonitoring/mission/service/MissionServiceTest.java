@@ -162,6 +162,7 @@ class MissionServiceTest {
                 missionStaffAssignmentRepository,
                 resourceTimeLockRepository,
                 mock(com.ondemandmonitoring.mission.service.IMissionChecklistExecutionService.class),
+                mock(com.ondemandmonitoring.mission.service.IMissionChecklistAssignmentService.class),
                 new com.ondemandmonitoring.mission.service.impl.ResourceReservationServiceImpl(
                         mock(org.springframework.jdbc.core.JdbcTemplate.class), resourceTimeLockRepository, userScheduleRepository, authenticatedUserResolver),
                 mock(com.ondemandmonitoring.device.repository.DeviceTelemetryRepository.class));

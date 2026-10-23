@@ -51,17 +51,6 @@ public class Mission extends BaseEntity {
     @Column(name = "scope_label", length = 255)
     String scopeLabel;
 
-    /** @deprecated Geometry is owned by Order; retained only for source compatibility. */
-    @Deprecated @Transient
-    org.locationtech.jts.geom.Point targetPoint;
-
-    /** @deprecated Geometry is owned by Order; retained only for source compatibility. */
-    @Deprecated @Transient
-    org.locationtech.jts.geom.Polygon targetArea;
-
-    /** @deprecated Materialization state replaces the former per-mission revision snapshot. */
-    @Deprecated @Transient
-    Long finalizedPlanRevision;
 
     @Column(name = "replaces_mission_id", length = 255)
     String replacesMissionId;
