@@ -949,23 +949,7 @@ public class MissionService implements IMissionService {
                 .toInstant());
     }
 
-    private void ensureAcceptedMissionPlan(Mission mission) {
-        if (mission == null || mission.getId() == null) {
-            return;
-        }
-        if (mission.getStatus() == MissionStatus.PLANNING
-                || mission.getStatus() == MissionStatus.WAITING_CREW_CONFIRMATION
-                || mission.getStatus() == MissionStatus.WAITING_OPERATOR_ACCEPTANCE
-                || mission.getStatus() == MissionStatus.CANCELLED) {
-            return;
-        }
-        if (getCurrentDevice(mission.getId()) == null
-                || missionPlanRepository.findByMissionId(mission.getId()).isPresent()) {
-            return;
-        }
 
-        missionPlanningService.generateGpsDirectPlan(mission.getId());
-    }
     @Override
     @Transactional
     @PreAuthorize("(@missionAuthorizationService.canOperatePayload(#missionId) or @missionAuthorizationService.canControlFlight(#missionId)) and @missionAuthorizationService.canViewStaffMissions(#staffId)")
