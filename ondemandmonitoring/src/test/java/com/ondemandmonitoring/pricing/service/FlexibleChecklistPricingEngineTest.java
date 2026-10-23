@@ -21,6 +21,8 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import org.locationtech.jts.geom.Coordinate;
+import org.locationtech.jts.geom.GeometryFactory;
 import org.junit.jupiter.api.Test;
 
 /** The engine prices a snapshot from its own frozen fields plus the policy; the live catalog is never consulted. */
@@ -184,5 +186,48 @@ class FlexibleChecklistPricingEngineTest {
         var result = engine.calculate(o, List.of(snapshot("0", 0, 0, 0, 0)));
         // 2 requested videos at 4K, although the single mediaType/quantity pair says IMAGE
         assertThat(result.systemCalculatedAmount()).isEqualByComparingTo("300000");
+    }
+
+    @Test void publishedAreaMediaRulesProduceExplicitFourHundredThenSixHundredThousandBreakdowns() {
+        PricingRule area100 = rule(PricingCategory.AREA, "AREA", PricingCalculationType.PER_BLOCK, "100000");
+        area100.setMinValue(BigDecimal.TEN); area100.setMaxValue(new BigDecimal("50")); area100.setUnitSize(BigDecimal.TEN);
+        PricingRule image = tier(MediaPricingComponent.EXTRA_IMAGE, "0", null, "50000");
+        PricingRule video = tier(MediaPricingComponent.EXTRA_VIDEO, "0", null, "50000");
+        video.setUnitSize(BigDecimal.ONE);
+        policy(1, area100, image, video);
+
+        Order pricedOrder = order("0");
+        pricedOrder.setServiceBasePriceSnapshot(null);
+        double widthDegrees = 500d / 111_320d;
+        double heightDegrees = 600d / 110_540d;
+        pricedOrder.setTargetArea(new GeometryFactory().createPolygon(new Coordinate[] {
+                new Coordinate(0, 0), new Coordinate(widthDegrees, 0),
+                new Coordinate(widthDegrees, heightDegrees), new Coordinate(0, heightDegrees),
+                new Coordinate(0, 0)
+        }));
+        OrderChecklistItem item = snapshot("100000", 1, 1, 2, 2);
+        item.setId("item-1"); item.setAreaPricingEnabledSnapshot(true);
+        item.setIncludedAreaHaSnapshot(new BigDecimal("10"));
+
+        var first = engine.calculate(pricedOrder, List.of(item));
+
+        assertThat(first.systemCalculatedAmount()).isEqualByComparingTo("400000");
+        assertThat(first.items()).filteredOn(line -> line.orderChecklistItemId() != null)
+                .extracting(line -> line.category(), line -> line.amount())
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(PricingCategory.CHECKLIST, new BigDecimal("100000")),
+                        org.assertj.core.groups.Tuple.tuple(PricingCategory.MEDIA, new BigDecimal("50000")),
+                        org.assertj.core.groups.Tuple.tuple(PricingCategory.MEDIA, new BigDecimal("50000")),
+                        org.assertj.core.groups.Tuple.tuple(PricingCategory.AREA, new BigDecimal("200000")));
+
+        PricingRule area200 = rule(PricingCategory.AREA, "AREA", PricingCalculationType.PER_BLOCK, "200000");
+        area200.setMinValue(BigDecimal.TEN); area200.setMaxValue(new BigDecimal("50")); area200.setUnitSize(BigDecimal.TEN);
+        policy(2, area200, image, video);
+        var second = engine.calculate(pricedOrder, List.of(item));
+
+        assertThat(second.policyVersion()).isEqualTo(2);
+        assertThat(second.items()).filteredOn(line -> line.category() == PricingCategory.AREA)
+                .singleElement().satisfies(line -> assertThat(line.amount()).isEqualByComparingTo("400000"));
+        assertThat(second.systemCalculatedAmount()).isEqualByComparingTo("600000");
     }
 }

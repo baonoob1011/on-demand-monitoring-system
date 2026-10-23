@@ -12,6 +12,7 @@ import com.ondemandmonitoring.pricing.dto.ChecklistPriceBreakdown;
 import com.ondemandmonitoring.pricing.dto.ChecklistPricingPreviewRequests;
 import com.ondemandmonitoring.pricing.dto.ServicePricePreviewResponse;
 import com.ondemandmonitoring.pricing.enums.PricingPolicyStatus;
+import com.ondemandmonitoring.pricing.enums.PricingCategory;
 import com.ondemandmonitoring.pricing.repository.PricingPolicyRepository;
 import com.ondemandmonitoring.service.domain.Service;
 import com.ondemandmonitoring.service.repository.ServiceRepository;
@@ -19,7 +20,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.*;
-import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -27,7 +27,6 @@ import org.springframework.transaction.annotation.Transactional;
  * so an Admin preview, a customer estimate and the later quote cannot drift apart.
  */
 @org.springframework.stereotype.Service
-@RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class ChecklistPricingPreviewService {
     private final ServiceRepository services;
@@ -36,6 +35,28 @@ public class ChecklistPricingPreviewService {
     private final PricingPolicyRepository policies;
     private final ChecklistPriceCalculator calculator;
     private final ServicePriceResolver resolver;
+    private final OrderLevelPriceCalculator orderLevelPrices;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ChecklistPricingPreviewService(ServiceRepository services, ChecklistDefinitionRepository definitions,
+            ServiceChecklistRepository assignments, PricingPolicyRepository policies,
+            ChecklistPriceCalculator calculator, ServicePriceResolver resolver,
+            OrderLevelPriceCalculator orderLevelPrices) {
+        this.services = services;
+        this.definitions = definitions;
+        this.assignments = assignments;
+        this.policies = policies;
+        this.calculator = calculator;
+        this.resolver = resolver;
+        this.orderLevelPrices = orderLevelPrices;
+    }
+
+    /** Test/backward-compatible constructor. */
+    public ChecklistPricingPreviewService(ServiceRepository services, ChecklistDefinitionRepository definitions,
+            ServiceChecklistRepository assignments, PricingPolicyRepository policies,
+            ChecklistPriceCalculator calculator, ServicePriceResolver resolver) {
+        this(services, definitions, assignments, policies, calculator, resolver, new OrderLevelPriceCalculator());
+    }
 
     /** Default price of a service: package fee + the stored default checklists at their included allowance. */
     public ServicePricePreviewResponse defaultPrice(String serviceId) {
@@ -122,15 +143,38 @@ public class ChecklistPricingPreviewService {
                     .ifPresent(row -> { throw new ApiException(ErrorCode.ORDER_CHECKLIST_REQUIRED_MISSING); });
         }
         // The price source follows the service's default checklist set, exactly as at order creation.
-        List<ServicePricePreviewResponse.AddOn> addOns = new ArrayList<>();
+        BigDecimal requestedImages = priced.stream().map(row -> BigDecimal.valueOf(row.requestedImageCount()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal requestedVideos = priced.stream().map(row -> BigDecimal.valueOf(row.requestedVideoCount()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         int occurrences = request.occurrences() == null ? 1 : Math.max(1, Math.min(PricingOccurrences.MAX, request.occurrences()));
         if (occurrences > 1) {
             priced = priced.stream().map(row -> row.times(occurrences)).toList();
-            java.math.BigDecimal factor = java.math.BigDecimal.valueOf(occurrences);
-            addOns = addOns.stream().map(addOn -> new ServicePricePreviewResponse.AddOn(addOn.key(),
-                    addOn.description(), addOn.amount().multiply(factor))).toList();
         }
+        BigDecimal checklistSubtotal = priced.stream().map(ChecklistPriceBreakdown::subtotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        List<ServicePricePreviewResponse.AddOn> addOns = orderLevelPrices.calculate(policy,
+                        OrderLevelPriceCalculator.Context.preview(request.resultFormats(), requestedImages, requestedVideos,
+                                request.permitStatus()), checklistSubtotal, BigDecimal.ZERO).stream()
+                .filter(charge -> charge.line().amount().signum() != 0)
+                .map(charge -> new ServicePricePreviewResponse.AddOn(charge.key(), customerDescription(charge),
+                        charge.line().amount()))
+                .toList();
         return response(service, policy, resolver.resolve(service, policy), priced, List.of(), addOns, occurrences);
+    }
+
+    private String customerDescription(OrderLevelPriceCalculator.Charge charge) {
+        if (charge.line().category() == PricingCategory.OUTPUT) return switch (charge.key()) {
+            case "OUTPUT_VIDEO" -> "Video bàn giao";
+            case "OUTPUT_PHOTO" -> "Ảnh bàn giao";
+            case "OUTPUT_PDF_REPORT" -> "Báo cáo PDF";
+            case "OUTPUT_ORTHOMOSAIC" -> "Ảnh trực giao ghép";
+            case "OUTPUT_MODEL_3D" -> "Mô hình 3D";
+            case "OUTPUT_HIGH_RESOLUTION_IMAGE" -> "Ảnh độ phân giải cao";
+            case "OUTPUT_4K_VIDEO" -> "Video 4K bàn giao";
+            default -> charge.line().description();
+        };
+        return charge.line().description();
     }
 
     /** Public customer previews disclose neither the internal amount nor its component breakdown. */

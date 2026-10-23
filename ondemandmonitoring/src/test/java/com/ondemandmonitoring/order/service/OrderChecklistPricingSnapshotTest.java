@@ -147,6 +147,8 @@ class OrderChecklistPricingSnapshotTest {
         assertEquals(30, item.getStandardVideoDurationSnapshot());
         assertEquals(OrderChecklistSourceType.SERVICE_TEMPLATE, item.getSourceType());
         assertEquals(ChecklistReviewStatus.INCLUDED, item.getReviewStatus());
+        assertEquals("p1", order.getPricingPolicyId());
+        assertEquals(3, order.getPricingPolicyVersion());
         // evidence policy V3 demands BOTH thresholds
         assertEquals(3, item.getEvidencePolicyVersion());
         assertEquals(30, item.getMinimumImageCount());
@@ -295,5 +297,27 @@ class OrderChecklistPricingSnapshotTest {
     @Test void theRequestHasNoFieldThatCouldCarryAClientSidePrice() {
         var names = Arrays.stream(OrderChecklistItemRequest.class.getDeclaredFields()).map(f -> f.getName().toLowerCase(Locale.ROOT)).toList();
         assertTrue(names.stream().noneMatch(n -> n.contains("price") || n.contains("amount") || n.contains("total") || n.contains("cost")), names.toString());
+    }
+
+    @Test void recalculationReplacesEveryChecklistSystemPriceFromTheLatestBreakdown() {
+        var first = new OrderChecklistItem(); first.setId("i1"); first.setOrder(order);
+        first.setSystemCalculatedPrice(new BigDecimal("100000"));
+        var second = new OrderChecklistItem(); second.setId("i2"); second.setOrder(order);
+        second.setSystemCalculatedPrice(new BigDecimal("200000"));
+        when(snapshots.findAllByOrderIdOrderByDisplayOrderAscIdAsc("o1")).thenReturn(List.of(first, second));
+        when(engine.calculate(order, List.of(first, second))).thenReturn(new PricingBreakdown("p2", 2, "VND",
+                new BigDecimal("650000"), false, true, List.of(
+                new PricingBreakdownItem(PricingCategory.CHECKLIST, "first base", BigDecimal.ONE,
+                        new BigDecimal("150000"), new BigDecimal("150000"), "i1"),
+                new PricingBreakdownItem(PricingCategory.AREA, "first area", BigDecimal.ONE,
+                        new BigDecimal("300000"), new BigDecimal("300000"), "i1"),
+                new PricingBreakdownItem(PricingCategory.CHECKLIST, "second base", BigDecimal.ONE,
+                        new BigDecimal("200000"), new BigDecimal("200000"), "i2")), List.of()));
+
+        useCase.recalculate(order);
+
+        assertEquals(new BigDecimal("450000"), first.getSystemCalculatedPrice());
+        assertEquals(new BigDecimal("200000"), second.getSystemCalculatedPrice());
+        assertEquals(new BigDecimal("650000"), order.getSystemCalculatedAmount());
     }
 }

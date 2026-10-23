@@ -12,6 +12,13 @@ import com.ondemandmonitoring.checklist.repository.ChecklistDefinitionRepository
 import com.ondemandmonitoring.checklist.repository.ServiceChecklistRepository;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
+import com.ondemandmonitoring.order.domain.Order;
+import com.ondemandmonitoring.order.domain.OrderChecklistItem;
+import com.ondemandmonitoring.order.enums.ChecklistReviewStatus;
+import com.ondemandmonitoring.order.enums.OrderChecklistSourceType;
+import com.ondemandmonitoring.order.enums.OrderPermitStatus;
+import com.ondemandmonitoring.order.enums.OrderResultFormat;
+import com.ondemandmonitoring.pricing.repository.CustomWorkAssessmentRepository;
 import com.ondemandmonitoring.pricing.domain.PricingPolicy;
 import com.ondemandmonitoring.pricing.domain.PricingRule;
 import com.ondemandmonitoring.pricing.dto.ChecklistPricingPreviewRequests.*;
@@ -36,6 +43,7 @@ class ChecklistPricingPreviewServiceTest {
             new ServicePriceResolver(assignments, policies, new ChecklistPriceCalculator()));
     Service inspection, survey;
     ChecklistDefinition roof, wall;
+    PricingPolicy activePolicy;
     List<ServiceChecklist> inspectionRows = new ArrayList<>();
 
     @BeforeEach void setup() {
@@ -51,11 +59,12 @@ class ChecklistPricingPreviewServiceTest {
         when(assignments.findAllByServiceIdOrderByDisplayOrderAscIdAsc("s2")).thenReturn(List.of(row(survey, roof, 0)));
         when(definitions.findById("c1")).thenReturn(Optional.of(roof));
         when(definitions.findById("c2")).thenReturn(Optional.of(wall));
-        PricingPolicy p = new PricingPolicy(); p.setId("p1"); p.setPolicyVersion(5); p.setCurrency("VND"); p.setStatus(PricingPolicyStatus.ACTIVE);
-        p.replaceRules(List.of(included(MediaPricingComponent.INCLUDED_IMAGE, "50000"), included(MediaPricingComponent.INCLUDED_VIDEO, "120000"),
+        activePolicy = new PricingPolicy(); activePolicy.setId("p1"); activePolicy.setPolicyVersion(5); activePolicy.setCurrency("VND"); activePolicy.setStatus(PricingPolicyStatus.ACTIVE);
+        activePolicy.replaceRules(List.of(included(MediaPricingComponent.INCLUDED_IMAGE, "50000"), included(MediaPricingComponent.INCLUDED_VIDEO, "120000"),
                 tier(MediaPricingComponent.EXTRA_IMAGE, "0", "10", "50000"), tier(MediaPricingComponent.EXTRA_IMAGE, "10", null, "40000"),
-                tier(MediaPricingComponent.EXTRA_VIDEO, "0", null, "90000")));
-        when(policies.findEffectiveActive(any(Instant.class))).thenReturn(List.of(p));
+                tier(MediaPricingComponent.EXTRA_VIDEO, "0", null, "90000"),
+                fixed(PricingCategory.OUTPUT, "VIDEO", "Requested video", "300000")));
+        when(policies.findEffectiveActive(any(Instant.class))).thenReturn(List.of(activePolicy));
     }
 
     ChecklistDefinition checklist(String id, String content, String base, int images, int videos) {
@@ -78,6 +87,159 @@ class ChecklistPricingPreviewServiceTest {
         r.setRuleKey(component + from); r.setMinValue(new BigDecimal(from)); r.setMaxValue(to == null ? null : new BigDecimal(to));
         r.setUnitSize(component == MediaPricingComponent.EXTRA_VIDEO ? BigDecimal.ONE : BigDecimal.TEN); r.setRoundingMode(PricingRounding.CEILING);
         return r;
+    }
+    PricingRule fixed(PricingCategory category, String key, String description, String amount) {
+        var r = new PricingRule(); r.setCategory(category); r.setRuleKey(key); r.setDescription(description);
+        r.setCalculationType(PricingCalculationType.FIXED); r.setFixedAmount(new BigDecimal(amount)); r.setEnabled(true);
+        return r;
+    }
+
+    @Test void customerPreviewIncludesVideoDeliverableExactlyOnceAndRemovingItRemovesTheFee() {
+        var withVideo = preview.customerQuote(new Customer("s1", null, null, null, null, null,
+                List.of(OrderResultFormat.VIDEO), OrderPermitStatus.NONE));
+        var withoutVideo = preview.customerQuote(new Customer("s1", null));
+
+        assertThat(withVideo.addOns()).singleElement().satisfies(fee -> {
+            assertThat(fee.key()).isEqualTo("OUTPUT_VIDEO");
+            assertThat(fee.description()).isEqualTo("Video bàn giao");
+            assertThat(fee.amount()).isEqualByComparingTo("300000");
+        });
+        assertThat(withVideo.total().subtract(withoutVideo.total())).isEqualByComparingTo("300000");
+        assertThat(withoutVideo.addOns()).isEmpty();
+    }
+
+    @Test void areaMonitoringQuoteExplainsTheExactTwoHundredThousandDelta() {
+        inspection.setName("Giám sát khu vực");
+        inspectionRows.clear();
+        List<BigDecimal> defaultPrices = List.of(new BigDecimal("600000"), new BigDecimal("600000"),
+                new BigDecimal("400000"), new BigDecimal("500000"), new BigDecimal("400000"));
+        for (int index = 0; index < defaultPrices.size(); index++) {
+            ChecklistDefinition definition = checklist("area-" + index, "Checklist " + (index + 1),
+                    defaultPrices.get(index).toPlainString(), 0, 0);
+            if (index == 0) {
+                definition.setAreaPricingEnabled(true);
+                definition.setIncludedAreaHa(BigDecimal.TEN);
+            }
+            inspectionRows.add(row(inspection, definition, index));
+        }
+        PricingRule area = fixed(PricingCategory.AREA, "UP_TO_50", "Phụ phí theo mỗi 10 ha", "100000");
+        area.setCalculationType(PricingCalculationType.PER_BLOCK);
+        area.setMinValue(BigDecimal.TEN);
+        area.setMaxValue(new BigDecimal("50"));
+        area.setUnitSize(BigDecimal.TEN);
+        area.setRoundingMode(PricingRounding.CEILING);
+        activePolicy.replaceRules(List.of(area,
+                fixed(PricingCategory.OUTPUT, "VIDEO", "Video bàn giao", "300000")));
+
+        var defaultQuote = preview.defaultPrice("s1");
+        var customerQuote = preview.customerQuote(new Customer("s1", null, new BigDecimal("28.3"), null, null,
+                null, List.of(OrderResultFormat.VIDEO), OrderPermitStatus.NONE));
+
+        assertThat(defaultQuote.checklists()).extracting(row -> row.subtotal().intValue())
+                .containsExactly(600000, 600000, 400000, 500000, 400000);
+        assertThat(defaultQuote.checklistSubtotal()).isEqualByComparingTo("2500000");
+        assertThat(customerQuote.checklists()).hasSize(5);
+        assertThat(customerQuote.checklists().getFirst().lines()).filteredOn(line -> "AREA".equals(line.component()))
+                .singleElement().satisfies(line -> {
+                    assertThat(line.quantity()).isEqualByComparingTo("2");
+                    assertThat(line.unitPrice()).isEqualByComparingTo("100000");
+                    assertThat(line.amount()).isEqualByComparingTo("200000");
+                });
+        assertThat(customerQuote.checklistSubtotal()).isEqualByComparingTo("2700000");
+        assertThat(customerQuote.addOns()).singleElement().satisfies(addOn -> {
+            assertThat(addOn.key()).isEqualTo("OUTPUT_VIDEO");
+            assertThat(addOn.amount()).isEqualByComparingTo("300000");
+        });
+        assertThat(customerQuote.total()).isEqualByComparingTo("3000000");
+        BigDecimal displayedComponents = defaultQuote.checklistSubtotal()
+                .add(new BigDecimal("200000")).add(customerQuote.addOns().getFirst().amount());
+        assertThat(customerQuote.total()).isEqualByComparingTo(displayedComponents);
+    }
+
+    @Test void areaPricingRequiresAnAvailableAreaAndRecalculatesWhenItChangesOrIsCleared() {
+        roof.setBasePrice(new BigDecimal("3400000"));
+        roof.setAreaPricingEnabled(true);
+        roof.setIncludedAreaHa(BigDecimal.TEN);
+        PricingRule area = fixed(PricingCategory.AREA, "UP_TO_50", "Area surcharge", "100000");
+        area.setCalculationType(PricingCalculationType.PER_BLOCK);
+        area.setMinValue(BigDecimal.TEN);
+        area.setMaxValue(new BigDecimal("50"));
+        area.setUnitSize(BigDecimal.TEN);
+        area.setRoundingMode(PricingRounding.CEILING);
+        activePolicy.replaceRules(List.of(area));
+
+        var noArea = preview.customerQuote(new Customer("s1", null));
+        var thirtyHa = preview.customerQuote(new Customer("s1", null, new BigDecimal("30"), null, null));
+        var fiftyHa = preview.customerQuote(new Customer("s1", null, new BigDecimal("50"), null, null));
+        var cleared = preview.customerQuote(new Customer("s1", null));
+
+        assertThat(noArea.checklists().stream().flatMap(row -> row.lines().stream()))
+                .noneMatch(line -> line.category() == PricingCategory.AREA);
+        assertThat(noArea.total()).isEqualByComparingTo("3500000");
+        assertThat(thirtyHa.checklists().getFirst().lines()).filteredOn(line -> line.category() == PricingCategory.AREA)
+                .singleElement().satisfies(line -> assertThat(line.amount()).isEqualByComparingTo("200000"));
+        assertThat(thirtyHa.total()).isEqualByComparingTo("3700000");
+        assertThat(fiftyHa.checklists().getFirst().lines()).filteredOn(line -> line.category() == PricingCategory.AREA)
+                .singleElement().satisfies(line -> assertThat(line.amount()).isEqualByComparingTo("400000"));
+        assertThat(fiftyHa.total()).isEqualByComparingTo("3900000");
+        assertThat(cleared.total()).isEqualByComparingTo(noArea.total());
+        assertThat(cleared.checklists().stream().flatMap(row -> row.lines().stream()))
+                .noneMatch(line -> line.category() == PricingCategory.AREA);
+    }
+
+    @Test void checklistEvidenceVideoAndOrderDeliverableVideoRemainSeparateCharges() {
+        var result = preview.customerQuote(new Customer("s1",
+                List.of(new CustomerItem("c1", null, 10, 2), new CustomerItem("c2", null, 0, 0)),
+                null, null, null, null, List.of(OrderResultFormat.VIDEO), OrderPermitStatus.NONE));
+
+        assertThat(result.checklists().getFirst().lines()).anySatisfy(line -> {
+            assertThat(line.component()).isEqualTo("EXTRA_VIDEO");
+            assertThat(line.amount()).isEqualByComparingTo("90000");
+        });
+        assertThat(result.addOns()).singleElement().satisfies(fee -> {
+            assertThat(fee.key()).isEqualTo("OUTPUT_VIDEO");
+            assertThat(fee.amount()).isEqualByComparingTo("300000");
+        });
+    }
+
+    @Test void previewAndPersistedOrderEngineHaveParityAndOutputIsNotMultipliedByChecklistCount() {
+        var customer = preview.customerQuote(new Customer("s1", null, null, null, null, null,
+                List.of(OrderResultFormat.VIDEO), OrderPermitStatus.NONE));
+        var engine = new RuleBasedPricingEngine(policies, mock(CustomWorkAssessmentRepository.class),
+                new ChecklistPriceCalculator());
+        Order order = new Order(); order.setService(inspection); order.setResultFormats(List.of(OrderResultFormat.VIDEO));
+        OrderChecklistItem roofItem = snapshot("i1", roof);
+        OrderChecklistItem wallItem = snapshot("i2", wall);
+
+        var manager = engine.calculate(order, List.of(roofItem, wallItem));
+
+        assertThat(manager.systemCalculatedAmount()).isEqualByComparingTo(customer.total());
+        assertThat(manager.items()).filteredOn(line -> line.category() == PricingCategory.OUTPUT)
+                .singleElement().satisfies(line -> assertThat(line.amount()).isEqualByComparingTo("300000"));
+    }
+
+    @Test void newlyActivatedAdminOutputRateAffectsTheNextPreview() {
+        var before = preview.customerQuote(new Customer("s1", null, null, null, null, null,
+                List.of(OrderResultFormat.VIDEO), OrderPermitStatus.NONE));
+        activePolicy.replaceRules(List.of(included(MediaPricingComponent.INCLUDED_IMAGE, "50000"),
+                included(MediaPricingComponent.INCLUDED_VIDEO, "120000"),
+                tier(MediaPricingComponent.EXTRA_IMAGE, "0", "10", "50000"),
+                tier(MediaPricingComponent.EXTRA_IMAGE, "10", null, "40000"),
+                tier(MediaPricingComponent.EXTRA_VIDEO, "0", null, "90000"),
+                fixed(PricingCategory.OUTPUT, "VIDEO", "Requested video", "500000")));
+        var after = preview.customerQuote(new Customer("s1", null, null, null, null, null,
+                List.of(OrderResultFormat.VIDEO), OrderPermitStatus.NONE));
+        assertThat(after.total().subtract(before.total())).isEqualByComparingTo("200000");
+    }
+
+    private OrderChecklistItem snapshot(String id, ChecklistDefinition definition) {
+        OrderChecklistItem item = new OrderChecklistItem(); item.setId(id); item.setContent(definition.getContent());
+        item.setSourceChecklist(definition); item.setSourceType(OrderChecklistSourceType.SERVICE_TEMPLATE);
+        item.setReviewStatus(ChecklistReviewStatus.INCLUDED); item.setPricingSnapshotVersion(1);
+        item.setBasePriceSnapshot(definition.getBasePrice()); item.setIncludedImageCountSnapshot(definition.getIncludedImageCount());
+        item.setIncludedVideoCountSnapshot(definition.getIncludedVideoCount()); item.setRequestedImageCount(definition.getIncludedImageCount());
+        item.setRequestedVideoCount(definition.getIncludedVideoCount()); item.setPricingProfileSnapshot(definition.getPricingProfile());
+        return item;
     }
 
     @Test void defaultServicePriceIsOnlyTheSumOfDefaultChecklistContributions() {

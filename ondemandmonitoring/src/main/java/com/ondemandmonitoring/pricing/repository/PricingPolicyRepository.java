@@ -12,6 +12,8 @@ public interface PricingPolicyRepository extends JpaRepository<PricingPolicy, St
     List<PricingPolicy> findAllByOrderByPolicyVersionDesc();
     @Query("select distinct p from PricingPolicy p left join fetch p.rules where p.status = com.ondemandmonitoring.pricing.enums.PricingPolicyStatus.ACTIVE and (p.effectiveFrom is null or p.effectiveFrom <= :now) and (p.effectiveTo is null or p.effectiveTo > :now) order by p.policyVersion desc")
     List<PricingPolicy> findEffectiveActive(@Param("now") Instant now);
+    @Query("select distinct p from PricingPolicy p left join fetch p.rules where p.id = :id")
+    Optional<PricingPolicy> findWithRulesById(@Param("id") String id);
     Optional<PricingPolicy> findFirstByStatusOrderByPolicyVersionDesc(PricingPolicyStatus status);
     List<PricingPolicy> findAllByStatus(PricingPolicyStatus status);
     boolean existsByPolicyVersion(int version);

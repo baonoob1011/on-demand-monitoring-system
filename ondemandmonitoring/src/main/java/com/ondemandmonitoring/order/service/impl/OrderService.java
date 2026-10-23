@@ -473,6 +473,11 @@ public class OrderService implements IOrderService {
         if (acceptedQuote.isPresent())
             throw new ApiException(ErrorCode.INVALID_REQUEST, "An Order cannot be edited after its quote is accepted");
 
+        boolean pricingInputsChanged = request.coverageArea() != null
+                || request.altitudeM() != null || request.estimatedLengthM() != null
+                || request.recurrenceType() != null || request.recurrenceOccurrences() != null
+                || request.resultFormats() != null || request.permitStatus() != null;
+
         boolean submittingLocationCorrection = order.getOrderStatus() == OrderStatus.NEEDS_INFO
                 && "LOCATION".equals(order.getRequestedUpdateScope());
         if (submittingLocationCorrection) {
@@ -550,7 +555,7 @@ public class OrderService implements IOrderService {
                 throw new ApiException(ErrorCode.INVALID_REQUEST, "Data retention must be 30, 90, 180 or 365 days");
             order.setDataRetentionDays(request.dataRetentionDays());
         }
-        if (order.getOrderStatus() == OrderStatus.APPROVED) {
+        if (order.getOrderStatus() == OrderStatus.APPROVED || pricingInputsChanged) {
             quoteRepository.findFirstByOrderIdAndStatusInOrderByQuoteVersionDesc(orderId,
                     java.util.List.of(com.ondemandmonitoring.finance.enums.QuoteStatus.DRAFT,
                             com.ondemandmonitoring.finance.enums.QuoteStatus.PENDING_REVIEW,
@@ -582,7 +587,9 @@ public class OrderService implements IOrderService {
             order.setPermitZoneName(null);
             reviewRecords.reopenFailed(order, "Khách hàng đã cập nhật lại khu vực giám sát");
         }
-        return toResponse(orderRepository.save(order));
+        Order saved = orderRepository.save(order);
+        if (pricingInputsChanged) checklistSnapshots.recalculate(saved);
+        return toResponse(saved);
     }
 
     @Override

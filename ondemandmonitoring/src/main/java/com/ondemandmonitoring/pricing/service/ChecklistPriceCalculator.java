@@ -110,13 +110,13 @@ public class ChecklistPriceCalculator {
         PricingDimensions dimensions = in.dimensions() == null ? PricingDimensions.disabled() : in.dimensions();
         RequestContext context = in.context() == null ? RequestContext.empty() : in.context();
         if (dimensions.areaEnabled()) dimensionLines(policy, profile, PricingCategory.AREA, "AREA",
-                positive(context.areaHa()).subtract(positive(dimensions.includedAreaHa())).max(BigDecimal.ZERO),
+                positive(context.areaHa()), positive(dimensions.includedAreaHa()),
                 "diện tích bổ sung", lines);
         if (dimensions.lengthEnabled()) dimensionLines(policy, profile, PricingCategory.DISTANCE, "LENGTH",
-                positive(context.lengthKm()).subtract(positive(dimensions.includedLengthKm())).max(BigDecimal.ZERO),
+                positive(context.lengthKm()), positive(dimensions.includedLengthKm()),
                 "chiều dài bổ sung", lines);
         if (dimensions.altitudeEnabled()) dimensionLines(policy, profile, PricingCategory.ALTITUDE, "ALTITUDE",
-                positive(context.altitudeM()).subtract(positive(dimensions.includedAltitudeM())).max(BigDecimal.ZERO),
+                positive(context.altitudeM()), positive(dimensions.includedAltitudeM()),
                 "độ cao bổ sung", lines);
 
         if (in.custom()) customAreaLines(policy, profile, context.areaHa(), lines);
@@ -258,70 +258,67 @@ public class ChecklistPriceCalculator {
     }
 
     private void dimensionLines(PricingPolicy policy, String profile, PricingCategory category, String component,
-            BigDecimal extra, String noun, List<Line> out) {
-        if (extra.signum() <= 0) return;
+            BigDecimal value, BigDecimal included, String noun, List<Line> out) {
+        if (value.compareTo(included) <= 0) return;
         List<PricingRule> tiers = policy.getRules().stream().filter(PricingRule::isEnabled)
                 .filter(rule -> rule.getCategory() == category)
                 .filter(rule -> rule.getPricingProfile() == null || rule.getPricingProfile().isBlank()
                         || profile.equalsIgnoreCase(rule.getPricingProfile()))
                 .sorted(Comparator.comparing((PricingRule r) -> nz(r.getMinValue())).thenComparingInt(PricingRule::getPriority))
                 .toList();
-        if (tiers.isEmpty()) {
-            throw new ApiException(ErrorCode.PRICING_RULE_NOT_FOUND,
-                    "Cannot price " + noun + " for checklist profile " + profile + ".");
-        }
+        PricingRule tier = tiers.stream()
+                .filter(rule -> (rule.getMinValue() == null || value.compareTo(rule.getMinValue()) > 0)
+                        && (rule.getMaxValue() == null || value.compareTo(rule.getMaxValue()) <= 0))
+                .findFirst().orElseThrow(() -> new ApiException(ErrorCode.PRICING_RULE_NOT_FOUND,
+                        "Cannot price " + noun + " at " + value.stripTrailingZeros().toPlainString()
+                                + ": no published " + category + " range covers it."));
+        if (tier.getCalculationType() == PricingCalculationType.MANUAL_QUOTE)
+            throw new ApiException(ErrorCode.CUSTOM_WORK_PRICING_INCOMPLETE, tier.getDescription());
 
-        BigDecimal covered = BigDecimal.ZERO;
-        for (PricingRule tier : tiers) {
-            if (covered.compareTo(extra) >= 0) break;
-            BigDecimal lo = positive(tier.getMinValue());
-            BigDecimal hi = tier.getMaxValue();
-            if (lo.compareTo(covered) != 0) break;
-            BigDecimal upper = hi == null ? extra : hi.min(extra);
-            BigDecimal quantity = upper.subtract(lo);
-            if (quantity.signum() <= 0) break;
-
-            BigDecimal unitSize = positive(tier.getUnitSize());
-            if (unitSize.signum() == 0) unitSize = BigDecimal.ONE;
-            PricingRounding rounding = tier.getRoundingMode() == null ? PricingRounding.CEILING : tier.getRoundingMode();
-            RoundingMode roundingMode = switch (rounding) {
-                case CEILING -> RoundingMode.CEILING;
-                case FLOOR -> RoundingMode.FLOOR;
-                case HALF_UP -> RoundingMode.HALF_UP;
-            };
-
-            BigDecimal billedQuantity;
-            BigDecimal unitPrice = money(tier.getFixedAmount());
-            BigDecimal amount;
-            PricingCalculationType calculation = tier.getCalculationType();
-            if (calculation == PricingCalculationType.FIXED) {
-                billedQuantity = BigDecimal.ONE;
-                amount = unitPrice;
-            } else if (calculation == PricingCalculationType.PER_UNIT) {
-                billedQuantity = quantity;
+        BigDecimal lo = positive(tier.getMinValue());
+        BigDecimal hi = tier.getMaxValue();
+        // The checklist allowance and the policy range floor describe the same free threshold in the common case.
+        // Taking the greater one prevents either threshold from being charged, without subtracting both.
+        BigDecimal chargeable = value.subtract(included.max(lo)).max(BigDecimal.ZERO);
+        BigDecimal unitSize = positive(tier.getUnitSize());
+        if (unitSize.signum() == 0) unitSize = BigDecimal.ONE;
+        PricingRounding rounding = tier.getRoundingMode() == null ? PricingRounding.CEILING : tier.getRoundingMode();
+        RoundingMode roundingMode = switch (rounding) {
+            case CEILING -> RoundingMode.CEILING;
+            case FLOOR -> RoundingMode.FLOOR;
+            case HALF_UP -> RoundingMode.HALF_UP;
+        };
+        BigDecimal checklistBase = out.stream().map(Line::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal billedQuantity = BigDecimal.ONE;
+        BigDecimal unitPrice = money(tier.getFixedAmount());
+        BigDecimal amount;
+        switch (tier.getCalculationType()) {
+            case FIXED, ACTUAL_COST, RESOURCE_BASED -> amount = unitPrice;
+            case PERCENT_OF_BASE -> amount = money(checklistBase.multiply(nz(tier.getPercentage()))
+                    .divide(new BigDecimal("100"), 0, RoundingMode.HALF_UP));
+            case PER_UNIT -> {
+                billedQuantity = chargeable;
                 amount = money(unitPrice.multiply(billedQuantity));
-            } else if (calculation == PricingCalculationType.PER_BLOCK
-                    || calculation == PricingCalculationType.TIERED_BLOCK) {
-                billedQuantity = quantity.divide(unitSize, 0, roundingMode);
-                amount = money(unitPrice.multiply(billedQuantity));
-                if (calculation == PricingCalculationType.TIERED_BLOCK) amount = amount.add(money(tier.getBaseAmount()));
-            } else {
-                throw new ApiException(ErrorCode.PRICING_CALCULATION_FAILED,
-                        "Unsupported " + category + " calculation type: " + calculation);
             }
-
-            out.add(new Line(component, category,
-                    tier.getDescription() == null || tier.getDescription().isBlank() ? noun : tier.getDescription(),
-                    billedQuantity, unitPrice, amount, lo.intValue(), hi == null ? null : hi.intValue(),
-                    unitSize.intValue(), rounding.name()));
-            covered = upper;
+            case PER_BLOCK, TIERED_BLOCK -> {
+                billedQuantity = chargeable.divide(unitSize, 0, roundingMode);
+                amount = money(unitPrice.multiply(billedQuantity));
+                if (tier.getCalculationType() == PricingCalculationType.TIERED_BLOCK)
+                    amount = amount.add(money(tier.getBaseAmount()));
+            }
+            case MULTIPLIER -> amount = money(checklistBase.multiply(nz(tier.getMultiplier()).subtract(BigDecimal.ONE)));
+            default -> throw new ApiException(ErrorCode.PRICING_CALCULATION_FAILED,
+                    "Unsupported " + category + " calculation type: " + tier.getCalculationType());
         }
-
-        if (covered.compareTo(extra) < 0) {
-            throw new ApiException(ErrorCode.PRICING_RULE_NOT_FOUND,
-                    "Cannot price " + noun + " for checklist profile " + profile
-                            + ": rules must be contiguous from 0 and end with an open tier.");
-        }
+        if (amount.signum() == 0) return;
+        BigDecimal displayUnit = switch (tier.getCalculationType()) {
+            case PER_UNIT, PER_BLOCK, TIERED_BLOCK -> unitPrice;
+            default -> amount;
+        };
+        out.add(new Line(component, category,
+                tier.getDescription() == null || tier.getDescription().isBlank() ? noun : tier.getDescription(),
+                billedQuantity, displayUnit, amount, lo.intValue(), hi == null ? null : hi.intValue(),
+                unitSize.intValue(), rounding.name()));
     }
 
     private List<PricingRule> rules(PricingPolicy policy, PricingCategory category, String profile, MediaPricingComponent component) {
