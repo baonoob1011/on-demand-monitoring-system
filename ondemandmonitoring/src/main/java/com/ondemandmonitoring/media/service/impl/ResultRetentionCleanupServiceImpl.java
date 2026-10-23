@@ -1,6 +1,6 @@
 package com.ondemandmonitoring.media.service.impl;
 
-import com.ondemandmonitoring.media.domain.MediaStorageStatus;
+import com.ondemandmonitoring.media.enums.MediaStorageStatus;
 import com.ondemandmonitoring.media.repository.MediaAssetRepository;
 import com.ondemandmonitoring.media.service.IMediaObjectStorage;
 import com.ondemandmonitoring.media.service.IResultRetentionCleanupService;

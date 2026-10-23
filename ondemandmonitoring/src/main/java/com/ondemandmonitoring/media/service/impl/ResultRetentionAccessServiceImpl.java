@@ -3,7 +3,7 @@ package com.ondemandmonitoring.media.service.impl;
 import com.ondemandmonitoring.common.exception.ApiException;
 import com.ondemandmonitoring.common.exception.ErrorCode;
 import com.ondemandmonitoring.media.domain.MediaAsset;
-import com.ondemandmonitoring.media.domain.MediaStorageStatus;
+import com.ondemandmonitoring.media.enums.MediaStorageStatus;
 import com.ondemandmonitoring.media.service.IResultRetentionAccessService;
 import java.time.Clock;
 import java.time.Instant;

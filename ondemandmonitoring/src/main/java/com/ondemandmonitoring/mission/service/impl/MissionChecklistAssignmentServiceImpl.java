@@ -42,10 +42,14 @@ public class MissionChecklistAssignmentServiceImpl implements IMissionChecklistA
         var order = orders.findByIdForUpdate(orderId).orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND));
         var mission = missions.findByIdForUpdate(missionId).orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
         if (!orderId.equals(mission.getOrder().getId())) throw new ApiException(ErrorCode.CHECKLIST_ASSIGNMENT_CROSS_ORDER);
-        if (order.getExecutionPlanStatus() != ExecutionPlanStatus.DRAFT) throw new ApiException(ErrorCode.EXECUTION_PLAN_NOT_DRAFT);
+        boolean finalizedReplacement = order.getExecutionPlanStatus() == ExecutionPlanStatus.FINALIZED
+                && mission.getReplacesMissionId() != null && mission.getStatus() == MissionStatus.PLANNING;
+        if (order.getExecutionPlanStatus() != ExecutionPlanStatus.DRAFT && !finalizedReplacement)
+            throw new ApiException(ErrorCode.EXECUTION_PLAN_NOT_DRAFT);
         if (request == null || request.expectedPlanRevision() == null || request.items() == null)
             throw new ApiException(ErrorCode.INVALID_REQUEST);
-        if (order.getExecutionPlanRevision() != request.expectedPlanRevision() || order.getExecutionPlanRevision() == Long.MAX_VALUE)
+        if (order.getExecutionPlanRevision() != request.expectedPlanRevision()
+                || (!finalizedReplacement && order.getExecutionPlanRevision() == Long.MAX_VALUE))
             throw new ApiException(ErrorCode.EXECUTION_PLAN_REVISION_CONFLICT);
         // if (mission.getCreationIdempotencyKey() == null || mission.getStatus() != MissionStatus.PLANNING
         //         || mission.getCancellationAt() != null
@@ -101,8 +105,10 @@ public class MissionChecklistAssignmentServiceImpl implements IMissionChecklistA
         }
         assignments.saveAllAndFlush(changed);
         items.saveAll(selected.values());
-        order.setExecutionPlanRevision(Math.addExact(order.getExecutionPlanRevision(), 1));
-        orders.saveAndFlush(order);
+        if (!finalizedReplacement) {
+            order.setExecutionPlanRevision(Math.addExact(order.getExecutionPlanRevision(), 1));
+            orders.saveAndFlush(order);
+        }
         return response(mission);
     }
 

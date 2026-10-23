@@ -3,6 +3,7 @@ package com.ondemandmonitoring.mission.mapper;
 import com.ondemandmonitoring.mission.domain.Mission;
 import com.ondemandmonitoring.mission.domain.MissionDeviceAssignment;
 import com.ondemandmonitoring.mission.domain.MissionStaffAssignment;
+import com.ondemandmonitoring.mission.dto.response.MissionDeviceAssignmentResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionPlanResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionResponse;
 import com.ondemandmonitoring.mission.dto.response.MissionStaffAssignmentResponse;
@@ -35,6 +36,7 @@ public class MissionMapperHelper {
     private final MissionStaffAssignmentRepository missionStaffAssignmentRepository;
     private final MissionPlanMapper missionPlanMapper;
     private final MissionStaffAssignmentMapper missionStaffAssignmentMapper;
+    private final MissionDeviceAssignmentMapper missionDeviceAssignmentMapper;
     private final UserRepository userRepository;
 
     @Named("missionLatitude")
@@ -152,6 +154,18 @@ public class MissionMapperHelper {
                 .sorted(Comparator.comparing(MissionStaffAssignment::getAssignedRole,
                         Comparator.nullsLast(Comparator.naturalOrder())))
                 .map(missionStaffAssignmentMapper::toResponse)
+                .toList();
+    }
+
+    @Named("missionDeviceAssignments")
+    public List<MissionDeviceAssignmentResponse> getDeviceAssignments(Mission mission) {
+        if (mission == null || mission.getId() == null) {
+            return List.of();
+        }
+        return missionDeviceAssignmentRepository.findAllByMissionIdAndIsCurrentTrueOrderByCreatedAtDesc(mission.getId()).stream()
+                .sorted(Comparator.comparing(MissionDeviceAssignment::getDeviceRole,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(missionDeviceAssignmentMapper::toResponse)
                 .toList();
     }
 

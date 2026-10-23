@@ -30,6 +30,7 @@ public interface IMissionService {
 
 
     MissionResponse replaceMission(String missionId, MissionCreateRequest request);
+    MissionResponse finalizeReplacementMission(String missionId);
 
     MissionResponse updateMission(String missionId, MissionUpdateRequest request);
 

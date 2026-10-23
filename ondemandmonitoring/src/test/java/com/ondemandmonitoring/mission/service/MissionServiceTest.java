@@ -39,7 +39,6 @@ import com.ondemandmonitoring.mission.service.impl.MissionService;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.finance.repository.InvoiceRepository;
 import com.ondemandmonitoring.finance.service.IMissionPaymentEligibilityService;
-import com.ondemandmonitoring.planning.service.MissionPlanningService;
 import com.ondemandmonitoring.role.domain.Role;
 import com.ondemandmonitoring.role.enumeration.RoleCode;
 import com.ondemandmonitoring.user.domain.User;
@@ -73,7 +72,6 @@ class MissionServiceTest {
     FlightTokenMapper flightTokenMapper;
 
     MissionPlanRepository missionPlanRepository;
-    MissionPlanningService missionPlanningService;
     DeviceConnectionRepository deviceConnectionRepository;
     ControlHandoverRepository controlHandoverRepository;
     PersistedPostDeviceCheckRepository postDeviceCheckRepository;
@@ -103,7 +101,6 @@ class MissionServiceTest {
         missionMapper = mock(MissionMapper.class);
         flightTokenMapper = mock(FlightTokenMapper.class);
         missionPlanRepository = mock(MissionPlanRepository.class);
-        missionPlanningService = mock(MissionPlanningService.class);
         deviceConnectionRepository = mock(DeviceConnectionRepository.class);
         controlHandoverRepository = mock(ControlHandoverRepository.class);
         postDeviceCheckRepository = mock(PersistedPostDeviceCheckRepository.class);
@@ -142,7 +139,6 @@ class MissionServiceTest {
                 missionMapper,
                 flightTokenMapper,
                 missionPlanRepository,
-                missionPlanningService,
                 deviceConnectionRepository,
                 controlHandoverRepository,
                 postDeviceCheckRepository,
@@ -309,7 +305,6 @@ class MissionServiceTest {
             AssignStaffRequest request = AssignStaffRequest.builder().staffId("op-01").build();
             assertThat(missionService.assignStaff("m-assign", request).getStatus())
                     .isEqualTo(MissionStatus.READY);
-            verifyNoInteractions(missionPlanningService);
         }
 
         @Test
@@ -1029,7 +1024,6 @@ class MissionServiceTest {
                 .isEqualTo(MissionStatus.WAITING_CREW_CONFIRMATION);
         assertThat((Boolean) org.springframework.test.util.ReflectionTestUtils.invokeMethod(
                 missionService, "hasRequiredCrewAssigned", "crew-invalid")).isFalse();
-        verifyNoInteractions(missionPlanningService);
     }
 
     @Test

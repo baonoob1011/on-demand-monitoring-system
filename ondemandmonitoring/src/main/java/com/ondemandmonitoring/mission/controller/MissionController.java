@@ -83,6 +83,13 @@ public class MissionController {
                 .body(ApiResponse.ok("Replacement mission created", missionService.replaceMission(missionId, request)));
     }
 
+    @PostMapping("/{id}/finalize-replacement")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<MissionResponse>> finalizeReplacementMission(@PathVariable String id) {
+        return ResponseEntity.ok(ApiResponse.ok("Replacement mission finalized",
+                missionService.finalizeReplacementMission(id)));
+    }
+
     @GetMapping("/all")
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<List<MissionResponse>>> listAll() {

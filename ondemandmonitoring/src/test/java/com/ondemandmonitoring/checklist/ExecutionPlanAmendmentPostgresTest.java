@@ -234,8 +234,9 @@ class ExecutionPlanAmendmentPostgresTest extends OrderAggregateCompletionPostgre
                 return com.ondemandmonitoring.mission.dto.response.MissionResponse.builder().id(mission.getId())
                         .missionCode(mission.getMissionCode()).status(mission.getStatus()).build();
             });
-            return new MissionService(missions,null,null,mapper,null,null,null,null,null,
-                    null,null,orders,OrderMissionPostgresTest.paidInvoices(),OrderMissionPostgresTest.paidEligibility(),null,null,null,null,null,null,actor,null,null,null,null,executions,
+            return new MissionService(missions, null, null, mapper, null,
+                    null, null, null, null, null,
+                    orders, OrderMissionPostgresTest.paidInvoices(), OrderMissionPostgresTest.paidEligibility(), null, null, null, null, null, null, actor, null, null, null, null, executions,
                     org.mockito.Mockito.mock(com.ondemandmonitoring.mission.service.IMissionChecklistAssignmentService.class),
                     org.mockito.Mockito.mock(IResourceReservationService.class), null);
         }

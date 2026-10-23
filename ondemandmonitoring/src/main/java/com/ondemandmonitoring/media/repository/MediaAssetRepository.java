@@ -3,7 +3,7 @@ package com.ondemandmonitoring.media.repository;
 import com.ondemandmonitoring.media.domain.MediaAsset;
 import java.util.List;
 import java.util.Optional;
-import com.ondemandmonitoring.media.domain.MediaStorageStatus;
+import com.ondemandmonitoring.media.enums.MediaStorageStatus;
 import com.ondemandmonitoring.media.enums.MediaStatus;
 import java.time.Instant;
 import org.springframework.data.domain.Page;

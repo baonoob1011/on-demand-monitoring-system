@@ -37,6 +37,7 @@ import com.ondemandmonitoring.mission.service.IDeviceConnectionService;
 import com.ondemandmonitoring.mission.service.IFlightTokenService;
 import com.ondemandmonitoring.mission.service.IMissionResultService;
 import com.ondemandmonitoring.mission.service.IMissionChecklistExecutionService;
+import com.ondemandmonitoring.mission.service.IMissionChecklistMaterializationService;
 import com.ondemandmonitoring.mission.service.IMissionService;
 import com.ondemandmonitoring.order.repository.OrderRepository;
 import com.ondemandmonitoring.finance.enums.QuoteStatus;
@@ -97,6 +98,8 @@ public class MissionService implements IMissionService {
             MissionStaffRole.MAINTAINER, MissionStaffRole.INSPECTOR);
 
     MissionRepository missionRepository;
+    @Autowired @NonFinal
+    MissionChecklistAssignmentRepository missionChecklistAssignmentRepository;
     DeviceRepository deviceRepository;
     FlightTokenRepository flightTokenRepository;
     MissionMapper missionMapper;
@@ -125,6 +128,8 @@ public class MissionService implements IMissionService {
     MissionStaffAssignmentRepository missionStaffAssignmentRepository;
     ResourceTimeLockRepository resourceTimeLockRepository;
     IMissionChecklistExecutionService checklistExecutionService;
+    @Autowired @NonFinal
+    IMissionChecklistMaterializationService checklistMaterializationService;
     com.ondemandmonitoring.mission.service.IMissionChecklistAssignmentService checklistAssignmentService;
     com.ondemandmonitoring.mission.service.IResourceReservationService resources;
     com.ondemandmonitoring.device.repository.DeviceTelemetryRepository telemetryRepository;
@@ -229,7 +234,8 @@ public class MissionService implements IMissionService {
                 request.getScopeLabel().strip().replaceAll("\\s+", " "), Normalizer.Form.NFC);
         Order order = orderRepository.findByIdForUpdate(orderId)
                 .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND, "Order not found: " + orderId));
-        if (order.getExecutionPlanStatus() != ExecutionPlanStatus.DRAFT)
+        if (order.getExecutionPlanStatus() != ExecutionPlanStatus.DRAFT
+                && !(replacesMissionId != null && order.getExecutionPlanStatus() == ExecutionPlanStatus.FINALIZED))
             throw new ApiException(ErrorCode.EXECUTION_PLAN_NOT_DRAFT);
       
         if (replacesMissionId != null) {
@@ -265,6 +271,30 @@ public class MissionService implements IMissionService {
         assignChecklist(saved, order, request.getChecklistIds());
         // Planning creation never materializes executions; the canonical plan finalizer owns that boundary.
         return missionMapper.toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("@missionAuthorizationService.canManageMissions()")
+    public MissionResponse finalizeReplacementMission(String missionId) {
+        String orderId = missionRepository.findOrderIdByMissionId(missionId)
+                .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
+        Order order = orderRepository.findByIdForUpdate(orderId)
+                .orElseThrow(() -> new ApiException(ErrorCode.RESOURCE_NOT_FOUND));
+        Mission mission = missionRepository.findByIdForUpdate(missionId)
+                .orElseThrow(() -> new ApiException(ErrorCode.MISSION_NOT_FOUND));
+        if (order.getExecutionPlanStatus() != ExecutionPlanStatus.FINALIZED
+                || mission.getReplacesMissionId() == null
+                || mission.getStatus() != MissionStatus.PLANNING)
+            throw new ApiException(ErrorCode.EXECUTION_PLAN_NOT_DRAFT);
+        if (missionRepository.findByIdForUpdate(mission.getReplacesMissionId())
+                .filter(original -> original.getStatus() == MissionStatus.CANCELLED).isEmpty())
+            throw new ApiException(ErrorCode.MISSION_REPLACEMENT_ORIGINAL_NOT_CANCELLED);
+        if (missionChecklistAssignmentRepository.findByMissionIdAndRemovedAtIsNullOrderByDisplayOrderAscIdAsc(missionId).isEmpty())
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "A replacement Mission must have checklist items");
+        checklistMaterializationService.materialize(mission);
+        mission.setStatus(MissionStatus.READY);
+        return missionMapper.toResponse(missionRepository.saveAndFlush(mission));
     }
 
     /** A Mission must own at least one checklist item; assignment reuses the canonical replace flow. */
